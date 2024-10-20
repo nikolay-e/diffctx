@@ -1,0 +1,209 @@
+name: TreeMapper CD
+
+permissions:
+  contents: write
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release'
+        required: true
+      publish_to_pypi:
+        description: 'Publish to PyPI'
+        required: true
+        default: 'false'
+        type: choice
+        options:
+        - 'true'
+        - 'false'
+
+jobs:
+  create-release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -e .
+
+      - name: Set version (Unix)
+        if: matrix.os != 'windows-latest'
+        run: |
+          python -c "import re; content = open('src/treemapper/version.py', 'r').read(); open('src/treemapper/version.py', 'w').write(re.sub('__version__ = \".*\"', '__version__ = \"${{ github.event.inputs.version }}\"', content))"
+
+      - name: Set version (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          $content = Get-Content src/treemapper/version.py -Raw
+          $newContent = $content -replace '__version__ = ".*"', '__version__ = "${{ github.event.inputs.version }}"'
+          Set-Content src/treemapper/version.py -Value $newContent
+
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: v${{ github.event.inputs.version }}
+          release_name: Release ${{ github.event.inputs.version }}
+          draft: false
+          prerelease: false
+
+    outputs:
+      upload_url: ${{ steps.create_release.outputs.upload_url }}
+      version: ${{ github.event.inputs.version }}
+      release_id: ${{ steps.create_release.outputs.id }}
+
+  build-and-upload:
+    name: Build and Upload Assets
+    needs: create-release
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-20.04
+            asset_name: linux
+          - os: macos-latest
+            asset_name: macos
+          - os: windows-latest
+            asset_name: windows
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Cache pip Dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/setup.cfg') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -e .
+
+      - name: Set version (Unix)
+        if: matrix.os != 'windows-latest'
+        run: |
+          python -c "import re; content = open('src/treemapper/version.py', 'r').read(); open('src/treemapper/version.py', 'w').write(re.sub('__version__ = \".*\"', '__version__ = \"${{ github.event.inputs.version }}\"', content))"
+
+      - name: Set version (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          $content = Get-Content src/treemapper/version.py -Raw
+          $newContent = $content -replace '__version__ = ".*"', '__version__ = "${{ github.event.inputs.version }}"'
+          Set-Content src/treemapper/version.py -Value $newContent
+
+      - name: Build with PyInstaller
+        run: |
+          python -m PyInstaller --clean -y --dist ./dist/${{ matrix.asset_name }} --workpath /tmp treemapper.spec
+
+      - name: Determine architecture
+        id: arch
+        shell: bash
+        run: |
+          if [ "${{ matrix.os }}" = "macos-latest" ]; then
+            echo "ARCH=$(uname -m)" >> $GITHUB_OUTPUT
+          elif [ "${{ matrix.os }}" = "ubuntu-20.04" ]; then
+            echo "ARCH=$(uname -m)" >> $GITHUB_OUTPUT
+          else
+            echo "ARCH=x86_64" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Upload Release Asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: ./dist/${{ matrix.asset_name }}/treemapper${{ matrix.os == 'windows-latest' && '.exe' || '' }}
+          asset_name: treemapper-${{ matrix.asset_name }}-${{ steps.arch.outputs.ARCH }}-v${{ needs.create-release.outputs.version }}${{ matrix.os == 'windows-latest' && '.exe' || '' }}
+          asset_content_type: application/octet-stream
+
+  publish-to-pypi:
+    name: Publish to PyPI
+    needs: [create-release, build-and-upload]
+    if: github.event.inputs.publish_to_pypi == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Cache pip Dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/setup.cfg') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Set version (Unix)
+        if: matrix.os != 'windows-latest'
+        run: |
+          python -c "import re; content = open('src/treemapper/version.py', 'r').read(); open('src/treemapper/version.py', 'w').write(re.sub('__version__ = \".*\"', '__version__ = \"${{ github.event.inputs.version }}\"', content))"
+
+      - name: Set version (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          $content = Get-Content src/treemapper/version.py -Raw
+          $newContent = $content -replace '__version__ = ".*"', '__version__ = "${{ github.event.inputs.version }}"'
+          Set-Content src/treemapper/version.py -Value $newContent
+
+      - name: Build and Publish to PyPI
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}
+        run: |
+          python -m build
+          python -m twine upload dist/* --verbose
+
+
+  update-main-branch:
+    name: Update main branch
+    needs: [publish-to-pypi]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main branch
+        uses: actions/checkout@v3
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Merge tag into main
+        run: |
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git merge ${{ github.ref }} --no-ff -m "Merge tag ${{ github.ref_name }} into main"
+          git push origin main
