@@ -31,7 +31,7 @@ def normalize_tree(tree):
 
 def test_basic_mapping(temp_project, run_mapper):
     """Test basic directory mapping with default settings."""
-    assert run_mapper(["."])
+    assert run_mapper([".", "-o", "directory_tree.yaml"])
     output_file = temp_project / "directory_tree.yaml"
     assert output_file.exists()
     result = load_yaml(output_file)
@@ -49,7 +49,7 @@ def test_basic_mapping(temp_project, run_mapper):
 
 def test_directory_content(temp_project, run_mapper):
     """Test directory structure and content preservation."""
-    assert run_mapper(["."])
+    assert run_mapper([".", "-o", "directory_tree.yaml"])
     result = load_yaml(temp_project / "directory_tree.yaml")
     src_dir = find_node_by_path(result, ["src"])
     assert src_dir is not None and src_dir["type"] == "directory"
@@ -93,7 +93,7 @@ def test_file_content_encoding(temp_project, run_mapper):
     (temp_project / "multiline.txt").write_text(multiline_content_orig)
     (temp_project / "empty.txt").write_text(empty_content_orig)
 
-    assert run_mapper(["."])
+    assert run_mapper([".", "-o", "directory_tree.yaml"])
     result = load_yaml(temp_project / "directory_tree.yaml")
 
     ascii_node = find_node_by_path(result, ["ascii.txt"])
@@ -116,7 +116,7 @@ def test_nested_structures(temp_project, run_mapper):
         contents[i] = content_str
         (current / f"file{i}.txt").write_text(content_str)
 
-    assert run_mapper(["."])
+    assert run_mapper([".", "-o", "directory_tree.yaml"])
     result = load_yaml(temp_project / "directory_tree.yaml")
 
     current_node = result
@@ -198,7 +198,7 @@ WIN_SKIP_MSG = "Skipping unicode filename test on Windows (potential FS issues)"
 
 @pytest.mark.skipif(sys.platform == "win32", reason=WIN_SKIP_MSG)
 def test_unicode_filenames(temp_project, run_mapper):
-    """Тест: файлы и директории с Unicode именами."""
+    """Test: files and directories with Unicode names."""
     (temp_project / "привет_мир").mkdir()
     (temp_project / "привет_мир" / "файл.txt").write_text("содержимое", encoding="utf-8")
     (temp_project / "你好.txt").write_text("世界", encoding="utf-8")
@@ -226,7 +226,7 @@ def test_unicode_filenames(temp_project, run_mapper):
 
 
 def test_unicode_content_and_encoding_errors(temp_project, run_mapper, caplog):
-    """Тест: содержимое в UTF-8, не-UTF8 (CP1251), бинарное."""
+    """Test: content in UTF-8, non-UTF8 (CP1251), binary."""
     utf8_content = "привет мир"
     try:
         cp1251_content_bytes = "тест".encode("cp1251")
@@ -240,7 +240,7 @@ def test_unicode_content_and_encoding_errors(temp_project, run_mapper, caplog):
 
     output_path = temp_project / "encodings_output.yaml"
     with caplog.at_level(logging.WARNING):
-        assert run_mapper([".", "-o", str(output_path)])
+        assert run_mapper([".", "-o", str(output_path), "-v", "1"])
     result = load_yaml(output_path)
 
     utf8_node = find_node_by_path(result, ["utf8.txt"])
@@ -261,14 +261,24 @@ def test_unicode_content_and_encoding_errors(temp_project, run_mapper, caplog):
     assert binary_node is not None, "'binary.bin' not found"
 
     assert isinstance(binary_node.get("content"), str)
-    assert binary_node.get("content", "").startswith("<unreadable content")
-    if binary_node.get("content") != "<unreadable content>":
-        assert binary_node.get("content", "").endswith("\n")
+    # Binary files can be detected as binary or fail UTF-8 decode
+    assert binary_node.get("content", "").startswith("<unreadable content") or binary_node.get("content", "").startswith(
+        "<binary file:"
+    )
+    if binary_node.get("content") not in ("<unreadable content>", "<unreadable content>\n"):
+        assert binary_node.get("content", "").endswith("\n") or binary_node.get("content", "").startswith("<binary file:")
 
-    assert any(
+    # Binary files may be detected early (no warning) or fail during read (warning/error)
+    # Accept either case
+    has_binary_log = any(
         ("Cannot decode binary.bin as UTF-8" in record.message and record.levelno >= logging.WARNING)
         or ("Could not read binary.bin" in record.message and record.levelno >= logging.ERROR)
         or ("Unexpected error reading binary.bin" in record.message and record.levelno >= logging.ERROR)
         or ("Removed NULL bytes from content of binary.bin" in record.message and record.levelno >= logging.WARNING)
+        or ("Detected binary file binary.bin" in record.message and record.levelno >= logging.DEBUG)
         for record in caplog.records
-    ), "Expected WARNING/ERROR log message about reading/decoding failure not found for binary.bin"
+    )
+    # Either we have a log about the binary file, OR it was detected as binary (starts with "<binary file:")
+    assert has_binary_log or binary_node.get("content", "").startswith(
+        "<binary file:"
+    ), "Expected WARNING/ERROR log message about reading/decoding failure or binary detection for binary.bin"

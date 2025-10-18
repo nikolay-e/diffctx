@@ -10,11 +10,14 @@ def load_yaml(path: Path) -> Dict[str, Any]:
     """Load YAML file and return its contents."""
     try:
         with path.open("r", encoding="utf-8") as f:
-            return yaml.load(f, Loader=yaml.SafeLoader)
+            result = yaml.load(f, Loader=yaml.SafeLoader)
+            return result if result is not None else {}
     except FileNotFoundError:
         pytest.fail(f"Output YAML file not found: {path}")
+        return {}  # This will never execute but satisfies mypy
     except Exception as e:
         pytest.fail(f"Failed to load or parse YAML file {path}: {e}")
+        return {}  # This will never execute but satisfies mypy
 
 
 def get_all_files_in_tree(node: Dict[str, Any]) -> Set[str]:

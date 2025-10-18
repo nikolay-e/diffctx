@@ -1,5 +1,6 @@
 # tests/test_errors.py
 import logging
+import os
 import stat
 import sys
 from pathlib import Path
@@ -8,11 +9,11 @@ import pytest
 
 from .utils import find_node_by_path, load_yaml
 
-# --- Тесты на некорректный ввод ---
+# --- Tests for invalid input ---
 
 
 def test_invalid_directory_path(run_mapper, capsys):
-    """Тест: указана несуществующая директория."""
+    """Test: non-existent directory specified."""
     dir_name = "non_existent_directory"
     assert not run_mapper([dir_name])
     captured = capsys.readouterr()
@@ -23,7 +24,7 @@ def test_invalid_directory_path(run_mapper, capsys):
 
 
 def test_input_path_is_file(run_mapper, temp_project, capsys):
-    """Тест: в качестве директории указан файл."""
+    """Test: file specified instead of directory."""
     file_path = temp_project / "some_file.txt"
     file_path.touch()
     assert not run_mapper([str(file_path)])
@@ -34,9 +35,13 @@ def test_input_path_is_file(run_mapper, temp_project, capsys):
     assert "not a valid directory" in captured.err
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="os.chmod limited on Windows")
+@pytest.mark.skipif(
+    sys.platform == "win32"
+    or ("microsoft" in open("/proc/version", "r").read().lower() if os.path.exists("/proc/version") else False),
+    reason="os.chmod limited on Windows/WSL",
+)
 def test_unreadable_file(temp_project, run_mapper, set_perms, caplog):
-    """Тест: файл без прав на чтение."""
+    """Test: file without read permissions."""
     unreadable_file = temp_project / "unreadable.txt"
     unreadable_file.write_text("secret")
     set_perms(unreadable_file, 0o000)
@@ -56,9 +61,13 @@ def test_unreadable_file(temp_project, run_mapper, set_perms, caplog):
     ), "Expected ERROR log message about reading failure not found"
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="os.chmod limited on Windows")
+@pytest.mark.skipif(
+    sys.platform == "win32"
+    or ("microsoft" in open("/proc/version", "r").read().lower() if os.path.exists("/proc/version") else False),
+    reason="os.chmod limited on Windows/WSL",
+)
 def test_unwritable_output_dir(temp_project, run_mapper, set_perms, caplog):
-    """Тест: попытка записи в директорию без прав на запись."""
+    """Test: attempt to write to directory without write permissions."""
     unwritable_dir = temp_project / "locked_dir"
     unwritable_dir.mkdir()
     read_execute_perms = stat.S_IRUSR | stat.S_IXUSR | stat.S_IRGRP | stat.S_IXGRP | stat.S_IROTH | stat.S_IXOTH
@@ -75,12 +84,11 @@ def test_unwritable_output_dir(temp_project, run_mapper, set_perms, caplog):
 
 
 def test_output_path_is_directory(temp_project, run_mapper, caplog):
-    """Тест: путь вывода (-o) указывает на существующую директорию."""
+    """Test: output path (-o) points to existing directory."""
     output_should_be_file = temp_project / "i_am_a_directory"
     output_should_be_file.mkdir()
 
     with caplog.at_level(logging.ERROR):
-
         run_mapper([".", "-o", str(output_should_be_file)])
 
     assert any(

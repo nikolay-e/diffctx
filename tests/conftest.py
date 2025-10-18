@@ -1,10 +1,15 @@
 # tests/conftest.py
 import logging
 import os
+import subprocess
 import sys
 from pathlib import Path
 
 import pytest
+
+# Add project root/src to PYTHONPATH for subprocess tests
+PROJECT_ROOT = Path(__file__).parent.parent
+SRC_DIR = PROJECT_ROOT / "src"
 
 
 # --- Фикстура для создания временного проекта ---
@@ -54,6 +59,45 @@ def run_mapper(monkeypatch, temp_project):
     return _run
 
 
+# --- Helper for running treemapper as subprocess ---
+def run_treemapper_subprocess(args, cwd=None, **kwargs):
+    """Run treemapper as a subprocess with proper environment setup.
+
+    Args:
+        args: Command line arguments to pass to treemapper
+        cwd: Working directory for the subprocess
+        **kwargs: Additional arguments to pass to subprocess.run
+
+    Returns:
+        CompletedProcess object
+    """
+    command = [sys.executable, "-m", "treemapper"] + args
+
+    # Ensure subprocess can find the treemapper module
+    env = os.environ.copy()
+    pythonpath = str(SRC_DIR)
+    if "PYTHONPATH" in env:
+        pythonpath = f"{pythonpath}{os.pathsep}{env['PYTHONPATH']}"
+    env["PYTHONPATH"] = pythonpath
+
+    # Merge with any env provided in kwargs
+    if "env" in kwargs:
+        env.update(kwargs["env"])
+    kwargs["env"] = env
+
+    # Set default values for common parameters
+    if "capture_output" not in kwargs:
+        kwargs["capture_output"] = True
+    if "text" not in kwargs:
+        kwargs["text"] = True
+    if "encoding" not in kwargs:
+        kwargs["encoding"] = "utf-8"
+    if "errors" not in kwargs:
+        kwargs["errors"] = "replace"
+
+    return subprocess.run(command, cwd=cwd, **kwargs)
+
+
 # ---> НАЧАЛО: Перенесенная фикстура set_perms <---
 @pytest.fixture
 def set_perms(request):
@@ -64,6 +108,20 @@ def set_perms(request):
     def _set_perms(path: Path, perms: int):
         if sys.platform == "win32":
             pytest.skip("Permission tests skipped on Windows.")
+
+        # Check if running in WSL environment
+        is_wsl = False
+        try:
+            with open("/proc/version", "r") as f:
+                if "microsoft" in f.read().lower():
+                    is_wsl = True
+        except FileNotFoundError:
+            pass
+
+        # Skip tests on Windows paths in WSL
+        if is_wsl and "/mnt/" in str(path):
+            pytest.skip(f"Permission tests skipped on Windows-mounted paths in WSL: {path}")
+
         if not path.exists():
             pytest.skip(f"Path does not exist, cannot set permissions: {path}")
         try:
@@ -78,17 +136,14 @@ def set_perms(request):
 
     logging.debug(f"Cleaning up permissions for: {paths_changed}")
     for path in paths_changed:
-
         if path.exists() and path in original_perms:
             try:
-
                 if original_perms[path] is not None:
                     os.chmod(path, original_perms[path])
                     logging.debug(f"Restored permissions for {path}")
                 else:
                     logging.warning(f"Original permissions for {path} were None, not restoring.")
             except OSError as e:
-
                 logging.warning(f"Could not restore permissions for {path}: {e}")
 
 

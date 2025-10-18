@@ -1,6 +1,76 @@
+# pyproject.toml
+
 [build-system]
 requires = ["setuptools>=45", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.black]
 line-length = 130
+
+[tool.isort]
+profile = "black"
+line_length = 130
+
+[project]
+name = "treemapper"
+dynamic = ["version"]  # Version is still managed in version.py
+authors = [
+    { name = "Nikolay Eremeev", email = "nikolay.eremeev@outlook.com" },
+]
+description = "A tool for mapping directory structures"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { file = "LICENSE" }
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "pathspec>=0.9",
+    "pyyaml>=5.4",
+]
+
+[project.urls]
+Homepage = "https://github.com/nikolay-e/TreeMapper"
+
+[project.scripts]
+treemapper = "treemapper.treemapper:main"
+
+[project.optional-dependencies]
+dev = [
+    # Testing
+    "pytest>=7.0",
+    "pytest-cov>=3.0",
+    "hypothesis>=6.0",
+    "mutmut>=2.0",
+    "coverage>=7.0",
+    # Quality checks
+    "flake8>=5.0",
+    "black>=23.0.0",
+    "mypy>=1.0",
+    "radon>=6.0",
+    "import-linter>=2.0",
+    "pre-commit>=3.0",
+    "autoflake",
+    # Type stubs
+    "types-PyYAML",
+    # Build and release
+    "build>=0.10",
+    "twine>=4.0",
+    "pyinstaller>=5.0",
+]
+
+[tool.setuptools.dynamic]
+version = { attr = "treemapper.version.__version__" }
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+norecursedirs = ["mutants", ".git", ".mypy_cache", ".pytest_cache", "__pycache__"]

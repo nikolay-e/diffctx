@@ -1,22 +1,14 @@
 # tests/test_cli.py
-import subprocess
-import sys
-
-import pytest
-
-PYTHON_EXEC = sys.executable
+from .conftest import run_treemapper_subprocess
 
 
 def run_cli_command(args, cwd):
-    """Запускает treemapper как отдельный процесс"""
-    command = [PYTHON_EXEC, "-m", "treemapper"] + args
-
-    result = subprocess.run(command, capture_output=True, text=True, cwd=cwd, encoding="utf-8", errors="replace")
-    return result
+    """Runs treemapper as a separate process"""
+    return run_treemapper_subprocess(args, cwd=cwd)
 
 
 def test_cli_help_short(temp_project):
-    """Тест: вызов справки через -h"""
+    """Test: help invocation via -h"""
     result = run_cli_command(["-h"], cwd=temp_project)
     assert result.returncode == 0
     assert "usage: treemapper" in result.stdout.lower()
@@ -26,7 +18,7 @@ def test_cli_help_short(temp_project):
 
 
 def test_cli_help_long(temp_project):
-    """Тест: вызов справки через --help"""
+    """Test: help invocation via --help"""
     result = run_cli_command(["--help"], cwd=temp_project)
     assert result.returncode == 0
     assert "usage: treemapper" in result.stdout.lower()
@@ -34,7 +26,7 @@ def test_cli_help_long(temp_project):
 
 
 def test_cli_invalid_verbosity(temp_project):
-    """Тест: неверный уровень verbosity"""
+    """Test: invalid verbosity level"""
     result = run_cli_command(["-v", "5"], cwd=temp_project)
     assert result.returncode != 0
 
@@ -51,5 +43,7 @@ def test_cli_invalid_verbosity(temp_project):
 
 
 def test_cli_version_display(temp_project):
-    """Тест: отображение версии (если будет добавлено)"""
-    pytest.skip("Version display option ('--version') not implemented yet.")
+    """Test: version display"""
+    result = run_cli_command(["--version"], cwd=temp_project)
+    assert result.returncode == 0
+    assert "treemapper" in result.stdout.lower()

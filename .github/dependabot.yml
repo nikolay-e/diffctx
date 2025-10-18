@@ -1,0 +1,33 @@
+version: 2
+updates:
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+    assignees:
+      - "nikolay-e"
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"
+    groups:
+      all-dependencies:
+        patterns:
+          - "*"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+    assignees:
+      - "nikolay-e"
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"
+    groups:
+      all-dependencies:
+        patterns:
+          - "*"

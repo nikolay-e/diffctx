@@ -35,6 +35,8 @@ MANIFEST
 pip-log.txt
 pip-delete-this-directory.txt
 
+mutants
+
 # Unit test / coverage reports
 htmlcov/
 .tox/
@@ -163,3 +165,241 @@ cython_debug/
 directory_tree.yaml
 
 .pypirc
+**/.claude/settings.local.json
+
+# ==============================================================================
+# IDE & Editor Files
+# ==============================================================================
+# VS Code
+.vscode/
+*.code-workspace
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Vim
+*.swp
+*.swo
+*~
+.vim/
+
+# Emacs
+*~
+\#*\#
+/.emacs.desktop
+/.emacs.desktop.lock
+*.elc
+auto-save-list
+tramp
+.\#*
+
+# ==============================================================================
+# OS Files
+# ==============================================================================
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+*.stackdump
+[Dd]esktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+*.lnk
+
+# Linux
+.directory
+.Trash-*
+.nfs*
+
+# ==============================================================================
+# Quality Tools & Analysis Artifacts
+# ==============================================================================
+# Mutation testing
+.mutmut-cache
+mutmut-cache.db
+.mutmut_report/
+
+# SonarQube/SonarCloud
+.sonar/
+.sonarqube/
+.scannerwork/
+
+# Radon
+radon-report/
+
+# Pylint
+pylint-report.txt
+.pylintrc.local
+
+# Ruff
+.ruff_cache/
+
+# Pre-commit
+.pre-commit-local.yaml
+
+# Import linter
+.import-linter-cache/
+
+# ==============================================================================
+# Build & Release Artifacts
+# ==============================================================================
+# PyInstaller builds
+*.spec.bak
+/treemapper
+/treemapper.exe
+
+# GitHub release artifacts
+release-notes.md
+release-assets/
+
+# Git bundles (used in CD workflow)
+*.bundle
+
+# ==============================================================================
+# Testing & Coverage
+# ==============================================================================
+# pytest-xdist
+.pytest_cache_*
+
+# Test output files
+test-results/
+test-results.xml
+junit.xml
+test-output/
+
+# Coverage reports
+.coverage-html/
+coverage-report/
+htmlcov/
+
+# Property-based testing (Hypothesis)
+.hypothesis/
+
+# ==============================================================================
+# Documentation
+# ==============================================================================
+# Sphinx
+docs/_build/
+docs/_static/
+docs/_templates/
+docs/api/
+
+# MkDocs
+site/
+docs/site/
+
+# ==============================================================================
+# Temporary & Cache Files
+# ==============================================================================
+# Python
+*.pyc.bak
+*.pyo.bak
+
+# General temp files
+*.tmp
+*.temp
+*.bak
+*.backup
+*.orig
+*_backup
+*_old
+
+# Logs
+*.log.*
+logs/
+*.log.txt
+
+# ==============================================================================
+# Credentials & Secrets
+# ==============================================================================
+# Environment files
+.env.local
+.env.*.local
+.env.development
+.env.test
+.env.production
+
+# Credentials
+credentials.json
+secrets.json
+*.pem
+*.key
+*.cert
+*.crt
+id_rsa*
+id_ed25519*
+
+# API keys
+.api_keys
+apikeys.txt
+
+# ==============================================================================
+# Project-Specific Output Files
+# ==============================================================================
+# TreeMapper output examples (don't commit generated outputs)
+output/
+examples/output/
+*.treemap.yaml
+*.treemap.json
+*.treemap.txt
+
+# ==============================================================================
+# Database & Storage
+# ==============================================================================
+*.db
+*.sqlite
+*.sqlite3
+
+# ==============================================================================
+# Node.js (in case of future web UI or tools)
+# ==============================================================================
+node_modules/
+package-lock.json
+yarn.lock
+.pnp/
+.pnp.js
+
+# ==============================================================================
+# Miscellaneous
+# ==============================================================================
+# Backup files from editors
+*~
+*.bak
+
+# Local configuration overrides
+*.local
+local/
+
+# Benchmark results
+benchmarks/results/
+*.benchmark
+
+# Profiling data
+*.prof
+*.lprof
+profile_*.txt

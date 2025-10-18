@@ -11,4 +11,24 @@ def setup_logging(verbosity: int) -> None:
     }
     level = level_map.get(verbosity, logging.INFO)
 
-    logging.basicConfig(level=level, format="%(levelname)s: %(message)s")
+    # Get the root logger
+    root_logger = logging.getLogger()
+
+    # Set the level on the root logger
+    root_logger.setLevel(level)
+
+    # Configure handlers - update existing ones or add new if needed
+    if root_logger.handlers:
+        # Update existing handlers
+        for handler in root_logger.handlers:
+            handler.setLevel(level)
+            if not handler.formatter:
+                formatter = logging.Formatter("%(levelname)s: %(message)s")
+                handler.setFormatter(formatter)
+    else:
+        # Add new handler
+        handler = logging.StreamHandler()
+        handler.setLevel(level)
+        formatter = logging.Formatter("%(levelname)s: %(message)s")
+        handler.setFormatter(formatter)
+        root_logger.addHandler(handler)

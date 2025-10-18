@@ -1,5 +1,6 @@
 # tests/test_ignore.py
 import logging
+import os
 import sys
 
 import pytest
@@ -20,7 +21,7 @@ docs/
 .gitignore
 """
     )
-    assert run_mapper([".", "-i", str(ignore_file)])
+    assert run_mapper([".", "-i", str(ignore_file), "-o", "directory_tree.yaml"])
     result = load_yaml(temp_project / "directory_tree.yaml")
     all_files = get_all_files_in_tree(result)
     assert not any(isinstance(f, str) and f.endswith(".py") for f in all_files)
@@ -37,7 +38,7 @@ def test_gitignore_patterns(temp_project, run_mapper):
     (temp_project / "__pycache__" / "cachefile").touch()
     (temp_project / "src" / "local_only.py").touch()
     (temp_project / "src" / "allowed.py").touch()
-    assert run_mapper(["."])
+    assert run_mapper([".", "-o", "directory_tree.yaml"])
     result = load_yaml(temp_project / "directory_tree.yaml")
     all_files = get_all_files_in_tree(result)
     assert "test.pyc" not in all_files
@@ -76,7 +77,7 @@ def test_symlinks_and_special_files(temp_project, run_mapper):
             can_symlink = False
 
     (temp_project / ".treemapperignore").write_text(".*\n!.gitignore\n")
-    assert run_mapper(["."])
+    assert run_mapper([".", "-o", "directory_tree.yaml"])
     result = load_yaml(temp_project / "directory_tree.yaml")
     all_files = get_all_files_in_tree(result)
     assert ".hidden_dir" not in all_files
@@ -118,7 +119,7 @@ def test_empty_and_invalid_ignores(temp_project, run_mapper):
 
 
 def test_ignore_negation(temp_project, run_mapper):
-    """Тест: отмена игнорирования с помощью '!'."""
+    """Test: un-ignoring with '!'."""
     (temp_project / ".gitignore").write_text("*.log\n!important.log\n")
     (temp_project / "app.log").touch()
     (temp_project / "important.log").touch()
@@ -133,7 +134,7 @@ def test_ignore_negation(temp_project, run_mapper):
 
 
 def test_ignore_double_star(temp_project, run_mapper, caplog):
-    """Тест: игнорирование с помощью '**'."""
+    """Test: ignoring with '**'."""
 
     caplog.set_level(logging.DEBUG)
     (temp_project / ".gitignore").write_text("**/temp_files/\n")
@@ -156,7 +157,7 @@ def test_ignore_double_star(temp_project, run_mapper, caplog):
 
 
 def test_ignore_output_file_itself(temp_project, run_mapper):
-    """Тест: игнорирование самого файла вывода в разных местах."""
+    """Test: ignoring the output file itself in different locations."""
     output_path1 = temp_project / "output1.yaml"
     assert run_mapper([".", "-o", str(output_path1)])
     result1 = load_yaml(output_path1)
@@ -182,7 +183,7 @@ def test_ignore_output_file_itself(temp_project, run_mapper):
 
 
 def test_no_default_ignores_flag(temp_project, run_mapper):
-    """Тест: флаг --no-default-ignores."""
+    """Test: --no-default-ignores flag."""
     git_dir = temp_project / ".git"
     git_dir.mkdir(parents=True, exist_ok=True)
     (git_dir / "config").write_text("test")
@@ -223,15 +224,19 @@ def test_no_default_ignores_flag(temp_project, run_mapper):
     ), f"Output file {output_path.name} should still be ignored even with --no-default-ignores"
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="os.chmod limited on Windows")
+@pytest.mark.skipif(
+    sys.platform == "win32"
+    or ("microsoft" in open("/proc/version", "r").read().lower() if os.path.exists("/proc/version") else False),
+    reason="os.chmod limited on Windows/WSL",
+)
 def test_unreadable_ignore_file(temp_project, run_mapper, set_perms, caplog):
-    """Тест: файл .treemapperignore не имеет прав на чтение."""
+    """Test: .treemapperignore file has no read permissions."""
     ignore_file = temp_project / ".treemapperignore"
     ignore_file.write_text(".git/\n")
     set_perms(ignore_file, 0o000)
 
     with caplog.at_level(logging.WARNING):
-        assert run_mapper(["."])
+        assert run_mapper([".", "-o", "directory_tree.yaml", "-v", "1"])
 
     assert any(
         "Could not read ignore file" in rec.message and ignore_file.name in rec.message
@@ -241,16 +246,15 @@ def test_unreadable_ignore_file(temp_project, run_mapper, set_perms, caplog):
 
 
 def test_bad_encoding_ignore_file(temp_project, run_mapper, caplog):
-    """Тест: файл .treemapperignore имеет не-UTF8 кодировку."""
+    """Test: .treemapperignore file has non-UTF8 encoding."""
     ignore_file = temp_project / ".treemapperignore"
     try:
-
         ignore_file.write_text(".git/\nпапка_игнор/\n", encoding="cp1251")
     except LookupError:
         pytest.skip("CP1251 codec not found")
 
     with caplog.at_level(logging.WARNING):
-        assert run_mapper(["."])
+        assert run_mapper([".", "-o", "directory_tree.yaml", "-v", "1"])
 
     assert any(
         "Could not decode ignore file" in rec.message and ignore_file.name in rec.message and "UTF-8" in rec.message
@@ -262,7 +266,7 @@ def test_bad_encoding_ignore_file(temp_project, run_mapper, caplog):
 
     (temp_project / "папка_игнор").mkdir()
 
-    assert run_mapper(["."])
+    assert run_mapper([".", "-o", "directory_tree.yaml"])
     result = load_yaml(temp_project / "directory_tree.yaml")
     all_files = get_all_files_in_tree(result)
     assert "папка_игнор" in all_files

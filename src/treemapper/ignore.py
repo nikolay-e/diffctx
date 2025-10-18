@@ -2,11 +2,10 @@
 import logging
 import os
 from pathlib import Path
+from typing import List, Optional
 
-# ---> ИЗМЕНЕНИЕ: Добавляем импорты из typing <---
-from typing import Dict, List, Optional, Tuple
-
-import pathspec
+# pathspec doesn't have type stubs
+import pathspec  # type: ignore
 
 
 def read_ignore_file(file_path: Path) -> List[str]:
@@ -14,10 +13,13 @@ def read_ignore_file(file_path: Path) -> List[str]:
     ignore_patterns = []
     if file_path.is_file():
         try:
+            # Try to read directly and handle all possible errors
             with file_path.open("r", encoding="utf-8") as f:
                 ignore_patterns = [line.strip() for line in f if line.strip() and not line.startswith("#")]
             logging.info(f"Using ignore patterns from {file_path}")
             logging.debug(f"Read ignore patterns from {file_path}: {ignore_patterns}")
+        except PermissionError:
+            logging.warning(f"Could not read ignore file {file_path}: Permission denied")
         except IOError as e:
             logging.warning(f"Could not read ignore file {file_path}: {e}")
         except UnicodeDecodeError as e:
@@ -32,16 +34,48 @@ def load_pathspec(patterns: List[str], syntax="gitwildmatch") -> pathspec.PathSp
     return spec
 
 
-# ---> ИЗМЕНЕНИЕ: Заменяем | None на Optional[...] <---
+def _aggregate_gitignore_patterns(root: Path) -> List[str]:
+    """
+    Aggregate all .gitignore patterns from root and subdirectories.
+    Converts patterns to root-relative paths matching Git's semantics.
+    """
+    out: List[str] = []
+    for dirpath, dirnames, filenames in os.walk(root, topdown=True):
+        # Sort dirnames and filenames in place for deterministic traversal order
+        dirnames.sort()
+        filenames.sort()
+
+        if ".gitignore" not in filenames:
+            continue
+        gitdir = Path(dirpath)
+        rel = "" if gitdir == root else gitdir.relative_to(root).as_posix()
+        for line in read_ignore_file(gitdir / ".gitignore"):
+            neg = line.startswith("!")
+            pat = line[1:] if neg else line
+            # Handle anchored patterns (starting with /)
+            if pat.startswith("/"):
+                full = f"/{rel}{pat}" if rel else pat
+            else:
+                full = f"{rel}/{pat}" if rel else pat
+            out.append(("!" + full) if neg else full)
+    logging.debug(f"Aggregated {len(out)} gitignore patterns from {root}")
+    return out
+
+
+# ---> CHANGE: Removed dead gitignore_specs return value <---
 def get_ignore_specs(
     root_dir: Path,
     custom_ignore_file: Optional[Path] = None,
     no_default_ignores: bool = False,
     output_file: Optional[Path] = None,
-) -> Tuple[pathspec.PathSpec, Dict[Path, pathspec.PathSpec]]:
-    """Get combined ignore specs and git ignore specs."""
+) -> pathspec.PathSpec:
+    """Get combined ignore specs. Returns combined pathspec."""
     default_patterns = get_default_patterns(root_dir, no_default_ignores, output_file)
-    custom_patterns = get_custom_patterns(root_dir, custom_ignore_file)
+    # ---> CHANGE: No longer pass root_dir to get_custom_patterns.
+    custom_patterns = get_custom_patterns(custom_ignore_file)
+
+    # Aggregate all .gitignore patterns into a single list
+    git_patterns = [] if no_default_ignores else _aggregate_gitignore_patterns(root_dir)
 
     if no_default_ignores:
         combined_patterns = custom_patterns
@@ -60,17 +94,18 @@ def get_ignore_specs(
             except Exception as e:
                 logging.warning(f"Could not determine relative path for output file {output_file}: {e}")
     else:
-        combined_patterns = default_patterns + custom_patterns
+        # Combine default patterns, git patterns, and custom patterns
+        combined_patterns = default_patterns + git_patterns + custom_patterns
 
     logging.debug(f"Ignore specs params: no_default_ignores={no_default_ignores}")
     logging.debug(f"Default patterns (used unless no_default_ignores): {default_patterns}")
+    logging.debug(f"Git patterns: {git_patterns}")
     logging.debug(f"Custom patterns (-i): {custom_patterns}")
     logging.debug(f"Combined patterns for spec: {combined_patterns}")
 
     combined_spec = load_pathspec(combined_patterns)
-    gitignore_specs = get_gitignore_specs(root_dir, no_default_ignores)
 
-    return combined_spec, gitignore_specs
+    return combined_spec
 
 
 # ---> ИЗМЕНЕНИЕ: Заменяем | None на Optional[...] <---
@@ -79,12 +114,39 @@ def get_default_patterns(root_dir: Path, no_default_ignores: bool, output_file: 
     if no_default_ignores:
         return []
 
-    patterns = []
+    # Add common patterns to default ignores
+    patterns = [
+        # Python
+        "**/__pycache__/",
+        "**/*.py[cod]",
+        "**/*.so",
+        "**/.pytest_cache/",
+        "**/.coverage",
+        "**/.mypy_cache/",
+        "**/*.egg-info/",
+        "**/.eggs/",
+        # VCS
+        "**/.git/",
+        # Node.js
+        "**/node_modules/",
+        # Python virtual environments
+        "**/venv/",
+        "**/.venv/",
+        # Testing/build tools
+        "**/.tox/",
+        "**/.nox/",
+        "**/dist/",
+        "**/build/",
+    ]
+
+    # Look for .treemapperignore in the scanned root_dir
     treemapper_ignore_file = root_dir / ".treemapperignore"
     patterns.extend(read_ignore_file(treemapper_ignore_file))
 
     if output_file:
         try:
+            # This logic correctly ignores the output file if it's inside the scanned directory.
+            # It should remain as is.
             resolved_output = output_file.resolve()
             resolved_root = root_dir.resolve()
             try:
@@ -93,48 +155,30 @@ def get_default_patterns(root_dir: Path, no_default_ignores: bool, output_file: 
                 patterns.append(output_pattern)
                 logging.debug(f"Adding output file to default ignores: {output_pattern}")
             except ValueError:
-                logging.debug(f"Output file {output_file} is outside root directory {root_dir}, not adding to default ignores.")
+                logging.debug(
+                    f"Output file {output_file} is outside root directory {root_dir}, " "not adding to default ignores."
+                )
+            except Exception as e:
+                logging.warning(f"Could not determine relative path for output file {output_file}: {e}")
         except Exception as e:
             logging.warning(f"Could not determine relative path for output file {output_file}: {e}")
 
     return patterns
 
 
-# ---> ИЗМЕНЕНИЕ: Заменяем | None на Optional[...] <---
-def get_custom_patterns(root_dir: Path, custom_ignore_file: Optional[Path]) -> List[str]:
+# ---> CHANGE: Remove the unused 'root_dir' parameter for clarity.
+def get_custom_patterns(custom_ignore_file: Optional[Path]) -> List[str]:
     """Retrieve custom ignore patterns from the file specified with -i."""
     if not custom_ignore_file:
         return []
 
-    if not custom_ignore_file.is_absolute():
-        custom_ignore_file = Path.cwd() / custom_ignore_file
-
+    # No need to resolve path here, cli.py already did it.
     if custom_ignore_file.is_file():
         return read_ignore_file(custom_ignore_file)
     else:
+        # This case is now handled in cli.py, but we keep it as a safeguard.
         logging.warning(f"Custom ignore file '{custom_ignore_file}' not found.")
         return []
-
-
-def get_gitignore_specs(root_dir: Path, no_default_ignores: bool) -> Dict[Path, pathspec.PathSpec]:
-    """Retrieve gitignore specs for all .gitignore files found within root_dir."""
-    if no_default_ignores:
-        return {}
-
-    gitignore_specs = {}
-    try:
-        for dirpath_str, dirnames, filenames in os.walk(root_dir, topdown=True):
-            if ".git" in dirnames:
-                dirnames.remove(".git")
-            if ".gitignore" in filenames:
-                gitignore_path = Path(dirpath_str) / ".gitignore"
-                patterns = read_ignore_file(gitignore_path)
-                if patterns:
-                    gitignore_specs[Path(dirpath_str)] = load_pathspec(patterns)
-    except OSError as e:
-        logging.warning(f"Error walking directory {root_dir} to find .gitignore files: {e}")
-
-    return gitignore_specs
 
 
 def should_ignore(relative_path_str: str, combined_spec: pathspec.PathSpec) -> bool:

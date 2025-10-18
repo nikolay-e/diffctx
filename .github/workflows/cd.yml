@@ -20,34 +20,51 @@ on:
           - 'false'
 
 jobs:
-  prepare-release:
-    name: Prepare Commit and Create GitHub Release/Tag
+  prepare-version:
+    name: Prepare Version Commit
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.set_outputs.outputs.version }}
       tag_name: ${{ steps.set_outputs.outputs.tag_name }}
-      commit_sha: ${{ steps.commit_push.outputs.commit_sha }}
-      upload_url: ${{ steps.create_release.outputs.upload_url }}
-      release_id: ${{ steps.create_release.outputs.id }}
+      commit_sha: ${{ steps.commit_version.outputs.commit_sha }}
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0  # Need full history for git bundle
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.11'
 
-      - name: Set version in version.py
+      - name: Check that we're on main branch
         run: |
-          VERSION="${{ github.event.inputs.version }}"
+          CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+          if [ "$CURRENT_BRANCH" != "main" ]; then
+            echo "Error: Releases can only be created from the main branch. Current branch: $CURRENT_BRANCH"
+            exit 1
+          fi
+
+      - name: Set version in version.py
+        env:
+          VERSION: ${{ github.event.inputs.version }}
+        run: |
           echo "Setting version to $VERSION"
-          sed -i -E "s/__version__ = \".*\"/__version__ = \"$VERSION\"/" src/treemapper/version.py
+          python - <<'PY'
+          import os, re, pathlib
+          ver = os.environ["VERSION"]
+          p = pathlib.Path("src/treemapper/version.py")
+          s = p.read_text(encoding="utf-8")
+          s, n = re.subn(r'__version__\s*=\s*["\'].*?["\']', f'__version__ = "{ver}"', s, count=1)
+          assert n == 1, "version assignment not found or multiple matches"
+          p.write_text(s, encoding="utf-8")
+          PY
           echo "version.py content after change:"
           cat src/treemapper/version.py
 
-      - name: Commit and Push version bump
-        id: commit_push
+      - name: Commit version bump (locally only, no push yet)
+        id: commit_version
         run: |
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
@@ -60,31 +77,32 @@ jobs:
           COMMIT_SHA=$(git rev-parse HEAD)
           echo "Commit SHA: $COMMIT_SHA"
           echo "commit_sha=$COMMIT_SHA" >> $GITHUB_OUTPUT
-          # Отправляем коммит в текущую ветку (важно для следующего шага)
-          # Тег будет создан действием create-release
-          git push origin HEAD
 
-      - name: Create GitHub Release and Tag
-        id: create_release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Create local tag (no push yet)
+        run: |
+          git tag -a "v${{ github.event.inputs.version }}" -m "Release version ${{ github.event.inputs.version }}"
+          echo "Tag created locally: v${{ github.event.inputs.version }}"
+
+      - name: Upload git bundle for other jobs
+        run: |
+          git bundle create repo.bundle --all
+
+      - name: Upload bundle as artifact
+        uses: actions/upload-artifact@v4
         with:
-          tag_name: v${{ github.event.inputs.version }}
-          release_name: Release ${{ github.event.inputs.version }}
-          commitish: ${{ steps.commit_push.outputs.commit_sha }} # Указываем SHA коммита
-          draft: false
-          prerelease: false
+          name: git-repo-bundle
+          path: repo.bundle
+          retention-days: 1
 
-      - name: Set outputs for subsequent jobs
+      - name: Set outputs
         id: set_outputs
         run: |
           echo "version=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
           echo "tag_name=v${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
 
-  build-and-upload:
-    name: Build and Upload Assets
-    needs: prepare-release
+  build-assets:
+    name: Build Assets
+    needs: prepare-version
     strategy:
       fail-fast: false
       matrix:
@@ -100,32 +118,39 @@ jobs:
             python-version: '3.11'
     runs-on: ${{ matrix.os }}
     steps:
-      - name: Checkout Code at release tag
-        uses: actions/checkout@v4
+      - name: Download git bundle
+        uses: actions/download-artifact@v5
         with:
-          ref: ${{ needs.prepare-release.outputs.tag_name }}
+          name: git-repo-bundle
+
+      - name: Restore repository from bundle
+        run: |
+          git clone repo.bundle repo
+          cd repo
+          git checkout ${{ needs.prepare-version.outputs.tag_name }}
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
 
       - name: Cache pip Dependencies
         uses: actions/cache@v4
-        id: cache-pip
         with:
           path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ matrix.python-version }}-${{ hashFiles('**/setup.cfg') }}
+          key: ${{ runner.os }}-pip-${{ matrix.python-version }}-${{ hashFiles('**/pyproject.toml') }}
           restore-keys: |
             ${{ runner.os }}-pip-${{ matrix.python-version }}-
             ${{ runner.os }}-pip-
 
       - name: Install Dependencies (including PyInstaller)
+        working-directory: ./repo
         run: |
           python -m pip install --upgrade pip
           pip install .[dev]
 
       - name: Build with PyInstaller
+        working-directory: ./repo
         run: |
           python -m PyInstaller --clean -y --dist ./dist/${{ matrix.asset_name }} treemapper.spec
 
@@ -144,21 +169,29 @@ jobs:
           echo "Determined ARCH: $ARCH"
           echo "arch=$ARCH" >> $GITHUB_OUTPUT
 
+      - name: Rename asset with proper name
+        shell: bash
+        working-directory: ./repo
+        run: |
+          ASSET_NAME="treemapper-${{ matrix.asset_name }}-${{ steps.arch.outputs.arch }}"
+          ASSET_NAME="${ASSET_NAME}-v${{ needs.prepare-version.outputs.version }}"
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            ASSET_NAME="${ASSET_NAME}.exe"
+            mv "./dist/${{ matrix.asset_name }}/treemapper.exe" "./dist/${ASSET_NAME}"
+          else
+            mv "./dist/${{ matrix.asset_name }}/treemapper" "./dist/${ASSET_NAME}"
+          fi
 
-      - name: Upload Release Asset
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
         with:
-          upload_url: ${{ needs.prepare-release.outputs.upload_url }}
-          # ---> ИЗМЕНЕНИЕ: Убран лишний /treemapper из пути <---
-          asset_path: ./dist/${{ matrix.asset_name }}/${{ matrix.os == 'windows-latest' && 'treemapper.exe' || 'treemapper' }}
-          asset_name: treemapper-${{ matrix.asset_name }}-${{ steps.arch.outputs.arch }}-v${{ needs.prepare-release.outputs.version }}${{ matrix.os == 'windows-latest' && '.exe' || '' }}
-          asset_content_type: application/octet-stream
+          name: ${{ matrix.asset_name }}-binary
+          path: ./repo/dist/treemapper-*
+          retention-days: 1
 
   publish-to-pypi:
     name: Publish to PyPI
-    needs: [prepare-release, build-and-upload]
+    needs: [prepare-version, build-assets]
     if: github.event.inputs.publish_to_pypi == 'true'
     runs-on: ubuntu-latest
     environment:
@@ -167,42 +200,86 @@ jobs:
     permissions:
       id-token: write
     steps:
-      - name: Checkout Code at release tag
-        uses: actions/checkout@v4
+      - name: Download git bundle
+        uses: actions/download-artifact@v5
         with:
-          ref: ${{ needs.prepare-release.outputs.tag_name }}
+          name: git-repo-bundle
+
+      - name: Restore repository from bundle
+        run: |
+          git clone repo.bundle repo
+          cd repo
+          git checkout ${{ needs.prepare-version.outputs.tag_name }}
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.11'
 
       - name: Install build tools
+        working-directory: ./repo
         run: |
           python -m pip install --upgrade pip
           pip install build
 
       - name: Build sdist and wheel
+        working-directory: ./repo
         run: python -m build
 
       - name: Publish package distributions to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: ./repo/dist/
 
-  update-main-branch:
-    name: Update main branch (Merge Tag)
-    needs: [prepare-release, build-and-upload]
+  finalize-release:
+    name: Push Release and Create GitHub Release
+    needs: [prepare-version, build-assets, publish-to-pypi]
+    if: |
+      always() &&
+      needs.prepare-version.result == 'success' &&
+      needs.build-assets.result == 'success' &&
+      (needs.publish-to-pypi.result == 'success' ||
+       needs.publish-to-pypi.result == 'skipped')
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout main branch
-        uses: actions/checkout@v4
+      - name: Download git bundle
+        uses: actions/download-artifact@v5
         with:
-          ref: main
-          fetch-depth: 0
+          name: git-repo-bundle
 
-      - name: Merge tag into main
+      - name: Restore repository from bundle
+        run: |
+          git clone repo.bundle repo
+          cd repo
+          git checkout main
+          echo "Current branch: $(git branch --show-current)"
+          echo "Current commit: $(git rev-parse HEAD)"
+
+      - name: Push commit and tag to main
+        working-directory: ./repo
         run: |
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          echo "Attempting to merge tag ${{ needs.prepare-release.outputs.tag_name }} into main"
-          git merge ${{ needs.prepare-release.outputs.tag_name }} --no-ff -m "Merge tag ${{ needs.prepare-release.outputs.tag_name }} into main"
-          git push origin main
+
+          # Push the version bump commit to main
+          git push origin HEAD:main
+
+          # Push the tag
+          git push origin ${{ needs.prepare-version.outputs.tag_name }}
+
+          echo "Successfully pushed version commit and tag"
+
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v5
+        with:
+          path: ./artifacts
+
+      - name: Create GitHub Release with assets
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.prepare-version.outputs.tag_name }}
+          name: Release ${{ needs.prepare-version.outputs.version }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          files: ./artifacts/**/*-binary/treemapper-*

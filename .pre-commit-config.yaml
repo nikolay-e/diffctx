@@ -1,0 +1,190 @@
+repos:
+  # ============================================================================
+  # BASIC FILE QUALITY CHECKS (baseline hygiene)
+  # ============================================================================
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-added-large-files
+        args: ["--maxkb=1000"]
+      - id: check-merge-conflict
+      - id: check-toml
+      - id: check-json
+      - id: mixed-line-ending
+        args: ["--fix=lf"]
+      - id: check-case-conflict
+      - id: check-docstring-first
+      - id: check-ast
+      - id: debug-statements
+      - id: name-tests-test
+        args: ["--pytest-test-first"]
+        exclude: ^tests/(utils|conftest)\.py$
+
+  # ============================================================================
+  # CODE FORMATTING (minimal - consistency only, not quality)
+  # Order matters: isort must run before black to avoid conflicts
+  # ============================================================================
+  - repo: https://github.com/pycqa/isort
+    rev: 7.0.0
+    hooks:
+      - id: isort
+
+  - repo: https://github.com/psf/black
+    rev: 25.9.0
+    hooks:
+      - id: black
+        language_version: python3
+
+  # ============================================================================
+  # STATIC TYPING (proven to reduce TypeError/AttributeError in production)
+  # Evidence: Dropbox/Instagram case studies show 15-40% reduction in type errors
+  # ============================================================================
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.18.2
+    hooks:
+      - id: mypy
+        name: mypy (strict mode for code health)
+        additional_dependencies:
+          ["types-PyYAML", "types-aiofiles", "types-colorama", "types-requests", "pytest", "pytest-asyncio"]
+        files: ^src/
+
+  # ============================================================================
+  # SECURITY & VULNERABILITY DETECTION
+  # Evidence: CVE databases with reproducible advisories
+  # ============================================================================
+  - repo: https://github.com/trailofbits/pip-audit
+    rev: v2.9.0
+    hooks:
+      - id: pip-audit
+        name: pip-audit (CVE detection in dependencies)
+        args:
+          [
+            "--desc",
+            "on",
+            "--skip-editable",
+            "--ignore-vuln",
+            "GHSA-4xh5-x5gv-qwph",
+          ]
+
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+      - id: detect-secrets
+        args: ["--baseline", ".secrets.baseline"]
+
+  # ============================================================================
+  # SEMANTIC SECURITY ANALYSIS (replaces basic Bandit)
+  # Evidence: Testable rulepacks, widely adopted in SAST programs
+  # ============================================================================
+  - repo: https://github.com/returntocorp/semgrep
+    rev: v1.89.0
+    hooks:
+      - id: semgrep
+        name: semgrep (AST-based security & policy)
+        args:
+          [
+            "--config=p/security-audit",
+            "--config=p/python",
+            "--error",
+            "--skip-unknown-extensions",
+            "--metrics=off",
+          ]
+        files: ^src/
+
+  # ============================================================================
+  # DEAD CODE DETECTION (reduces attack surface & maintenance burden)
+  # Evidence: Direct verification - unused code is measurably wasteful
+  # ============================================================================
+  - repo: https://github.com/jendrikseipp/vulture
+    rev: v2.14
+    hooks:
+      - id: vulture
+        name: vulture (dead code)
+        args: ["--min-confidence=80", "src/"]
+        files: ^src/
+        pass_filenames: false
+
+  # ============================================================================
+  # CODE DUPLICATION DETECTION (reduces maintenance burden & bug propagation)
+  # Evidence: Studies show duplicated code increases bug density by 2-3x
+  # Detects copy-pasted code blocks that should be refactored into functions
+  # ============================================================================
+  - repo: https://github.com/PyCQA/pylint
+    rev: v4.0.1
+    hooks:
+      - id: pylint
+        name: pylint (duplicate code detection)
+        args:
+          [
+            "--disable=all",
+            "--enable=duplicate-code",
+            "--min-similarity-lines=6",
+            "--ignore-comments=yes",
+            "--ignore-docstrings=yes",
+            "--ignore-imports=yes",
+          ]
+        files: ^src/
+        additional_dependencies: ["types-PyYAML", "types-aiofiles", "types-colorama", "types-requests"]
+
+  # ============================================================================
+  # LINTING (focused on correctness, not style)
+  # Using Ruff for speed; flake8 removed to avoid redundancy
+  # ============================================================================
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.14.0
+    hooks:
+      - id: ruff
+        name: ruff (correctness-focused checks)
+        args: ["--fix", "--unsafe-fixes"]
+
+  # ============================================================================
+  # SPELL CHECKING (reduces documentation defects)
+  # ============================================================================
+  - repo: https://github.com/codespell-project/codespell
+    rev: v2.4.1
+    hooks:
+      - id: codespell
+        args:
+          ["--write-changes", "--ignore-words-list=crate,nd,ser,llm,async,cli,theses"]
+        exclude: ^(\.git/|\.venv/|venv/)
+
+  # ============================================================================
+  # YAML/JSON LINTING
+  # ============================================================================
+  - repo: https://github.com/adrienverge/yamllint
+    rev: v1.37.1
+    hooks:
+      - id: yamllint
+        args:
+          - "-d"
+          - >-
+            {extends: default, rules:
+            {line-length: {max: 120}, document-start: disable,
+            indentation: disable, comments: disable}}
+
+  # ============================================================================
+  # COMMIT MESSAGE QUALITY
+  # ============================================================================
+  - repo: https://github.com/commitizen-tools/commitizen
+    rev: v4.9.1
+    hooks:
+      - id: commitizen
+        stages: [commit-msg]
+
+# ============================================================================
+# TOOLS DEFERRED TO CI (too slow or complex for pre-commit)
+# ============================================================================
+# - CodeQL: GitHub-specific, requires workflow setup
+# - Pysa: Requires framework-specific taint configuration
+# - SonarQube/Cloud: Platform-based, not a hook
+# - Radon: No official pre-commit hook, run via pip in CI
+# - Hypothesis: Property-based testing, runs with pytest in CI
+# - Mutation testing (mutmut/Cosmic Ray): Too slow, CI only
+# - Coverage: Measured in CI with pytest-cov
+# - Import Linter: Requires project-specific contract definition
+# - Atheris/CrossHair: Fuzzing/symbolic execution - CI only
+#
+# See .github/workflows/ci.yml for integration of these tools
