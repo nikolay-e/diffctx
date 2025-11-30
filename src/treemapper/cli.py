@@ -68,8 +68,11 @@ def parse_args() -> Tuple[Path, Optional[Path], Optional[Path], bool, int, str, 
 
     args = parser.parse_args()
 
+    if args.max_depth is not None and args.max_depth < 0:
+        print(f"Error: --max-depth must be non-negative, got {args.max_depth}", file=sys.stderr)
+        sys.exit(1)
+
     try:
-        # The target directory to be read. This is correct as is.
         root_dir = Path(args.directory).resolve(strict=True)
         if not root_dir.is_dir():
             print(f"Error: The path '{root_dir}' is not a valid directory.", file=sys.stderr)

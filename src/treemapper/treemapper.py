@@ -1,5 +1,5 @@
 def main() -> None:
-    """Main function to run the TreeMapper tool."""
+    """Main function to run the treemapper tool."""
     # Import here to allow argparse to handle --help/-h before importing heavy modules
     from .cli import parse_args
     from .ignore import get_ignore_specs

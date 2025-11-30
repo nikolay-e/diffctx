@@ -31,7 +31,7 @@ def test_anchored_pattern_fix(temp_project, run_mapper):
     # Create gitignore with anchored pattern to ignore only root file
     (test_dir / ".gitignore").write_text("/root_file.txt\n")
 
-    # Run TreeMapper on the clean test directory
+    # Run treemapper on the clean test directory
     output_path = temp_project / "anchored_output.yaml"
     assert run_mapper([str(test_dir), "-o", str(output_path)])
     result = load_yaml(output_path)
@@ -74,7 +74,7 @@ def test_non_anchored_pattern(temp_project, run_mapper):
     # Create gitignore with non-anchored pattern
     (test_dir / ".gitignore").write_text("*.log\n")
 
-    # Run TreeMapper
+    # Run treemapper
     output_path = temp_project / "non_anchored_output.yaml"
     assert run_mapper([str(test_dir), "-o", str(output_path)])
     result = load_yaml(output_path)
@@ -121,7 +121,7 @@ def test_combined_patterns(temp_project, run_mapper):
     # Create gitignore with anchored and non-anchored patterns
     (test_dir / ".gitignore").write_text("/root_only.txt\n*.log\n")
 
-    # Run TreeMapper
+    # Run treemapper
     output_path = temp_project / "combined_output.yaml"
     assert run_mapper([str(test_dir), "-o", str(output_path)])
     result = load_yaml(output_path)

@@ -113,10 +113,12 @@ def write_tree_to_file(tree: Dict[str, Any], output_file: Optional[Path], output
             buf = None
 
         if buf:
-            # Use TextIOWrapper to ensure UTF-8 encoding for stdout
             utf8_stdout = io.TextIOWrapper(buf, encoding="utf-8", newline="")
-            write_tree_content(utf8_stdout)
-            utf8_stdout.flush()
+            try:
+                write_tree_content(utf8_stdout)
+                utf8_stdout.flush()
+            finally:
+                utf8_stdout.detach()
         else:
             # Fallback: write directly to sys.stdout
             write_tree_content(sys.stdout)

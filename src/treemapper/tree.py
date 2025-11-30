@@ -53,8 +53,8 @@ def build_tree(
             if should_ignore(relative_path_check, combined_spec):
                 continue
 
-            if not entry.exists() or entry.is_symlink():
-                logging.debug(f"Skipping '{relative_path_check}': not exists or is symlink")
+            if entry.is_symlink() or not entry.exists():
+                logging.debug(f"Skipping '{relative_path_check}': symlink or not exists")
                 continue
 
             node = create_node(entry, base_dir, combined_spec, output_file, max_depth, current_depth, no_content, max_file_bytes)
@@ -123,21 +123,18 @@ def create_node(
                     node_content = f"<binary file: {file_size} bytes>"
                     logging.debug(f"Detected binary file {entry.name}")
                 else:
-                    # Try to read the file directly and handle all possible errors
                     node_content = entry.read_text(encoding="utf-8")
-                    if isinstance(node_content, str):
-                        cleaned_content = node_content.replace("\x00", "")
-                        if cleaned_content != node_content:
-                            logging.warning(f"Removed NULL bytes from content of {entry.name}")
-                            node_content = cleaned_content
-                        # Ensure content always ends with a newline for consistency with old behavior
-                        if node_content and not node_content.endswith("\n"):
-                            node_content = node_content + "\n"
+                    cleaned_content = node_content.replace("\x00", "")
+                    if cleaned_content != node_content:
+                        logging.warning(f"Removed NULL bytes from content of {entry.name}")
+                        node_content = cleaned_content
+                    if node_content and not node_content.endswith("\n"):
+                        node_content = node_content + "\n"
             except PermissionError:
                 logging.error(f"Could not read {entry.name}: Permission denied")
                 node_content = "<unreadable content>\n"
             except UnicodeDecodeError:
-                logging.warning(f"Cannot decode {entry.name} as UTF-8. Marking as unreadable.")
+                logging.error(f"Cannot decode {entry.name} as UTF-8. Marking as unreadable.")
                 node_content = "<unreadable content: not utf-8>\n"
             except IOError as e_read:
                 logging.error(f"Could not read {entry.name}: {e_read}")
