@@ -1,6 +1,10 @@
 # tests/test_output_formats.py
 import json
 
+import yaml
+
+from treemapper import map_directory, to_json, to_text, to_yaml
+
 from .conftest import run_treemapper_subprocess
 from .utils import load_yaml
 
@@ -20,6 +24,13 @@ def test_yaml_format_output(temp_project):
     assert tree["type"] == "directory"
     assert "children" in tree
 
+    # Verify Python API to_yaml produces valid YAML
+    api_tree = map_directory(temp_project)
+    yaml_str = to_yaml(api_tree)
+    parsed = yaml.safe_load(yaml_str)
+    assert parsed["name"] == temp_project.name
+    assert parsed["type"] == "directory"
+
 
 def test_json_format_output(temp_project):
     """Test JSON format output."""
@@ -38,6 +49,13 @@ def test_json_format_output(temp_project):
     assert tree["type"] == "directory"
     assert "children" in tree
 
+    # Verify Python API to_json produces valid JSON
+    api_tree = map_directory(temp_project)
+    json_str = to_json(api_tree)
+    parsed = json.loads(json_str)
+    assert parsed["name"] == temp_project.name
+    assert parsed["type"] == "directory"
+
 
 def test_text_format_output(temp_project):
     """Test plain text format output."""
@@ -50,9 +68,14 @@ def test_text_format_output(temp_project):
 
     # Verify text format structure
     content = output_file.read_text(encoding="utf-8")
-    assert f"Directory Tree: {temp_project.name}" in content
-    assert "=" * 80 in content
-    assert "--- BEGIN CONTENT ---" in content or content.count("=") >= 2
+    assert f"{temp_project.name}/" in content
+    assert "├──" in content or "└──" in content
+
+    # Verify Python API to_text produces same structure
+    api_tree = map_directory(temp_project)
+    text_str = to_text(api_tree)
+    assert f"{temp_project.name}/" in text_str
+    assert "├──" in text_str or "└──" in text_str
 
 
 def test_json_format_with_content(temp_project):
@@ -100,9 +123,7 @@ def test_text_format_with_content(temp_project):
 
     # Verify file is listed and content is included
     assert "test.txt" in content
-    assert "--- BEGIN CONTENT ---" in content
     assert test_content in content
-    assert "--- END CONTENT ---" in content
 
 
 def test_json_format_stdout(temp_project):
@@ -124,8 +145,8 @@ def test_text_format_stdout(temp_project):
     assert result.returncode == 0
 
     # Verify text format in stdout
-    assert f"Directory Tree: {temp_project.name}" in result.stdout
-    assert "=" * 80 in result.stdout
+    assert f"{temp_project.name}/" in result.stdout
+    assert "├──" in result.stdout or "└──" in result.stdout
 
 
 def test_yaml_multiline_content_preserves_newlines(temp_project):

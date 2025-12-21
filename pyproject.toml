@@ -17,7 +17,7 @@ dynamic = ["version"]  # Version is still managed in version.py
 authors = [
     { name = "Nikolay Eremeev", email = "nikolay.eremeev@outlook.com" },
 ]
-description = "A tool for mapping directory structures"
+description = "Export codebase structure and contents for AI/LLM context"
 readme = "README.md"
 requires-python = ">=3.9"
 license = { file = "LICENSE" }
@@ -41,25 +41,27 @@ treemapper = "treemapper.treemapper:main"
 dev = [
     # Testing
     "pytest>=7.0,<9.0",
-    "pytest-cov>=3.0,<6.0",
+    "pytest-cov>=3.0,<8.0",
     "hypothesis>=6.0,<7.0",
-    "mutmut>=2.0,<3.0",
+    "mutmut>=2.0,<4.0",
     "coverage>=7.0,<8.0",
     # Quality checks
     "ruff>=0.4,<1.0",
     "black>=23.0.0,<26.0",
-    "isort>=5.12,<6.0",
+    "isort>=5.12,<7.0",
     "mypy>=1.0,<2.0",
     "radon>=6.0,<7.0",
     "import-linter>=2.0,<3.0",
-    "pre-commit>=3.0,<4.0",
+    "pre-commit>=3.0,<5.0",
     "autoflake>=2.0,<3.0",
     # Type stubs
     "types-PyYAML>=6.0,<7.0",
     # Build and release
     "build>=0.10,<2.0",
-    "twine>=4.0,<6.0",
+    "twine>=4.0,<7.0",
     "pyinstaller>=5.0,<7.0",
+    # Security fixes
+    "urllib3>=2.6.0",
 ]
 
 [tool.setuptools.dynamic]

@@ -1,4 +1,6 @@
 # tests/test_options.py
+from treemapper import map_directory
+
 from .conftest import run_treemapper_subprocess
 from .utils import load_yaml
 
@@ -43,6 +45,15 @@ def test_max_depth_option(temp_project):
         level3_names = [c["name"] for c in level2["children"]]
         assert "level3" not in level3_names
 
+    # Verify Python API max_depth works the same
+    api_tree = map_directory(temp_project, max_depth=2)
+    api_level1 = next((c for c in api_tree.get("children", []) if c["name"] == "level1"), None)
+    assert api_level1 is not None
+    api_level2 = next((c for c in api_level1.get("children", []) if c["name"] == "level2"), None)
+    assert api_level2 is not None
+    if "children" in api_level2:
+        assert "level3" not in [c["name"] for c in api_level2["children"]]
+
 
 def test_no_content_option(temp_project):
     """Test --no-content option excludes file contents."""
@@ -64,6 +75,12 @@ def test_no_content_option(temp_project):
             # Should not have content key
             assert "content" not in child
             break
+
+    # Verify Python API no_content works the same
+    api_tree = map_directory(temp_project, no_content=True)
+    api_test = next((c for c in api_tree.get("children", []) if c.get("name") == "test.txt"), None)
+    assert api_test is not None
+    assert "content" not in api_test
 
 
 def test_max_file_bytes_option(temp_project):
@@ -102,6 +119,15 @@ def test_max_file_bytes_option(temp_project):
             small_found = True
 
     assert large_found and small_found
+
+    # Verify Python API max_file_bytes works the same
+    api_tree = map_directory(temp_project, max_file_bytes=100)
+    api_large = next((c for c in api_tree.get("children", []) if c.get("name") == "large.txt"), None)
+    api_small = next((c for c in api_tree.get("children", []) if c.get("name") == "small.txt"), None)
+    assert api_large is not None
+    assert "<file too large:" in api_large.get("content", "")
+    assert api_small is not None
+    assert small_content in api_small.get("content", "")
 
 
 def test_max_depth_zero(temp_project):

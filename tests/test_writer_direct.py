@@ -77,14 +77,12 @@ def test_write_tree_text_direct():
 
     result = output.getvalue()
 
-    assert "Directory Tree: test_project" in result
-    assert "=" * 80 in result
+    assert "test_project/" in result
+    assert "├──" in result or "└──" in result
     assert "file.txt" in result
     assert "subdir/" in result
-    assert "--- BEGIN CONTENT ---" in result
     assert "line1" in result
     assert "line2" in result
-    assert "--- END CONTENT ---" in result
     assert "nested.txt" in result
     assert "nested" in result
 
@@ -102,8 +100,6 @@ def test_write_tree_text_with_empty_content():
 
     result = output.getvalue()
     assert "empty.txt" in result
-    assert "--- BEGIN CONTENT ---" in result
-    assert "--- END CONTENT ---" in result
 
 
 def test_write_tree_text_no_content():
@@ -119,7 +115,6 @@ def test_write_tree_text_no_content():
 
     result = output.getvalue()
     assert "file.txt" in result
-    assert "--- BEGIN CONTENT ---" not in result
 
 
 def test_write_tree_text_directory_marker():
@@ -213,7 +208,7 @@ def test_write_tree_to_file_text_format(tmp_path):
     assert output_file.exists()
 
     content = output_file.read_text(encoding="utf-8")
-    assert "Directory Tree: test" in content
+    assert "test/" in content
     assert "file.txt" in content
 
 
@@ -341,5 +336,4 @@ def test_write_tree_to_file_stdout_text():
     finally:
         sys.stdout = old_stdout
 
-    assert "Directory Tree: test" in output
-    assert "=" * 80 in output
+    assert "test/" in output

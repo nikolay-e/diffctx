@@ -113,8 +113,7 @@ def test_empty_and_invalid_ignores(temp_project, run_mapper):
             "out_invalid.yaml",
         ]
     )
-    assert run_mapper([".", "-i", "nonexistent.ignore", "-o", "out_nonexistent.yaml"])
-    assert (temp_project / "out_nonexistent.yaml").exists()
+    assert not run_mapper([".", "-i", "nonexistent.ignore", "-o", "out_nonexistent.yaml"])
     assert load_yaml(temp_project / "out_empty.yaml") is not None
 
 

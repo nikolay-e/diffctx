@@ -5,6 +5,8 @@ import sys
 
 import pytest
 
+from treemapper import map_directory, to_json, to_text, to_yaml
+
 from .utils import find_node_by_path, get_all_files_in_tree, load_yaml, make_hashable
 
 
@@ -46,6 +48,15 @@ def test_basic_mapping(temp_project, run_mapper):
     assert "output" not in all_files
     assert "directory_tree.yaml" not in all_files
 
+    # Verify Python API produces same structure
+    api_result = map_directory(temp_project)
+    assert api_result["type"] == "directory"
+    assert api_result["name"] == temp_project.name
+    api_files = get_all_files_in_tree(api_result)
+    assert "src" in api_files
+    assert "main.py" in api_files
+    assert ".git" not in api_files
+
 
 def test_directory_content(temp_project, run_mapper):
     """Test directory structure and content preservation."""
@@ -57,6 +68,23 @@ def test_directory_content(temp_project, run_mapper):
     assert main_py is not None and main_py["type"] == "file"
     expected_main_content = "def main():\n    print('hello')\n"
     assert main_py.get("content") == expected_main_content
+
+    # Verify Python API returns same content
+    api_result = map_directory(temp_project)
+    api_main_py = find_node_by_path(api_result, ["src", "main.py"])
+    assert api_main_py is not None
+    assert api_main_py.get("content") == expected_main_content
+
+    # Verify serializers preserve content
+    yaml_str = to_yaml(api_result)
+    assert "def main():" in yaml_str
+    assert "print('hello')" in yaml_str
+
+    json_str = to_json(api_result)
+    assert "def main():" in json_str
+
+    text_str = to_text(api_result)
+    assert "main.py" in text_str
 
 
 def test_custom_output(temp_project, run_mapper):

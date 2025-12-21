@@ -28,7 +28,7 @@ jobs:
           python-version: '3.12'
 
       - name: Cache pre-commit
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.cache/pre-commit
           key: pre-commit-${{ hashFiles('.pre-commit-config.yaml') }}
@@ -57,7 +57,7 @@ jobs:
           python-version: '3.11'
 
       - name: Cache pip Dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.cache/pip
           key: ${{ runner.os }}-lint-pip-${{ hashFiles('**/pyproject.toml') }}
@@ -101,7 +101,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Cache pip Dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.cache/pip
           key: ${{ runner.os }}-pip-${{ matrix.python-version }}-${{ hashFiles('**/pyproject.toml') }}
@@ -127,7 +127,7 @@ jobs:
 
       - name: Upload coverage reports to Codecov
         if: runner.os == 'Linux' && matrix.python-version == '3.12'
-        uses: codecov/codecov-action@5a1091511ad55cbe89839c7260b706298ca349f7  # v5
+        uses: codecov/codecov-action@671740ac38dd9b0130fbe1cec585b89eea48d3de  # v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: ./coverage.xml
@@ -136,7 +136,7 @@ jobs:
           verbose: true
 
       - name: Upload coverage for SonarCloud
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         if: matrix.os == 'ubuntu-22.04' && matrix.python-version == '3.12'
         with:
           name: coverage-report
@@ -166,7 +166,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Cache pip Dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.cache/pip
           key: pypy-${{ matrix.python-version }}-pip-${{ hashFiles('**/pyproject.toml') }}
@@ -315,7 +315,7 @@ jobs:
           fetch-depth: 0
 
       - name: Download coverage reports
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v7
         with:
           name: coverage-report
           path: .

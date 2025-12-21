@@ -32,7 +32,7 @@ def test_input_path_is_file(run_mapper, temp_project, capsys):
 
     assert "Error:" in captured.err
     assert str(file_path.resolve()) in captured.err
-    assert "not a valid directory" in captured.err
+    assert "not a directory" in captured.err
 
 
 @pytest.mark.skipif(

@@ -1,15 +1,26 @@
-# src/treemapper/cli.py
 import argparse
 import sys
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Optional
 
 from .version import __version__
 
 
-# ---> CHANGE: Updated return type to include format, max_depth, no_content, and max_file_bytes parameters.
-def parse_args() -> Tuple[Path, Optional[Path], Optional[Path], bool, int, str, Optional[int], bool, Optional[int]]:
-    """Parse command line arguments."""
+@dataclass
+class ParsedArgs:
+    root_dir: Path
+    ignore_file: Optional[Path]
+    output_file: Optional[Path]
+    no_default_ignores: bool
+    verbosity: int
+    output_format: str
+    max_depth: Optional[int]
+    no_content: bool
+    max_file_bytes: Optional[int]
+
+
+def parse_args() -> ParsedArgs:
     parser = argparse.ArgumentParser(
         prog="treemapper",
         description="Generate a structured representation of a directory tree (YAML, JSON, or text).",
@@ -17,45 +28,14 @@ def parse_args() -> Tuple[Path, Optional[Path], Optional[Path], bool, int, str, 
     )
 
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
-
     parser.add_argument("directory", nargs="?", default=".", help="The directory to analyze")
-
-    parser.add_argument("-i", "--ignore-file", default=None, help="Path to the custom ignore file (optional)")
-
-    # ---> CHANGE: Default output is now stdout (None). Only write to file when explicitly specified.
-    parser.add_argument("-o", "--output-file", default=None, help="Path to the output file (default: stdout)")
-
-    parser.add_argument(
-        "--format",
-        choices=["yaml", "json", "text"],
-        default="yaml",
-        help="Output format: yaml, json, or text (default: yaml)",
-    )
-
-    parser.add_argument(
-        "--no-default-ignores",
-        action="store_true",
-        help="Disable default ignores (.treemapperignore, .gitignore, output file)",
-    )
-
-    parser.add_argument(
-        "--max-depth",
-        type=int,
-        default=None,
-        metavar="N",
-        help="Maximum depth to traverse (default: unlimited)",
-    )
-
-    parser.add_argument("--no-content", action="store_true", help="Skip reading file contents (structure-only mode)")
-
-    parser.add_argument(
-        "--max-file-bytes",
-        type=int,
-        default=None,
-        metavar="N",
-        help="Maximum file size to read in bytes (default: unlimited). Larger files will show a placeholder.",
-    )
-
+    parser.add_argument("-i", "--ignore-file", default=None, help="Path to custom ignore file")
+    parser.add_argument("-o", "--output-file", default=None, help="Output file (default: stdout, use '-' to force stdout)")
+    parser.add_argument("--format", choices=["yaml", "json", "text"], default="yaml", help="Output format")
+    parser.add_argument("--no-default-ignores", action="store_true", help="Disable all default ignores")
+    parser.add_argument("--max-depth", type=int, default=None, metavar="N", help="Maximum traversal depth")
+    parser.add_argument("--no-content", action="store_true", help="Skip file contents (structure only)")
+    parser.add_argument("--max-file-bytes", type=int, default=None, metavar="N", help="Skip files larger than N bytes")
     parser.add_argument(
         "-v",
         "--verbosity",
@@ -63,7 +43,7 @@ def parse_args() -> Tuple[Path, Optional[Path], Optional[Path], bool, int, str, 
         choices=range(0, 4),
         default=0,
         metavar="[0-3]",
-        help="Set verbosity level (0: ERROR, 1: WARNING, 2: INFO, 3: DEBUG)",
+        help="Verbosity: 0=ERROR, 1=WARNING, 2=INFO, 3=DEBUG",
     )
 
     args = parser.parse_args()
@@ -72,39 +52,41 @@ def parse_args() -> Tuple[Path, Optional[Path], Optional[Path], bool, int, str, 
         print(f"Error: --max-depth must be non-negative, got {args.max_depth}", file=sys.stderr)
         sys.exit(1)
 
+    if args.max_file_bytes is not None and args.max_file_bytes < 0:
+        print(f"Error: --max-file-bytes must be non-negative, got {args.max_file_bytes}", file=sys.stderr)
+        sys.exit(1)
+
     try:
         root_dir = Path(args.directory).resolve(strict=True)
         if not root_dir.is_dir():
-            print(f"Error: The path '{root_dir}' is not a valid directory.", file=sys.stderr)
+            print(f"Error: '{root_dir}' is not a directory.", file=sys.stderr)
             sys.exit(1)
     except FileNotFoundError:
-        print(f"Error: The directory '{args.directory}' does not exist.", file=sys.stderr)
+        print(f"Error: Directory '{args.directory}' does not exist.", file=sys.stderr)
         sys.exit(1)
-    except Exception as e:
-        print(f"Error resolving directory path '{args.directory}': {e}", file=sys.stderr)
+    except OSError as e:
+        print(f"Error: Cannot access '{args.directory}': {e}", file=sys.stderr)
         sys.exit(1)
 
-    # ---> CHANGE: Resolve output file relative to the current working directory.
-    # .resolve() makes the path absolute from CWD if it's relative.
-    # If no output file is specified or "-" is used, output_file will be None
     output_file = None
     if args.output_file and args.output_file != "-":
         output_file = Path(args.output_file).resolve()
 
-    ignore_file_path: Optional[Path] = None
+    ignore_file = None
     if args.ignore_file:
-        # ---> CHANGE: Resolve custom ignore file relative to CWD.
-        # We don't use strict=True here because the ignore.py will handle non-existent files with a warning.
-        ignore_file_path = Path(args.ignore_file).resolve()
+        ignore_file = Path(args.ignore_file).resolve()
+        if not ignore_file.is_file():
+            print(f"Error: Ignore file '{args.ignore_file}' does not exist.", file=sys.stderr)
+            sys.exit(1)
 
-    return (
-        root_dir,
-        ignore_file_path,
-        output_file,
-        args.no_default_ignores,
-        args.verbosity,
-        args.format,
-        args.max_depth,
-        args.no_content,
-        args.max_file_bytes,
+    return ParsedArgs(
+        root_dir=root_dir,
+        ignore_file=ignore_file,
+        output_file=output_file,
+        no_default_ignores=args.no_default_ignores,
+        verbosity=args.verbosity,
+        output_format=args.format,
+        max_depth=args.max_depth,
+        no_content=args.no_content,
+        max_file_bytes=args.max_file_bytes,
     )
