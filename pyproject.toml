@@ -11,6 +11,35 @@ line-length = 130
 profile = "black"
 line_length = 130
 
+[tool.ruff]
+line-length = 130
+target-version = "py39"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "RUF"]
+ignore = ["E501"]  # Line length handled by black
+
+[tool.mypy]
+python_version = "3.9"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_calls = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+warn_unreachable = true
+files = ["src"]
+
+[tool.commitizen]
+name = "cz_conventional_commits"
+tag_format = "v$version"
+version_files = ["src/treemapper/version.py:__version__"]
+
 [project]
 name = "treemapper"
 dynamic = ["version"]  # Version is still managed in version.py
@@ -21,14 +50,27 @@ description = "Export codebase structure and contents for AI/LLM context"
 readme = "README.md"
 requires-python = ">=3.9"
 license = { file = "LICENSE" }
+keywords = ["code-analysis", "directory-tree", "yaml", "json", "llm", "ai", "codebase", "context", "chatgpt", "claude", "code-context", "export", "tree", "gpt-context", "llm-context", "code-to-prompt", "claude-context"]
 classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "License :: OSI Approved :: Apache Software License",
     "Operating System :: OS Independent",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Utilities",
+    "Typing :: Typed",
 ]
 dependencies = [
-    "pathspec>=0.9,<1.0",
-    "pyyaml>=5.4,<7.0",
+    "pathspec>=0.11,<2.0",
+    "pyyaml>=6.0.2,<8.0",
+    "tiktoken>=0.7,<1.0",
 ]
 
 [project.urls]
@@ -42,6 +84,7 @@ dev = [
     # Testing
     "pytest>=7.0,<9.0",
     "pytest-cov>=3.0,<8.0",
+    "pytest-xdist>=3.0,<4.0",
     "hypothesis>=6.0,<7.0",
     "mutmut>=2.0,<4.0",
     "coverage>=7.0,<8.0",

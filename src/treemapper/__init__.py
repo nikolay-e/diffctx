@@ -1,30 +1,35 @@
+from __future__ import annotations
+
 import io
 from pathlib import Path
-from typing import Any, Dict, Optional, Union
+from typing import Any
 
 from .ignore import get_ignore_specs
 from .tree import TreeBuildContext, build_tree
 from .version import __version__
-from .writer import write_tree_json, write_tree_text, write_tree_yaml
+from .writer import write_tree_json, write_tree_markdown, write_tree_text, write_tree_yaml
 
 __all__ = [
     "__version__",
     "map_directory",
-    "to_yaml",
     "to_json",
+    "to_markdown",
+    "to_md",
     "to_text",
+    "to_txt",
+    "to_yaml",
 ]
 
 
 def map_directory(
-    path: Union[str, Path],
+    path: str | Path,
     *,
-    max_depth: Optional[int] = None,
+    max_depth: int | None = None,
     no_content: bool = False,
-    max_file_bytes: Optional[int] = None,
-    ignore_file: Optional[Union[str, Path]] = None,
+    max_file_bytes: int | None = None,
+    ignore_file: str | Path | None = None,
     no_default_ignores: bool = False,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     root_dir = Path(path).resolve()
     if not root_dir.is_dir():
         raise ValueError(f"'{path}' is not a directory")
@@ -47,19 +52,29 @@ def map_directory(
     }
 
 
-def to_yaml(tree: Dict[str, Any]) -> str:
+def to_yaml(tree: dict[str, Any]) -> str:
     buf = io.StringIO()
     write_tree_yaml(buf, tree)
     return buf.getvalue()
 
 
-def to_json(tree: Dict[str, Any]) -> str:
+def to_json(tree: dict[str, Any]) -> str:
     buf = io.StringIO()
     write_tree_json(buf, tree)
     return buf.getvalue()
 
 
-def to_text(tree: Dict[str, Any]) -> str:
+def to_text(tree: dict[str, Any]) -> str:
     buf = io.StringIO()
     write_tree_text(buf, tree)
     return buf.getvalue()
+
+
+def to_markdown(tree: dict[str, Any]) -> str:
+    buf = io.StringIO()
+    write_tree_markdown(buf, tree)
+    return buf.getvalue()
+
+
+to_md = to_markdown
+to_txt = to_text

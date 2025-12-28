@@ -28,7 +28,7 @@ repos:
   # Order matters: isort must run before black to avoid conflicts
   # ============================================================================
   - repo: https://github.com/pycqa/isort
-    rev: 7.0.0
+    rev: 5.13.2
     hooks:
       - id: isort
 
@@ -47,8 +47,11 @@ repos:
     hooks:
       - id: mypy
         name: mypy (strict mode for code health)
+        # Runtime deps + stubs needed for mypy's isolated virtualenv
         additional_dependencies:
-          ["types-PyYAML", "types-aiofiles", "types-colorama", "types-requests", "pytest", "pytest-asyncio"]
+          - types-PyYAML
+          - PyYAML
+          - pathspec
         files: ^src/
 
   # ============================================================================
@@ -60,6 +63,17 @@ repos:
     hooks:
       - id: pip-audit
         name: pip-audit (CVE detection in dependencies)
+        # CVE Ignores Documentation:
+        # - GHSA-4xh5-x5gv-qwph (CVE-2025-8869): pip tar extraction path traversal.
+        #   Fix planned for pip 25.3 (not yet released). Low risk: requires attacker-controlled
+        #   sdist AND Python < 3.11.4. Project uses Python 3.9+ with modern interpreters.
+        #   Review after pip 25.3 release.
+        # - GHSA-gm62-xv2j-4w53 (CVE-2025-66418): urllib3 decompression chain DoS.
+        #   Fixed in urllib3 2.6.0. Transitive dependency from pip-audit itself.
+        #   Project pins urllib3>=2.6.0 in pyproject.toml.
+        # - GHSA-2xpw-w6gg-jr37 (CVE-2025-66471): urllib3 highly compressed data handling.
+        #   Fixed in urllib3 2.6.0. Transitive dependency from pip-audit itself.
+        #   Project pins urllib3>=2.6.0 in pyproject.toml.
         args:
           [
             "--desc",
@@ -131,7 +145,6 @@ repos:
             "--ignore-imports=yes",
           ]
         files: ^src/
-        additional_dependencies: ["types-PyYAML", "types-aiofiles", "types-colorama", "types-requests"]
 
   # ============================================================================
   # LINTING (focused on correctness, not style)

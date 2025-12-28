@@ -1,10 +1,10 @@
 # tests/test_ignore.py
 import logging
-import os
 import sys
 
 import pytest
 
+from .conftest import IS_WSL
 from .utils import get_all_files_in_tree, load_yaml
 
 
@@ -224,8 +224,7 @@ def test_no_default_ignores_flag(temp_project, run_mapper):
 
 
 @pytest.mark.skipif(
-    sys.platform == "win32"
-    or ("microsoft" in open("/proc/version", "r").read().lower() if os.path.exists("/proc/version") else False),
+    sys.platform == "win32" or IS_WSL,
     reason="os.chmod limited on Windows/WSL",
 )
 def test_unreadable_ignore_file(temp_project, run_mapper, set_perms, caplog):
@@ -235,7 +234,7 @@ def test_unreadable_ignore_file(temp_project, run_mapper, set_perms, caplog):
     set_perms(ignore_file, 0o000)
 
     with caplog.at_level(logging.WARNING):
-        assert run_mapper([".", "-o", "directory_tree.yaml", "-v", "1"])
+        assert run_mapper([".", "-o", "directory_tree.yaml", "--log-level", "warning"])
 
     assert any(
         "Could not read ignore file" in rec.message and ignore_file.name in rec.message
@@ -248,12 +247,13 @@ def test_bad_encoding_ignore_file(temp_project, run_mapper, caplog):
     """Test: .treemapperignore file has non-UTF8 encoding."""
     ignore_file = temp_project / ".treemapperignore"
     try:
-        ignore_file.write_text(".git/\nпапка_игнор/\n", encoding="cp1251")
+        # Cyrillic text intentional for CP1251 encoding test
+        ignore_file.write_text(".git/\nпапка_игнор/\n", encoding="cp1251")  # noqa: RUF001
     except LookupError:
         pytest.skip("CP1251 codec not found")
 
     with caplog.at_level(logging.WARNING):
-        assert run_mapper([".", "-o", "directory_tree.yaml", "-v", "1"])
+        assert run_mapper([".", "-o", "directory_tree.yaml", "--log-level", "warning"])
 
     assert any(
         "Could not decode ignore file" in rec.message and ignore_file.name in rec.message and "UTF-8" in rec.message
@@ -269,3 +269,313 @@ def test_bad_encoding_ignore_file(temp_project, run_mapper, caplog):
     result = load_yaml(temp_project / "directory_tree.yaml")
     all_files = get_all_files_in_tree(result)
     assert "папка_игнор" in all_files
+
+
+# --- Advanced ignore pattern tests (merged from test_ignore_advanced.py) ---
+
+
+def test_ignore_precedence_subdir_over_root(temp_project, run_mapper):
+    (temp_project / ".gitignore").write_text("*.txt\n")
+    (temp_project / "subdir").mkdir()
+    (temp_project / "subdir" / ".gitignore").write_text("!allow.txt\n")
+    (temp_project / "root.txt").touch()
+    (temp_project / "subdir" / "ignore.txt").touch()
+    (temp_project / "subdir" / "allow.txt").touch()
+
+    assert run_mapper([".", "-o", "directory_tree.yaml"])
+    result = load_yaml(temp_project / "directory_tree.yaml")
+    all_files = get_all_files_in_tree(result)
+
+    assert "root.txt" not in all_files
+    assert "ignore.txt" not in all_files
+    assert "allow.txt" in all_files
+
+
+def test_ignore_precedence_treemapper_over_git(temp_project, run_mapper):
+    (temp_project / ".gitignore").write_text("*.pyc\n")
+    (temp_project / ".treemapperignore").write_text("*.log\n.git/\n")
+    (temp_project / "file.pyc").touch()
+    (temp_project / "file.log").touch()
+    (temp_project / "file.txt").touch()
+
+    assert run_mapper([".", "-o", "directory_tree.yaml"])
+    result = load_yaml(temp_project / "directory_tree.yaml")
+    all_files = get_all_files_in_tree(result)
+
+    assert "file.pyc" not in all_files
+    assert "file.log" not in all_files
+    assert "file.txt" in all_files
+
+
+def test_ignore_precedence_custom_over_defaults(temp_project, run_mapper):
+    (temp_project / ".gitignore").write_text("*.pyc\n")
+    (temp_project / ".treemapperignore").write_text("*.log\n.git/\n")
+    custom_ignore = temp_project / "custom.ignore"
+    custom_ignore.write_text("*.tmp\n")
+
+    (temp_project / "file.pyc").touch()
+    (temp_project / "file.log").touch()
+    (temp_project / "file.tmp").touch()
+    (temp_project / "file.txt").touch()
+
+    assert run_mapper([".", "-i", str(custom_ignore), "-o", "directory_tree.yaml"])
+    result = load_yaml(temp_project / "directory_tree.yaml")
+    all_files = get_all_files_in_tree(result)
+
+    assert "file.pyc" not in all_files
+    assert "file.log" not in all_files
+    assert "file.tmp" not in all_files
+    assert "file.txt" in all_files
+
+
+def test_ignore_interaction_combined_vs_git(temp_project, run_mapper):
+    output_path = temp_project / "output.yaml"
+    (temp_project / ".gitignore").write_text("!output.yaml\n")
+
+    assert run_mapper([".", "-o", str(output_path)])
+    result = load_yaml(output_path)
+    all_files = get_all_files_in_tree(result)
+
+    assert output_path.name not in all_files
+
+
+def test_ignore_patterns_anchored(temp_project, run_mapper, caplog):
+    from .utils import find_node_by_path
+
+    caplog.set_level(logging.DEBUG)
+    (temp_project / ".gitignore").write_text("/root_ignore.txt\nsubdir_ignore.txt")
+    (temp_project / "root_ignore.txt").touch()
+    (temp_project / "subdir").mkdir()
+    (temp_project / "subdir" / "root_ignore.txt").touch()
+    (temp_project / "subdir" / "subdir_ignore.txt").touch()
+    (temp_project / "subdir_ignore.txt").touch()
+
+    assert run_mapper([".", "-o", "anchored_output.yaml"])
+    result = load_yaml(temp_project / "anchored_output.yaml")
+
+    assert find_node_by_path(result, ["root_ignore.txt"]) is None
+    assert find_node_by_path(result, ["subdir", "root_ignore.txt"]) is not None
+    assert find_node_by_path(result, ["subdir", "subdir_ignore.txt"]) is None
+    assert find_node_by_path(result, ["subdir_ignore.txt"]) is None
+
+
+# --- Anchored pattern tests (merged from test_anchored_patterns.py) ---
+
+
+def test_anchored_pattern_fix(temp_project, run_mapper):
+    from .utils import find_node_by_path
+
+    test_dir = temp_project / "anchored_test_dir"
+    test_dir.mkdir()
+
+    (test_dir / "root_file.txt").touch()
+    (test_dir / "subdir").mkdir()
+    (test_dir / "subdir" / "nested_file.txt").touch()
+    (test_dir / "subdir" / "root_file.txt").touch()
+    (test_dir / ".gitignore").write_text("/root_file.txt\n")
+
+    output_path = temp_project / "anchored_output.yaml"
+    assert run_mapper([str(test_dir), "-o", str(output_path)])
+    result = load_yaml(output_path)
+
+    assert result["name"] == test_dir.name
+    assert find_node_by_path(result, ["root_file.txt"]) is None
+    assert find_node_by_path(result, ["subdir", "root_file.txt"]) is not None
+
+
+def test_non_anchored_pattern(temp_project, run_mapper):
+    from .utils import find_node_by_path
+
+    test_dir = temp_project / "non_anchored_test_dir"
+    test_dir.mkdir()
+
+    (test_dir / "file.log").touch()
+    (test_dir / "subdir").mkdir()
+    (test_dir / "subdir" / "file.log").touch()
+    (test_dir / "subdir" / "data.txt").touch()
+    (test_dir / "data.txt").touch()
+    (test_dir / ".gitignore").write_text("*.log\n")
+
+    output_path = temp_project / "non_anchored_output.yaml"
+    assert run_mapper([str(test_dir), "-o", str(output_path)])
+    result = load_yaml(output_path)
+
+    assert result["name"] == test_dir.name
+    assert find_node_by_path(result, ["file.log"]) is None
+    assert find_node_by_path(result, ["data.txt"]) is not None
+    assert find_node_by_path(result, ["subdir", "file.log"]) is None
+    assert find_node_by_path(result, ["subdir", "data.txt"]) is not None
+
+
+def test_combined_patterns(temp_project, run_mapper):
+    from .utils import find_node_by_path
+
+    test_dir = temp_project / "combined_test_dir"
+    test_dir.mkdir()
+
+    (test_dir / "root_only.txt").touch()
+    (test_dir / "all_dirs.log").touch()
+    (test_dir / "regular.txt").touch()
+    (test_dir / "subdir").mkdir()
+    (test_dir / "subdir" / "root_only.txt").touch()
+    (test_dir / "subdir" / "all_dirs.log").touch()
+    (test_dir / "subdir" / "regular.txt").touch()
+    (test_dir / ".gitignore").write_text("/root_only.txt\n*.log\n")
+
+    output_path = temp_project / "combined_output.yaml"
+    assert run_mapper([str(test_dir), "-o", str(output_path)])
+    result = load_yaml(output_path)
+
+    assert result["name"] == test_dir.name
+    assert find_node_by_path(result, ["root_only.txt"]) is None
+    assert find_node_by_path(result, ["all_dirs.log"]) is None
+    assert find_node_by_path(result, ["regular.txt"]) is not None
+    assert find_node_by_path(result, ["subdir", "root_only.txt"]) is not None
+    assert find_node_by_path(result, ["subdir", "all_dirs.log"]) is None
+    assert find_node_by_path(result, ["subdir", "regular.txt"]) is not None
+
+
+def test_hierarchical_treemapperignore(temp_project, run_mapper):
+    from .utils import find_node_by_path
+
+    (temp_project / ".treemapperignore").write_text("*.tmp\n")
+    (temp_project / "subdir").mkdir()
+    (temp_project / "subdir" / ".treemapperignore").write_text("*.bak\n!important.bak\n")
+    (temp_project / "root.tmp").touch()
+    (temp_project / "root.bak").touch()
+    (temp_project / "subdir" / "nested.tmp").touch()
+    (temp_project / "subdir" / "nested.bak").touch()
+    (temp_project / "subdir" / "important.bak").touch()
+    (temp_project / "subdir" / "keep.txt").touch()
+
+    output_path = temp_project / "hierarchical_output.yaml"
+    assert run_mapper([".", "-o", str(output_path)])
+    result = load_yaml(output_path)
+
+    assert find_node_by_path(result, ["root.tmp"]) is None
+    assert find_node_by_path(result, ["root.bak"]) is not None
+    assert find_node_by_path(result, ["subdir", "nested.tmp"]) is None
+    assert find_node_by_path(result, ["subdir", "nested.bak"]) is None
+    assert find_node_by_path(result, ["subdir", "important.bak"]) is not None
+    assert find_node_by_path(result, ["subdir", "keep.txt"]) is not None
+
+
+def test_hierarchical_ignore_applies_recursively(temp_project, run_mapper):
+    from .utils import find_node_by_path
+
+    (temp_project / "subdir").mkdir()
+    (temp_project / "subdir" / "deep").mkdir()
+    (temp_project / "subdir" / "deep" / "deeper").mkdir()
+    (temp_project / "subdir" / ".gitignore").write_text("*.bak\n")
+
+    (temp_project / "subdir" / "level1.bak").touch()
+    (temp_project / "subdir" / "level1.txt").touch()
+    (temp_project / "subdir" / "deep" / "level2.bak").touch()
+    (temp_project / "subdir" / "deep" / "level2.txt").touch()
+    (temp_project / "subdir" / "deep" / "deeper" / "level3.bak").touch()
+    (temp_project / "subdir" / "deep" / "deeper" / "level3.txt").touch()
+
+    (temp_project / "root.bak").touch()
+
+    output_path = temp_project / "recursive_output.yaml"
+    assert run_mapper([".", "-o", str(output_path)])
+    result = load_yaml(output_path)
+
+    assert find_node_by_path(result, ["root.bak"]) is not None
+    assert find_node_by_path(result, ["subdir", "level1.bak"]) is None
+    assert find_node_by_path(result, ["subdir", "level1.txt"]) is not None
+    assert find_node_by_path(result, ["subdir", "deep", "level2.bak"]) is None
+    assert find_node_by_path(result, ["subdir", "deep", "level2.txt"]) is not None
+    assert find_node_by_path(result, ["subdir", "deep", "deeper", "level3.bak"]) is None
+    assert find_node_by_path(result, ["subdir", "deep", "deeper", "level3.txt"]) is not None
+
+
+def test_prune_dirs_skipped_during_aggregation():
+    from treemapper.ignore import PRUNE_DIRS
+
+    assert ".git" in PRUNE_DIRS
+    assert "node_modules" in PRUNE_DIRS
+    assert "__pycache__" in PRUNE_DIRS
+    assert "venv" in PRUNE_DIRS
+    assert ".venv" in PRUNE_DIRS
+
+
+def test_is_cache_dir_function():
+    from treemapper.ignore import _is_cache_dir
+
+    assert _is_cache_dir(".pytest_cache") is True
+    assert _is_cache_dir(".mypy_cache") is True
+    assert _is_cache_dir(".ruff_cache") is True
+
+    assert _is_cache_dir("pytest_cache") is False
+    assert _is_cache_dir("user_cache") is False
+    assert _is_cache_dir("api_cache_manager") is False
+    assert _is_cache_dir(".cache") is False
+    assert _is_cache_dir("cache") is False
+
+
+def test_aggregate_all_ignore_patterns_single_walk(tmp_path):
+    from treemapper.ignore import _aggregate_all_ignore_patterns
+
+    root = tmp_path / "project"
+    root.mkdir()
+    (root / ".gitignore").write_text("*.pyc\n")
+    (root / ".treemapperignore").write_text("*.log\n")
+    (root / "subdir").mkdir()
+    (root / "subdir" / ".gitignore").write_text("local.txt\n")
+
+    patterns = _aggregate_all_ignore_patterns(root, [".gitignore", ".treemapperignore"])
+
+    assert "*.pyc" in patterns
+    assert "*.log" in patterns
+    assert any("local.txt" in p for p in patterns)
+
+
+def test_aggregate_all_ignore_patterns_empty_dir(tmp_path):
+    from treemapper.ignore import _aggregate_all_ignore_patterns
+
+    root = tmp_path / "empty_project"
+    root.mkdir()
+
+    patterns = _aggregate_all_ignore_patterns(root, [".gitignore", ".treemapperignore"])
+
+    assert patterns == []
+
+
+def test_process_ignore_line_anchored():
+    from treemapper.ignore import _process_ignore_line
+
+    assert _process_ignore_line("/root.txt", "") == "/root.txt"
+    assert _process_ignore_line("/root.txt", "subdir") == "/subdir/root.txt"
+
+    assert _process_ignore_line("dir/file.txt", "") == "/dir/file.txt"
+    assert _process_ignore_line("dir/file.txt", "sub") == "/sub/dir/file.txt"
+
+
+def test_process_ignore_line_unanchored():
+    from treemapper.ignore import _process_ignore_line
+
+    assert _process_ignore_line("*.log", "") == "*.log"
+    assert _process_ignore_line("*.log", "subdir") == "subdir/**/*.log"
+
+
+def test_process_ignore_line_negation():
+    from treemapper.ignore import _process_ignore_line
+
+    assert _process_ignore_line("!important.txt", "") == "!important.txt"
+    assert _process_ignore_line("!/root.txt", "sub") == "!/sub/root.txt"
+
+
+def test_cache_dirs_not_traversed_during_aggregation(tmp_path):
+    from treemapper.ignore import _aggregate_all_ignore_patterns
+
+    root = tmp_path / "project"
+    root.mkdir()
+    (root / ".pytest_cache").mkdir()
+    (root / ".pytest_cache" / ".gitignore").write_text("should_not_be_found\n")
+    (root / ".gitignore").write_text("*.pyc\n")
+
+    patterns = _aggregate_all_ignore_patterns(root, [".gitignore"])
+
+    assert "*.pyc" in patterns
+    assert not any("should_not_be_found" in p for p in patterns)

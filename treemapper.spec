@@ -1,11 +1,16 @@
 # -*- mode: python ; coding: utf-8 -*-
+import os
 
 block_cipher = None
 
+# Use SPECPATH for portability - works without PYTHONPATH being set
+spec_dir = os.path.dirname(SPECPATH) if SPECPATH else os.getcwd()
+src_path = os.path.join(spec_dir, 'src')
+
 a = Analysis(['src/treemapper/__main__.py'],
-             pathex=[],
+             pathex=[src_path],
              binaries=[],
-             data=[],
+             datas=[],
              hiddenimports=[],
              hookspath=[],
              hooksconfig={},

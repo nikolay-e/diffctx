@@ -268,7 +268,7 @@ def test_unicode_content_and_encoding_errors(temp_project, run_mapper, caplog):
 
     output_path = temp_project / "encodings_output.yaml"
     with caplog.at_level(logging.WARNING):
-        assert run_mapper([".", "-o", str(output_path), "-v", "1"])
+        assert run_mapper([".", "-o", str(output_path), "--log-level", "warning"])
     result = load_yaml(output_path)
 
     utf8_node = find_node_by_path(result, ["utf8.txt"])

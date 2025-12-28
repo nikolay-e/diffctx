@@ -1,22 +1,19 @@
 # tests/test_default_ignores.py
-import os  # Required for permission operations
-from pathlib import Path  # Required for file path handling
+import sys
 
 from .utils import get_all_files_in_tree, load_yaml
 
 
-# Example function using the imports to avoid unused import warnings
-def _ensure_dir_readable(directory: Path) -> bool:
-    """Check if a directory is readable."""
-    return os.access(directory, os.R_OK)
+def _get_pycache_filename(module_name: str) -> str:
+    py_version = f"cpython-{sys.version_info.major}{sys.version_info.minor}"
+    return f"{module_name}.{py_version}.pyc"
 
 
 def test_default_python_ignores(temp_project, run_mapper):
-    """Test for built-in Python-specific ignore patterns."""
-    # Create Python cache files and directories
     cache_dir = temp_project / "__pycache__"
     cache_dir.mkdir(exist_ok=True)
-    (cache_dir / "module.cpython-310.pyc").touch()
+    pycache_file = _get_pycache_filename("module")
+    (cache_dir / pycache_file).touch()
 
     # Create .pyc files in the root
     (temp_project / "module.pyc").touch()
@@ -43,7 +40,7 @@ def test_default_python_ignores(temp_project, run_mapper):
 
     # Check that Python cache files are ignored by default
     assert "__pycache__" not in all_files
-    assert "module.cpython-310.pyc" not in all_files
+    assert pycache_file not in all_files
     assert "module.pyc" not in all_files
     assert "module.pyo" not in all_files
     assert "module.pyd" not in all_files
@@ -102,7 +99,7 @@ def test_default_verbosity(temp_project, run_mapper, capfd):
 
     # Run with default verbosity (ERROR)
     assert run_mapper([".", "-o", "directory_tree.yaml"])
-    out, err = capfd.readouterr()
+    _out, err = capfd.readouterr()
 
     # At ERROR level, there should be no INFO messages
     assert "INFO:" not in err

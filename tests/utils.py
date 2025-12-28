@@ -1,12 +1,13 @@
 # tests/utils.py
+from collections.abc import Hashable
 from pathlib import Path
-from typing import Any, Dict, Hashable, List, Optional, Set
+from typing import Any, Optional
 
 import pytest
 import yaml
 
 
-def load_yaml(path: Path) -> Dict[str, Any]:
+def load_yaml(path: Path) -> dict[str, Any]:
     """Load YAML file and return its contents."""
     try:
         with path.open("r", encoding="utf-8") as f:
@@ -20,10 +21,10 @@ def load_yaml(path: Path) -> Dict[str, Any]:
         return {}  # This will never execute but satisfies mypy
 
 
-def get_all_files_in_tree(node: Dict[str, Any]) -> Set[str]:
+def get_all_files_in_tree(node: dict[str, Any]) -> set[str]:
     """Recursively get all file and directory names from the loaded tree structure."""
 
-    names: Set[str] = set()
+    names: set[str] = set()
     if not isinstance(node, dict) or "name" not in node:
         return names
     names.add(node["name"])
@@ -34,7 +35,7 @@ def get_all_files_in_tree(node: Dict[str, Any]) -> Set[str]:
     return names
 
 
-def find_node_by_path(tree: Dict[str, Any], path_segments: List[str]) -> Optional[Dict[str, Any]]:
+def find_node_by_path(tree: dict[str, Any], path_segments: list[str]) -> Optional[dict[str, Any]]:
     """Find a node in the tree by list of path segments relative to root node."""
     current_node = tree
     for segment in path_segments:

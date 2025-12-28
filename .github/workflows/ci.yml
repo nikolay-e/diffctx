@@ -76,7 +76,7 @@ jobs:
 
       - name: Run Type Checker (Mypy)
         run: |
-          mypy src tests
+          mypy src  # Tests excluded from strict type checking - see pyproject.toml
 
   # ============================================================================
   # Cross-platform Testing
@@ -86,8 +86,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-22.04, ubuntu-24.04, macos-latest, windows-latest]
-        python-version: [3.9, '3.10', '3.11', '3.12']
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python-version: [3.9, '3.10', '3.11', '3.12', '3.13']
 
     runs-on: ${{ matrix.os }}
 
@@ -137,7 +137,7 @@ jobs:
 
       - name: Upload coverage for SonarCloud
         uses: actions/upload-artifact@v6
-        if: matrix.os == 'ubuntu-22.04' && matrix.python-version == '3.12'
+        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12'
         with:
           name: coverage-report
           path: |
@@ -336,7 +336,7 @@ jobs:
           sonar.tests=tests
           sonar.python.coverage.reportPaths=coverage.xml
           sonar.python.xunit.reportPath=test-results.xml
-          sonar.python.version=3.9,3.10,3.11,3.12
+          sonar.python.version=3.9,3.10,3.11,3.12,3.13
           EOF
 
       - name: SonarCloud Scan

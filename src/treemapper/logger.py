@@ -2,7 +2,6 @@ import logging
 
 
 def setup_logging(verbosity: int) -> None:
-    """Configure the logging level based on verbosity."""
     level_map = {
         0: logging.ERROR,
         1: logging.WARNING,

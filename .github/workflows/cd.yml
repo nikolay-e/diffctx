@@ -40,7 +40,8 @@ jobs:
 
       - name: Check that we're on main branch
         run: |
-          CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+          # Use GitHub context instead of git command to avoid detached HEAD issues
+          CURRENT_BRANCH="${{ github.ref_name }}"
           if [ "$CURRENT_BRANCH" != "main" ]; then
             echo "Error: Releases can only be created from the main branch. Current branch: $CURRENT_BRANCH"
             exit 1
@@ -86,6 +87,20 @@ jobs:
           COMMIT_SHA=$(git rev-parse HEAD)
           echo "Commit SHA: $COMMIT_SHA"
           echo "commit_sha=$COMMIT_SHA" >> $GITHUB_OUTPUT
+
+      - name: Check tag doesn't already exist
+        run: |
+          TAG="v${{ github.event.inputs.version }}"
+          git fetch --tags origin 2>/dev/null || true
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "Error: Tag $TAG already exists locally"
+            exit 1
+          fi
+          if git ls-remote --tags origin | grep -q "refs/tags/$TAG$"; then
+            echo "Error: Tag $TAG already exists on remote"
+            exit 1
+          fi
+          echo "Tag $TAG does not exist, proceeding..."
 
       - name: Create local tag (no push yet)
         run: |
@@ -184,7 +199,7 @@ jobs:
           echo "PYTHONPATH: $PYTHONPATH"
 
           # Run PyInstaller with explicit paths
-          python -m PyInstaller --clean -y --dist ./dist/${{ matrix.asset_name }} treemapper.spec
+          python -m PyInstaller --clean -y --distpath "./dist/${{ matrix.asset_name }}" treemapper.spec
 
           # Verify the built executable exists (cross-platform)
           echo "Checking for built executable in: ./dist/${{ matrix.asset_name }}/"
@@ -312,9 +327,10 @@ jobs:
         run: |
           git clone repo.bundle repo
           cd repo
-          git checkout main
-          echo "Current branch: $(git branch --show-current)"
+          # Checkout the version commit (not old main) to preserve version bump
+          git checkout ${{ needs.prepare-version.outputs.commit_sha }}
           echo "Current commit: $(git rev-parse HEAD)"
+          echo "Expected commit: ${{ needs.prepare-version.outputs.commit_sha }}"
 
           # Set up remote to point to the actual GitHub repository
           git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git"
