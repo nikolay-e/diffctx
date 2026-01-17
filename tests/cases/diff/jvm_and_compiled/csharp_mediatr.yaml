@@ -1,0 +1,47 @@
+name: csharp_mediatr
+initial:
+  CreateUser.cs: |
+    using MediatR;
+
+    public class CreateUser : IRequest<User>
+    {
+        public string Name { get; set; }
+        public string Email { get; set; }
+    }
+  CreateUserHandler.cs: |
+    // Initial
+    class CreateUserHandler { }
+changed:
+  CreateUserHandler.cs: |
+    using MediatR;
+    using System.Threading;
+    using System.Threading.Tasks;
+
+    public class CreateUserHandler : IRequestHandler<CreateUser, User>
+    {
+        private readonly IUserRepository _repository;
+
+        public CreateUserHandler(IUserRepository repository)
+        {
+            _repository = repository;
+        }
+
+        public async Task<User> Handle(CreateUser request, CancellationToken cancellationToken)
+        {
+            var user = new User
+            {
+                Name = request.Name,
+                Email = request.Email
+            };
+
+            await _repository.AddAsync(user, cancellationToken);
+            return user;
+        }
+    }
+assertions:
+  must_include:
+  - CreateUserHandler.cs
+  - IRequestHandler
+  - Handle
+options:
+  commit_message: Add MediatR handler

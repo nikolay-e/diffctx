@@ -1,0 +1,79 @@
+name: java_012_entity_relations
+initial:
+  src/main/java/com/example/Order.java: |
+    package com.example;
+
+    import javax.persistence.*;
+    import java.util.List;
+
+    @Entity
+    @Table(name = "orders")
+    public class Order {
+        @Id
+        @GeneratedValue(strategy = GenerationType.IDENTITY)
+        private Long id;
+
+        @ManyToOne
+        @JoinColumn(name = "customer_id")
+        private Customer customer;
+
+        @OneToMany(mappedBy = "order", cascade = CascadeType.ALL)
+        private List<OrderItem> items;
+    }
+  src/main/java/com/example/Customer.java: |
+    package com.example;
+
+    import javax.persistence.*;
+    import java.util.List;
+
+    @Entity
+    @Table(name = "customers")
+    public class Customer {
+        @Id
+        @GeneratedValue(strategy = GenerationType.IDENTITY)
+        private Long id;
+
+        private String name;
+
+        @OneToMany(mappedBy = "customer")
+        private List<Order> orders;
+    }
+changed:
+  src/main/java/com/example/Order.java: |
+    package com.example;
+
+    import javax.persistence.*;
+    import java.util.List;
+    import java.math.BigDecimal;
+
+    @Entity
+    @Table(name = "orders")
+    public class Order {
+        @Id
+        @GeneratedValue(strategy = GenerationType.IDENTITY)
+        private Long id;
+
+        @ManyToOne
+        @JoinColumn(name = "customer_id")
+        private Customer customer;
+
+        @OneToMany(mappedBy = "order", cascade = CascadeType.ALL)
+        private List<OrderItem> items;
+
+        @Column(name = "total_amount")
+        private BigDecimal totalAmount;
+
+        @Enumerated(EnumType.STRING)
+        private OrderStatus status;
+    }
+assertions:
+  must_include:
+  - '@Entity'
+  - Order
+  - totalAmount
+  - status
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add totalAmount and status to Order

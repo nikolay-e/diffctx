@@ -1,0 +1,38 @@
+name: k8s_440_session_affinity
+initial:
+  service.yaml: |
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: stateful-app
+    spec:
+      selector:
+        app: stateful-app
+      ports:
+      - port: 80
+  unrelated.txt: |
+    garbage_marker_k8s440 = True
+    unused_marker_k8s440 = False
+changed:
+  service.yaml: |
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: stateful-app
+    spec:
+      selector:
+        app: stateful-app
+      sessionAffinity: ClientIP
+      sessionAffinityConfig:
+        clientIP:
+          timeoutSeconds: 3600
+      ports:
+      - port: 80
+assertions:
+  must_include:
+  - sessionAffinity
+  must_not_include:
+  - garbage_marker_k8s440
+  - unused_marker_k8s440
+options:
+  commit_message: Add session affinity

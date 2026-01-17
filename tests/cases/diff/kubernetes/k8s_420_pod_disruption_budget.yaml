@@ -1,0 +1,52 @@
+name: k8s_420_pod_disruption_budget
+initial:
+  deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: myapp
+    spec:
+      replicas: 5
+      selector:
+        matchLabels:
+          app: myapp
+      template:
+        metadata:
+          labels:
+            app: myapp
+        spec:
+          containers:
+          - name: app
+            image: myapp:latest
+  pdb.yaml: |
+    apiVersion: policy/v1
+    kind: PodDisruptionBudget
+    metadata:
+      name: myapp-pdb
+    spec:
+      minAvailable: 1
+      selector:
+        matchLabels:
+          app: myapp
+  unrelated.txt: |
+    garbage_marker_k8s420 = True
+    unused_marker_k8s420 = False
+changed:
+  pdb.yaml: |
+    apiVersion: policy/v1
+    kind: PodDisruptionBudget
+    metadata:
+      name: myapp-pdb
+    spec:
+      minAvailable: 2
+      selector:
+        matchLabels:
+          app: myapp
+assertions:
+  must_include:
+  - 'minAvailable: 2'
+  must_not_include:
+  - garbage_marker_k8s420
+  - unused_marker_k8s420
+options:
+  commit_message: Update PDB

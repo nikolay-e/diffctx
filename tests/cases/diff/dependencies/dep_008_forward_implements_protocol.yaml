@@ -1,0 +1,29 @@
+name: dep_008_forward_implements_protocol
+initial:
+  interfaces/repository.py: |
+    from typing import Protocol
+
+    class Repository(Protocol):
+        def find(self, id: int):
+            ...
+
+        def save(self, entity):
+            ...
+  impl.py: |
+    def placeholder():
+        pass
+changed:
+  impl.py: |
+    from interfaces.repository import Repository
+
+    class MyRepo(Repository):
+        def find(self, id: int):
+            return {"id": id}
+
+        def save(self, entity):
+            pass
+assertions:
+  must_include:
+  - impl.py
+  must_not_include:
+  - garbage_marker_12345

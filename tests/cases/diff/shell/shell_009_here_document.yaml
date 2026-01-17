@@ -1,0 +1,36 @@
+name: shell_009_here_document
+initial:
+  generate.sh: |
+    #!/bin/bash
+    echo "Generate"
+  garbage.sh: |
+    #!/bin/bash
+    SHELLTEST_HEREDOC_010="unused_value_12345"
+    shelltest_unused_abc002="not_used"
+changed:
+  generate.sh: |
+    #!/bin/bash
+
+    cat <<EOF > config.json
+    {
+        "name": "$APP_NAME",
+        "version": "$VERSION",
+        "environment": "$ENV",
+        "database": {
+            "host": "$DB_HOST",
+            "port": $DB_PORT
+        }
+    }
+    EOF
+
+    cat <<'SCRIPT' > setup.sh
+    #!/bin/bash
+    echo "This is a literal script"
+    echo '$HOME will not be expanded'
+    SCRIPT
+assertions:
+  must_include:
+  - generate.sh
+  must_not_include:
+  - SHELLTEST_HEREDOC_010
+  - shelltest_unused_abc002

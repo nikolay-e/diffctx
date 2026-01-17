@@ -1,0 +1,51 @@
+name: docs_008_architecture_module_mention
+initial:
+  docs/architecture.md: |
+    # Architecture
+
+    ## Overview
+
+    The system consists of several modules:
+
+    - `auth` - Authentication
+    - `api` - REST API endpoints
+  src/auth/login.py: |
+    def login(username, password):
+        return {"token": "abc123"}
+  src/api/routes.py: |
+    from auth.login import login
+
+    def setup_routes(app):
+        app.post("/login", login)
+changed:
+  docs/architecture.md: |
+    # Architecture
+
+    ## Overview
+
+    The system consists of several modules:
+
+    - `auth` - Authentication and authorization
+    - `api` - REST API endpoints
+    - `cache` - Redis caching layer
+    - `events` - Event publishing and handling
+
+    ## Module Dependencies
+
+    ```
+    api -> auth -> cache
+    api -> events
+    ```
+
+    ## Data Flow
+
+    1. Request hits `api` module
+    2. `auth` validates token
+    3. `cache` checks for cached response
+    4. `events` publishes audit event
+assertions:
+  must_include:
+  - architecture.md
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890

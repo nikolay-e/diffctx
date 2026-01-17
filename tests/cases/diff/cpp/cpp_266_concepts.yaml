@@ -1,0 +1,33 @@
+name: cpp_266_concepts
+initial:
+  concepts.h: |
+    #pragma once
+    #include <concepts>
+
+    template<typename T>
+    concept Numeric = std::integral<T> || std::floating_point<T>;
+
+    template<Numeric T>
+    T square(T value) {
+        return value * value;
+    }
+    // garbage_marker_12345
+  calc.cpp: |
+    #include <iostream>
+    int main() { return 0; }
+changed:
+  calc.cpp: |
+    #include "concepts.h"
+
+    double compute(int i, double d) {
+        return square(i) + square(d);
+    }
+assertions:
+  must_include:
+  - compute
+  - square
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add concepts usage

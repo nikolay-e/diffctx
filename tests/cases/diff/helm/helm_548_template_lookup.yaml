@@ -1,0 +1,29 @@
+name: helm_548_template_lookup
+initial:
+  templates/secret.yaml: |
+    apiVersion: v1
+    kind: Secret
+    data:
+      password: {{ randAlphaNum 20 | b64enc }}
+  junk.md: |
+    garbage_marker_12345
+    unused_marker_67890
+changed:
+  templates/secret.yaml: |
+    {{- $secret := lookup "v1" "Secret" .Release.Namespace "existing-secret" -}}
+    apiVersion: v1
+    kind: Secret
+    data:
+      {{- if $secret }}
+      password: {{ index $secret.data "password" }}
+      {{- else }}
+      password: {{ randAlphaNum 20 | b64enc }}
+      {{- end }}
+assertions:
+  must_include:
+  - lookup
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add lookup

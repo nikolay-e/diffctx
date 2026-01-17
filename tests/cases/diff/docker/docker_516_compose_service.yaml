@@ -1,0 +1,28 @@
+name: docker_516_compose_service
+initial:
+  api/Dockerfile: |
+    FROM python:3.11-slim
+    COPY . .
+    CMD ["python", "app.py"]
+  docker-compose.yml: |
+    version: '3.8'
+    services: {}
+  unrelated.txt: |
+    garbage_marker_12345
+    unused_marker_67890
+changed:
+  docker-compose.yml: |
+    version: '3.8'
+    services:
+      api:
+        build: ./api
+        ports:
+          - "8080:8080"
+assertions:
+  must_include:
+  - 'build: ./api'
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add compose service

@@ -1,0 +1,41 @@
+name: csharp_extension_method
+initial:
+  StringExtensions.cs: |
+    public static class StringExtensions
+    {
+        public static bool IsValidEmail(this string s)
+        {
+            return !string.IsNullOrEmpty(s) && s.Contains("@") && s.Contains(".");
+        }
+
+        public static string Truncate(this string s, int maxLength)
+        {
+            if (string.IsNullOrEmpty(s) || s.Length <= maxLength)
+                return s;
+            return s.Substring(0, maxLength) + "...";
+        }
+    }
+  Validator.cs: |
+    // Initial
+    class Validator { }
+changed:
+  Validator.cs: |
+    class Validator
+    {
+        public bool ValidateEmail(string email)
+        {
+            return email.IsValidEmail();
+        }
+
+        public string FormatMessage(string message)
+        {
+            return message.Truncate(100);
+        }
+    }
+assertions:
+  must_include:
+  - Validator.cs
+  - IsValidEmail()
+  - Truncate(100)
+options:
+  commit_message: Add extension method usage

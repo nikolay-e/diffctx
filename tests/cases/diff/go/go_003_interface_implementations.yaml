@@ -1,0 +1,68 @@
+name: go_003_interface_implementations
+initial:
+  interfaces.go: |
+    package main
+
+    type Storage interface {
+        Save(data []byte) error
+        Load(key string) ([]byte, error)
+    }
+  file_storage.go: |
+    package main
+
+    import "os"
+
+    type FileStorage struct {
+        path string
+    }
+
+    func (f *FileStorage) Save(data []byte) error {
+        return os.WriteFile(f.path, data, 0644)
+    }
+
+    func (f *FileStorage) Load(key string) ([]byte, error) {
+        return os.ReadFile(f.path + "/" + key)
+    }
+  memory_storage.go: |
+    package main
+
+    type MemoryStorage struct {
+        data map[string][]byte
+    }
+
+    func (m *MemoryStorage) Save(data []byte) error {
+        m.data["default"] = data
+        return nil
+    }
+
+    func (m *MemoryStorage) Load(key string) ([]byte, error) {
+        return m.data[key], nil
+    }
+  unrelated/garbage.go: |
+    package unrelated
+
+    func UnusedFileMethod_12345() {
+        println("garbage_marker_12345")
+    }
+
+    func UnusedMemoryMethod_67890() {
+        println("unused_marker_67890")
+    }
+changed:
+  interfaces.go: |
+    package main
+
+    type Storage interface {
+        Save(data []byte) error
+        Load(key string) ([]byte, error)
+        Delete(key string) error
+    }
+assertions:
+  must_include:
+  - Storage
+  - Delete
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add Delete to Storage interface

@@ -1,0 +1,59 @@
+name: csharp_302_pattern_matching
+initial:
+  Models/Shape.cs: |
+    namespace MyApp.Models;
+
+    public abstract class Shape { }
+
+    public class Circle : Shape
+    {
+        public double Radius { get; set; }
+    }
+
+    public class Rectangle : Shape
+    {
+        public double Width { get; set; }
+        public double Height { get; set; }
+    }
+
+    public class Triangle : Shape
+    {
+        public double Base { get; set; }
+        public double Height { get; set; }
+    }
+    // unused_marker_67890
+  Services/AreaCalculator.cs: |
+    namespace MyApp.Services;
+
+    public class AreaCalculator { }
+changed:
+  Services/AreaCalculator.cs: |
+    using MyApp.Models;
+
+    namespace MyApp.Services;
+
+    public class AreaCalculator
+    {
+        public double Calculate(Shape shape)
+        {
+            return shape switch
+            {
+                Circle c => Math.PI * c.Radius * c.Radius,
+                Rectangle r => r.Width * r.Height,
+                Triangle t => 0.5 * t.Base * t.Height,
+                _ => throw new ArgumentException("Unknown shape")
+            };
+        }
+    }
+assertions:
+  must_include:
+  - AreaCalculator
+  - Calculate
+  - Circle
+  - Rectangle
+  - Triangle
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add pattern matching usage

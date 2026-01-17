@@ -1,0 +1,35 @@
+name: kotlin_sealed_class
+initial:
+  src/main/kotlin/com/example/Result.kt: |
+    package com.example
+
+    sealed class Result<out T> {
+        data class Success<T>(val data: T) : Result<T>()
+        data class Error(val message: String) : Result<Nothing>()
+    }
+  src/main/kotlin/com/example/Handler.kt: |
+    package com.example
+
+    fun handleResult(result: Result<String>) {
+        when (result) {
+            is Result.Success -> println(result.data)
+            is Result.Error -> println(result.message)
+        }
+    }
+changed:
+  src/main/kotlin/com/example/Result.kt: |
+    package com.example
+
+    sealed class Result<out T> {
+        data class Success<T>(val data: T) : Result<T>()
+        data class Error(val message: String, val cause: Throwable? = null) : Result<Nothing>()
+        data object Loading : Result<Nothing>()
+        data object Empty : Result<Nothing>()
+    }
+assertions:
+  must_include:
+  - Result.kt
+  - Loading
+  - Empty
+options:
+  commit_message: Add Loading and Empty states to sealed class

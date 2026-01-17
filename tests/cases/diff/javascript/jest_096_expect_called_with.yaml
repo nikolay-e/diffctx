@@ -1,0 +1,32 @@
+name: jest_096_expect_called_with
+initial:
+  notifier.ts: |
+    export interface Notification {
+        title: string;
+        body: string;
+    }
+
+    export function sendNotification(notify: (n: Notification) => void, title: string, body: string) {
+        notify({ title, body });
+    }
+  notifier.test.ts: |
+    console.log('initial');
+changed:
+  notifier.test.ts: |
+    import { sendNotification, Notification } from './notifier';
+
+    describe('sendNotification', () => {
+        it('should call notify with correct args', () => {
+            const notify = jest.fn<void, [Notification]>();
+            sendNotification(notify, 'Hello', 'World');
+            expect(notify).toHaveBeenCalledWith({ title: 'Hello', body: 'World' });
+        });
+    });
+assertions:
+  must_include:
+  - sendNotification
+  - notifier.test.ts
+  must_not_include:
+  - js_garbage_marker_001
+options:
+  commit_message: Add notifier tests

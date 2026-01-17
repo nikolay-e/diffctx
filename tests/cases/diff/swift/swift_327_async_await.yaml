@@ -1,0 +1,40 @@
+name: swift_327_async_await
+initial:
+  User.swift: |
+    struct User: Codable {
+        let id: String
+        let name: String
+    }
+    // garbage_marker_12345
+  UserAPI.swift: |
+    // Initial
+    class UserAPI {}
+changed:
+  UserAPI.swift: |
+    import Foundation
+
+    class UserAPI {
+        func fetchUsers() async throws -> [User] {
+            let url = URL(string: "https://api.example.com/users")!
+            let (data, _) = try await URLSession.shared.data(from: url)
+            return try JSONDecoder().decode([User].self, from: data)
+        }
+
+        func getUser(id: String) async throws -> User {
+            let users = try await fetchUsers()
+            guard let user = users.first(where: { $0.id == id }) else {
+                throw NSError(domain: "UserAPI", code: 404)
+            }
+            return user
+        }
+    }
+assertions:
+  must_include:
+  - UserAPI
+  - fetchUsers
+  - User
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add async/await

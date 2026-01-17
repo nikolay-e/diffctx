@@ -1,0 +1,29 @@
+name: rust_012_generic_function
+initial:
+  src/utils.rs: |
+    pub fn identity(x: i32) -> i32 {
+        x
+    }
+changed:
+  src/utils.rs: |
+    pub fn identity<T>(x: T) -> T {
+        x
+    }
+
+    pub fn swap<T>(a: T, b: T) -> (T, T) {
+        (b, a)
+    }
+
+    pub fn compare<T: PartialOrd>(a: &T, b: &T) -> std::cmp::Ordering {
+        a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal)
+    }
+assertions:
+  must_include:
+  - identity<T>
+  - swap
+  - compare
+  - PartialOrd
+  must_not_include:
+  - garbage_generic_fn
+options:
+  commit_message: Make functions generic

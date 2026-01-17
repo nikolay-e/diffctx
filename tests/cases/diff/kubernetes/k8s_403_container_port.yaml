@@ -1,0 +1,57 @@
+name: k8s_403_container_port
+initial:
+  main.py: |
+    from flask import Flask
+    app = Flask(__name__)
+
+    @app.route('/')
+    def hello():
+        return 'Hello'
+
+    if __name__ == '__main__':
+        app.run(host='0.0.0.0', port=8080)
+  service.yaml: |
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: myapp
+    spec:
+      ports:
+      - port: 80
+        targetPort: 8080
+  deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: myapp
+    spec:
+      template:
+        spec:
+          containers:
+          - name: app
+            ports:
+            - containerPort: 3000
+  unrelated.txt: |
+    garbage_marker_k8s403 = True
+    unused_marker_k8s403 = False
+changed:
+  deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: myapp
+    spec:
+      template:
+        spec:
+          containers:
+          - name: app
+            ports:
+            - containerPort: 8080
+assertions:
+  must_include:
+  - 'containerPort: 8080'
+  must_not_include:
+  - garbage_marker_k8s403
+  - unused_marker_k8s403
+options:
+  commit_message: Update container port

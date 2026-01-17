@@ -1,0 +1,45 @@
+name: context_multi_file_selects_related
+initial:
+  src/models/user.py: |
+    class User:
+        def __init__(self, name):
+            self.name = name
+
+        def validate(self):
+            return len(self.name) > 0
+  src/services/auth.py: |
+    from models.user import User
+
+    def authenticate(username, password):
+        user = User(username)
+        if user.validate():
+            return check_password(password)
+        return False
+
+    def check_password(password):
+        return len(password) >= 8
+  src/api/routes.py: |
+    from services.auth import authenticate
+
+    def login_endpoint(request):
+        result = authenticate(request.username, request.password)
+        return {"success": result}
+changed:
+  src/services/auth.py: |
+    from models.user import User
+
+    def authenticate(username, password):
+        user = User(username)
+        if not user.validate():
+            raise ValueError("Invalid username")
+        if not check_password(password):
+            raise ValueError("Invalid password")
+        return True
+
+    def check_password(password):
+        return len(password) >= 8 and any(c.isupper() for c in password)
+assertions:
+  must_include:
+  - auth.py
+options:
+  commit_message: Improve auth with validation

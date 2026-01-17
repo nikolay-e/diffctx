@@ -1,0 +1,52 @@
+name: csharp_291_generic_method
+initial:
+  Services/Serializer.cs: |
+    using System.Text.Json;
+
+    namespace MyApp.Services;
+
+    public static class Serializer
+    {
+        public static string ToJson<T>(T obj)
+        {
+            return JsonSerializer.Serialize(obj);
+        }
+
+        public static T? FromJson<T>(string json)
+        {
+            return JsonSerializer.Deserialize<T>(json);
+        }
+    }
+    // garbage_marker_12345
+  Program.cs: |
+    using System;
+
+    class Program
+    {
+        static void Main() { }
+    }
+changed:
+  Program.cs: |
+    using System;
+    using MyApp.Services;
+    using MyApp.Models;
+
+    class Program
+    {
+        static void Main()
+        {
+            var user = new User { Id = 1, Name = "John" };
+            var json = Serializer.ToJson(user);
+            var restored = Serializer.FromJson<User>(json);
+        }
+    }
+assertions:
+  must_include:
+  - Serializer
+  - ToJson
+  - FromJson
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add generic method usage

@@ -1,0 +1,29 @@
+name: helm_560_release_values
+initial:
+  templates/configmap.yaml: |
+    apiVersion: v1
+    kind: ConfigMap
+    metadata:
+      name: app-config
+  junk.md: |
+    garbage_marker_12345
+    unused_marker_67890
+changed:
+  templates/configmap.yaml: |
+    apiVersion: v1
+    kind: ConfigMap
+    metadata:
+      name: {{ .Release.Name }}-config
+      namespace: {{ .Release.Namespace }}
+      labels:
+        app.kubernetes.io/managed-by: {{ .Release.Service }}
+        helm.sh/chart: {{ .Chart.Name }}-{{ .Chart.Version }}
+assertions:
+  must_include:
+  - '{{ .Release.Name }}'
+  - '{{ .Release.Namespace }}'
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add release values

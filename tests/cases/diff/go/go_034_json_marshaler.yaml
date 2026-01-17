@@ -1,0 +1,82 @@
+name: go_034_json_marshaler
+initial:
+  types.go: |
+    package main
+
+    import "time"
+
+    type Event struct {
+        Name      string
+        Timestamp time.Time
+    }
+  api.go: |
+    package main
+
+    import "encoding/json"
+
+    func SerializeEvent(e *Event) ([]byte, error) {
+        return json.Marshal(e)
+    }
+  unrelated/garbage.go: |
+    package unrelated
+
+    func UnusedTypes_12345() {
+        println("garbage_marker_12345")
+    }
+
+    func UnusedApi_67890() {
+        println("unused_marker_67890")
+    }
+changed:
+  types.go: |
+    package main
+
+    import (
+        "encoding/json"
+        "time"
+    )
+
+    type Event struct {
+        Name      string
+        Timestamp time.Time
+    }
+
+    func (e Event) MarshalJSON() ([]byte, error) {
+        type Alias Event
+        return json.Marshal(&struct {
+            Alias
+            Timestamp string `json:"timestamp"`
+        }{
+            Alias:     Alias(e),
+            Timestamp: e.Timestamp.Format(time.RFC3339),
+        })
+    }
+
+    func (e *Event) UnmarshalJSON(data []byte) error {
+        type Alias Event
+        aux := &struct {
+            *Alias
+            Timestamp string `json:"timestamp"`
+        }{
+            Alias: (*Alias)(e),
+        }
+        if err := json.Unmarshal(data, &aux); err != nil {
+            return err
+        }
+        t, err := time.Parse(time.RFC3339, aux.Timestamp)
+        if err != nil {
+            return err
+        }
+        e.Timestamp = t
+        return nil
+    }
+assertions:
+  must_include:
+  - MarshalJSON
+  - UnmarshalJSON
+  - Event
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add custom JSON marshaling

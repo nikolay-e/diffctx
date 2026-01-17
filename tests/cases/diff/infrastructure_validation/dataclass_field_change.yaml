@@ -1,0 +1,42 @@
+name: dataclass_field_change
+initial:
+  models.py: |
+    from dataclasses import dataclass
+
+    @dataclass
+    class Order:
+        id: int
+        customer_id: int
+        total: float
+
+    def unrelated_garbage_function():
+        return "this is garbage that should not be in context"
+  services.py: |
+    from models import Order
+
+    def create_order(customer_id, total):
+        return Order(id=1, customer_id=customer_id, total=total)
+
+    def process_order(order: Order):
+        return f"Processing order {order.id}"
+changed:
+  models.py: |
+    from dataclasses import dataclass
+
+    @dataclass
+    class Order:
+        id: int
+        customer_id: int
+        total: float
+        priority: int = 0
+
+    def unrelated_garbage_function():
+        return "this is garbage that should not be in context"
+assertions:
+  must_include:
+  - class Order
+  - priority
+  must_not_include:
+  - unrelated_garbage_function
+options:
+  commit_message: Add priority field

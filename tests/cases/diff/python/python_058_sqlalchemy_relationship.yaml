@@ -1,0 +1,42 @@
+name: python_058_sqlalchemy_relationship
+initial:
+  models/order.py: |
+    from sqlalchemy import Column, Integer, ForeignKey
+    from sqlalchemy.orm import relationship
+    from database import Base
+
+    class Order(Base):
+        __tablename__ = "orders"
+        id = Column(Integer, primary_key=True)
+        user_id = Column(Integer, ForeignKey("users.id"))
+        user = relationship("User", back_populates="orders")
+        items = relationship("OrderItem", back_populates="order")
+  models/item.py: |
+    from sqlalchemy import Column, Integer, ForeignKey, Float
+    from sqlalchemy.orm import relationship
+    from database import Base
+
+    class OrderItem(Base):
+        __tablename__ = "order_items"
+        id = Column(Integer, primary_key=True)
+        order_id = Column(Integer, ForeignKey("orders.id"))
+        price = Column(Float)
+        order = relationship("Order", back_populates="items")
+  services/order.py: |
+    def calculate_total():
+        pass
+  garbage.py: |
+    garbage_marker_12345 = "relationship garbage"
+    unused_marker_67890 = "unused relationship"
+changed:
+  services/order.py: |
+    from models.order import Order
+
+    def calculate_total(order: Order) -> float:
+        return sum(item.price for item in order.items)
+assertions:
+  must_include:
+  - class Order
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890

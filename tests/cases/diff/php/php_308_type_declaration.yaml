@@ -1,0 +1,44 @@
+name: php_308_type_declaration
+initial:
+  Response.php: |
+    <?php
+    class Response {
+        private int $status;
+        private array $data;
+
+        public function __construct(int $status, array $data) {
+            $this->status = $status;
+            $this->data = $data;
+        }
+
+        public function getStatus(): int {
+            return $this->status;
+        }
+
+        public function getData(): array {
+            return $this->data;
+        }
+    }
+  Processor.php: |
+    <?php
+    class Processor {}
+changed:
+  Processor.php: |
+    <?php
+    require_once 'Response.php';
+
+    class Processor {
+        public function process(array $data): Response {
+            $result = array_map(fn($x) => $x * 2, $data);
+            return new Response(200, $result);
+        }
+    }
+assertions:
+  must_include:
+  - new Response
+  - process
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add type declaration

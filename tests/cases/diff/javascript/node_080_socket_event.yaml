@@ -1,0 +1,32 @@
+name: node_080_socket_event
+initial:
+  events.ts: |
+    export interface ChatMessage {
+        userId: string;
+        text: string;
+        timestamp: number;
+    }
+
+    export const CHAT_EVENT = 'chat:message';
+  socket.ts: |
+    console.log('initial');
+changed:
+  socket.ts: |
+    import { Server } from 'socket.io';
+    import { CHAT_EVENT, ChatMessage } from './events';
+
+    export function setupSocket(io: Server) {
+        io.on('connection', (socket) => {
+            socket.on(CHAT_EVENT, (message: ChatMessage) => {
+                io.emit(CHAT_EVENT, message);
+            });
+        });
+    }
+assertions:
+  must_include:
+  - CHAT_EVENT
+  - socket.ts
+  must_not_include:
+  - js_garbage_marker_001
+options:
+  commit_message: Add socket handler

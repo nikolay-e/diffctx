@@ -1,0 +1,26 @@
+name: ts_045_partial_type
+initial:
+  config.ts: |
+    export interface FullConfig {
+        host: string;
+        port: number;
+        ssl: boolean;
+        timeout: number;
+    }
+  updater.ts: |
+    console.log('initial');
+changed:
+  updater.ts: |
+    import { FullConfig } from './config';
+
+    function updateConfig(current: FullConfig, updates: Partial<FullConfig>): FullConfig {
+        return { ...current, ...updates };
+    }
+assertions:
+  must_include:
+  - FullConfig
+  - updater.ts
+  must_not_include:
+  - js_garbage_marker_001
+options:
+  commit_message: Add Partial usage

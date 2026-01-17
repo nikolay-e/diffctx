@@ -1,0 +1,37 @@
+name: python_006_generic_container_added
+initial:
+  types.py: |
+    from typing import List, Optional
+
+    def process_items(items: List[str]) -> Optional[str]:
+        if not items:
+            return None
+        return items[0]
+  garbage.py: |
+    garbage_marker_12345 = {}
+    unused_marker_67890 = set()
+changed:
+  types.py: |
+    from typing import List, Optional, TypeVar, Generic
+
+    T = TypeVar('T')
+
+    def process_items(items: List[str]) -> Optional[str]:
+        if not items:
+            return None
+        return items[0]
+
+    class Container(Generic[T]):
+        def __init__(self, value: T):
+            self.value = value
+
+        def get(self) -> T:
+            return self.value
+assertions:
+  must_include:
+  - TypeVar
+  - Generic
+  - Container
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890

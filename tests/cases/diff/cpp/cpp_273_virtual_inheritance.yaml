@@ -1,0 +1,47 @@
+name: cpp_273_virtual_inheritance
+initial:
+  base.h: |
+    #pragma once
+    #include <string>
+
+    class Base {
+    public:
+        std::string name;
+        virtual ~Base() = default;
+    };
+
+    class Left : virtual public Base {
+    public:
+        void leftMethod() {}
+    };
+
+    class Right : virtual public Base {
+    public:
+        void rightMethod() {}
+    };
+    // unused_marker_67890
+  diamond.cpp: |
+    #include <iostream>
+    int main() { return 0; }
+changed:
+  diamond.cpp: |
+    #include "base.h"
+
+    class Diamond : public Left, public Right {
+    public:
+        void process() {
+            name = "Diamond";
+            leftMethod();
+            rightMethod();
+        }
+    };
+assertions:
+  must_include:
+  - Diamond
+  - Left
+  - Right
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add virtual inheritance

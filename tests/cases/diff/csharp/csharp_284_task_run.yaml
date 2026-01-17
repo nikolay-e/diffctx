@@ -1,0 +1,49 @@
+name: csharp_284_task_run
+initial:
+  Services/ComputeService.cs: |
+    namespace MyApp.Services;
+
+    public class ComputeService
+    {
+        public int HeavyComputation(int input)
+        {
+            int result = 0;
+            for (int i = 0; i < 1000000; i++)
+            {
+                result += input;
+            }
+            return result;
+        }
+    }
+    // unused_marker_67890
+  Program.cs: |
+    using System;
+
+    class Program
+    {
+        static void Main() { }
+    }
+changed:
+  Program.cs: |
+    using System;
+    using System.Threading.Tasks;
+    using MyApp.Services;
+
+    class Program
+    {
+        static async Task Main()
+        {
+            var service = new ComputeService();
+            var result = await Task.Run(() => service.HeavyComputation(42));
+            Console.WriteLine(result);
+        }
+    }
+assertions:
+  must_include:
+  - ComputeService
+  - HeavyComputation
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add Task.Run usage

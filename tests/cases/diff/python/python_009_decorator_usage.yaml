@@ -1,0 +1,37 @@
+name: python_009_decorator_usage
+initial:
+  decorators.py: |
+    import functools
+    import time
+
+    def rate_limit(calls_per_second: int):
+        def decorator(func):
+            last_call = [0.0]
+            @functools.wraps(func)
+            def wrapper(*args, **kwargs):
+                elapsed = time.time() - last_call[0]
+                if elapsed < 1.0 / calls_per_second:
+                    time.sleep(1.0 / calls_per_second - elapsed)
+                last_call[0] = time.time()
+                return func(*args, **kwargs)
+            return wrapper
+        return decorator
+  api.py: |
+    def call_api():
+        return "response"
+  garbage.py: |
+    garbage_marker_12345 = "decorator garbage"
+    unused_marker_67890 = "unused decorator"
+changed:
+  api.py: |
+    from decorators import rate_limit
+
+    @rate_limit(100)
+    def call_api():
+        return "response"
+assertions:
+  must_include:
+  - def rate_limit
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890

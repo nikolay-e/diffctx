@@ -1,0 +1,30 @@
+name: helm_544_template_if
+initial:
+  values.yaml: |
+    ingress:
+      enabled: false
+  templates/ingress.yaml: |
+    apiVersion: networking.k8s.io/v1
+    kind: Ingress
+  junk.txt: |
+    garbage_marker_12345
+    unused_marker_67890
+changed:
+  templates/ingress.yaml: |
+    {{- if .Values.ingress.enabled -}}
+    apiVersion: networking.k8s.io/v1
+    kind: Ingress
+    metadata:
+      name: {{ .Release.Name }}-ingress
+    spec:
+      rules:
+        - host: {{ .Values.ingress.host }}
+    {{- end }}
+assertions:
+  must_include:
+  - if .Values.ingress.enabled
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add if condition

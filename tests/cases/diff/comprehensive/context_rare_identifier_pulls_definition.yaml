@@ -1,0 +1,29 @@
+name: context_rare_identifier_pulls_definition
+initial:
+  src/special_algorithm.py: |
+    def fibonacci_memoized_optimized(n, cache=None):
+        if cache is None:
+            cache = {}
+        if n in cache:
+            return cache[n]
+        if n <= 1:
+            return n
+        result = fibonacci_memoized_optimized(n-1, cache) + fibonacci_memoized_optimized(n-2, cache)
+        cache[n] = result
+        return result
+  src/main.py: |
+    def main():
+        print("Hello")
+changed:
+  src/main.py: |
+    from special_algorithm import fibonacci_memoized_optimized
+
+    def main():
+        result = fibonacci_memoized_optimized(10)
+        print(result)
+assertions:
+  must_include:
+  - main.py
+  - special_algorithm.py
+options:
+  commit_message: Use fibonacci

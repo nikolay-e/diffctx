@@ -1,0 +1,51 @@
+name: go_006_go_mod_require
+initial:
+  go.mod: |
+    module myproject
+
+    go 1.21
+
+    require (
+        github.com/gin-gonic/gin v1.9.0
+    )
+  server.go: |
+    package main
+
+    import "github.com/gin-gonic/gin"
+
+    func main() {
+        r := gin.Default()
+        r.GET("/", func(c *gin.Context) {
+            c.JSON(200, gin.H{"status": "ok"})
+        })
+        r.Run()
+    }
+  unrelated/garbage.go: |
+    package unrelated
+
+    func UnusedServerFunc_12345() {
+        println("garbage_marker_12345")
+    }
+
+    func AnotherUnused_67890() {
+        println("unused_marker_67890")
+    }
+changed:
+  go.mod: |
+    module myproject
+
+    go 1.21
+
+    require (
+        github.com/gin-gonic/gin v1.9.0
+        github.com/redis/go-redis/v9 v9.0.0
+    )
+assertions:
+  must_include:
+  - go.mod
+  - redis
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add redis dependency

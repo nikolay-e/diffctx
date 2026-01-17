@@ -1,0 +1,31 @@
+name: python_018_dunder_add_operator
+initial:
+  cart.py: |
+    class Cart:
+        def __init__(self, items: list):
+            self.items = items
+
+        def __add__(self, other: "Cart") -> "Cart":
+            return Cart(self.items + other.items)
+
+        def total(self) -> float:
+            return sum(item.price for item in self.items)
+  checkout.py: |
+    def process():
+        pass
+  garbage.py: |
+    garbage_marker_12345 = "cart garbage"
+    unused_marker_67890 = "unused cart"
+changed:
+  checkout.py: |
+    from cart import Cart
+
+    def merge_carts(cart1: Cart, cart2: Cart) -> Cart:
+        combined = cart1 + cart2
+        return combined
+assertions:
+  must_include:
+  - __add__
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890

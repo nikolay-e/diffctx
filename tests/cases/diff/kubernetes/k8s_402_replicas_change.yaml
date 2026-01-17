@@ -1,0 +1,36 @@
+name: k8s_402_replicas_change
+initial:
+  hpa.yaml: |
+    apiVersion: autoscaling/v2
+    kind: HorizontalPodAutoscaler
+    metadata:
+      name: myapp-hpa
+    spec:
+      minReplicas: 2
+      maxReplicas: 10
+  deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: myapp
+    spec:
+      replicas: 2
+  unrelated.txt: |
+    garbage_marker_k8s402 = True
+    unused_marker_k8s402 = False
+changed:
+  deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: myapp
+    spec:
+      replicas: 5
+assertions:
+  must_include:
+  - 'replicas: 5'
+  must_not_include:
+  - garbage_marker_k8s402
+  - unused_marker_k8s402
+options:
+  commit_message: Update replicas

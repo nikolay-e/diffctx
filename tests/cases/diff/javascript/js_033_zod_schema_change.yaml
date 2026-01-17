@@ -1,0 +1,39 @@
+name: js_033_zod_schema_change
+initial:
+  schemas.ts: |
+    import { z } from 'zod';
+
+    export const UserSchema = z.object({
+        id: z.string(),
+        name: z.string(),
+        email: z.string().email(),
+    });
+
+    export type User = z.infer<typeof UserSchema>;
+  validator.ts: |
+    import { UserSchema, User } from './schemas';
+
+    export function validateUser(data: unknown): User {
+        return UserSchema.parse(data);
+    }
+changed:
+  schemas.ts: |
+    import { z } from 'zod';
+
+    export const UserSchema = z.object({
+        id: z.string().uuid(),
+        name: z.string().min(1).max(100),
+        email: z.string().email(),
+        age: z.number().int().positive().optional(),
+        role: z.enum(['admin', 'user', 'guest']),
+    });
+
+    export type User = z.infer<typeof UserSchema>;
+assertions:
+  must_include:
+  - UserSchema
+  - schemas.ts
+  must_not_include:
+  - js_garbage_marker_001
+options:
+  commit_message: Extend UserSchema

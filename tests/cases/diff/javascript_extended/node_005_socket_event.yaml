@@ -1,0 +1,34 @@
+name: node_005_socket_event
+initial:
+  events.ts: |
+    export interface ChatMessage {
+        userId: string;
+        text: string;
+        timestamp: number;
+    }
+
+    export const CHAT_EVENT = 'chat:message';
+
+    // node_garbage_marker_005
+    const GARBAGE_EVENT = 'garbage:event';
+  socket.ts: |
+    console.log('initial');
+changed:
+  socket.ts: |
+    import { Server } from 'socket.io';
+    import { CHAT_EVENT, ChatMessage } from './events';
+
+    export function setupSocket(io: Server) {
+        io.on('connection', (socket) => {
+            socket.on(CHAT_EVENT, (message: ChatMessage) => {
+                io.emit(CHAT_EVENT, message);
+            });
+        });
+    }
+assertions:
+  must_include:
+  - socket.ts
+  must_not_include:
+  - node_garbage_marker_005
+options:
+  commit_message: Add socket handler

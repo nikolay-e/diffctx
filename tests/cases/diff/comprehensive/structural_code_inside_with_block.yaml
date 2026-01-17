@@ -1,0 +1,55 @@
+name: structural_code_inside_with_block
+initial:
+  db.py: |
+    class Transaction:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+    def transaction():
+        return Transaction()
+
+    def save(data):
+        with transaction():
+            try:
+                db_insert(data)
+            except Exception:
+                pass
+
+    def db_insert(data):
+        pass
+changed:
+  db.py: |
+    class Transaction:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+    def transaction():
+        return Transaction()
+
+    def save(data):
+        with transaction():
+            try:
+                validate(data)
+                db_insert(data)
+            except Exception:
+                rollback()
+
+    def validate(data):
+        return True
+
+    def db_insert(data):
+        pass
+
+    def rollback():
+        pass
+assertions:
+  must_include:
+  - db.py
+options:
+  commit_message: Add validation and rollback

@@ -1,0 +1,33 @@
+name: shell_017_set_options
+initial:
+  robust.sh: |
+    #!/bin/bash
+    echo "Robust"
+  garbage.sh: |
+    #!/bin/bash
+    SHELLTEST_SET_018="unused_option_12345"
+    shelltest_unused_abc002="not_used"
+changed:
+  robust.sh: |
+    #!/bin/bash
+    set -euo pipefail
+
+    readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    readonly CONFIG_FILE="${SCRIPT_DIR}/config.yaml"
+
+    if [[ ! -f "$CONFIG_FILE" ]]; then
+        echo "Error: Config file not found"
+        exit 1
+    fi
+
+    process_data || {
+        echo "Processing failed"
+        exit 1
+    }
+assertions:
+  must_include:
+  - robust.sh
+  - pipefail
+  must_not_include:
+  - SHELLTEST_SET_018
+  - shelltest_unused_abc002

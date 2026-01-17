@@ -1,0 +1,25 @@
+name: python_039_relative_import
+initial:
+  package/models/user.py: |
+    class User:
+        def __init__(self, name: str):
+            self.name = name
+  package/services/user_service.py: |
+    class UserService:
+        pass
+  garbage.py: |
+    garbage_marker_12345 = "relative garbage"
+    unused_marker_67890 = "unused relative"
+changed:
+  package/services/user_service.py: |
+    from ..models.user import User
+
+    class UserService:
+        def create(self, name: str) -> User:
+            return User(name)
+assertions:
+  must_include:
+  - class User
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890

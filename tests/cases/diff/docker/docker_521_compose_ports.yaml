@@ -1,0 +1,27 @@
+name: docker_521_compose_ports
+initial:
+  docker-compose.yml: |
+    version: '3.8'
+    services:
+      api:
+        build: .
+  junk.md: |
+    garbage_marker_12345
+    unused_marker_67890
+changed:
+  docker-compose.yml: |
+    version: '3.8'
+    services:
+      api:
+        build: .
+        ports:
+          - "8080:80"
+          - "127.0.0.1:9090:9090"
+assertions:
+  must_include:
+  - 'ports:'
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add ports

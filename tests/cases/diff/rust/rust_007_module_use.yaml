@@ -1,0 +1,30 @@
+name: rust_007_module_use
+initial:
+  src/lib.rs: |
+    pub mod utils;
+  src/utils.rs: |
+    pub fn helper() -> String {
+        "helper".to_string()
+    }
+changed:
+  src/lib.rs: |
+    pub mod utils;
+
+    pub use utils::helper;
+    pub use utils::processor;
+  src/utils.rs: |
+    pub fn helper() -> String {
+        "helper".to_string()
+    }
+
+    pub fn processor(data: &str) -> String {
+        data.to_uppercase()
+    }
+assertions:
+  must_include:
+  - processor
+  - pub use utils
+  must_not_include:
+  - garbage_module_item
+options:
+  commit_message: Add processor and re-exports

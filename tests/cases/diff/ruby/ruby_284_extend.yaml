@@ -1,0 +1,42 @@
+name: ruby_284_extend
+initial:
+  class_methods.rb: |
+    module ClassMethods
+      def find(id)
+        # Find by id
+        new(id: id)
+      end
+
+      def all
+        []
+      end
+    end
+  model.rb: |
+    # Initial
+    class Model
+    end
+changed:
+  model.rb: |
+    require_relative 'class_methods'
+
+    class Model
+      extend ClassMethods
+
+      attr_reader :id
+
+      def initialize(id:)
+        @id = id
+      end
+    end
+
+    # Usage
+    model = Model.find(1)
+assertions:
+  must_include:
+  - extend ClassMethods
+  - Model.find
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add extend

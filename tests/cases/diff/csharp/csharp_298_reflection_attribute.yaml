@@ -1,0 +1,55 @@
+name: csharp_298_reflection_attribute
+initial:
+  Attributes/RouteAttribute.cs: |
+    namespace MyApp.Attributes;
+
+    [AttributeUsage(AttributeTargets.Method)]
+    public class RouteAttribute : Attribute
+    {
+        public string Path { get; }
+
+        public RouteAttribute(string path)
+        {
+            Path = path;
+        }
+    }
+    // unused_marker_67890
+  Services/Router.cs: |
+    namespace MyApp.Services;
+
+    public class Router { }
+changed:
+  Services/Router.cs: |
+    using System.Reflection;
+    using MyApp.Attributes;
+
+    namespace MyApp.Services;
+
+    public class Router
+    {
+        public Dictionary<string, MethodInfo> BuildRoutes(Type controllerType)
+        {
+            var routes = new Dictionary<string, MethodInfo>();
+
+            foreach (var method in controllerType.GetMethods())
+            {
+                var attr = method.GetCustomAttribute<RouteAttribute>();
+                if (attr != null)
+                {
+                    routes[attr.Path] = method;
+                }
+            }
+
+            return routes;
+        }
+    }
+assertions:
+  must_include:
+  - Router
+  - BuildRoutes
+  - RouteAttribute
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add reflection attribute usage

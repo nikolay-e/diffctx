@@ -1,0 +1,30 @@
+name: rust_010_enum_definition
+initial:
+  src/status.rs: |
+    pub enum Status {
+        Active,
+        Inactive,
+    }
+changed:
+  src/status.rs: |
+    pub enum Status {
+        Active,
+        Inactive,
+        Pending,
+        Error(String),
+    }
+
+    impl Status {
+        pub fn is_active(&self) -> bool {
+            matches!(self, Status::Active)
+        }
+    }
+assertions:
+  must_include:
+  - Pending
+  - Error
+  - is_active
+  must_not_include:
+  - garbage_enum_variant
+options:
+  commit_message: Add Pending and Error variants

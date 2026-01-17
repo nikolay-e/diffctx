@@ -1,0 +1,41 @@
+name: edge_vendor_copy
+initial:
+  third_party/lodash/chunk.js: |
+    // Copied from lodash v4.17.21
+    function chunk(array, size) {
+        const result = [];
+        for (let i = 0; i < array.length; i += size) {
+            result.push(array.slice(i, i + size));
+        }
+        return result;
+    }
+    module.exports = chunk;
+  src/utils.js: |
+    const chunk = require('../third_party/lodash/chunk');
+
+    function processInBatches(items) {
+        return chunk(items, 10);
+    }
+
+    module.exports = { processInBatches };
+changed:
+  third_party/lodash/chunk.js: |
+    // Copied from lodash v4.17.21
+    // Modified: added type checking
+    function chunk(array, size) {
+        if (!Array.isArray(array)) {
+            throw new TypeError('Expected array');
+        }
+        if (typeof size !== 'number' || size < 1) {
+            size = 1;
+        }
+        const result = [];
+        for (let i = 0; i < array.length; i += size) {
+            result.push(array.slice(i, i + size));
+        }
+        return result;
+    }
+    module.exports = chunk;
+assertions:
+  must_include:
+  - chunk.js

@@ -1,0 +1,34 @@
+name: scala_002_trait_mixin
+initial:
+  Logging.scala: |
+    trait Logging {
+      def log(message: String): Unit = println(s"[LOG] $message")
+      def debug(message: String): Unit = println(s"[DEBUG] $message")
+    }
+  Metrics.scala: |
+    trait Metrics {
+      def recordMetric(name: String, value: Double): Unit = {
+        println(s"Metric: $name = $value")
+      }
+    }
+  Service.scala: |
+    class Service {}
+changed:
+  Service.scala: |
+    class Service extends Logging with Metrics {
+      def process(data: String): Unit = {
+        log(s"Processing: $data")
+        recordMetric("process_count", 1.0)
+        debug("Process complete")
+      }
+    }
+assertions:
+  must_include:
+  - Service
+  - extends Logging with Metrics
+  - process
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add trait mixin

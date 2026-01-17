@@ -1,0 +1,33 @@
+name: docker_519_compose_depends_on
+initial:
+  docker-compose.yml: |
+    version: '3.8'
+    services:
+      api:
+        build: .
+      db:
+        image: postgres:13
+  junk.txt: |
+    garbage_marker_12345 unused_marker_67890
+changed:
+  docker-compose.yml: |
+    version: '3.8'
+    services:
+      api:
+        build: .
+        depends_on:
+          db:
+            condition: service_healthy
+      db:
+        image: postgres:13
+        healthcheck:
+          test: ["CMD-SHELL", "pg_isready"]
+          interval: 5s
+assertions:
+  must_include:
+  - 'depends_on:'
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add depends_on

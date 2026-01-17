@@ -1,0 +1,30 @@
+name: python_011_override_method
+initial:
+  base_processor.py: |
+    class BaseProcessor:
+        def process(self, data: list) -> list:
+            return [item.strip() for item in data]
+
+        def validate(self, item: str) -> bool:
+            return len(item) > 0
+  custom_processor.py: |
+    class CustomProcessor:
+        pass
+  garbage.py: |
+    garbage_marker_12345 = "processor garbage"
+    unused_marker_67890 = "unused processor"
+changed:
+  custom_processor.py: |
+    from base_processor import BaseProcessor
+
+    class CustomProcessor(BaseProcessor):
+        def process(self, data: list) -> list:
+            validated = [item for item in data if self.validate(item)]
+            return super().process(validated)
+assertions:
+  must_include:
+  - def process
+  - BaseProcessor
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890

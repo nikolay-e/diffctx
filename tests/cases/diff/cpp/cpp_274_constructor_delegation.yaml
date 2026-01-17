@@ -1,0 +1,44 @@
+name: cpp_274_constructor_delegation
+initial:
+  user.h: |
+    #pragma once
+    #include <string>
+
+    class User {
+        std::string name_;
+        int age_;
+        bool active_;
+
+    public:
+        User(std::string name, int age, bool active)
+            : name_(std::move(name)), age_(age), active_(active) {}
+
+        User(std::string name, int age) : User(name, age, true) {}
+
+        User(std::string name) : User(name, 0, true) {}
+    };
+    // garbage_marker_12345
+  factory.cpp: |
+    #include <iostream>
+    int main() { return 0; }
+changed:
+  factory.cpp: |
+    #include "user.h"
+
+    User createDefaultUser() {
+        return User("Guest");
+    }
+
+    User createUser(const std::string& name) {
+        return User(name, 18);
+    }
+assertions:
+  must_include:
+  - createDefaultUser
+  - createUser
+  - User
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add constructor delegation usage

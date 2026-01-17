@@ -1,0 +1,30 @@
+name: python_014_generator_usage
+initial:
+  batching.py: |
+    def data_batches(records: list, batch_size: int = 100):
+        for i in range(0, len(records), batch_size):
+            yield records[i:i + batch_size]
+  processor.py: |
+    def process_all():
+        pass
+  garbage.py: |
+    garbage_marker_12345 = "batch garbage"
+    unused_marker_67890 = "unused batch"
+changed:
+  processor.py: |
+    from batching import data_batches
+
+    def process_all(records: list):
+        results = []
+        for batch in data_batches(records):
+            results.extend(process_batch(batch))
+        return results
+
+    def process_batch(batch: list):
+        return [item.upper() for item in batch]
+assertions:
+  must_include:
+  - yield
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890

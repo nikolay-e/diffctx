@@ -1,0 +1,62 @@
+name: docs_031_sql_trigger
+initial:
+  sql/triggers/audit_trigger.sql: |
+    CREATE OR REPLACE FUNCTION audit_trigger_func()
+    RETURNS TRIGGER AS $$
+    BEGIN
+        INSERT INTO audit_log (table_name, operation, old_data, new_data, created_at)
+        VALUES (TG_TABLE_NAME, TG_OP, row_to_json(OLD), row_to_json(NEW), NOW());
+        RETURN NEW;
+    END;
+    $$ LANGUAGE plpgsql;
+
+    CREATE TRIGGER users_audit
+    AFTER INSERT OR UPDATE OR DELETE ON users
+    FOR EACH ROW EXECUTE FUNCTION audit_trigger_func();
+  src/services/user_service.py: |
+    class UserService:
+        def update_user(self, user_id: int, name: str):
+            self.db.execute(
+                "UPDATE users SET name = %s WHERE id = %s",
+                [name, user_id]
+            )
+changed:
+  sql/triggers/audit_trigger.sql: |
+    CREATE OR REPLACE FUNCTION audit_trigger_func()
+    RETURNS TRIGGER AS $$
+    BEGIN
+        INSERT INTO audit_log (
+            table_name,
+            operation,
+            old_data,
+            new_data,
+            user_id,
+            ip_address,
+            created_at
+        )
+        VALUES (
+            TG_TABLE_NAME,
+            TG_OP,
+            row_to_json(OLD),
+            row_to_json(NEW),
+            current_setting('app.current_user_id', TRUE)::INTEGER,
+            current_setting('app.client_ip', TRUE),
+            NOW()
+        );
+        RETURN NEW;
+    END;
+    $$ LANGUAGE plpgsql;
+
+    CREATE TRIGGER users_audit
+    AFTER INSERT OR UPDATE OR DELETE ON users
+    FOR EACH ROW EXECUTE FUNCTION audit_trigger_func();
+
+    CREATE TRIGGER orders_audit
+    AFTER INSERT OR UPDATE OR DELETE ON orders
+    FOR EACH ROW EXECUTE FUNCTION audit_trigger_func();
+assertions:
+  must_include:
+  - audit_trigger.sql
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890

@@ -1,0 +1,31 @@
+name: node_079_response_json
+initial:
+  service.ts: |
+    export interface ApiResponse<T> {
+        data: T;
+        success: boolean;
+        timestamp: number;
+    }
+
+    export function createResponse<T>(data: T): ApiResponse<T> {
+        return { data, success: true, timestamp: Date.now() };
+    }
+  handler.ts: |
+    console.log('initial');
+changed:
+  handler.ts: |
+    import { Request, Response } from 'express';
+    import { createResponse } from './service';
+
+    export function getDataHandler(req: Request, res: Response) {
+        const data = { message: 'Hello' };
+        res.json(createResponse(data));
+    }
+assertions:
+  must_include:
+  - createResponse
+  - handler.ts
+  must_not_include:
+  - js_garbage_marker_001
+options:
+  commit_message: Add response helper

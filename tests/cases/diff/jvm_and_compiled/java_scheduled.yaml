@@ -1,0 +1,45 @@
+name: java_scheduled
+initial:
+  src/main/java/com/example/ScheduledTasks.java: |
+    package com.example;
+
+    import org.springframework.scheduling.annotation.Scheduled;
+    import org.springframework.stereotype.Component;
+
+    @Component
+    public class ScheduledTasks {
+        @Scheduled(fixedRate = 60000)
+        public void cleanupTask() {
+            System.out.println("Running cleanup");
+        }
+    }
+changed:
+  src/main/java/com/example/ScheduledTasks.java: |
+    package com.example;
+
+    import org.springframework.scheduling.annotation.Scheduled;
+    import org.springframework.stereotype.Component;
+    import org.slf4j.Logger;
+    import org.slf4j.LoggerFactory;
+
+    @Component
+    public class ScheduledTasks {
+        private static final Logger logger = LoggerFactory.getLogger(ScheduledTasks.class);
+
+        @Scheduled(fixedRate = 60000)
+        public void cleanupTask() {
+            logger.info("Running cleanup");
+        }
+
+        @Scheduled(cron = "0 0 2 * * ?")
+        public void dailyReport() {
+            logger.info("Generating daily report");
+        }
+    }
+assertions:
+  must_include:
+  - ScheduledTasks.java
+  - dailyReport
+  - cron
+options:
+  commit_message: Add dailyReport scheduled task

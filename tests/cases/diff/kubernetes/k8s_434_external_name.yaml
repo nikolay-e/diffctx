@@ -1,0 +1,31 @@
+name: k8s_434_external_name
+initial:
+  service.yaml: |
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: external-db
+    spec:
+      type: ClusterIP
+      ports:
+      - port: 5432
+  unrelated.txt: |
+    garbage_marker_k8s434 = True
+    unused_marker_k8s434 = False
+changed:
+  service.yaml: |
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: external-db
+    spec:
+      type: ExternalName
+      externalName: db.external.com
+assertions:
+  must_include:
+  - ExternalName
+  must_not_include:
+  - garbage_marker_k8s434
+  - unused_marker_k8s434
+options:
+  commit_message: Add ExternalName

@@ -1,0 +1,40 @@
+name: docs_022_json_schema_ref
+initial:
+  schemas/user.json: |
+    {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+            "id": {"type": "integer"},
+            "name": {"type": "string"}
+        }
+    }
+  schemas/order.json: |
+    {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+            "id": {"type": "integer"},
+            "user": {"$ref": "user.json"}
+        }
+    }
+changed:
+  schemas/user.json: |
+    {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "$id": "https://example.com/schemas/user.json",
+        "type": "object",
+        "required": ["id", "name", "email"],
+        "properties": {
+            "id": {"type": "integer"},
+            "name": {"type": "string", "minLength": 1},
+            "email": {"type": "string", "format": "email"},
+            "address": {"$ref": "address.json"}
+        }
+    }
+assertions:
+  must_include:
+  - user.json
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890

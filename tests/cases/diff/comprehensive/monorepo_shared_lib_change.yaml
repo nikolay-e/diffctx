@@ -1,0 +1,38 @@
+name: monorepo_shared_lib_change
+initial:
+  packages/shared/src/utils.ts: |
+    export function formatDate(date: Date): string {
+        return date.toISOString();
+    }
+  packages/web/src/components/DateDisplay.tsx: |
+    import { formatDate } from '@myorg/shared';
+
+    export function DateDisplay({ date }: { date: Date }) {
+        return <span>{formatDate(date)}</span>;
+    }
+  packages/api/src/handlers/report.ts: |
+    import { formatDate } from '@myorg/shared';
+
+    export function generateReport(date: Date) {
+        return { generatedAt: formatDate(date) };
+    }
+changed:
+  packages/shared/src/utils.ts: |
+    export function formatDate(date: Date, format: string = 'iso'): string {
+        if (format === 'iso') {
+            return date.toISOString();
+        }
+        if (format === 'locale') {
+            return date.toLocaleDateString();
+        }
+        return date.toString();
+    }
+
+    export function parseDate(str: string): Date {
+        return new Date(str);
+    }
+assertions:
+  must_include:
+  - utils.ts
+options:
+  commit_message: Add format option and parseDate to shared utils

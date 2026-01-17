@@ -1,0 +1,43 @@
+name: go_017_variadic_function
+initial:
+  logger.go: |
+    package main
+
+    import "fmt"
+
+    func Log(format string, args ...interface{}) {
+        fmt.Printf(format, args...)
+    }
+  app.go: |
+    package main
+
+    func Run() {
+        println("running")
+    }
+  unrelated/garbage.go: |
+    package unrelated
+
+    func UnusedApp_12345() {
+        println("garbage_marker_12345")
+    }
+
+    func AnotherUnused_67890() {
+        println("unused_marker_67890")
+    }
+changed:
+  app.go: |
+    package main
+
+    func Run() {
+        Log("Starting app: %s, version: %d", "myapp", 1)
+        Log("Config loaded")
+    }
+assertions:
+  must_include:
+  - Log
+  - Starting app
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Use variadic Log function

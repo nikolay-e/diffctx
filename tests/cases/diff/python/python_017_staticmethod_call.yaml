@@ -1,0 +1,34 @@
+name: python_017_staticmethod_call
+initial:
+  validators.py: |
+    import re
+
+    class Validator:
+        @staticmethod
+        def is_email(text: str) -> bool:
+            pattern = r'^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$'
+            return bool(re.match(pattern, text))
+
+        @staticmethod
+        def is_phone(text: str) -> bool:
+            return text.isdigit() and len(text) >= 10
+  forms.py: |
+    def validate_form():
+        pass
+  garbage.py: |
+    garbage_marker_12345 = "validator garbage"
+    unused_marker_67890 = "unused validator"
+changed:
+  forms.py: |
+    from validators import Validator
+
+    def validate_form(email: str, phone: str) -> bool:
+        valid_email = Validator.is_email(email)
+        valid_phone = Validator.is_phone(phone)
+        return valid_email and valid_phone
+assertions:
+  must_include:
+  - '@staticmethod'
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890

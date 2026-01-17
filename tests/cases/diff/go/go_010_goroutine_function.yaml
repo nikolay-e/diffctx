@@ -1,0 +1,53 @@
+name: go_010_goroutine_function
+initial:
+  worker.go: |
+    package main
+
+    func worker(id int, jobs <-chan int) {
+        for j := range jobs {
+            println("Worker", id, "processing job", j)
+        }
+    }
+  main.go: |
+    package main
+
+    func main() {
+        jobs := make(chan int, 100)
+        go worker(1, jobs)
+        go worker(2, jobs)
+        for j := 0; j < 10; j++ {
+            jobs <- j
+        }
+        close(jobs)
+    }
+  unrelated/garbage.go: |
+    package unrelated
+
+    func UnusedWorker_12345() {
+        println("garbage_marker_12345")
+    }
+
+    func UnusedMain_67890() {
+        println("unused_marker_67890")
+    }
+changed:
+  worker.go: |
+    package main
+
+    import "time"
+
+    func worker(id int, jobs <-chan int, results chan<- int) {
+        for j := range jobs {
+            time.Sleep(time.Millisecond * 100)
+            results <- j * 2
+        }
+    }
+assertions:
+  must_include:
+  - worker
+  - results
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add results channel to worker

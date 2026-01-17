@@ -1,0 +1,28 @@
+name: bash_004_coprocess
+initial:
+  coproc.sh: |
+    #!/bin/bash
+    echo "Coprocess"
+  garbage.sh: |
+    #!/bin/bash
+    SHELLTEST_COPROC_025="unused_coproc_99999"
+    unused_marker_12345="not_used"
+changed:
+  coproc.sh: |
+    #!/bin/bash
+
+    coproc WORKER { while read -r line; do echo "Processed: $line"; done; }
+
+    echo "Hello" >&${WORKER[1]}
+    read -r result <&${WORKER[0]}
+    echo "Result: $result"
+
+    exec {WORKER[1]}>&-
+    wait $WORKER_PID
+assertions:
+  must_include:
+  - coproc.sh
+  - WORKER
+  must_not_include:
+  - SHELLTEST_COPROC_025
+  - unused_marker_12345

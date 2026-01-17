@@ -1,0 +1,47 @@
+name: ts_006_template_literal_type
+initial:
+  events.ts: |
+    export type EventCategory = 'user' | 'system' | 'api';
+    export type EventAction = 'created' | 'updated' | 'deleted';
+
+    // ts_garbage_marker_006
+    type GarbageEvent = 'garbage';
+  template_types.ts: |
+    console.log('initial');
+changed:
+  template_types.ts: |
+    import { EventCategory, EventAction } from './events';
+
+    export type EventName = \`\${EventCategory}:\${EventAction}\`;
+
+    export type Getters<T> = {
+        [K in keyof T as \`get\${Capitalize<string & K>}\`]: () => T[K];
+    };
+
+    export type Setters<T> = {
+        [K in keyof T as \`set\${Capitalize<string & K>}\`]: (value: T[K]) => void;
+    };
+
+    export type CSSProperty = \`\${'margin' | 'padding'}-\${'top' | 'right' | 'bottom' | 'left'}\`;
+
+    export type HTTPMethod = \`\${'GET' | 'POST' | 'PUT' | 'DELETE'}\`;
+
+    export type Endpoint = \`/\${string}\`;
+
+    export type Route = \`\${HTTPMethod} \${Endpoint}\`;
+
+    interface Person {
+        name: string;
+        age: number;
+    }
+
+    export type PersonGetters = Getters<Person>;
+    export type PersonSetters = Setters<Person>;
+assertions:
+  must_include:
+  - template_types.ts
+  - EventName
+  must_not_include:
+  - ts_garbage_marker_006
+options:
+  commit_message: Add template literal types

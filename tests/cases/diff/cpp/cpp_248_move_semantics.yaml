@@ -1,0 +1,68 @@
+name: cpp_248_move_semantics
+initial:
+  buffer.h: |
+    #pragma once
+    #include <cstddef>
+    #include <utility>
+
+    class Buffer {
+        char* data_;
+        size_t size_;
+
+    public:
+        Buffer(size_t size) : data_(new char[size]), size_(size) {}
+        ~Buffer() { delete[] data_; }
+
+        Buffer(Buffer&& other) noexcept
+            : data_(other.data_), size_(other.size_) {
+            other.data_ = nullptr;
+            other.size_ = 0;
+        }
+
+        Buffer& operator=(Buffer&& other) noexcept {
+            if (this != &other) {
+                delete[] data_;
+                data_ = other.data_;
+                size_ = other.size_;
+                other.data_ = nullptr;
+                other.size_ = 0;
+            }
+            return *this;
+        }
+
+        Buffer(const Buffer&) = delete;
+        Buffer& operator=(const Buffer&) = delete;
+    };
+    // unused_marker_67890
+  processor.cpp: |
+    #include <iostream>
+    int main() { return 0; }
+changed:
+  processor.cpp: |
+    #include "buffer.h"
+    #include <utility>
+
+    Buffer createBuffer(size_t size) {
+        Buffer buf(size);
+        return buf;
+    }
+
+    void processBuffer(Buffer buf) {
+        // Process buffer
+    }
+
+    int main() {
+        Buffer b = createBuffer(1024);
+        processBuffer(std::move(b));
+        return 0;
+    }
+assertions:
+  must_include:
+  - createBuffer
+  - processBuffer
+  - move
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add move semantics

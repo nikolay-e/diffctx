@@ -1,0 +1,33 @@
+name: python_023_mixin_method_call
+initial:
+  mixins.py: |
+    import logging
+
+    class LoggingMixin:
+        logger = logging.getLogger(__name__)
+
+        def log_action(self, action: str):
+            self.logger.info(f"Action: {action}")
+
+        def log_error(self, error: str):
+            self.logger.error(f"Error: {error}")
+  service.py: |
+    class UserService:
+        pass
+  garbage.py: |
+    garbage_marker_12345 = "mixin garbage"
+    unused_marker_67890 = "unused mixin"
+changed:
+  service.py: |
+    from mixins import LoggingMixin
+
+    class UserService(LoggingMixin):
+        def create_user(self, name: str):
+            self.log_action(f"Creating user: {name}")
+            return {"name": name}
+assertions:
+  must_include:
+  - def log_action
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890

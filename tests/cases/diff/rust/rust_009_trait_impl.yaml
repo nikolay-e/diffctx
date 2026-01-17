@@ -1,0 +1,44 @@
+name: rust_009_trait_impl
+initial:
+  src/animal.rs: |
+    pub trait Animal {
+        fn speak(&self) -> String;
+    }
+
+    pub struct Dog {
+        pub name: String,
+    }
+changed:
+  src/animal.rs: |
+    pub trait Animal {
+        fn speak(&self) -> String;
+    }
+
+    pub struct Dog {
+        pub name: String,
+    }
+
+    impl Animal for Dog {
+        fn speak(&self) -> String {
+            format!("{} says woof!", self.name)
+        }
+    }
+
+    pub struct Cat {
+        pub name: String,
+    }
+
+    impl Animal for Cat {
+        fn speak(&self) -> String {
+            format!("{} says meow!", self.name)
+        }
+    }
+assertions:
+  must_include:
+  - impl Animal for Dog
+  - Cat
+  - meow
+  must_not_include:
+  - garbage_animal_type
+options:
+  commit_message: Add Animal impls for Dog and Cat

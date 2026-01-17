@@ -1,0 +1,25 @@
+name: quality_pytest_function
+initial:
+  calculator.py: |
+    def add(a, b):
+        return a + b
+
+    def subtract(a, b):
+        return a - b
+  test_calculator.py: |
+    def test_placeholder():
+        pass
+changed:
+  test_calculator.py: |
+    from calculator import add
+
+    def test_add_positive():
+        assert add(2, 3) == 5
+
+    def test_add_negative():
+        assert add(-1, -1) == -2
+assertions:
+  must_include:
+  - def add
+options:
+  commit_message: Add calculator tests

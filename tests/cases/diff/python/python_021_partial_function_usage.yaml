@@ -1,0 +1,28 @@
+name: python_021_partial_function_usage
+initial:
+  formatters.py: |
+    import functools
+
+    def format_number(value: float, precision: int = 2, prefix: str = "") -> str:
+        return f"{prefix}{value:.{precision}f}"
+
+    format_currency = functools.partial(format_number, precision=2, prefix="$")
+    format_percent = functools.partial(format_number, precision=1, prefix="")
+  reports.py: |
+    def generate():
+        pass
+  garbage.py: |
+    garbage_marker_12345 = "format garbage"
+    unused_marker_67890 = "unused format"
+changed:
+  reports.py: |
+    from formatters import format_currency
+
+    def generate(amount: float) -> str:
+        return format_currency(amount)
+assertions:
+  must_include:
+  - def format_number
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890

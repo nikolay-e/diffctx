@@ -1,0 +1,39 @@
+name: k8s_429_network_policy_ingress
+initial:
+  networkpolicy.yaml: |
+    apiVersion: networking.k8s.io/v1
+    kind: NetworkPolicy
+    metadata:
+      name: default-deny
+    spec:
+      podSelector: {}
+      policyTypes:
+      - Ingress
+  unrelated.txt: |
+    garbage_marker_k8s429 = True
+    unused_marker_k8s429 = False
+changed:
+  networkpolicy.yaml: |
+    apiVersion: networking.k8s.io/v1
+    kind: NetworkPolicy
+    metadata:
+      name: api-policy
+    spec:
+      podSelector:
+        matchLabels:
+          app: api
+      ingress:
+      - from:
+        - podSelector:
+            matchLabels:
+              role: frontend
+        ports:
+        - port: 8080
+assertions:
+  must_include:
+  - NetworkPolicy
+  must_not_include:
+  - garbage_marker_k8s429
+  - unused_marker_k8s429
+options:
+  commit_message: Add network policy ingress

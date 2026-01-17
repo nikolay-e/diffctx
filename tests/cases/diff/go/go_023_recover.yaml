@@ -1,0 +1,47 @@
+name: go_023_recover
+initial:
+  handler.go: |
+    package main
+
+    func HandleRequest() {
+        println("handling request")
+    }
+  unrelated/garbage.go: |
+    package unrelated
+
+    func UnusedHandler_12345() {
+        println("garbage_marker_12345")
+    }
+
+    func AnotherUnused_67890() {
+        println("unused_marker_67890")
+    }
+changed:
+  handler.go: |
+    package main
+
+    import "log"
+
+    func HandleRequest() {
+        defer func() {
+            if r := recover(); r != nil {
+                log.Printf("Recovered from panic: %v", r)
+            }
+        }()
+
+        processRequest()
+    }
+
+    func processRequest() {
+        panic("something went wrong")
+    }
+assertions:
+  must_include:
+  - HandleRequest
+  - recover
+  - processRequest
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add panic recovery

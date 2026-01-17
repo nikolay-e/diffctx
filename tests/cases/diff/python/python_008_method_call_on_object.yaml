@@ -1,0 +1,29 @@
+name: python_008_method_call_on_object
+initial:
+  models/user.py: |
+    class User:
+        def __init__(self, name: str):
+            self.name = name
+            self.active = True
+
+        def update_profile(self, data: dict):
+            self.name = data.get("name", self.name)
+  handlers/profile.py: |
+    def handle_update():
+        pass
+  garbage.py: |
+    garbage_marker_12345 = "unused"
+    unused_marker_67890 = "also unused"
+changed:
+  handlers/profile.py: |
+    from models.user import User
+
+    def handle_update(user: User, data: dict):
+        user.update_profile(data)
+        return user
+assertions:
+  must_include:
+  - def update_profile
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890

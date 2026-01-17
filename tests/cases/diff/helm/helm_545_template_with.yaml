@@ -1,0 +1,37 @@
+name: helm_545_template_with
+initial:
+  values.yaml: |
+    nodeSelector:
+      kubernetes.io/os: linux
+  templates/deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    spec:
+      template:
+        spec:
+          containers:
+          - name: app
+  unrelated.md: |
+    # garbage_marker_12345
+    unused_marker_67890
+changed:
+  templates/deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    spec:
+      template:
+        spec:
+          {{- with .Values.nodeSelector }}
+          nodeSelector:
+    {{ toYaml . | indent 8 }}
+          {{- end }}
+          containers:
+          - name: app
+assertions:
+  must_include:
+  - with .Values.nodeSelector
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add with

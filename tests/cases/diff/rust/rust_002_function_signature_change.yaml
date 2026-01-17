@@ -1,0 +1,31 @@
+name: rust_002_function_signature_change
+initial:
+  src/math.rs: |
+    pub fn add(a: i32, b: i32) -> i32 {
+        a + b
+    }
+  src/main.rs: |
+    mod math;
+
+    fn main() {
+        let result = math::add(2, 3);
+        println!("Result: {}", result);
+    }
+changed:
+  src/math.rs: |
+    pub fn add(a: i64, b: i64) -> i64 {
+        a + b
+    }
+
+    pub fn subtract(a: i64, b: i64) -> i64 {
+        a - b
+    }
+assertions:
+  must_include:
+  - add
+  - i64
+  - subtract
+  must_not_include:
+  - garbage_unused_symbol
+options:
+  commit_message: Change add signature and add subtract

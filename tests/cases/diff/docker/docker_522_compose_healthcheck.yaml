@@ -1,0 +1,36 @@
+name: docker_522_compose_healthcheck
+initial:
+  app.py: |
+    from flask import Flask
+    app = Flask(__name__)
+
+    @app.route('/health')
+    def health():
+        return 'OK'
+  docker-compose.yml: |
+    version: '3.8'
+    services:
+      api:
+        build: .
+  unrelated.txt: |
+    garbage_marker_12345
+    unused_marker_67890
+changed:
+  docker-compose.yml: |
+    version: '3.8'
+    services:
+      api:
+        build: .
+        healthcheck:
+          test: ["CMD", "curl", "-f", "http://localhost/health"]
+          interval: 30s
+          timeout: 10s
+          retries: 3
+assertions:
+  must_include:
+  - 'healthcheck:'
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add healthcheck

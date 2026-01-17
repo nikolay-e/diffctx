@@ -1,0 +1,27 @@
+name: helm_556_condition
+initial:
+  Chart.yaml: |
+    apiVersion: v2
+    name: myapp
+    dependencies:
+      - name: backend
+        version: 1.0.0
+  junk.txt: |
+    garbage_marker_12345
+    unused_marker_67890
+changed:
+  Chart.yaml: |
+    apiVersion: v2
+    name: myapp
+    dependencies:
+      - name: backend
+        version: 1.0.0
+        condition: backend.enabled
+assertions:
+  must_include:
+  - 'condition: backend.enabled'
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add condition

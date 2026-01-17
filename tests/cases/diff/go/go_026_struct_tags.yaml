@@ -1,0 +1,47 @@
+name: go_026_struct_tags
+initial:
+  models.go: |
+    package main
+
+    type User struct {
+        ID   int
+        Name string
+    }
+  api.go: |
+    package main
+
+    import "encoding/json"
+
+    func SerializeUser(u *User) ([]byte, error) {
+        return json.Marshal(u)
+    }
+  unrelated/garbage.go: |
+    package unrelated
+
+    func UnusedModels_12345() {
+        println("garbage_marker_12345")
+    }
+
+    func UnusedApi_67890() {
+        println("unused_marker_67890")
+    }
+changed:
+  models.go: |
+    package main
+
+    type User struct {
+        ID        int    `json:"id" db:"user_id"`
+        Name      string `json:"name" db:"full_name" validate:"required"`
+        Email     string `json:"email,omitempty" validate:"email"`
+        CreatedAt string `json:"created_at" db:"created_at"`
+    }
+assertions:
+  must_include:
+  - User
+  - 'json:'
+  - 'db:'
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add struct tags

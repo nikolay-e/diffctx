@@ -1,0 +1,35 @@
+name: rust_005_impl_block
+initial:
+  src/circle.rs: |
+    pub struct Circle {
+        pub radius: f64,
+    }
+changed:
+  src/circle.rs: |
+    pub struct Circle {
+        pub radius: f64,
+    }
+
+    impl Circle {
+        pub fn new(radius: f64) -> Self {
+            Self { radius }
+        }
+
+        pub fn area(&self) -> f64 {
+            std::f64::consts::PI * self.radius * self.radius
+        }
+
+        pub fn circumference(&self) -> f64 {
+            2.0 * std::f64::consts::PI * self.radius
+        }
+    }
+assertions:
+  must_include:
+  - Circle
+  - area
+  - circumference
+  - PI
+  must_not_include:
+  - garbage_circle_method
+options:
+  commit_message: Add Circle impl block

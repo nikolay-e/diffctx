@@ -1,0 +1,16 @@
+name: fragment_class_decorator_included
+initial:
+  decorated_class.py: |
+    @dataclass
+    class MyClass:
+        value: int
+changed:
+  decorated_class.py: |
+    @dataclass
+    class MyClass:
+        value: int
+        name: str
+assertions:
+  must_include:
+  - '@dataclass'
+  - MyClass

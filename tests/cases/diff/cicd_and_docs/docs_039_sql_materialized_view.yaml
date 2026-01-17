@@ -1,0 +1,38 @@
+name: docs_039_sql_materialized_view
+initial:
+  sql/views/sales_summary_mv.sql: |
+    CREATE MATERIALIZED VIEW sales_summary AS
+    SELECT
+        DATE_TRUNC('day', o.created_at) AS day,
+        COUNT(*) AS order_count,
+        SUM(o.total) AS revenue
+    FROM orders o
+    GROUP BY DATE_TRUNC('day', o.created_at)
+    WITH DATA;
+
+    CREATE UNIQUE INDEX idx_sales_summary_day ON sales_summary(day);
+  sql/jobs/refresh_views.sql: |
+    REFRESH MATERIALIZED VIEW CONCURRENTLY sales_summary;
+changed:
+  sql/views/sales_summary_mv.sql: |
+    CREATE MATERIALIZED VIEW sales_summary AS
+    SELECT
+        DATE_TRUNC('day', o.created_at) AS day,
+        COUNT(*) AS order_count,
+        SUM(o.total) AS revenue,
+        AVG(o.total) AS avg_order_value,
+        COUNT(DISTINCT o.user_id) AS unique_customers,
+        SUM(CASE WHEN o.status = 'refunded' THEN o.total ELSE 0 END) AS refunded_amount
+    FROM orders o
+    WHERE o.status != 'cancelled'
+    GROUP BY DATE_TRUNC('day', o.created_at)
+    WITH DATA;
+
+    CREATE UNIQUE INDEX idx_sales_summary_day ON sales_summary(day);
+    CREATE INDEX idx_sales_summary_revenue ON sales_summary(revenue);
+assertions:
+  must_include:
+  - sales_summary_mv.sql
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890

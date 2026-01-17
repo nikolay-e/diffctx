@@ -1,0 +1,39 @@
+name: python_003_dunder_method_changed
+initial:
+  money.py: |
+    class Money:
+        def __init__(self, amount, currency="USD"):
+            self.amount = amount
+            self.currency = currency
+
+        def __str__(self):
+            return f"{self.currency} {self.amount:.2f}"
+  calculator.py: |
+    from money import Money
+
+    def sum_money(m1, m2):
+        return Money(m1.amount + m2.amount)
+  unrelated.py: |
+    garbage_marker_12345 = "test"
+    unused_marker_67890 = 123
+changed:
+  money.py: |
+    class Money:
+        def __init__(self, amount, currency="USD"):
+            self.amount = amount
+            self.currency = currency
+
+        def __str__(self):
+            return f"{self.currency} {self.amount:.2f}"
+
+        def __add__(self, other):
+            if self.currency != other.currency:
+                raise ValueError("Currency mismatch")
+            return Money(self.amount + other.amount, self.currency)
+assertions:
+  must_include:
+  - __add__
+  - class Money
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890

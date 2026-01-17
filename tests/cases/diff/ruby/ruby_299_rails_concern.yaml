@@ -1,0 +1,42 @@
+name: ruby_299_rails_concern
+initial:
+  commentable.rb: |
+    module Commentable
+      def self.included(base)
+        base.class_eval do
+          # has_many :comments simulation
+          define_method(:comments) { @comments ||= [] }
+          define_method(:add_comment) { |c| comments << c }
+        end
+      end
+    end
+  post.rb: |
+    # Initial
+    class Post
+    end
+changed:
+  post.rb: |
+    require_relative 'commentable'
+
+    class Post
+      include Commentable
+
+      attr_accessor :title, :body
+
+      def initialize(title:, body:)
+        @title = title
+        @body = body
+      end
+    end
+
+    post = Post.new(title: 'Hello', body: 'World')
+    post.add_comment('Great post!')
+assertions:
+  must_include:
+  - include Commentable
+  - add_comment
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add Rails concern

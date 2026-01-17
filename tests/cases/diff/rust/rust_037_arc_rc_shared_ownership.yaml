@@ -1,0 +1,64 @@
+name: rust_037_arc_rc_shared_ownership
+initial:
+  src/cache.rs: |
+    use std::collections::HashMap;
+
+    pub struct Cache {
+        data: HashMap<String, String>,
+    }
+
+    impl Cache {
+        pub fn new() -> Self {
+            Self { data: HashMap::new() }
+        }
+
+        pub fn get(&self, key: &str) -> Option<&String> {
+            self.data.get(key)
+        }
+    }
+changed:
+  src/cache.rs: |
+    use std::collections::HashMap;
+    use std::sync::{Arc, RwLock};
+
+    pub struct Cache {
+        data: Arc<RwLock<HashMap<String, String>>>,
+    }
+
+    impl Cache {
+        pub fn new() -> Self {
+            Self {
+                data: Arc::new(RwLock::new(HashMap::new())),
+            }
+        }
+
+        pub fn get(&self, key: &str) -> Option<String> {
+            self.data.read().unwrap().get(key).cloned()
+        }
+
+        pub fn set(&self, key: String, value: String) {
+            self.data.write().unwrap().insert(key, value);
+        }
+
+        pub fn clone_handle(&self) -> Arc<RwLock<HashMap<String, String>>> {
+            Arc::clone(&self.data)
+        }
+    }
+
+    impl Clone for Cache {
+        fn clone(&self) -> Self {
+            Self {
+                data: Arc::clone(&self.data),
+            }
+        }
+    }
+assertions:
+  must_include:
+  - Arc
+  - RwLock
+  - clone_handle
+  - set
+  must_not_include:
+  - garbage_cache_method
+options:
+  commit_message: Add Arc and RwLock for thread-safe shared ownership

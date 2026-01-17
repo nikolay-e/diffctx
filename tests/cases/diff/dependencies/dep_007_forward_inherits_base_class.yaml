@@ -1,0 +1,26 @@
+name: dep_007_forward_inherits_base_class
+initial:
+  handlers/base.py: |
+    class BaseHandler:
+        def handle(self):
+            return "base"
+
+        def setup(self):
+            pass
+  custom_handler.py: |
+    def placeholder():
+        pass
+changed:
+  custom_handler.py: |
+    from handlers.base import BaseHandler
+
+    class CustomHandler(BaseHandler):
+        def handle(self):
+            super().handle()
+            return "custom"
+assertions:
+  must_include:
+  - custom_handler.py
+  - base.py
+  must_not_include:
+  - garbage_marker_12345

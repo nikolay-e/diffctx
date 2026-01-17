@@ -1,0 +1,61 @@
+name: go_021_type_assertion
+initial:
+  types.go: |
+    package main
+
+    type Reader interface {
+        Read() string
+    }
+
+    type Writer interface {
+        Write(s string)
+    }
+
+    type FileHandler struct {
+        path string
+    }
+
+    func (f *FileHandler) Read() string {
+        return "content"
+    }
+
+    func (f *FileHandler) Write(s string) {}
+  processor.go: |
+    package main
+
+    func Process(r Reader) {}
+  unrelated/garbage.go: |
+    package unrelated
+
+    func UnusedTypes_12345() {
+        println("garbage_marker_12345")
+    }
+
+    func UnusedProcessor_67890() {
+        println("unused_marker_67890")
+    }
+changed:
+  processor.go: |
+    package main
+
+    func Process(r Reader) {
+        content := r.Read()
+
+        if w, ok := r.(Writer); ok {
+            w.Write("processed: " + content)
+        }
+
+        if fh, ok := r.(*FileHandler); ok {
+            println("File path:", fh.path)
+        }
+    }
+assertions:
+  must_include:
+  - Process
+  - Writer
+  - FileHandler
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add type assertion

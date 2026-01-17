@@ -1,0 +1,38 @@
+name: docker_520_compose_networks
+initial:
+  docker-compose.yml: |
+    version: '3.8'
+    services:
+      api:
+        build: .
+      db:
+        image: postgres:13
+  unrelated.py: |
+    garbage_marker_12345 = True
+    unused_marker_67890 = False
+changed:
+  docker-compose.yml: |
+    version: '3.8'
+    services:
+      api:
+        build: .
+        networks:
+          - frontend
+          - backend
+      db:
+        image: postgres:13
+        networks:
+          - backend
+    networks:
+      frontend:
+        driver: bridge
+      backend:
+        driver: bridge
+assertions:
+  must_include:
+  - 'networks:'
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add networks

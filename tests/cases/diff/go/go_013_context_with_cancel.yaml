@@ -1,0 +1,73 @@
+name: go_013_context_with_cancel
+initial:
+  service.go: |
+    package main
+
+    import "context"
+
+    func longOperation(ctx context.Context) error {
+        select {
+        case <-ctx.Done():
+            return ctx.Err()
+        default:
+            return nil
+        }
+    }
+  handler.go: |
+    package main
+
+    import "context"
+
+    func handle() {
+        ctx, cancel := context.WithCancel(context.Background())
+        defer cancel()
+        longOperation(ctx)
+    }
+  unrelated/garbage.go: |
+    package unrelated
+
+    func UnusedService_12345() {
+        println("garbage_marker_12345")
+    }
+
+    func UnusedHandler_67890() {
+        println("unused_marker_67890")
+    }
+changed:
+  service.go: |
+    package main
+
+    import (
+        "context"
+        "time"
+    )
+
+    func longOperation(ctx context.Context) error {
+        ticker := time.NewTicker(time.Second)
+        defer ticker.Stop()
+
+        for {
+            select {
+            case <-ctx.Done():
+                return ctx.Err()
+            case <-ticker.C:
+                if err := doWork(); err != nil {
+                    return err
+                }
+            }
+        }
+    }
+
+    func doWork() error {
+        return nil
+    }
+assertions:
+  must_include:
+  - longOperation
+  - doWork
+  - ticker
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add ticker-based work loop

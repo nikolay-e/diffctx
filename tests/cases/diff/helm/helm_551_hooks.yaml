@@ -1,0 +1,34 @@
+name: helm_551_hooks
+initial:
+  templates/hooks/pre-install.yaml: |
+    # Hook placeholder
+  unrelated.md: |
+    # garbage_marker_12345
+    unused_marker_67890
+changed:
+  templates/hooks/pre-install.yaml: |
+    apiVersion: batch/v1
+    kind: Job
+    metadata:
+      name: {{ .Release.Name }}-db-init
+      annotations:
+        "helm.sh/hook": pre-install
+        "helm.sh/hook-weight": "-5"
+        "helm.sh/hook-delete-policy": hook-succeeded
+    spec:
+      template:
+        spec:
+          containers:
+          - name: init
+            image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
+            command: ["./init-db.sh"]
+          restartPolicy: Never
+assertions:
+  must_include:
+  - helm.sh/hook
+  - pre-install
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add hook

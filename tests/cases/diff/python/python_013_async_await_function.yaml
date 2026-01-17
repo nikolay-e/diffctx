@@ -1,0 +1,28 @@
+name: python_013_async_await_function
+initial:
+  fetcher.py: |
+    import aiohttp
+
+    async def fetch_user_data(user_id: int) -> dict:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(f"/users/{user_id}") as resp:
+                return await resp.json()
+  handlers.py: |
+    async def handle_request():
+        pass
+  garbage.py: |
+    garbage_marker_12345 = "fetcher garbage"
+    unused_marker_67890 = "unused fetcher"
+changed:
+  handlers.py: |
+    from fetcher import fetch_user_data
+
+    async def handle_request(user_id: int):
+        data = await fetch_user_data(user_id)
+        return {"user": data}
+assertions:
+  must_include:
+  - async def fetch_user_data
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890

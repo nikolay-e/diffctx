@@ -1,0 +1,32 @@
+name: cicd_034_gitlab_extends
+initial:
+  .gitlab-ci.yml: |
+    build:
+      script:
+        - npm run build
+
+    test:
+      script:
+        - npm test
+changed:
+  .gitlab-ci.yml: |
+    .base-job:
+      image: node:18
+      before_script:
+        - npm ci
+
+    build:
+      extends: .base-job
+      script:
+        - npm run build
+
+    test:
+      extends: .base-job
+      script:
+        - npm test
+assertions:
+  must_include:
+  - .gitlab-ci.yml
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890

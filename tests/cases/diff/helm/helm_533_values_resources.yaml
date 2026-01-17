@@ -1,0 +1,27 @@
+name: helm_533_values_resources
+initial:
+  values.yaml: |
+    replicaCount: 1
+    resources: {}
+  unrelated.md: |
+    # garbage_marker_12345
+    unused_marker_67890
+changed:
+  values.yaml: |
+    replicaCount: 1
+    resources:
+      limits:
+        cpu: 500m
+        memory: 512Mi
+      requests:
+        cpu: 250m
+        memory: 256Mi
+assertions:
+  must_include:
+  - 'resources:'
+  - 'cpu: 500m'
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add resources

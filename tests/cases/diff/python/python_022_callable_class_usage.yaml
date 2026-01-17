@@ -1,0 +1,32 @@
+name: python_022_callable_class_usage
+initial:
+  processor.py: |
+    class TextProcessor:
+        def __init__(self, uppercase: bool = False):
+            self.uppercase = uppercase
+
+        def __call__(self, text: str) -> str:
+            result = text.strip()
+            if self.uppercase:
+                result = result.upper()
+            return result
+  handler.py: |
+    def handle():
+        pass
+  garbage.py: |
+    garbage_marker_12345 = "text garbage"
+    unused_marker_67890 = "unused text"
+changed:
+  handler.py: |
+    from processor import TextProcessor
+
+    processor = TextProcessor(uppercase=True)
+
+    def handle(text: str) -> str:
+        return processor(text)
+assertions:
+  must_include:
+  - __call__
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890

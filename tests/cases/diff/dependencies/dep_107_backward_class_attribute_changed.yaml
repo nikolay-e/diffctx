@@ -1,0 +1,26 @@
+name: dep_107_backward_class_attribute_changed
+initial:
+  models.py: |
+    class Config:
+        timeout = 30
+        max_connections = 10
+  client.py: |
+    from models import Config
+
+    def make_request():
+        timeout = Config.timeout
+        return f"Request with timeout {timeout}"
+  settings.py: |
+    from models import Config
+
+    default_timeout = Config.timeout
+changed:
+  models.py: |
+    class Config:
+        timeout = 60
+        max_connections = 10
+assertions:
+  must_include:
+  - models.py
+  must_not_include:
+  - garbage_marker_12345

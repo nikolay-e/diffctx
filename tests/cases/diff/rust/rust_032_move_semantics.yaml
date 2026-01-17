@@ -1,0 +1,50 @@
+name: rust_032_move_semantics
+initial:
+  src/resource.rs: |
+    pub struct Resource {
+        data: String,
+    }
+
+    impl Resource {
+        pub fn new(data: String) -> Self {
+            Self { data }
+        }
+
+        pub fn consume(self) -> String {
+            self.data
+        }
+    }
+  src/handler.rs: |
+    use crate::resource::Resource;
+
+    pub fn handle(resource: Resource) {
+        let data = resource.consume();
+        println!("Handled: {}", data);
+    }
+changed:
+  src/handler.rs: |
+    use crate::resource::Resource;
+
+    pub fn handle(resource: Resource) {
+        let data = resource.consume();
+        println!("Handled: {}", data);
+    }
+
+    pub fn transfer_ownership(resource: Resource) -> Resource {
+        println!("Transferring: {}", resource.data);
+        resource
+    }
+
+    pub fn take_and_return(mut resource: Resource) -> Resource {
+        resource.data.push_str("_processed");
+        resource
+    }
+assertions:
+  must_include:
+  - transfer_ownership
+  - take_and_return
+  - _processed
+  must_not_include:
+  - garbage_ownership_fn
+options:
+  commit_message: Add ownership transfer functions

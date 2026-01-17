@@ -1,0 +1,24 @@
+name: context_caller_backward_edges
+initial:
+  src/core.py: |
+    def core_function():
+        return 42
+  src/caller_a.py: |
+    from core import core_function
+
+    def use_core_a():
+        return core_function() + 1
+  src/caller_b.py: |
+    from core import core_function
+
+    def use_core_b():
+        return core_function() * 2
+changed:
+  src/core.py: |
+    def core_function():
+        return 100
+assertions:
+  must_include:
+  - core.py
+options:
+  commit_message: Change core return value

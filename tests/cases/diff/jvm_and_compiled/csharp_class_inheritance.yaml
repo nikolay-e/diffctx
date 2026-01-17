@@ -1,0 +1,51 @@
+name: csharp_class_inheritance
+initial:
+  Person.cs: |
+    public class Person
+    {
+        public string Name { get; set; }
+        public int Age { get; set; }
+
+        public Person(string name, int age)
+        {
+            Name = name;
+            Age = age;
+        }
+    }
+  IWorker.cs: |
+    public interface IWorker
+    {
+        void Work();
+        decimal GetSalary();
+    }
+  Employee.cs: |
+    // Initial
+    public class Employee { }
+changed:
+  Employee.cs: |
+    public class Employee : Person, IWorker
+    {
+        public string Department { get; set; }
+        public decimal Salary { get; set; }
+
+        public Employee(string name, int age, string department, decimal salary)
+            : base(name, age)
+        {
+            Department = department;
+            Salary = salary;
+        }
+
+        public void Work()
+        {
+            Console.WriteLine($"{Name} is working in {Department}");
+        }
+
+        public decimal GetSalary() => Salary;
+    }
+assertions:
+  must_include:
+  - Employee.cs
+  - Person, IWorker
+  - Work()
+options:
+  commit_message: Add class inheritance

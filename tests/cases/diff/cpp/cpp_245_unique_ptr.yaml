@@ -1,0 +1,42 @@
+name: cpp_245_unique_ptr
+initial:
+  resource.h: |
+    #pragma once
+    #include <string>
+
+    class Resource {
+    public:
+        std::string id;
+        Resource(const std::string& id) : id(id) {}
+        void use() {}
+    };
+    // garbage_marker_12345
+  manager.cpp: |
+    #include <iostream>
+    int main() { return 0; }
+changed:
+  manager.cpp: |
+    #include "resource.h"
+    #include <memory>
+
+    class ResourceManager {
+    public:
+        std::unique_ptr<Resource> acquire(const std::string& id) {
+            return std::make_unique<Resource>(id);
+        }
+
+        void process() {
+            auto res = acquire("resource-1");
+            res->use();
+        }
+    };
+assertions:
+  must_include:
+  - ResourceManager
+  - acquire
+  - unique_ptr
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add unique_ptr usage

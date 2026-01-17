@@ -1,0 +1,68 @@
+name: ts_009_utility_types
+initial:
+  models.ts: |
+    export interface User {
+        id: string;
+        name: string;
+        email: string;
+        password: string;
+        createdAt: Date;
+        updatedAt: Date;
+    }
+
+    export interface Product {
+        id: string;
+        name: string;
+        price: number;
+        description: string;
+        category: string;
+        inStock: boolean;
+    }
+
+    // ts_garbage_marker_009
+    interface GarbageModel { garbage: true }
+  dtos.ts: |
+    console.log('initial');
+changed:
+  dtos.ts: |
+    import { User, Product } from './models';
+
+    export type UserDTO = Omit<User, 'password'>;
+
+    export type CreateUserDTO = Pick<User, 'name' | 'email' | 'password'>;
+
+    export type UpdateUserDTO = Partial<Pick<User, 'name' | 'email'>>;
+
+    export type UserResponse = Readonly<UserDTO>;
+
+    export type ProductPreview = Pick<Product, 'id' | 'name' | 'price'>;
+
+    export type ProductUpdate = Partial<Omit<Product, 'id'>>;
+
+    export type RequiredProduct = Required<Partial<Product>>;
+
+    export type NonNullableUser = {
+        [K in keyof User]: NonNullable<User[K]>;
+    };
+
+    export function toUserDTO(user: User): UserDTO {
+        const { password, ...dto } = user;
+        return dto;
+    }
+
+    export function createUser(data: CreateUserDTO): User {
+        return {
+            ...data,
+            id: crypto.randomUUID(),
+            createdAt: new Date(),
+            updatedAt: new Date(),
+        };
+    }
+assertions:
+  must_include:
+  - dtos.ts
+  - Omit<User
+  must_not_include:
+  - ts_garbage_marker_009
+options:
+  commit_message: Add utility types usage

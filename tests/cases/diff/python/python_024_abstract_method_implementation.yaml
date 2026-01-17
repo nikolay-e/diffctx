@@ -1,0 +1,35 @@
+name: python_024_abstract_method_implementation
+initial:
+  base.py: |
+    from abc import ABC, abstractmethod
+
+    class BaseHandler(ABC):
+        @abstractmethod
+        def execute(self, data: dict) -> dict:
+            pass
+
+        @abstractmethod
+        def validate(self, data: dict) -> bool:
+            pass
+  handlers.py: |
+    class Handler:
+        pass
+  garbage.py: |
+    garbage_marker_12345 = "abstract garbage"
+    unused_marker_67890 = "unused abstract"
+changed:
+  handlers.py: |
+    from base import BaseHandler
+
+    class ConcreteHandler(BaseHandler):
+        def execute(self, data: dict) -> dict:
+            return {"processed": data}
+
+        def validate(self, data: dict) -> bool:
+            return "id" in data
+assertions:
+  must_include:
+  - '@abstractmethod'
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890

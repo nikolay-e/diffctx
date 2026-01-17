@@ -1,0 +1,29 @@
+name: docs_032_sql_create_type_enum
+initial:
+  sql/types/order_status.sql: |
+    CREATE TYPE order_status AS ENUM (
+        'pending',
+        'confirmed',
+        'shipped',
+        'delivered'
+    );
+  src/models/order.py: |
+    from enum import Enum
+
+    class OrderStatus(Enum):
+        PENDING = 'pending'
+        CONFIRMED = 'confirmed'
+        SHIPPED = 'shipped'
+        DELIVERED = 'delivered'
+changed:
+  sql/types/order_status.sql: |
+    -- Note: In PostgreSQL, you need to add values to existing enum
+    ALTER TYPE order_status ADD VALUE 'processing' AFTER 'pending';
+    ALTER TYPE order_status ADD VALUE 'cancelled' AFTER 'delivered';
+    ALTER TYPE order_status ADD VALUE 'refunded' AFTER 'cancelled';
+assertions:
+  must_include:
+  - order_status.sql
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890

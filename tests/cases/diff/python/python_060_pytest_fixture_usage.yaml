@@ -1,0 +1,35 @@
+name: python_060_pytest_fixture_usage
+initial:
+  conftest.py: |
+    import pytest
+
+    @pytest.fixture
+    def db_session():
+        from database import Session
+        session = Session()
+        yield session
+        session.close()
+
+    @pytest.fixture
+    def test_user(db_session):
+        from models import User
+        user = User(name="Test")
+        db_session.add(user)
+        db_session.commit()
+        return user
+  test_service.py: |
+    def test_example():
+        pass
+  garbage.py: |
+    garbage_marker_12345 = "pytest garbage"
+    unused_marker_67890 = "unused pytest"
+changed:
+  test_service.py: |
+    def test_create_user(db_session, test_user):
+        assert test_user.name == "Test"
+assertions:
+  must_include:
+  - '@pytest.fixture'
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890

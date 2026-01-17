@@ -1,0 +1,18 @@
+name: fragment_env_file_change
+initial:
+  app.py: |
+    import os
+
+    DEBUG = os.getenv("DEBUG", False)
+
+    def main():
+        if DEBUG:
+            print("Debug mode")
+  .env: |
+    DEBUG=false
+changed:
+  .env: |
+    DEBUG=true
+assertions:
+  must_include:
+  - .env

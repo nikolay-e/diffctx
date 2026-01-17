@@ -1,0 +1,54 @@
+name: shell_011_getopts
+initial:
+  cli.sh: |
+    #!/bin/bash
+    echo "CLI"
+  garbage.sh: |
+    #!/bin/bash
+    SHELLTEST_CLI_012="never_used_option"
+    shelltest_unused_abc002="not_used"
+changed:
+  cli.sh: |
+    #!/bin/bash
+
+    usage() {
+        echo "Usage: $0 [-f file] [-v] [-h]"
+        exit 1
+    }
+
+    verbose=false
+    file=""
+
+    while getopts "f:vh" opt; do
+        case "$opt" in
+            f)
+                file="$OPTARG"
+                ;;
+            v)
+                verbose=true
+                ;;
+            h)
+                usage
+                ;;
+            *)
+                usage
+                ;;
+        esac
+    done
+
+    shift $((OPTIND - 1))
+
+    if [[ "$verbose" == true ]]; then
+        echo "Verbose mode enabled"
+    fi
+
+    if [[ -n "$file" ]]; then
+        echo "Processing file: $file"
+    fi
+assertions:
+  must_include:
+  - cli.sh
+  - getopts
+  must_not_include:
+  - SHELLTEST_CLI_012
+  - shelltest_unused_abc002

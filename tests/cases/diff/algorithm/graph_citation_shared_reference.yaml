@@ -1,0 +1,22 @@
+name: graph_citation_shared_reference
+initial:
+  paper.md: |
+    # Methods
+
+    According to [@smith2020], the approach works.
+
+    # Results
+
+    As shown by [@smith2020], results are positive.
+changed:
+  paper.md: |
+    # Methods
+
+    According to [@smith2020], the MODIFIED approach works.
+
+    # Results
+
+    As shown by [@smith2020], results are positive.
+assertions:
+  must_include:
+  - Methods

@@ -1,0 +1,67 @@
+name: go_025_struct_embedding
+initial:
+  base.go: |
+    package main
+
+    type Base struct {
+        ID        int
+        CreatedAt string
+    }
+
+    func (b *Base) GetID() int {
+        return b.ID
+    }
+
+    type Timestamps struct {
+        CreatedAt string
+        UpdatedAt string
+    }
+  user.go: |
+    package main
+
+    type User struct {
+        Name string
+    }
+  unrelated/garbage.go: |
+    package unrelated
+
+    func UnusedBase_12345() {
+        println("garbage_marker_12345")
+    }
+
+    func UnusedUser_67890() {
+        println("unused_marker_67890")
+    }
+changed:
+  user.go: |
+    package main
+
+    type User struct {
+        Base
+        Timestamps
+        Name  string
+        Email string
+    }
+
+    func NewUser(name, email string) *User {
+        return &User{
+            Base:  Base{ID: 1},
+            Name:  name,
+            Email: email,
+        }
+    }
+
+    func (u *User) Display() string {
+        return u.Name + " (ID: " + string(u.GetID()) + ")"
+    }
+assertions:
+  must_include:
+  - User
+  - Base
+  - Timestamps
+  - NewUser
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Embed Base and Timestamps in User

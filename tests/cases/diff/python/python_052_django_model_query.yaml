@@ -1,0 +1,28 @@
+name: python_052_django_model_query
+initial:
+  models.py: |
+    from django.db import models
+
+    class User(models.Model):
+        name = models.CharField(max_length=100)
+        email = models.EmailField(unique=True)
+        created_at = models.DateTimeField(auto_now_add=True)
+  views.py: |
+    def index():
+        pass
+  garbage.py: |
+    garbage_marker_12345 = "django garbage"
+    unused_marker_67890 = "unused django"
+changed:
+  views.py: |
+    from models import User
+
+    def index():
+        users = User.objects.filter(name__icontains="john")
+        return list(users)
+assertions:
+  must_include:
+  - class User
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890

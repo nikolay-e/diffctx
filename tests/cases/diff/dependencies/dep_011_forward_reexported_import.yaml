@@ -1,0 +1,22 @@
+name: dep_011_forward_reexported_import
+initial:
+  mylib/core.py: |
+    def process():
+        return "processed"
+  mylib/__init__.py: |
+    from .core import process
+  app.py: |
+    def run():
+        pass
+changed:
+  app.py: |
+    from mylib import process
+
+    def run():
+        result = process()
+        return result
+assertions:
+  must_include:
+  - app.py
+  must_not_include:
+  - garbage_marker_12345

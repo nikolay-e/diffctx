@@ -1,7 +1,9 @@
+from __future__ import annotations
+
 import sys
 from dataclasses import dataclass
 from functools import lru_cache
-from typing import Any, Optional
+from typing import Any
 
 CHUNK_SIZE = 500_000
 CHUNK_THRESHOLD = 1_000_000
@@ -17,12 +19,12 @@ class TokenCountResult:
 
 
 @lru_cache(maxsize=4)
-def _get_encoder(encoding: str) -> Optional[Any]:
+def _get_encoder(encoding: str) -> Any | None:
     try:
         import tiktoken
 
         return tiktoken.get_encoding(encoding)
-    except (ImportError, Exception):
+    except (ImportError, KeyError, ValueError):
         return None
 
 
@@ -72,10 +74,9 @@ def _count_tokens_sampled(text: str, text_len: int, encoder: Any, encoding: str)
 def _format_size(byte_size: int) -> str:
     if byte_size < 1024:
         return f"{byte_size} B"
-    elif byte_size < 1024 * 1024:
+    if byte_size < 1024 * 1024:
         return f"{byte_size / 1024:.1f} KB"
-    else:
-        return f"{byte_size / (1024 * 1024):.1f} MB"
+    return f"{byte_size / (1024 * 1024):.1f} MB"
 
 
 def print_token_summary(text: str, encoding: str = "o200k_base") -> None:

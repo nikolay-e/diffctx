@@ -1,0 +1,24 @@
+name: docker_501_from_base_image
+initial:
+  requirements.txt: |
+    flask==2.0.0
+    gunicorn==20.1.0
+  Dockerfile: |
+    FROM alpine:3.14
+    CMD ["echo", "hello"]
+  unrelated.py: |
+    garbage_marker_12345 = True
+    unused_marker_67890 = False
+changed:
+  Dockerfile: |
+    FROM python:3.11-slim
+    COPY requirements.txt .
+    RUN pip install -r requirements.txt
+assertions:
+  must_include:
+  - FROM python:3.11-slim
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Update base image

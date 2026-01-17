@@ -1,0 +1,30 @@
+name: js_001_named_import_resolves_to_definition
+initial:
+  utils.ts: |
+    export function fetchUser(id: string): Promise<User> {
+        return fetch(`/api/users/${id}`).then(res => res.json());
+    }
+
+    export function fetchPosts(userId: string): Promise<Post[]> {
+        return fetch(`/api/users/${userId}/posts`).then(res => res.json());
+    }
+  main.ts: |
+    console.log('initial');
+changed:
+  main.ts: |
+    import { fetchUser } from './utils';
+
+    async function main() {
+        const user = await fetchUser('123');
+        console.log(user);
+    }
+
+    main();
+assertions:
+  must_include:
+  - fetchUser
+  - main.ts
+  must_not_include:
+  - js_garbage_marker_001
+options:
+  commit_message: Add fetchUser import and usage

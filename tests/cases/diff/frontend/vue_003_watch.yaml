@@ -1,0 +1,66 @@
+name: vue_003_watch
+initial:
+  api.ts: |
+    export async function searchUsers(query: string): Promise<any[]> {
+        const response = await fetch(\`/api/users?search=\${encodeURIComponent(query)}\`);
+        return response.json();
+    }
+
+    export async function fetchUserDetails(userId: string): Promise<any> {
+        const response = await fetch(\`/api/users/\${userId}\`);
+        return response.json();
+    }
+
+    // vue_garbage_marker_003
+    const GARBAGE_API_TIMEOUT = 5000;
+  UserSearch.vue: |
+    <template>
+        <div>Initial</div>
+    </template>
+
+    <script setup lang="ts">
+    </script>
+changed:
+  UserSearch.vue: |
+    <template>
+        <div class="user-search">
+            <input v-model="searchQuery" placeholder="Search users..." />
+            <p v-if="loading">Searching...</p>
+            <ul v-else>
+                <li v-for="user in results" :key="user.id">
+                    {{ user.name }}
+                </li>
+            </ul>
+        </div>
+    </template>
+
+    <script setup lang="ts">
+    import { ref, watch } from 'vue';
+    import { searchUsers } from './api';
+
+    const searchQuery = ref('');
+    const results = ref<any[]>([]);
+    const loading = ref(false);
+
+    watch(searchQuery, async (newQuery, oldQuery) => {
+        if (newQuery.length < 2) {
+            results.value = [];
+            return;
+        }
+
+        loading.value = true;
+        try {
+            results.value = await searchUsers(newQuery);
+        } finally {
+            loading.value = false;
+        }
+    }, { immediate: false });
+    </script>
+assertions:
+  must_include:
+  - UserSearch.vue
+  - watch
+  must_not_include:
+  - vue_garbage_marker_003
+options:
+  commit_message: Add Vue watch for search

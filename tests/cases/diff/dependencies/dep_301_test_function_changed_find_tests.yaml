@@ -1,0 +1,29 @@
+name: dep_301_test_function_changed_find_tests
+initial:
+  calculator.py: |
+    def add(a, b):
+        return a + b
+
+    def subtract(a, b):
+        return a - b
+  tests/test_calculator.py: |
+    from calculator import add, subtract
+
+    def test_add():
+        assert add(1, 2) == 3
+        assert add(-1, 1) == 0
+
+    def test_subtract():
+        assert subtract(5, 3) == 2
+changed:
+  calculator.py: |
+    def add(a, b):
+        return float(a) + float(b)
+
+    def subtract(a, b):
+        return a - b
+assertions:
+  must_include:
+  - calculator.py
+  must_not_include:
+  - garbage_marker_12345

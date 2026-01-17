@@ -1,0 +1,48 @@
+name: react_adv_007_forward_ref
+initial:
+  Input.tsx: |
+    import { forwardRef } from 'react';
+
+    interface InputProps {
+        label: string;
+        type?: string;
+    }
+
+    export const Input = forwardRef<HTMLInputElement, InputProps>(
+        ({ label, type = 'text' }, ref) => (
+            <div>
+                <label>{label}</label>
+                <input ref={ref} type={type} />
+            </div>
+        )
+    );
+
+    // react_adv_garbage_marker_007
+    const GARBAGE_INPUT_CONFIG = { maxLength: 100 };
+  Form.tsx: |
+    console.log('initial');
+changed:
+  Form.tsx: |
+    import { useRef } from 'react';
+    import { Input } from './Input';
+
+    export function Form() {
+        const emailRef = useRef<HTMLInputElement>(null);
+
+        const handleSubmit = () => {
+            emailRef.current?.focus();
+        };
+
+        return (
+            <form onSubmit={handleSubmit}>
+                <Input ref={emailRef} label="Email" type="email" />
+            </form>
+        );
+    }
+assertions:
+  must_include:
+  - Form.tsx
+  must_not_include:
+  - react_adv_garbage_marker_007
+options:
+  commit_message: Add forwardRef usage

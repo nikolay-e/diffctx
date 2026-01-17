@@ -1,0 +1,33 @@
+name: rust_015_const_and_static
+initial:
+  src/config.rs: |
+    pub const MAX_SIZE: usize = 100;
+changed:
+  src/config.rs: |
+    pub const MAX_SIZE: usize = 100;
+    pub const MIN_SIZE: usize = 10;
+    pub const DEFAULT_NAME: &str = "unnamed";
+
+    pub static mut COUNTER: i32 = 0;
+
+    pub fn get_default_config() -> Config {
+        Config {
+            name: DEFAULT_NAME.to_string(),
+            size: MAX_SIZE,
+        }
+    }
+
+    pub struct Config {
+        pub name: String,
+        pub size: usize,
+    }
+assertions:
+  must_include:
+  - MIN_SIZE
+  - DEFAULT_NAME
+  - COUNTER
+  - Config
+  must_not_include:
+  - garbage_const_name
+options:
+  commit_message: Add constants and Config struct

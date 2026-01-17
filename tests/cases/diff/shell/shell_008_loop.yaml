@@ -1,0 +1,40 @@
+name: shell_008_loop
+initial:
+  utils.sh: |
+    #!/bin/bash
+    process() {
+        local file=$1
+        echo "Processing: $file"
+    }
+  batch.sh: |
+    #!/bin/bash
+    echo "Batch"
+  garbage.sh: |
+    #!/bin/bash
+    shelltest_loop_009() { echo "never called"; }
+    shelltest_unused_abc002="not_used"
+changed:
+  batch.sh: |
+    #!/bin/bash
+    source ./utils.sh
+
+    for file in *.log; do
+        process "$file"
+    done
+
+    while read -r line; do
+        echo "Line: $line"
+    done < input.txt
+
+    counter=0
+    until [[ $counter -ge 10 ]]; do
+        echo "Counter: $counter"
+        ((counter++))
+    done
+assertions:
+  must_include:
+  - batch.sh
+  - process
+  must_not_include:
+  - shelltest_loop_009
+  - shelltest_unused_abc002

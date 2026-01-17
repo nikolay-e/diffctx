@@ -1,0 +1,60 @@
+name: go_020_method_value
+initial:
+  notifier.go: |
+    package main
+
+    type Notifier struct {
+        prefix string
+    }
+
+    func (n *Notifier) Notify(msg string) {
+        println(n.prefix + ": " + msg)
+    }
+
+    func (n *Notifier) Alert(msg string) {
+        println("ALERT: " + n.prefix + ": " + msg)
+    }
+  dispatcher.go: |
+    package main
+
+    func Dispatch() {}
+  unrelated/garbage.go: |
+    package unrelated
+
+    func UnusedNotifier_12345() {
+        println("garbage_marker_12345")
+    }
+
+    func UnusedDispatcher_67890() {
+        println("unused_marker_67890")
+    }
+changed:
+  dispatcher.go: |
+    package main
+
+    type Callback func(string)
+
+    func Dispatch(callbacks []Callback, msg string) {
+        for _, cb := range callbacks {
+            cb(msg)
+        }
+    }
+
+    func SetupNotifications() {
+        n := &Notifier{prefix: "App"}
+        callbacks := []Callback{
+            n.Notify,
+            n.Alert,
+        }
+        Dispatch(callbacks, "Hello")
+    }
+assertions:
+  must_include:
+  - Dispatch
+  - SetupNotifications
+  - Callback
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Use method values as callbacks

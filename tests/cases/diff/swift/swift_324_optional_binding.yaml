@@ -1,0 +1,47 @@
+name: swift_324_optional_binding
+initial:
+  UserRepository.swift: |
+    struct User {
+        let id: String
+        let name: String
+    }
+
+    class UserRepository {
+        private var users: [String: User] = [:]
+
+        func fetchUser(id: String) -> User? {
+            return users[id]
+        }
+
+        func save(user: User) {
+            users[user.id] = user
+        }
+    }
+    // unused_marker_67890
+  UserController.swift: |
+    // Initial
+    class UserController {}
+changed:
+  UserController.swift: |
+    class UserController {
+        let repository = UserRepository()
+
+        func showUser(id: String) -> String {
+            if let user = repository.fetchUser(id: id) {
+                return "User: \(user.name)"
+            } else {
+                return "User not found"
+            }
+        }
+    }
+assertions:
+  must_include:
+  - UserController
+  - showUser
+  - UserRepository
+  - fetchUser
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add optional binding

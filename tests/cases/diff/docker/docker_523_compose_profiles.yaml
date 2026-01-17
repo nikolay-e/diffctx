@@ -1,0 +1,32 @@
+name: docker_523_compose_profiles
+initial:
+  docker-compose.yml: |
+    version: '3.8'
+    services:
+      api:
+        build: .
+      debug:
+        image: busybox
+        command: ["tail", "-f", "/dev/null"]
+  junk.py: |
+    garbage_marker_12345 = 1
+    unused_marker_67890 = 2
+changed:
+  docker-compose.yml: |
+    version: '3.8'
+    services:
+      api:
+        build: .
+      debug:
+        image: busybox
+        command: ["tail", "-f", "/dev/null"]
+        profiles:
+          - debug
+assertions:
+  must_include:
+  - 'profiles:'
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add profiles

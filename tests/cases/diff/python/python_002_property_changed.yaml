@@ -1,0 +1,40 @@
+name: python_002_property_changed
+initial:
+  user.py: |
+    class User:
+        def __init__(self, first, last):
+            self.first = first
+            self.last = last
+
+        @property
+        def full_name(self):
+            return f"{self.first} {self.last}"
+  views.py: |
+    from user import User
+
+    def render_user(user):
+        return f"Name: {user.full_name}"
+  garbage_file.py: |
+    garbage_marker_12345 = True
+    unused_marker_67890 = False
+changed:
+  user.py: |
+    class User:
+        def __init__(self, first, last, title=None):
+            self.first = first
+            self.last = last
+            self.title = title
+
+        @property
+        def full_name(self):
+            if self.title:
+                return f"{self.title} {self.first} {self.last}"
+            return f"{self.first} {self.last}"
+assertions:
+  must_include:
+  - '@property'
+  - full_name
+  - title
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890

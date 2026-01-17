@@ -1,0 +1,20 @@
+name: git_new_file_with_inheritance
+initial:
+  features/__init__.py: ''
+  features/base.py: |
+    class BaseFeature:
+        def run(self):
+            return "base"
+changed:
+  features/new_feature.py: |
+    from .base import BaseFeature
+
+    class NewFeature(BaseFeature):
+        def run(self):
+            return "new"
+assertions:
+  must_include:
+  - new_feature.py
+  - BaseFeature
+options:
+  commit_message: Add new feature

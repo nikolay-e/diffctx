@@ -1,0 +1,46 @@
+name: java_001_class_method_added
+initial:
+  src/main/java/com/example/Calculator.java: |
+    package com.example;
+
+    public class Calculator {
+        public int add(int a, int b) {
+            return a + b;
+        }
+    }
+  src/main/java/com/example/Main.java: |
+    package com.example;
+
+    public class Main {
+        public static void main(String[] args) {
+            Calculator calc = new Calculator();
+            System.out.println(calc.add(1, 2));
+        }
+    }
+changed:
+  src/main/java/com/example/Calculator.java: |
+    package com.example;
+
+    public class Calculator {
+        public int add(int a, int b) {
+            return a + b;
+        }
+
+        public int multiply(int a, int b) {
+            return a * b;
+        }
+
+        public int subtract(int a, int b) {
+            return a - b;
+        }
+    }
+assertions:
+  must_include:
+  - multiply
+  - subtract
+  - Calculator
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add multiply and subtract methods

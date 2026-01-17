@@ -1,0 +1,48 @@
+name: csharp_282_partial_class
+initial:
+  Models/User.cs: |
+    namespace MyApp.Models;
+
+    public partial class User
+    {
+        public int Id { get; set; }
+        public string Name { get; set; }
+    }
+    // unused_marker_67890
+  Models/User.Validation.cs: |
+    namespace MyApp.Models;
+
+    public partial class User
+    {
+        public bool IsValid()
+        {
+            return !string.IsNullOrEmpty(Name);
+        }
+    }
+  Services/UserService.cs: |
+    namespace MyApp.Services;
+
+    public class UserService { }
+changed:
+  Services/UserService.cs: |
+    using MyApp.Models;
+
+    namespace MyApp.Services;
+
+    public class UserService
+    {
+        public bool ValidateUser(User user)
+        {
+            return user.IsValid();
+        }
+    }
+assertions:
+  must_include:
+  - UserService
+  - ValidateUser
+  - User
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add partial class usage

@@ -1,0 +1,16 @@
+name: graph_config_yaml_key_to_code
+initial:
+  config.yaml: |
+    database_host: localhost
+    database_port: 5432
+  db.py: |
+    import os
+
+    database_host = os.getenv("DATABASE_HOST", "localhost")
+changed:
+  config.yaml: |
+    database_host: db.example.com
+    database_port: 5432
+assertions:
+  must_include:
+  - database_host

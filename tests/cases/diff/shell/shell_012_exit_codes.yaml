@@ -1,0 +1,42 @@
+name: shell_012_exit_codes
+initial:
+  caller.sh: |
+    #!/bin/bash
+    handle_error() {
+        local code=$1
+        case $code in
+            0) echo "Success" ;;
+            1) echo "General error" ;;
+            2) echo "Invalid argument" ;;
+            *) echo "Unknown error: $code" ;;
+        esac
+    }
+  validate.sh: |
+    #!/bin/bash
+    echo "Validate"
+  garbage.sh: |
+    #!/bin/bash
+    shelltest_error_013() { echo "never invoked 12345"; }
+    shelltest_unused_abc002="not_used"
+changed:
+  validate.sh: |
+    #!/bin/bash
+
+    if [[ -z "$1" ]]; then
+        echo "Error: No input provided"
+        exit 2
+    fi
+
+    if [[ ! -f "$1" ]]; then
+        echo "Error: File not found"
+        exit 1
+    fi
+
+    echo "Validation passed"
+    exit 0
+assertions:
+  must_include:
+  - validate.sh
+  must_not_include:
+  - shelltest_error_013
+  - shelltest_unused_abc002

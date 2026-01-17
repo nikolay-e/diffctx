@@ -1,0 +1,22 @@
+name: quality_decorator_function
+initial:
+  decorators.py: |
+    def log_calls(func):
+        def wrapper(*args, **kwargs):
+            print(f"Calling {func.__name__}")
+            return func(*args, **kwargs)
+        return wrapper
+  main.py: |
+    def greet(): pass
+changed:
+  main.py: |
+    from decorators import log_calls
+
+    @log_calls
+    def greet():
+        return "Hello"
+assertions:
+  must_include:
+  - def log_calls
+options:
+  commit_message: Add decorator

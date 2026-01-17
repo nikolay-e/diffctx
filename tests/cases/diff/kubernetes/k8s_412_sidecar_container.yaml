@@ -1,0 +1,54 @@
+name: k8s_412_sidecar_container
+initial:
+  fluent-bit.conf: |
+    [INPUT]
+        Name tail
+        Path /var/log/app/*.log
+    [OUTPUT]
+        Name stdout
+  deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: myapp
+    spec:
+      template:
+        spec:
+          containers:
+          - name: app
+            image: myapp:latest
+  unrelated.txt: |
+    garbage_marker_k8s412 = True
+    unused_marker_k8s412 = False
+changed:
+  deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: myapp
+    spec:
+      template:
+        spec:
+          containers:
+          - name: app
+            image: myapp:latest
+            volumeMounts:
+            - name: logs
+              mountPath: /var/log/app
+          - name: log-agent
+            image: fluent/fluent-bit:latest
+            volumeMounts:
+            - name: logs
+              mountPath: /var/log/app
+              readOnly: true
+          volumes:
+          - name: logs
+            emptyDir: {}
+assertions:
+  must_include:
+  - log-agent
+  must_not_include:
+  - garbage_marker_k8s412
+  - unused_marker_k8s412
+options:
+  commit_message: Add sidecar container

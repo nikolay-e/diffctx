@@ -1,0 +1,56 @@
+name: ts_010_infer_keyword
+initial:
+  functions.ts: |
+    export function createUser(name: string, age: number): { id: string; name: string; age: number } {
+        return { id: crypto.randomUUID(), name, age };
+    }
+
+    export async function fetchData<T>(url: string): Promise<T> {
+        const response = await fetch(url);
+        return response.json();
+    }
+
+    export type EventHandler<T> = (event: T) => void;
+
+    // ts_garbage_marker_010
+    function garbageFunction() { return null; }
+  infer_types.ts: |
+    console.log('initial');
+changed:
+  infer_types.ts: |
+    import { createUser, fetchData, EventHandler } from './functions';
+
+    export type ReturnTypeOf<T> = T extends (...args: any[]) => infer R ? R : never;
+
+    export type PromiseType<T> = T extends Promise<infer U> ? U : T;
+
+    export type FirstArgument<T> = T extends (first: infer F, ...args: any[]) => any ? F : never;
+
+    export type AllArguments<T> = T extends (...args: infer A) => any ? A : never;
+
+    export type ArrayElement<T> = T extends (infer U)[] ? U : never;
+
+    export type ExtractEventType<T> = T extends EventHandler<infer E> ? E : never;
+
+    export type UserReturn = ReturnTypeOf<typeof createUser>;
+    export type FetchReturn = PromiseType<ReturnType<typeof fetchData<{ data: string }>>>;
+
+    export type ConstructorParameters<T> = T extends new (...args: infer P) => any ? P : never;
+
+    export type InstanceType<T> = T extends new (...args: any[]) => infer I ? I : never;
+
+    type UnpackPromise<T> = T extends Promise<infer U>
+        ? U extends Promise<infer V>
+            ? UnpackPromise<V>
+            : U
+        : T;
+
+    export type DeepPromise = UnpackPromise<Promise<Promise<Promise<string>>>>;
+assertions:
+  must_include:
+  - infer_types.ts
+  - infer
+  must_not_include:
+  - ts_garbage_marker_010
+options:
+  commit_message: Add infer keyword usage

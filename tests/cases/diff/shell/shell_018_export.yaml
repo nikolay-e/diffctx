@@ -1,0 +1,34 @@
+name: shell_018_export
+initial:
+  env.sh: |
+    #!/bin/bash
+    echo "Env"
+  garbage.sh: |
+    #!/bin/bash
+    SHELLTEST_EXPORT_019="unused_export_value"
+    unused_marker_12345="not_used"
+changed:
+  env.sh: |
+    #!/bin/bash
+
+    export PATH="$PATH:$HOME/bin:/usr/local/app/bin"
+    export LD_LIBRARY_PATH="/usr/local/lib:$LD_LIBRARY_PATH"
+
+    export APP_HOME="/opt/myapp"
+    export APP_CONFIG="$APP_HOME/config"
+    export APP_LOG="$APP_HOME/logs"
+
+    export -f my_function
+
+    my_function() {
+        echo "This function is exported"
+    }
+
+    ./child-script.sh
+assertions:
+  must_include:
+  - env.sh
+  - APP_HOME
+  must_not_include:
+  - SHELLTEST_EXPORT_019
+  - unused_marker_12345

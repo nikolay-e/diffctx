@@ -1,0 +1,30 @@
+name: react_adv_009_use_callback
+initial:
+  handlers.ts: |
+    export function createClickHandler(id: string) {
+        return () => console.log('Clicked:', id);
+    }
+
+    // react_adv_garbage_marker_009
+    function garbageHandler() { return null; }
+  ActionButton.tsx: |
+    console.log('initial');
+changed:
+  ActionButton.tsx: |
+    import { useCallback } from 'react';
+    import { createClickHandler } from './handlers';
+
+    export function ActionButton({ id }: { id: string }) {
+        const handleClick = useCallback(() => {
+            createClickHandler(id)();
+        }, [id]);
+
+        return <button onClick={handleClick}>Action</button>;
+    }
+assertions:
+  must_include:
+  - ActionButton.tsx
+  must_not_include:
+  - react_adv_garbage_marker_009
+options:
+  commit_message: Add useCallback

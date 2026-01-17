@@ -1,0 +1,68 @@
+name: java_kafka_listener
+initial:
+  src/main/java/com/example/KafkaConsumer.java: |
+    package com.example;
+
+    import org.springframework.kafka.annotation.KafkaListener;
+    import org.springframework.stereotype.Component;
+
+    @Component
+    public class KafkaConsumer {
+        @KafkaListener(topics = "orders")
+        public void listen(String message) {
+            System.out.println("Received: " + message);
+        }
+    }
+  src/main/java/com/example/KafkaProducer.java: |
+    package com.example;
+
+    import org.springframework.kafka.core.KafkaTemplate;
+    import org.springframework.stereotype.Component;
+
+    @Component
+    public class KafkaProducer {
+        private final KafkaTemplate<String, String> kafkaTemplate;
+
+        public KafkaProducer(KafkaTemplate<String, String> kafkaTemplate) {
+            this.kafkaTemplate = kafkaTemplate;
+        }
+
+        public void send(String message) {
+            kafkaTemplate.send("orders", message);
+        }
+    }
+changed:
+  src/main/java/com/example/KafkaConsumer.java: |
+    package com.example;
+
+    import org.springframework.kafka.annotation.KafkaListener;
+    import org.springframework.kafka.support.Acknowledgment;
+    import org.springframework.stereotype.Component;
+    import org.slf4j.Logger;
+    import org.slf4j.LoggerFactory;
+
+    @Component
+    public class KafkaConsumer {
+        private static final Logger logger = LoggerFactory.getLogger(KafkaConsumer.class);
+
+        @KafkaListener(topics = "orders", groupId = "order-processor")
+        public void listen(String message, Acknowledgment ack) {
+            try {
+                processMessage(message);
+                ack.acknowledge();
+            } catch (Exception e) {
+                logger.error("Failed to process message", e);
+            }
+        }
+
+        private void processMessage(String message) {
+            logger.info("Processing: {}", message);
+        }
+    }
+assertions:
+  must_include:
+  - KafkaConsumer.java
+  - Acknowledgment
+  - processMessage
+options:
+  commit_message: Add acknowledgment and error handling

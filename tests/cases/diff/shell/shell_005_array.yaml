@@ -1,0 +1,37 @@
+name: shell_005_array
+initial:
+  process.sh: |
+    #!/bin/bash
+    echo "Process"
+  garbage.sh: |
+    #!/bin/bash
+    shelltest_array_006=("never" "used")
+    unused_marker_12345="not_used"
+changed:
+  process.sh: |
+    #!/bin/bash
+    files=("${@}")
+    declare -a results
+
+    for i in "${!files[@]}"; do
+        file="${files[$i]}"
+        if [[ -f "$file" ]]; then
+            results+=("$file: OK")
+        else
+            results+=("$file: NOT FOUND")
+        fi
+    done
+
+    echo "Results:"
+    for result in "${results[@]}"; do
+        echo "  $result"
+    done
+
+    echo "Total files: ${#files[@]}"
+assertions:
+  must_include:
+  - process.sh
+  - results
+  must_not_include:
+  - shelltest_array_006
+  - unused_marker_12345

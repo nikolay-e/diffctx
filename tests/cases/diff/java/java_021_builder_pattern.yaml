@@ -1,0 +1,84 @@
+name: java_021_builder_pattern
+initial:
+  src/main/java/com/example/User.java: |
+    package com.example;
+
+    public class User {
+        private final String name;
+        private final String email;
+
+        public User(String name, String email) {
+            this.name = name;
+            this.email = email;
+        }
+
+        public String getName() { return name; }
+        public String getEmail() { return email; }
+    }
+changed:
+  src/main/java/com/example/User.java: |
+    package com.example;
+
+    public class User {
+        private final String name;
+        private final String email;
+        private final int age;
+        private final String address;
+
+        private User(Builder builder) {
+            this.name = builder.name;
+            this.email = builder.email;
+            this.age = builder.age;
+            this.address = builder.address;
+        }
+
+        public String getName() { return name; }
+        public String getEmail() { return email; }
+        public int getAge() { return age; }
+        public String getAddress() { return address; }
+
+        public static Builder builder() {
+            return new Builder();
+        }
+
+        public static class Builder {
+            private String name;
+            private String email;
+            private int age;
+            private String address;
+
+            public Builder name(String name) {
+                this.name = name;
+                return this;
+            }
+
+            public Builder email(String email) {
+                this.email = email;
+                return this;
+            }
+
+            public Builder age(int age) {
+                this.age = age;
+                return this;
+            }
+
+            public Builder address(String address) {
+                this.address = address;
+                return this;
+            }
+
+            public User build() {
+                return new User(this);
+            }
+        }
+    }
+assertions:
+  must_include:
+  - Builder
+  - builder()
+  - build()
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add builder pattern to User

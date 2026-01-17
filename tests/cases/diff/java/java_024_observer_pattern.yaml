@@ -1,0 +1,66 @@
+name: java_024_observer_pattern
+initial:
+  src/main/java/com/example/Event.java: |
+    package com.example;
+
+    public class Event {
+        private final String type;
+        private final Object data;
+
+        public Event(String type, Object data) {
+            this.type = type;
+            this.data = data;
+        }
+
+        public String getType() { return type; }
+        public Object getData() { return data; }
+    }
+changed:
+  src/main/java/com/example/EventListener.java: |
+    package com.example;
+
+    @FunctionalInterface
+    public interface EventListener {
+        void onEvent(Event event);
+    }
+  src/main/java/com/example/EventBus.java: |
+    package com.example;
+
+    import java.util.ArrayList;
+    import java.util.HashMap;
+    import java.util.List;
+    import java.util.Map;
+
+    public class EventBus {
+        private final Map<String, List<EventListener>> listeners = new HashMap<>();
+
+        public void subscribe(String eventType, EventListener listener) {
+            listeners.computeIfAbsent(eventType, k -> new ArrayList<>()).add(listener);
+        }
+
+        public void unsubscribe(String eventType, EventListener listener) {
+            List<EventListener> list = listeners.get(eventType);
+            if (list != null) {
+                list.remove(listener);
+            }
+        }
+
+        public void publish(Event event) {
+            List<EventListener> list = listeners.get(event.getType());
+            if (list != null) {
+                for (EventListener listener : list) {
+                    listener.onEvent(event);
+                }
+            }
+        }
+    }
+assertions:
+  must_include:
+  - EventBus
+  - subscribe
+  - publish
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add observer pattern with EventBus

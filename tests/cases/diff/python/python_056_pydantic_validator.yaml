@@ -1,0 +1,39 @@
+name: python_056_pydantic_validator
+initial:
+  schemas.py: |
+    from pydantic import BaseModel, validator
+
+    class UserCreate(BaseModel):
+        email: str
+        password: str
+
+        @validator("email")
+        def email_must_be_valid(cls, v):
+            if "@" not in v:
+                raise ValueError("Invalid email")
+            return v.lower()
+
+        @validator("password")
+        def password_must_be_strong(cls, v):
+            if len(v) < 8:
+                raise ValueError("Password too short")
+            return v
+  api.py: |
+    def register():
+        pass
+  garbage.py: |
+    garbage_marker_12345 = "validator garbage"
+    unused_marker_67890 = "unused validator"
+changed:
+  api.py: |
+    from schemas import UserCreate
+
+    def register(data: dict):
+        user = UserCreate(**data)
+        return user
+assertions:
+  must_include:
+  - '@validator'
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890

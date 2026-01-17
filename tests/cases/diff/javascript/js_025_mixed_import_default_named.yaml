@@ -1,0 +1,34 @@
+name: js_025_mixed_import_default_named
+initial:
+  module.ts: |
+    export default function defaultExport() {
+        return 'default';
+    }
+
+    export function namedExport() {
+        return 'named';
+    }
+
+    export const VALUE = 42;
+  main.ts: |
+    console.log('initial');
+changed:
+  main.ts: |
+    import defaultFn, { namedExport, VALUE } from './module';
+
+    function useAll() {
+        console.log(defaultFn());
+        console.log(namedExport());
+        console.log(VALUE);
+    }
+
+    useAll();
+assertions:
+  must_include:
+  - namedExport
+  - VALUE
+  - main.ts
+  must_not_include:
+  - js_garbage_marker_001
+options:
+  commit_message: Add mixed imports

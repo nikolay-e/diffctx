@@ -1,0 +1,51 @@
+name: csharp_289_generic_class
+initial:
+  Collections/Cache.cs: |
+    namespace MyApp.Collections;
+
+    public class Cache<TKey, TValue> where TKey : notnull
+    {
+        private readonly Dictionary<TKey, TValue> _cache = new();
+
+        public void Set(TKey key, TValue value) => _cache[key] = value;
+
+        public TValue? Get(TKey key) =>
+            _cache.TryGetValue(key, out var value) ? value : default;
+
+        public bool Contains(TKey key) => _cache.ContainsKey(key);
+    }
+    // garbage_marker_12345
+  Services/CacheService.cs: |
+    namespace MyApp.Services;
+
+    public class CacheService { }
+changed:
+  Services/CacheService.cs: |
+    using MyApp.Collections;
+    using MyApp.Models;
+
+    namespace MyApp.Services;
+
+    public class CacheService
+    {
+        private readonly Cache<string, User> _userCache = new();
+
+        public void CacheUser(string key, User user)
+        {
+            _userCache.Set(key, user);
+        }
+
+        public User? GetCachedUser(string key)
+        {
+            return _userCache.Get(key);
+        }
+    }
+assertions:
+  must_include:
+  - CacheService
+  - Cache
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add generic class usage

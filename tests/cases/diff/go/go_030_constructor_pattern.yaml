@@ -1,0 +1,64 @@
+name: go_030_constructor_pattern
+initial:
+  config.go: |
+    package main
+
+    type Config struct {
+        Host    string
+        Port    int
+        Timeout int
+    }
+  server.go: |
+    package main
+
+    type Server struct {
+        config Config
+    }
+  unrelated/garbage.go: |
+    package unrelated
+
+    func UnusedConfig_12345() {
+        println("garbage_marker_12345")
+    }
+
+    func UnusedServer_67890() {
+        println("unused_marker_67890")
+    }
+changed:
+  server.go: |
+    package main
+
+    import "fmt"
+
+    type Server struct {
+        config *Config
+        logger Logger
+    }
+
+    func NewServer(config *Config, logger Logger) (*Server, error) {
+        if config == nil {
+            return nil, fmt.Errorf("config is required")
+        }
+        if config.Port <= 0 {
+            config.Port = 8080
+        }
+        return &Server{
+            config: config,
+            logger: logger,
+        }, nil
+    }
+
+    func (s *Server) Start() error {
+        s.logger.Info("Starting server on port", s.config.Port)
+        return nil
+    }
+assertions:
+  must_include:
+  - NewServer
+  - Server
+  - Config
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add constructor

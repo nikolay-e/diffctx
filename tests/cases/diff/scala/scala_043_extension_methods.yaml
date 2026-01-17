@@ -1,0 +1,39 @@
+name: scala_043_extension_methods
+initial:
+  IntExtensions.scala: |
+    object IntExtensions {
+      extension (n: Int) {
+        def squared: Int = n * n
+        def isEven: Boolean = n % 2 == 0
+        def times(f: => Unit): Unit = (1 to n).foreach(_ => f)
+      }
+    }
+  Calculator.scala: |
+    class Calculator {}
+changed:
+  Calculator.scala: |
+    import IntExtensions._
+
+    class Calculator {
+      def squareSum(nums: List[Int]): Int = {
+        nums.map(_.squared).sum
+      }
+
+      def countEven(nums: List[Int]): Int = {
+        nums.count(_.isEven)
+      }
+
+      def repeatAction(n: Int, action: => Unit): Unit = {
+        n.times(action)
+      }
+    }
+assertions:
+  must_include:
+  - Calculator
+  - import IntExtensions._
+  - squared
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add extension methods usage

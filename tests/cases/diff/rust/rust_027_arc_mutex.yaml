@@ -1,0 +1,58 @@
+name: rust_027_arc_mutex
+initial:
+  src/shared_state.rs: |
+    use std::sync::{Arc, Mutex};
+
+    pub struct Counter {
+        value: Arc<Mutex<i32>>,
+    }
+
+    impl Counter {
+        pub fn new() -> Self {
+            Self {
+                value: Arc::new(Mutex::new(0)),
+            }
+        }
+
+        pub fn increment(&self) {
+            let mut val = self.value.lock().unwrap();
+            *val += 1;
+        }
+    }
+changed:
+  src/shared_state.rs: |
+    use std::sync::{Arc, Mutex, RwLock};
+
+    pub struct Counter {
+        value: Arc<Mutex<i32>>,
+        history: Arc<RwLock<Vec<i32>>>,
+    }
+
+    impl Counter {
+        pub fn new() -> Self {
+            Self {
+                value: Arc::new(Mutex::new(0)),
+                history: Arc::new(RwLock::new(vec![])),
+            }
+        }
+
+        pub fn increment(&self) {
+            let mut val = self.value.lock().unwrap();
+            *val += 1;
+            let mut history = self.history.write().unwrap();
+            history.push(*val);
+        }
+
+        pub fn get_history(&self) -> Vec<i32> {
+            self.history.read().unwrap().clone()
+        }
+    }
+assertions:
+  must_include:
+  - RwLock
+  - history
+  - get_history
+  must_not_include:
+  - garbage_concurrency_field
+options:
+  commit_message: Add history tracking with RwLock

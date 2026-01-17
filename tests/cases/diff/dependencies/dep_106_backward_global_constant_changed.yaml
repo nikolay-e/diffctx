@@ -1,0 +1,41 @@
+name: dep_106_backward_global_constant_changed
+initial:
+  config.py: |
+    MAX_RETRIES = 3
+    TIMEOUT = 30
+  client.py: |
+    from config import MAX_RETRIES
+
+    def fetch_with_retry(url):
+        for i in range(MAX_RETRIES):
+            try:
+                return fetch(url)
+            except:
+                pass
+        return None
+
+    def fetch(url):
+        return "data"
+  worker.py: |
+    from config import MAX_RETRIES
+
+    def process_job(job):
+        attempts = 0
+        while attempts < MAX_RETRIES:
+            try:
+                return do_work(job)
+            except:
+                attempts += 1
+        return None
+
+    def do_work(job):
+        return "done"
+changed:
+  config.py: |
+    MAX_RETRIES = 5
+    TIMEOUT = 30
+assertions:
+  must_include:
+  - config.py
+  must_not_include:
+  - garbage_marker_12345

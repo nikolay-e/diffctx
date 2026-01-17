@@ -1,0 +1,46 @@
+name: k8s_416_security_context
+initial:
+  deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: secure-app
+    spec:
+      template:
+        spec:
+          containers:
+          - name: app
+            image: myapp:latest
+  unrelated.txt: |
+    garbage_marker_k8s416 = True
+    unused_marker_k8s416 = False
+changed:
+  deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: secure-app
+    spec:
+      template:
+        spec:
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            fsGroup: 2000
+          containers:
+          - name: app
+            image: myapp:latest
+            securityContext:
+              allowPrivilegeEscalation: false
+              readOnlyRootFilesystem: true
+              capabilities:
+                drop:
+                - ALL
+assertions:
+  must_include:
+  - securityContext
+  must_not_include:
+  - garbage_marker_k8s416
+  - unused_marker_k8s416
+options:
+  commit_message: Add security context

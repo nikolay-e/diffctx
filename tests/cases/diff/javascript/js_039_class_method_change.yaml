@@ -1,0 +1,43 @@
+name: js_039_class_method_change
+initial:
+  base.ts: |
+    export class BaseService {
+        protected log(message: string) {
+            console.log(message);
+        }
+
+        process(data: string): string {
+            this.log(`Processing: ${data}`);
+            return data.toUpperCase();
+        }
+    }
+  derived.ts: |
+    import { BaseService } from './base';
+
+    export class ExtendedService extends BaseService {
+        process(data: string): string {
+            const result = super.process(data);
+            return `[Extended] ${result}`;
+        }
+    }
+changed:
+  base.ts: |
+    export class BaseService {
+        protected log(message: string, level: 'info' | 'warn' | 'error' = 'info') {
+            console[level](message);
+        }
+
+        process(data: string, options?: { prefix?: string }): string {
+            this.log(`Processing: ${data}`, 'info');
+            const result = data.toUpperCase();
+            return options?.prefix ? `${options.prefix}${result}` : result;
+        }
+    }
+assertions:
+  must_include:
+  - BaseService
+  - base.ts
+  must_not_include:
+  - js_garbage_marker_001
+options:
+  commit_message: Extend process method

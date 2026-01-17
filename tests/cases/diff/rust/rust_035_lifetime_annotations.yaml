@@ -1,0 +1,48 @@
+name: rust_035_lifetime_annotations
+initial:
+  src/parser.rs: |
+    pub struct Parser {
+        input: String,
+    }
+
+    impl Parser {
+        pub fn new(input: String) -> Self {
+            Self { input }
+        }
+
+        pub fn parse(&self) -> Vec<String> {
+            self.input.split_whitespace().map(String::from).collect()
+        }
+    }
+changed:
+  src/parser.rs: |
+    pub struct Parser<'a> {
+        input: &'a str,
+    }
+
+    impl<'a> Parser<'a> {
+        pub fn new(input: &'a str) -> Self {
+            Self { input }
+        }
+
+        pub fn parse(&self) -> Vec<&'a str> {
+            self.input.split_whitespace().collect()
+        }
+
+        pub fn first_word(&self) -> Option<&'a str> {
+            self.input.split_whitespace().next()
+        }
+    }
+
+    pub fn longest<'a>(x: &'a str, y: &'a str) -> &'a str {
+        if x.len() > y.len() { x } else { y }
+    }
+assertions:
+  must_include:
+  - Parser<'a>
+  - first_word
+  - longest
+  must_not_include:
+  - garbage_lifetime_fn
+options:
+  commit_message: Add lifetime annotations

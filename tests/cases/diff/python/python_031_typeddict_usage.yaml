@@ -1,0 +1,33 @@
+name: python_031_typeddict_usage
+initial:
+  types.py: |
+    from typing import TypedDict
+
+    class AppConfig(TypedDict):
+        debug: bool
+        timeout: int
+        host: str
+        port: int
+  loader.py: |
+    def load_config():
+        pass
+  garbage.py: |
+    garbage_marker_12345 = "typeddict garbage"
+    unused_marker_67890 = "unused typeddict"
+changed:
+  loader.py: |
+    from types import AppConfig
+
+    def load_config() -> AppConfig:
+        return {
+            "debug": True,
+            "timeout": 30,
+            "host": "localhost",
+            "port": 8080
+        }
+assertions:
+  must_include:
+  - class AppConfig
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890

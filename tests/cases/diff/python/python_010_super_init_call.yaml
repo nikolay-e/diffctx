@@ -1,0 +1,27 @@
+name: python_010_super_init_call
+initial:
+  base.py: |
+    class BaseConfig:
+        def __init__(self, config: dict):
+            self.debug = config.get("debug", False)
+            self.timeout = config.get("timeout", 30)
+  app.py: |
+    class AppConfig:
+        pass
+  garbage.py: |
+    garbage_marker_12345 = "base garbage"
+    unused_marker_67890 = "unused base"
+changed:
+  app.py: |
+    from base import BaseConfig
+
+    class AppConfig(BaseConfig):
+        def __init__(self, config: dict):
+            super().__init__(config)
+            self.app_name = config.get("name", "app")
+assertions:
+  must_include:
+  - BaseConfig
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890

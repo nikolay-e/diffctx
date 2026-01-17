@@ -1,0 +1,22 @@
+name: rust_030_include_str
+initial:
+  data/config.json: |
+    {"name": "app", "version": "1.0"}
+  src/config.rs: |
+    const CONFIG_JSON: &str = include_str!("../data/config.json");
+
+    pub fn get_config() -> serde_json::Value {
+        serde_json::from_str(CONFIG_JSON).unwrap()
+    }
+changed:
+  data/config.json: |
+    {"name": "app", "version": "2.0", "features": ["auth", "api"]}
+assertions:
+  must_include:
+  - features
+  - auth
+  - api
+  must_not_include:
+  - garbage_config_key
+options:
+  commit_message: Update config with features

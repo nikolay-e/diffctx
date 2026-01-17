@@ -1,0 +1,41 @@
+name: vue_075_define_emits
+initial:
+  events.ts: |
+    export interface FormEvents {
+        submit: [data: { name: string; email: string }];
+        cancel: [];
+    }
+  ContactForm.vue: |
+    <template><div>initial</div></template>
+changed:
+  ContactForm.vue: |
+    <script setup lang="ts">
+    import { ref } from 'vue';
+    import type { FormEvents } from './events';
+
+    const name = ref('');
+    const email = ref('');
+
+    const emit = defineEmits<FormEvents>();
+
+    function handleSubmit() {
+        emit('submit', { name: name.value, email: email.value });
+    }
+    </script>
+
+    <template>
+        <form @submit.prevent="handleSubmit">
+            <input v-model="name" />
+            <input v-model="email" />
+            <button type="submit">Submit</button>
+            <button type="button" @click="emit('cancel')">Cancel</button>
+        </form>
+    </template>
+assertions:
+  must_include:
+  - FormEvents
+  - ContactForm.vue
+  must_not_include:
+  - js_garbage_marker_001
+options:
+  commit_message: Add defineEmits with type

@@ -1,0 +1,24 @@
+name: python_020_lambda_variable_usage
+initial:
+  transforms.py: |
+    transformer = lambda x: x.upper()
+    normalizer = lambda x: x.strip().lower()
+  processor.py: |
+    def process():
+        pass
+  garbage.py: |
+    garbage_marker_12345 = "lambda garbage"
+    unused_marker_67890 = "unused lambda"
+changed:
+  processor.py: |
+    from transforms import transformer
+
+    def process(data: str) -> str:
+        result = transformer(data)
+        return result
+assertions:
+  must_include:
+  - lambda
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890

@@ -1,0 +1,29 @@
+name: ts_ext_003_keyof_type
+initial:
+  config.ts: |
+    export interface AppConfig {
+        apiUrl: string;
+        timeout: number;
+        debug: boolean;
+    }
+
+    // ts_ext_garbage_marker_003
+    interface GarbageConfig { garbage: string }
+  getter.ts: |
+    console.log('initial');
+changed:
+  getter.ts: |
+    import { AppConfig } from './config';
+
+    type ConfigKey = keyof AppConfig;
+
+    function getConfig<K extends ConfigKey>(config: AppConfig, key: K): AppConfig[K] {
+        return config[key];
+    }
+assertions:
+  must_include:
+  - getter.ts
+  must_not_include:
+  - ts_ext_garbage_marker_003
+options:
+  commit_message: Add keyof usage

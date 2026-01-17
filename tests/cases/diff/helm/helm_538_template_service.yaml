@@ -1,0 +1,32 @@
+name: helm_538_template_service
+initial:
+  values.yaml: |
+    service:
+      type: ClusterIP
+      port: 80
+  templates/service.yaml: |
+    apiVersion: v1
+    kind: Service
+    spec:
+      type: ClusterIP
+      ports:
+      - port: 80
+  junk.txt: |
+    garbage_marker_12345
+    unused_marker_67890
+changed:
+  templates/service.yaml: |
+    apiVersion: v1
+    kind: Service
+    spec:
+      type: {{ .Values.service.type }}
+      ports:
+      - port: {{ .Values.service.port }}
+assertions:
+  must_include:
+  - '{{ .Values.service.type }}'
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add service template

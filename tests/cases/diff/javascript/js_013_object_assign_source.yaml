@@ -1,0 +1,25 @@
+name: js_013_object_assign_source
+initial:
+  defaults.ts: |
+    export const defaultConfig = {
+        timeout: 5000,
+        retries: 3,
+        baseUrl: 'https://api.example.com',
+    };
+  config.ts: |
+    console.log('initial');
+changed:
+  config.ts: |
+    import { defaultConfig } from './defaults';
+
+    export function createConfig(overrides: Partial<typeof defaultConfig>) {
+        return Object.assign({}, defaultConfig, overrides);
+    }
+assertions:
+  must_include:
+  - defaultConfig
+  - config.ts
+  must_not_include:
+  - js_garbage_marker_001
+options:
+  commit_message: Add config merger

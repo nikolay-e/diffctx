@@ -1,0 +1,38 @@
+name: ruby_003_module_mixin
+initial:
+  logging.rb: |
+    module Logging
+      def log(message)
+        puts "[LOG] #{message}"
+      end
+
+      def log_error(message)
+        puts "[ERROR] #{message}"
+      end
+    end
+  worker.rb: |
+    # Initial
+    class Worker
+    end
+  garbage.rb: |
+    garbage_log_unused_99999 = "never used"
+    unused_marker_12345 = "not used"
+changed:
+  worker.rb: |
+    require_relative 'logging'
+
+    class Worker
+      include Logging
+
+      def perform
+        log("Starting work")
+        log("Work completed")
+      end
+    end
+assertions:
+  must_include:
+  - worker.rb
+  - log
+  must_not_include:
+  - garbage_log_unused_99999
+  - unused_marker_12345

@@ -1,0 +1,41 @@
+name: cpp_259_memory_alignment
+initial:
+  simd.h: |
+    #pragma once
+
+    void multiplyVectors(const float* a, const float* b, float* result, int n);
+    // garbage_marker_12345
+  compute.cpp: |
+    #include <iostream>
+    int main() { return 0; }
+changed:
+  compute.cpp: |
+    #include "simd.h"
+
+    class AlignedBuffer {
+        alignas(16) float data[4];
+
+    public:
+        float* get() { return data; }
+
+        void process(const float* input) {
+            for (int i = 0; i < 4; i++) {
+                data[i] = input[i] * 2.0f;
+            }
+        }
+    };
+
+    void compute() {
+        AlignedBuffer a, b, result;
+        multiplyVectors(a.get(), b.get(), result.get(), 4);
+    }
+assertions:
+  must_include:
+  - AlignedBuffer
+  - compute
+  - alignas
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add memory alignment

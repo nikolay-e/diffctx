@@ -1,0 +1,29 @@
+name: ts_047_pick_type
+initial:
+  user.ts: |
+    export interface User {
+        id: string;
+        name: string;
+        email: string;
+        password: string;
+        createdAt: Date;
+    }
+  dto.ts: |
+    console.log('initial');
+changed:
+  dto.ts: |
+    import { User } from './user';
+
+    type UserPublic = Pick<User, 'id' | 'name' | 'email'>;
+
+    function toPublic(user: User): UserPublic {
+        return { id: user.id, name: user.name, email: user.email };
+    }
+assertions:
+  must_include:
+  - User
+  - dto.ts
+  must_not_include:
+  - js_garbage_marker_001
+options:
+  commit_message: Add Pick usage

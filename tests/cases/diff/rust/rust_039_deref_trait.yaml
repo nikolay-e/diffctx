@@ -1,0 +1,71 @@
+name: rust_039_deref_trait
+initial:
+  src/wrapper.rs: |
+    pub struct Wrapper<T> {
+        value: T,
+    }
+
+    impl<T> Wrapper<T> {
+        pub fn new(value: T) -> Self {
+            Self { value }
+        }
+
+        pub fn into_inner(self) -> T {
+            self.value
+        }
+    }
+changed:
+  src/wrapper.rs: |
+    use std::ops::{Deref, DerefMut};
+
+    pub struct Wrapper<T> {
+        value: T,
+    }
+
+    impl<T> Wrapper<T> {
+        pub fn new(value: T) -> Self {
+            Self { value }
+        }
+
+        pub fn into_inner(self) -> T {
+            self.value
+        }
+    }
+
+    impl<T> Deref for Wrapper<T> {
+        type Target = T;
+
+        fn deref(&self) -> &Self::Target {
+            &self.value
+        }
+    }
+
+    impl<T> DerefMut for Wrapper<T> {
+        fn deref_mut(&mut self) -> &mut Self::Target {
+            &mut self.value
+        }
+    }
+  src/usage.rs: |
+    use crate::wrapper::Wrapper;
+
+    pub fn use_wrapper() {
+        let wrapped = Wrapper::new(String::from("hello"));
+        println!("Length: {}", wrapped.len());
+        println!("Upper: {}", wrapped.to_uppercase());
+    }
+
+    pub fn modify_wrapper() {
+        let mut wrapped = Wrapper::new(vec![1, 2, 3]);
+        wrapped.push(4);
+        println!("Items: {:?}", *wrapped);
+    }
+assertions:
+  must_include:
+  - Deref
+  - DerefMut
+  - use_wrapper
+  - modify_wrapper
+  must_not_include:
+  - garbage_deref_fn
+options:
+  commit_message: Implement Deref and DerefMut traits

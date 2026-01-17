@@ -1,0 +1,39 @@
+name: react_064_usereducer
+initial:
+  reducer.ts: |
+    export type State = { count: number };
+    export type Action = { type: 'increment' } | { type: 'decrement' } | { type: 'reset' };
+
+    export function counterReducer(state: State, action: Action): State {
+        switch (action.type) {
+            case 'increment': return { count: state.count + 1 };
+            case 'decrement': return { count: state.count - 1 };
+            case 'reset': return { count: 0 };
+        }
+    }
+  Counter.tsx: |
+    console.log('initial');
+changed:
+  Counter.tsx: |
+    import { useReducer } from 'react';
+    import { counterReducer, State } from './reducer';
+
+    const initialState: State = { count: 0 };
+
+    export function Counter() {
+        const [state, dispatch] = useReducer(counterReducer, initialState);
+        return (
+            <div>
+                <span>{state.count}</span>
+                <button onClick={() => dispatch({ type: 'increment' })}>+</button>
+            </div>
+        );
+    }
+assertions:
+  must_include:
+  - counterReducer
+  - Counter.tsx
+  must_not_include:
+  - js_garbage_marker_001
+options:
+  commit_message: Add useReducer

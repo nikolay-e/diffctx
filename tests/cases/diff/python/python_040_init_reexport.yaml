@@ -1,0 +1,29 @@
+name: python_040_init_reexport
+initial:
+  mypackage/helpers.py: |
+    class HelperClass:
+        def help(self):
+            return "helping"
+  mypackage/__init__.py: |
+    from .helpers import HelperClass
+
+    __all__ = ["HelperClass"]
+  app.py: |
+    def run():
+        pass
+  garbage.py: |
+    garbage_marker_12345 = "init garbage"
+    unused_marker_67890 = "unused init"
+changed:
+  app.py: |
+    from mypackage import HelperClass
+
+    def run():
+        helper = HelperClass()
+        return helper.help()
+assertions:
+  must_include:
+  - class HelperClass
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890

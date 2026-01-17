@@ -1,0 +1,29 @@
+name: docker_510_cmd
+initial:
+  app.py: |
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--port', default=8080)
+    args = parser.parse_args()
+    print(f'Port: {args.port}')
+  Dockerfile: |
+    FROM python:3.11-slim
+    COPY app.py .
+    ENTRYPOINT ["python", "app.py"]
+  unrelated.txt: |
+    garbage_marker_12345
+    unused_marker_67890
+changed:
+  Dockerfile: |
+    FROM python:3.11-slim
+    COPY app.py .
+    ENTRYPOINT ["python", "app.py"]
+    CMD ["--port", "8080"]
+assertions:
+  must_include:
+  - CMD
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add CMD

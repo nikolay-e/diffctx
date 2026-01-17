@@ -1,0 +1,42 @@
+name: cpp_277_friend_function
+initial:
+  person.h: |
+    #pragma once
+    #include <string>
+    #include <ostream>
+
+    class Person {
+        std::string name_;
+        int age_;
+
+    public:
+        Person(std::string name, int age) : name_(std::move(name)), age_(age) {}
+
+        friend std::ostream& operator<<(std::ostream& os, const Person& p);
+        friend bool operator==(const Person& a, const Person& b);
+    };
+    // unused_marker_67890
+  person.cpp: |
+    #include <iostream>
+    int main() { return 0; }
+changed:
+  person.cpp: |
+    #include "person.h"
+
+    std::ostream& operator<<(std::ostream& os, const Person& p) {
+        return os << p.name_ << " (" << p.age_ << ")";
+    }
+
+    bool operator==(const Person& a, const Person& b) {
+        return a.name_ == b.name_ && a.age_ == b.age_;
+    }
+assertions:
+  must_include:
+  - operator<<
+  - operator==
+  - Person
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add friend function

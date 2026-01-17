@@ -1,0 +1,52 @@
+name: docs_029_sql_stored_procedure
+initial:
+  sql/procedures/calculate_order_total.sql: |
+    CREATE OR REPLACE FUNCTION calculate_order_total(order_id INTEGER)
+    RETURNS DECIMAL AS $$
+    DECLARE
+        total DECIMAL;
+    BEGIN
+        SELECT SUM(quantity * price) INTO total
+        FROM order_items
+        WHERE order_items.order_id = calculate_order_total.order_id;
+
+        RETURN COALESCE(total, 0);
+    END;
+    $$ LANGUAGE plpgsql;
+  src/services/order_service.py: |
+    class OrderService:
+        def get_order_total(self, order_id: int) -> float:
+            result = self.db.execute(
+                "SELECT calculate_order_total(%s)", [order_id]
+            )
+            return float(result[0][0])
+changed:
+  sql/procedures/calculate_order_total.sql: |
+    CREATE OR REPLACE FUNCTION calculate_order_total(
+        order_id INTEGER,
+        include_tax BOOLEAN DEFAULT FALSE
+    )
+    RETURNS DECIMAL AS $$
+    DECLARE
+        subtotal DECIMAL;
+        tax_rate DECIMAL := 0.1;
+    BEGIN
+        SELECT SUM(quantity * price) INTO subtotal
+        FROM order_items
+        WHERE order_items.order_id = calculate_order_total.order_id;
+
+        subtotal := COALESCE(subtotal, 0);
+
+        IF include_tax THEN
+            RETURN subtotal * (1 + tax_rate);
+        END IF;
+
+        RETURN subtotal;
+    END;
+    $$ LANGUAGE plpgsql;
+assertions:
+  must_include:
+  - calculate_order_total.sql
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890

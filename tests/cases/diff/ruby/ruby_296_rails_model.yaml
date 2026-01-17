@@ -1,0 +1,48 @@
+name: ruby_296_rails_model
+initial:
+  order.rb: |
+    class Order
+      attr_accessor :id, :user_id, :total
+
+      def initialize(id: nil, user_id: nil, total: 0)
+        @id = id
+        @user_id = user_id
+        @total = total
+      end
+    end
+  user.rb: |
+    # Initial
+    class User
+    end
+changed:
+  user.rb: |
+    require_relative 'order'
+
+    class User
+      attr_accessor :id, :name, :orders
+
+      def initialize(id: nil, name: nil)
+        @id = id
+        @name = name
+        @orders = []
+      end
+
+      # has_many :orders simulation
+      def orders
+        @orders ||= []
+      end
+
+      def add_order(order)
+        order.user_id = @id
+        @orders << order
+      end
+    end
+assertions:
+  must_include:
+  - add_order
+  - order.user_id
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add Rails model relationship

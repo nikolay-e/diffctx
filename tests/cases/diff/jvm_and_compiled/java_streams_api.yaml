@@ -1,0 +1,79 @@
+name: java_streams_api
+initial:
+  src/main/java/com/example/DataProcessor.java: |
+    package com.example;
+
+    import java.util.ArrayList;
+    import java.util.List;
+
+    public class DataProcessor {
+        public List<String> filterActive(List<User> users) {
+            List<String> result = new ArrayList<>();
+            for (User user : users) {
+                if (user.isActive()) {
+                    result.add(user.getName());
+                }
+            }
+            return result;
+        }
+    }
+changed:
+  src/main/java/com/example/DataProcessor.java: |
+    package com.example;
+
+    import java.util.Comparator;
+    import java.util.List;
+    import java.util.Map;
+    import java.util.stream.Collectors;
+
+    public class DataProcessor {
+        public List<String> filterActive(List<User> users) {
+            return users.stream()
+                .filter(User::isActive)
+                .map(User::getName)
+                .sorted()
+                .toList();
+        }
+
+        public Map<String, List<User>> groupByDepartment(List<User> users) {
+            return users.stream()
+                .collect(Collectors.groupingBy(User::getDepartment));
+        }
+
+        public double averageAge(List<User> users) {
+            return users.stream()
+                .mapToInt(User::getAge)
+                .average()
+                .orElse(0.0);
+        }
+
+        public List<User> topNByScore(List<User> users, int n) {
+            return users.stream()
+                .sorted(Comparator.comparingDouble(User::getScore).reversed())
+                .limit(n)
+                .toList();
+        }
+    }
+  src/main/java/com/example/User.java: |
+    package com.example;
+
+    public class User {
+        private String name;
+        private boolean active;
+        private String department;
+        private int age;
+        private double score;
+
+        public String getName() { return name; }
+        public boolean isActive() { return active; }
+        public String getDepartment() { return department; }
+        public int getAge() { return age; }
+        public double getScore() { return score; }
+    }
+assertions:
+  must_include:
+  - DataProcessor.java
+  - stream()
+  - groupByDepartment
+options:
+  commit_message: Refactor to use Streams API

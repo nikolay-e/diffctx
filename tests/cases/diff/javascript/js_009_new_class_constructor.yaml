@@ -1,0 +1,34 @@
+name: js_009_new_class_constructor
+initial:
+  user.ts: |
+    export class MyClass {
+        private value: number;
+
+        constructor(value: number) {
+            this.value = value;
+        }
+
+        getValue(): number {
+            return this.value;
+        }
+    }
+  main.ts: |
+    console.log('initial');
+changed:
+  main.ts: |
+    import { MyClass } from './user';
+
+    function createInstance() {
+        const instance = new MyClass(42);
+        return instance.getValue();
+    }
+
+    console.log(createInstance());
+assertions:
+  must_include:
+  - MyClass
+  - main.ts
+  must_not_include:
+  - js_garbage_marker_001
+options:
+  commit_message: Add class instantiation

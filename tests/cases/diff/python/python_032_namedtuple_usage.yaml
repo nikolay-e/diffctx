@@ -1,0 +1,30 @@
+name: python_032_namedtuple_usage
+initial:
+  geometry.py: |
+    from typing import NamedTuple
+
+    class Point(NamedTuple):
+        x: float
+        y: float
+
+        def distance(self, other: "Point") -> float:
+            return ((self.x - other.x) ** 2 + (self.y - other.y) ** 2) ** 0.5
+  renderer.py: |
+    def draw():
+        pass
+  garbage.py: |
+    garbage_marker_12345 = "geometry garbage"
+    unused_marker_67890 = "unused geometry"
+changed:
+  renderer.py: |
+    from geometry import Point
+
+    def draw(start: Point, end: Point) -> float:
+        point = Point(x=start.x, y=end.y)
+        return point.distance(end)
+assertions:
+  must_include:
+  - class Point
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890

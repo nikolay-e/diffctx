@@ -1,0 +1,51 @@
+name: k8s_428_ingress_annotations
+initial:
+  ingress.yaml: |
+    apiVersion: networking.k8s.io/v1
+    kind: Ingress
+    metadata:
+      name: api-ingress
+    spec:
+      rules:
+      - host: api.example.com
+        http:
+          paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: api
+                port:
+                  number: 80
+  unrelated.txt: |
+    garbage_marker_k8s428 = True
+    unused_marker_k8s428 = False
+changed:
+  ingress.yaml: |
+    apiVersion: networking.k8s.io/v1
+    kind: Ingress
+    metadata:
+      name: api-ingress
+      annotations:
+        nginx.ingress.kubernetes.io/rewrite-target: /
+        nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    spec:
+      rules:
+      - host: api.example.com
+        http:
+          paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: api
+                port:
+                  number: 80
+assertions:
+  must_include:
+  - 'annotations:'
+  must_not_include:
+  - garbage_marker_k8s428
+  - unused_marker_k8s428
+options:
+  commit_message: Add ingress annotations

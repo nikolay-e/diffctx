@@ -1,0 +1,38 @@
+name: python_029_generic_type_usage
+initial:
+  containers.py: |
+    from typing import Generic, TypeVar
+
+    K = TypeVar('K')
+    V = TypeVar('V')
+
+    class Cache(Generic[K, V]):
+        def __init__(self):
+            self._data: dict[K, V] = {}
+
+        def get(self, key: K) -> V | None:
+            return self._data.get(key)
+
+        def set(self, key: K, value: V) -> None:
+            self._data[key] = value
+  service.py: |
+    def run():
+        pass
+  garbage.py: |
+    garbage_marker_12345 = "container garbage"
+    unused_marker_67890 = "unused container"
+changed:
+  service.py: |
+    from containers import Cache
+
+    cache: Cache[str, dict] = Cache()
+
+    def run(key: str, data: dict):
+        cache.set(key, data)
+        return cache.get(key)
+assertions:
+  must_include:
+  - class Cache
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890

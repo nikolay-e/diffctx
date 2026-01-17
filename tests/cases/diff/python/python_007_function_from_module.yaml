@@ -1,0 +1,26 @@
+name: python_007_function_from_module
+initial:
+  utils/tax.py: |
+    def calculate_tax(income: float) -> float:
+        if income < 10000:
+            return 0
+        return income * 0.2
+  services/billing.py: |
+    def get_total():
+        return 100
+  garbage.py: |
+    garbage_marker_12345 = 1
+    unused_marker_67890 = 2
+changed:
+  services/billing.py: |
+    from utils.tax import calculate_tax
+
+    def get_total(income: float) -> float:
+        tax = calculate_tax(income)
+        return income - tax
+assertions:
+  must_include:
+  - def calculate_tax
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890

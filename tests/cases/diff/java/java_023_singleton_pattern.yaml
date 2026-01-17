@@ -1,0 +1,62 @@
+name: java_023_singleton_pattern
+initial:
+  src/main/java/com/example/Config.java: |
+    package com.example;
+
+    public class Config {
+        private String value;
+
+        public Config() {
+            this.value = "default";
+        }
+
+        public String getValue() {
+            return value;
+        }
+    }
+changed:
+  src/main/java/com/example/Config.java: |
+    package com.example;
+
+    public class Config {
+        private static volatile Config instance;
+        private final String value;
+
+        private Config() {
+            this.value = System.getenv().getOrDefault("CONFIG", "default");
+        }
+
+        public static Config getInstance() {
+            if (instance == null) {
+                synchronized (Config.class) {
+                    if (instance == null) {
+                        instance = new Config();
+                    }
+                }
+            }
+            return instance;
+        }
+
+        public String getValue() {
+            return value;
+        }
+    }
+  src/main/java/com/example/AppContext.java: |
+    package com.example;
+
+    public class AppContext {
+        public void initialize() {
+            Config config = Config.getInstance();
+            System.out.println("Config: " + config.getValue());
+        }
+    }
+assertions:
+  must_include:
+  - getInstance()
+  - volatile
+  - synchronized
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Convert Config to singleton

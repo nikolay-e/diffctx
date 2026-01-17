@@ -1,0 +1,29 @@
+name: cicd_003_gha_checkout_action
+initial:
+  package.json: |
+    {
+      "name": "myapp",
+      "scripts": { "build": "echo build" }
+    }
+  .github/workflows/ci.yml: |
+    name: CI
+    jobs:
+      build:
+        runs-on: ubuntu-latest
+        steps:
+          - run: echo "no checkout"
+changed:
+  .github/workflows/ci.yml: |
+    name: CI
+    jobs:
+      build:
+        runs-on: ubuntu-latest
+        steps:
+          - uses: actions/checkout@v4
+          - run: npm run build
+assertions:
+  must_include:
+  - ci.yml
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890

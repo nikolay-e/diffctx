@@ -1,0 +1,42 @@
+name: php_305_abstract_class
+initial:
+  BaseController.php: |
+    <?php
+    abstract class BaseController {
+        abstract protected function getModel(): string;
+
+        public function index(): array {
+            return ['model' => $this->getModel()];
+        }
+
+        protected function respond(array $data): void {
+            echo json_encode($data);
+        }
+    }
+  UserController.php: |
+    <?php
+    class UserController {}
+changed:
+  UserController.php: |
+    <?php
+    require_once 'BaseController.php';
+
+    class UserController extends BaseController {
+        protected function getModel(): string {
+            return 'User';
+        }
+
+        public function show(int $id): void {
+            $this->respond(['id' => $id, 'model' => $this->getModel()]);
+        }
+    }
+assertions:
+  must_include:
+  - extends BaseController
+  - getModel
+  - respond
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add abstract class implementation

@@ -1,0 +1,117 @@
+name: angular_003_service_injection
+initial:
+  auth.service.ts: |
+    import { Injectable } from '@angular/core';
+    import { BehaviorSubject, Observable } from 'rxjs';
+
+    export interface AuthUser {
+        id: string;
+        email: string;
+        token: string;
+    }
+
+    @Injectable({ providedIn: 'root' })
+    export class AuthService {
+        private currentUserSubject = new BehaviorSubject<AuthUser | null>(null);
+
+        get currentUser$(): Observable<AuthUser | null> {
+            return this.currentUserSubject.asObservable();
+        }
+
+        get isAuthenticated(): boolean {
+            return this.currentUserSubject.value !== null;
+        }
+
+        login(email: string, password: string): Promise<AuthUser> {
+            return fetch('/api/login', {
+                method: 'POST',
+                body: JSON.stringify({ email, password }),
+            })
+                .then(res => res.json())
+                .then(user => {
+                    this.currentUserSubject.next(user);
+                    return user;
+                });
+        }
+
+        logout(): void {
+            this.currentUserSubject.next(null);
+        }
+    }
+
+    // angular_garbage_marker_003
+    const GARBAGE_AUTH_CONFIG = { tokenExpiry: 3600 };
+  user.service.ts: |
+    import { Injectable } from '@angular/core';
+
+    @Injectable({ providedIn: 'root' })
+    export class UserService {
+        getUsers(): Promise<any[]> {
+            return fetch('/api/users').then(res => res.json());
+        }
+    }
+  dashboard.component.ts: |
+    import { Component } from '@angular/core';
+
+    @Component({
+        selector: 'app-dashboard',
+        template: '<div>Initial</div>',
+    })
+    export class DashboardComponent {}
+changed:
+  dashboard.component.ts: |
+    import { Component, OnInit } from '@angular/core';
+    import { AuthService, AuthUser } from './auth.service';
+    import { UserService } from './user.service';
+
+    @Component({
+        selector: 'app-dashboard',
+        template: \`
+            <div *ngIf="currentUser; else loginPrompt">
+                <h1>Welcome, {{ currentUser.email }}</h1>
+                <h2>Users</h2>
+                <ul>
+                    <li *ngFor="let user of users">{{ user.name }}</li>
+                </ul>
+                <button (click)="logout()">Logout</button>
+            </div>
+            <ng-template #loginPrompt>
+                <p>Please log in</p>
+            </ng-template>
+        \`,
+    })
+    export class DashboardComponent implements OnInit {
+        currentUser: AuthUser | null = null;
+        users: any[] = [];
+
+        constructor(
+            private authService: AuthService,
+            private userService: UserService
+        ) {}
+
+        ngOnInit(): void {
+            this.authService.currentUser$.subscribe(user => {
+                this.currentUser = user;
+                if (user) {
+                    this.loadUsers();
+                }
+            });
+        }
+
+        private async loadUsers(): Promise<void> {
+            this.users = await this.userService.getUsers();
+        }
+
+        logout(): void {
+            this.authService.logout();
+        }
+    }
+assertions:
+  must_include:
+  - dashboard.component.ts
+  - AuthService
+  - UserService
+  must_not_include:
+  - angular_garbage_marker_003
+options:
+  commit_message: Add Angular service injection

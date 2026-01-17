@@ -1,0 +1,26 @@
+name: docker_506_env
+initial:
+  app.js: |
+    const env = process.env.NODE_ENV || 'development';
+    console.log(`Running in ${env} mode`);
+  Dockerfile: |
+    FROM node:18
+    COPY . .
+    CMD ["node", "app.js"]
+  junk.txt: |
+    garbage_marker_12345
+    unused_marker_67890
+changed:
+  Dockerfile: |
+    FROM node:18
+    ENV NODE_ENV=production
+    COPY . .
+    CMD ["node", "app.js"]
+assertions:
+  must_include:
+  - ENV NODE_ENV=production
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add ENV

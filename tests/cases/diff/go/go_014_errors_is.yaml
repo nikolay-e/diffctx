@@ -1,0 +1,52 @@
+name: go_014_errors_is
+initial:
+  errors.go: |
+    package main
+
+    import "errors"
+
+    var ErrNotFound = errors.New("not found")
+    var ErrUnauthorized = errors.New("unauthorized")
+  handler.go: |
+    package main
+
+    import "errors"
+
+    func handleError(err error) string {
+        if errors.Is(err, ErrNotFound) {
+            return "404"
+        }
+        if errors.Is(err, ErrUnauthorized) {
+            return "401"
+        }
+        return "500"
+    }
+  unrelated/garbage.go: |
+    package unrelated
+
+    func UnusedErrors_12345() {
+        println("garbage_marker_12345")
+    }
+
+    func UnusedHandler_67890() {
+        println("unused_marker_67890")
+    }
+changed:
+  errors.go: |
+    package main
+
+    import "errors"
+
+    var ErrNotFound = errors.New("not found")
+    var ErrUnauthorized = errors.New("unauthorized")
+    var ErrForbidden = errors.New("forbidden")
+    var ErrConflict = errors.New("conflict")
+assertions:
+  must_include:
+  - ErrForbidden
+  - ErrConflict
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add more error types

@@ -1,0 +1,42 @@
+name: cpp_263_template_specialization
+initial:
+  serializer.h: |
+    #pragma once
+    #include <string>
+    #include <sstream>
+
+    template<typename T>
+    struct Serializer {
+        static std::string serialize(const T& value) {
+            std::ostringstream oss;
+            oss << value;
+            return oss.str();
+        }
+    };
+
+    template<>
+    struct Serializer<bool> {
+        static std::string serialize(bool value) {
+            return value ? "true" : "false";
+        }
+    };
+    // unused_marker_67890
+  formatter.cpp: |
+    #include <iostream>
+    int main() { return 0; }
+changed:
+  formatter.cpp: |
+    #include "serializer.h"
+
+    std::string format(int n, bool flag) {
+        return Serializer<int>::serialize(n) + " " + Serializer<bool>::serialize(flag);
+    }
+assertions:
+  must_include:
+  - format
+  - Serializer
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add template specialization usage

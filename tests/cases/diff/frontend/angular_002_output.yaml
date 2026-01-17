@@ -1,0 +1,137 @@
+name: angular_002_output
+initial:
+  item-selector.component.ts: |
+    import { Component } from '@angular/core';
+
+    @Component({
+        selector: 'app-item-selector',
+        template: '<div>Initial</div>',
+    })
+    export class ItemSelectorComponent {}
+
+    // angular_garbage_marker_002
+    const GARBAGE_SELECTOR_CONFIG = { multiSelect: false };
+  parent.component.ts: |
+    import { Component } from '@angular/core';
+
+    @Component({
+        selector: 'app-parent',
+        template: '<div>Initial</div>',
+    })
+    export class ParentComponent {}
+changed:
+  item-selector.component.ts: |
+    import { Component, Input, Output, EventEmitter } from '@angular/core';
+
+    export interface Item {
+        id: string;
+        name: string;
+        value: number;
+    }
+
+    export interface SelectionChangeEvent {
+        selectedItems: Item[];
+        lastSelected: Item | null;
+    }
+
+    @Component({
+        selector: 'app-item-selector',
+        template: \`
+            <div class="item-selector">
+                <div *ngFor="let item of items"
+                     class="item"
+                     [class.selected]="isSelected(item)"
+                     (click)="toggleSelection(item)">
+                    {{ item.name }}
+                </div>
+                <button (click)="confirmSelection()">Confirm</button>
+                <button (click)="cancelSelection()">Cancel</button>
+            </div>
+        \`,
+    })
+    export class ItemSelectorComponent {
+        @Input() items: Item[] = [];
+        @Input() multiSelect = false;
+
+        @Output() selectionChange = new EventEmitter<SelectionChangeEvent>();
+        @Output() confirm = new EventEmitter<Item[]>();
+        @Output() cancel = new EventEmitter<void>();
+
+        selectedItems: Item[] = [];
+
+        isSelected(item: Item): boolean {
+            return this.selectedItems.some(i => i.id === item.id);
+        }
+
+        toggleSelection(item: Item): void {
+            if (this.isSelected(item)) {
+                this.selectedItems = this.selectedItems.filter(i => i.id !== item.id);
+            } else {
+                if (this.multiSelect) {
+                    this.selectedItems = [...this.selectedItems, item];
+                } else {
+                    this.selectedItems = [item];
+                }
+            }
+            this.selectionChange.emit({
+                selectedItems: this.selectedItems,
+                lastSelected: item,
+            });
+        }
+
+        confirmSelection(): void {
+            this.confirm.emit(this.selectedItems);
+        }
+
+        cancelSelection(): void {
+            this.selectedItems = [];
+            this.cancel.emit();
+        }
+    }
+  parent.component.ts: |
+    import { Component } from '@angular/core';
+    import { Item, SelectionChangeEvent } from './item-selector.component';
+
+    @Component({
+        selector: 'app-parent',
+        template: \`
+            <app-item-selector
+                [items]="items"
+                [multiSelect]="true"
+                (selectionChange)="onSelectionChange($event)"
+                (confirm)="onConfirm($event)"
+                (cancel)="onCancel()">
+            </app-item-selector>
+            <p>Selected: {{ selectedCount }}</p>
+        \`,
+    })
+    export class ParentComponent {
+        items: Item[] = [
+            { id: '1', name: 'Item 1', value: 100 },
+            { id: '2', name: 'Item 2', value: 200 },
+            { id: '3', name: 'Item 3', value: 300 },
+        ];
+        selectedCount = 0;
+
+        onSelectionChange(event: SelectionChangeEvent): void {
+            this.selectedCount = event.selectedItems.length;
+            console.log('Selection changed:', event);
+        }
+
+        onConfirm(items: Item[]): void {
+            console.log('Confirmed:', items);
+        }
+
+        onCancel(): void {
+            this.selectedCount = 0;
+            console.log('Cancelled');
+        }
+    }
+assertions:
+  must_include:
+  - '@Output'
+  - EventEmitter
+  must_not_include:
+  - angular_garbage_marker_002
+options:
+  commit_message: Add Angular @Output decorator

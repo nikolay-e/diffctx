@@ -1,0 +1,28 @@
+name: python_050_flask_blueprint_route
+initial:
+  routes.py: |
+    from flask import Blueprint
+
+    bp = Blueprint("api", __name__)
+
+    @bp.route("/users")
+    def get_users():
+        return {"users": []}
+  app.py: |
+    from flask import Flask
+  garbage.py: |
+    garbage_marker_12345 = "flask garbage"
+    unused_marker_67890 = "unused flask"
+changed:
+  app.py: |
+    from flask import Flask
+    from routes import bp
+
+    app = Flask(__name__)
+    app.register_blueprint(bp, url_prefix="/api")
+assertions:
+  must_include:
+  - routes.py
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890

@@ -1,0 +1,21 @@
+name: cicd_036_gitlab_environment
+initial:
+  .gitlab-ci.yml: |
+    deploy:
+      script:
+        - ./deploy.sh
+changed:
+  .gitlab-ci.yml: |
+    deploy:
+      script:
+        - ./deploy.sh
+      environment:
+        name: production
+        url: https://app.example.com
+        on_stop: stop_production
+assertions:
+  must_include:
+  - .gitlab-ci.yml
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890

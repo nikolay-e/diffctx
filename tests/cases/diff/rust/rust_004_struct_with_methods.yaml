@@ -1,0 +1,40 @@
+name: rust_004_struct_with_methods
+initial:
+  src/counter.rs: |
+    pub struct Counter {
+        value: i32,
+    }
+
+    impl Counter {
+        pub fn new() -> Self {
+            Self { value: 0 }
+        }
+    }
+changed:
+  src/counter.rs: |
+    pub struct Counter {
+        value: i32,
+    }
+
+    impl Counter {
+        pub fn new() -> Self {
+            Self { value: 0 }
+        }
+
+        pub fn increment(&mut self) {
+            self.value += 1;
+        }
+
+        pub fn get(&self) -> i32 {
+            self.value
+        }
+    }
+assertions:
+  must_include:
+  - Counter
+  - increment
+  - get
+  must_not_include:
+  - garbage_method_name
+options:
+  commit_message: Add increment and get methods

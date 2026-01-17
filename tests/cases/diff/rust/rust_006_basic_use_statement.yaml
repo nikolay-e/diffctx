@@ -1,0 +1,26 @@
+name: rust_006_basic_use_statement
+initial:
+  src/main.rs: |
+    fn main() {
+        let map = std::collections::HashMap::new();
+        println!("{:?}", map);
+    }
+changed:
+  src/main.rs: |
+    use std::collections::HashMap;
+    use std::collections::HashSet;
+
+    fn main() {
+        let map: HashMap<String, i32> = HashMap::new();
+        let set: HashSet<i32> = HashSet::new();
+        println!("{:?} {:?}", map, set);
+    }
+assertions:
+  must_include:
+  - HashMap
+  - HashSet
+  - use std::collections
+  must_not_include:
+  - garbage_import_12345
+options:
+  commit_message: Add explicit use statements

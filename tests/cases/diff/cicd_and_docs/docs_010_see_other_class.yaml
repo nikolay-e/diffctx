@@ -1,0 +1,44 @@
+name: docs_010_see_other_class
+initial:
+  src/base_handler.py: |
+    class BaseHandler:
+        def handle(self, request):
+            raise NotImplementedError
+  src/user_handler.py: |
+    class UserHandler:
+        """Handle user requests.
+
+        @see BaseHandler for the base implementation
+        """
+        def handle(self, request):
+            return {"user": "data"}
+changed:
+  src/user_handler.py: |
+    from base_handler import BaseHandler
+
+    class UserHandler(BaseHandler):
+        """Handle user requests.
+
+        This handler processes user-related API requests.
+
+        @see BaseHandler for the base implementation
+        @see OrderHandler for order processing
+        @see AuthMiddleware for authentication
+
+        Attributes:
+            cache: Redis cache instance
+            logger: Logger instance
+        """
+        def __init__(self, cache, logger):
+            self.cache = cache
+            self.logger = logger
+
+        def handle(self, request):
+            self.logger.info("Handling user request")
+            return {"user": "data"}
+assertions:
+  must_include:
+  - user_handler.py
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890

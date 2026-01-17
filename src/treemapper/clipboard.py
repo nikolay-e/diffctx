@@ -10,28 +10,36 @@ class ClipboardError(Exception):
     pass
 
 
-def detect_clipboard_command() -> list[str] | None:
-    system = platform.system()
-    if system == "Darwin":
-        # pbcopy uses locale env vars for encoding; UTF-8 recommended
-        if shutil.which("pbcopy"):
-            return ["pbcopy"]
-        return None
-    if system == "Windows":
-        if shutil.which("clip"):
-            return ["clip"]
-        return None
-    if system in ("Linux", "FreeBSD"):
-        if os.environ.get("WAYLAND_DISPLAY") and shutil.which("wl-copy"):
-            # Force text/plain to avoid xdg-mime inference issues in minimal/headless setups
-            return ["wl-copy", "--type", "text/plain"]
-        if os.environ.get("DISPLAY"):
-            if shutil.which("xclip"):
-                return ["xclip", "-selection", "clipboard"]
-            if shutil.which("xsel"):
-                return ["xsel", "--clipboard", "--input"]
-        return None
+def _detect_darwin_clipboard() -> list[str] | None:
+    return ["pbcopy"] if shutil.which("pbcopy") else None
+
+
+def _detect_windows_clipboard() -> list[str] | None:
+    return ["clip"] if shutil.which("clip") else None
+
+
+def _detect_linux_clipboard() -> list[str] | None:
+    if os.environ.get("WAYLAND_DISPLAY") and shutil.which("wl-copy"):
+        return ["wl-copy", "--type", "text/plain"]
+    if os.environ.get("DISPLAY"):
+        if shutil.which("xclip"):
+            return ["xclip", "-selection", "clipboard"]
+        if shutil.which("xsel"):
+            return ["xsel", "--clipboard", "--input"]
     return None
+
+
+_CLIPBOARD_DETECTORS = {
+    "Darwin": _detect_darwin_clipboard,
+    "Windows": _detect_windows_clipboard,
+    "Linux": _detect_linux_clipboard,
+    "FreeBSD": _detect_linux_clipboard,
+}
+
+
+def detect_clipboard_command() -> list[str] | None:
+    detector = _CLIPBOARD_DETECTORS.get(platform.system())
+    return detector() if detector else None
 
 
 def copy_to_clipboard(text: str) -> int:

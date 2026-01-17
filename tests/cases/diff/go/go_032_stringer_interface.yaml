@@ -1,0 +1,89 @@
+name: go_032_stringer_interface
+initial:
+  status.go: |
+    package main
+
+    type Status int
+
+    const (
+        StatusUnknown Status = iota
+        StatusPending
+        StatusRunning
+        StatusCompleted
+        StatusFailed
+    )
+  job.go: |
+    package main
+
+    import "fmt"
+
+    type Job struct {
+        ID     int
+        Status Status
+    }
+
+    func (j *Job) Print() {
+        fmt.Printf("Job %d: %d
+    ", j.ID, j.Status)
+    }
+  unrelated/garbage.go: |
+    package unrelated
+
+    func UnusedStatus_12345() {
+        println("garbage_marker_12345")
+    }
+
+    func UnusedJob_67890() {
+        println("unused_marker_67890")
+    }
+changed:
+  status.go: |
+    package main
+
+    type Status int
+
+    const (
+        StatusUnknown Status = iota
+        StatusPending
+        StatusRunning
+        StatusCompleted
+        StatusFailed
+    )
+
+    func (s Status) String() string {
+        switch s {
+        case StatusPending:
+            return "pending"
+        case StatusRunning:
+            return "running"
+        case StatusCompleted:
+            return "completed"
+        case StatusFailed:
+            return "failed"
+        default:
+            return "unknown"
+        }
+    }
+  job.go: |
+    package main
+
+    import "fmt"
+
+    type Job struct {
+        ID     int
+        Status Status
+    }
+
+    func (j *Job) Print() {
+        fmt.Printf("Job %d: %s
+    ", j.ID, j.Status)
+    }
+assertions:
+  must_include:
+  - Status
+  - String()
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add Stringer implementation

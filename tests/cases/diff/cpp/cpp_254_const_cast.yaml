@@ -1,0 +1,33 @@
+name: cpp_254_const_cast
+initial:
+  legacy.h: |
+    #pragma once
+
+    void legacyModify(char* str);
+    // unused_marker_67890
+  legacy.cpp: |
+    #include "legacy.h"
+
+    void legacyModify(char* str) {
+        // Old API that doesn't modify but isn't const-correct
+    }
+  adapter.cpp: |
+    #include <iostream>
+    int main() { return 0; }
+changed:
+  adapter.cpp: |
+    #include "legacy.h"
+
+    void process(const char* str) {
+        legacyModify(const_cast<char*>(str));
+    }
+assertions:
+  must_include:
+  - process
+  - const_cast
+  - legacyModify
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add const_cast

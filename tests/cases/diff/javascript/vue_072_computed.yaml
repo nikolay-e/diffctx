@@ -1,0 +1,31 @@
+name: vue_072_computed
+initial:
+  utils.ts: |
+    export function formatName(first: string, last: string): string {
+        return `${first} ${last}`;
+    }
+  Profile.vue: |
+    <template><div>initial</div></template>
+changed:
+  Profile.vue: |
+    <script setup lang="ts">
+    import { ref, computed } from 'vue';
+    import { formatName } from './utils';
+
+    const firstName = ref('John');
+    const lastName = ref('Doe');
+
+    const fullName = computed(() => formatName(firstName.value, lastName.value));
+    </script>
+
+    <template>
+        <div>{{ fullName }}</div>
+    </template>
+assertions:
+  must_include:
+  - formatName
+  - Profile.vue
+  must_not_include:
+  - js_garbage_marker_001
+options:
+  commit_message: Add computed property

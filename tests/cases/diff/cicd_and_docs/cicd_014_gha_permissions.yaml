@@ -1,0 +1,34 @@
+name: cicd_014_gha_permissions
+initial:
+  .github/workflows/release.yml: |
+    name: Release
+    on:
+      push:
+        tags: ['v*']
+    jobs:
+      release:
+        runs-on: ubuntu-latest
+        steps:
+          - run: echo "release"
+changed:
+  .github/workflows/release.yml: |
+    name: Release
+    on:
+      push:
+        tags: ['v*']
+    jobs:
+      release:
+        runs-on: ubuntu-latest
+        permissions:
+          contents: write
+          packages: write
+        steps:
+          - uses: actions/checkout@v4
+          - name: Create Release
+            uses: softprops/action-gh-release@v1
+assertions:
+  must_include:
+  - release.yml
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890

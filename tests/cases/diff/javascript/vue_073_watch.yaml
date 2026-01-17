@@ -1,0 +1,33 @@
+name: vue_073_watch
+initial:
+  api.ts: |
+    export async function fetchUserData(userId: string) {
+        return { id: userId, name: 'User' };
+    }
+  UserDetails.vue: |
+    <template><div>initial</div></template>
+changed:
+  UserDetails.vue: |
+    <script setup lang="ts">
+    import { ref, watch } from 'vue';
+    import { fetchUserData } from './api';
+
+    const props = defineProps<{ userId: string }>();
+    const userData = ref<{ id: string; name: string } | null>(null);
+
+    watch(() => props.userId, async (newId) => {
+        userData.value = await fetchUserData(newId);
+    }, { immediate: true });
+    </script>
+
+    <template>
+        <div v-if="userData">{{ userData.name }}</div>
+    </template>
+assertions:
+  must_include:
+  - fetchUserData
+  - UserDetails.vue
+  must_not_include:
+  - js_garbage_marker_001
+options:
+  commit_message: Add watch effect

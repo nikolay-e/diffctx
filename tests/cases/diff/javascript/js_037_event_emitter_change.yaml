@@ -1,0 +1,41 @@
+name: js_037_event_emitter_change
+initial:
+  emitter.ts: |
+    import { EventEmitter } from 'events';
+
+    export const appEmitter = new EventEmitter();
+
+    export function emitUserCreated(user: { id: string; name: string }) {
+        appEmitter.emit('userCreated', user);
+    }
+  listener.ts: |
+    import { appEmitter } from './emitter';
+
+    appEmitter.on('userCreated', (user) => {
+        console.log('User created:', user);
+    });
+changed:
+  emitter.ts: |
+    import { EventEmitter } from 'events';
+
+    export const appEmitter = new EventEmitter();
+
+    export function emitUserCreated(user: { id: string; name: string }) {
+        appEmitter.emit('userCreated', user);
+    }
+
+    export function emitUserDeleted(userId: string) {
+        appEmitter.emit('userDeleted', userId);
+    }
+
+    export function emitUserUpdated(user: { id: string; name: string }) {
+        appEmitter.emit('userUpdated', user);
+    }
+assertions:
+  must_include:
+  - emitUserDeleted
+  - emitter.ts
+  must_not_include:
+  - js_garbage_marker_001
+options:
+  commit_message: Add more events

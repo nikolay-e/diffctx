@@ -1,0 +1,40 @@
+name: cpp_269_virtual_function
+initial:
+  drawable.h: |
+    #pragma once
+
+    class Drawable {
+    public:
+        virtual ~Drawable() = default;
+        virtual void draw() = 0;
+        virtual void resize(int w, int h) = 0;
+    };
+    // unused_marker_67890
+  widget.cpp: |
+    #include <iostream>
+    int main() { return 0; }
+changed:
+  widget.cpp: |
+    #include "drawable.h"
+    #include <iostream>
+
+    class Button : public Drawable {
+    public:
+        void draw() override {
+            std::cout << "Drawing button" << std::endl;
+        }
+
+        void resize(int w, int h) override {
+            std::cout << "Resizing to " << w << "x" << h << std::endl;
+        }
+    };
+assertions:
+  must_include:
+  - Button
+  - draw
+  - Drawable
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add virtual function implementation

@@ -1,0 +1,33 @@
+name: docs_036_sql_subquery
+initial:
+  sql/queries/top_customers.sql: |
+    SELECT
+        u.id,
+        u.name,
+        (SELECT COUNT(*) FROM orders WHERE user_id = u.id) AS order_count
+    FROM users u
+    ORDER BY order_count DESC
+    LIMIT 10;
+changed:
+  sql/queries/top_customers.sql: |
+    SELECT
+        u.id,
+        u.name,
+        u.email,
+        (SELECT COUNT(*) FROM orders WHERE user_id = u.id) AS order_count,
+        (SELECT COALESCE(SUM(total), 0) FROM orders WHERE user_id = u.id) AS total_spent,
+        (
+            SELECT MAX(created_at)
+            FROM orders
+            WHERE user_id = u.id
+        ) AS last_order_date
+    FROM users u
+    WHERE EXISTS (SELECT 1 FROM orders WHERE user_id = u.id)
+    ORDER BY total_spent DESC
+    LIMIT 10;
+assertions:
+  must_include:
+  - top_customers.sql
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890

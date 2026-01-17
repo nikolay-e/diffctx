@@ -1,0 +1,53 @@
+name: react_adv_008_react_memo
+initial:
+  ExpensiveList.tsx: |
+    import { memo } from 'react';
+
+    interface Item {
+        id: string;
+        name: string;
+    }
+
+    interface ExpensiveListProps {
+        items: Item[];
+    }
+
+    function ExpensiveListComponent({ items }: ExpensiveListProps) {
+        return (
+            <ul>
+                {items.map(item => (
+                    <li key={item.id}>{item.name}</li>
+                ))}
+            </ul>
+        );
+    }
+
+    export const ExpensiveList = memo(ExpensiveListComponent);
+
+    // react_adv_garbage_marker_008
+    const GARBAGE_LIST_CONFIG = { maxItems: 100 };
+  Dashboard.tsx: |
+    console.log('initial');
+changed:
+  Dashboard.tsx: |
+    import { useState } from 'react';
+    import { ExpensiveList } from './ExpensiveList';
+
+    export function Dashboard() {
+        const [items] = useState([{ id: '1', name: 'Item 1' }]);
+        const [count, setCount] = useState(0);
+
+        return (
+            <div>
+                <button onClick={() => setCount(c => c + 1)}>Count: {count}</button>
+                <ExpensiveList items={items} />
+            </div>
+        );
+    }
+assertions:
+  must_include:
+  - Dashboard.tsx
+  must_not_include:
+  - react_adv_garbage_marker_008
+options:
+  commit_message: Add memoized component usage

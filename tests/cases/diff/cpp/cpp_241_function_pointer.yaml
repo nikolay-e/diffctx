@@ -1,0 +1,44 @@
+name: cpp_241_function_pointer
+initial:
+  handlers.h: |
+    #pragma once
+    void onSuccess(int code);
+    void onError(int code);
+    // garbage_marker_12345 - this should not appear in context
+  handlers.cpp: |
+    #include "handlers.h"
+    #include <iostream>
+
+    void onSuccess(int code) {
+        std::cout << "Success: " << code << std::endl;
+    }
+
+    void onError(int code) {
+        std::cerr << "Error: " << code << std::endl;
+    }
+  main.cpp: |
+    #include <iostream>
+    int main() { return 0; }
+changed:
+  main.cpp: |
+    #include "handlers.h"
+
+    void execute(void (*callback)(int), int value) {
+        callback(value);
+    }
+
+    int main() {
+        void (*handler)(int) = onSuccess;
+        execute(handler, 200);
+        return 0;
+    }
+assertions:
+  must_include:
+  - execute
+  - handler
+  - onSuccess
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add function pointer usage

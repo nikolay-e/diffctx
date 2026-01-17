@@ -1,0 +1,15 @@
+name: fragment_decorator_included
+initial:
+  decorated.py: |
+    @decorator
+    def my_function():
+        pass
+changed:
+  decorated.py: |
+    @decorator
+    def my_function():
+        return 42
+assertions:
+  must_include:
+  - '@decorator'
+  - my_function

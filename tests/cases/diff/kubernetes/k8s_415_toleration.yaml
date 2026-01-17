@@ -1,0 +1,41 @@
+name: k8s_415_toleration
+initial:
+  deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: dedicated-app
+    spec:
+      template:
+        spec:
+          containers:
+          - name: app
+            image: myapp:latest
+  unrelated.txt: |
+    garbage_marker_k8s415 = True
+    unused_marker_k8s415 = False
+changed:
+  deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: dedicated-app
+    spec:
+      template:
+        spec:
+          tolerations:
+          - key: "dedicated"
+            operator: "Equal"
+            value: "high-priority"
+            effect: "NoSchedule"
+          containers:
+          - name: app
+            image: myapp:latest
+assertions:
+  must_include:
+  - tolerations
+  must_not_include:
+  - garbage_marker_k8s415
+  - unused_marker_k8s415
+options:
+  commit_message: Add toleration

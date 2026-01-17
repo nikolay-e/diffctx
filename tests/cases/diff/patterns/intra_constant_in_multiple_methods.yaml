@@ -1,0 +1,54 @@
+name: intra_constant_in_multiple_methods
+initial:
+  limits.py: |
+    class RateLimiter:
+        MAX_REQUESTS = 100
+        TIME_WINDOW = 60
+
+        def __init__(self):
+            self.requests = []
+
+        def can_proceed(self):
+            self._cleanup_old()
+            return len(self.requests) < self.MAX_REQUESTS
+
+        def record_request(self):
+            if len(self.requests) >= self.MAX_REQUESTS:
+                raise Exception("Rate limit exceeded")
+            self.requests.append(time.time())
+
+        def get_remaining(self):
+            self._cleanup_old()
+            return self.MAX_REQUESTS - len(self.requests)
+
+        def _cleanup_old(self):
+            cutoff = time.time() - self.TIME_WINDOW
+            self.requests = [r for r in self.requests if r > cutoff]
+changed:
+  limits.py: |
+    class RateLimiter:
+        MAX_REQUESTS = 200
+        TIME_WINDOW = 60
+
+        def __init__(self):
+            self.requests = []
+
+        def can_proceed(self):
+            self._cleanup_old()
+            return len(self.requests) < self.MAX_REQUESTS
+
+        def record_request(self):
+            if len(self.requests) >= self.MAX_REQUESTS:
+                raise Exception("Rate limit exceeded")
+            self.requests.append(time.time())
+
+        def get_remaining(self):
+            self._cleanup_old()
+            return self.MAX_REQUESTS - len(self.requests)
+
+        def _cleanup_old(self):
+            cutoff = time.time() - self.TIME_WINDOW
+            self.requests = [r for r in self.requests if r > cutoff]
+assertions:
+  must_include:
+  - MAX_REQUESTS

@@ -1,0 +1,55 @@
+name: docs_011_openapi_paths
+initial:
+  openapi.yaml: |
+    openapi: 3.0.0
+    info:
+      title: User API
+      version: 1.0.0
+    paths:
+      /users:
+        get:
+          summary: List users
+          responses:
+            '200':
+              description: List of users
+  src/handlers/users.py: |
+    from flask import jsonify
+
+    def list_users():
+        return jsonify([{"id": 1, "name": "John"}])
+changed:
+  openapi.yaml: |
+    openapi: 3.0.0
+    info:
+      title: User API
+      version: 1.0.0
+    paths:
+      /users:
+        get:
+          summary: List users
+          parameters:
+            - name: limit
+              in: query
+              schema:
+                type: integer
+                default: 10
+          responses:
+            '200':
+              description: List of users
+        post:
+          summary: Create user
+          requestBody:
+            required: true
+            content:
+              application/json:
+                schema:
+                  $ref: '#/components/schemas/CreateUser'
+          responses:
+            '201':
+              description: User created
+assertions:
+  must_include:
+  - openapi.yaml
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890

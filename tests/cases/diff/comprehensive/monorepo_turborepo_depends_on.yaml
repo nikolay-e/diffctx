@@ -1,0 +1,52 @@
+name: monorepo_turborepo_depends_on
+initial:
+  turbo.json: |
+    {
+        "$schema": "https://turbo.build/schema.json",
+        "pipeline": {
+            "build": {
+                "dependsOn": ["^build"],
+                "outputs": ["dist/**"]
+            },
+            "test": {
+                "dependsOn": ["build"]
+            }
+        }
+    }
+  packages/core/src/index.ts: |
+    export const VERSION = '1.0.0';
+  packages/app/src/index.ts: |
+    import { VERSION } from '@myorg/core';
+    console.log(VERSION);
+changed:
+  turbo.json: |
+    {
+        "$schema": "https://turbo.build/schema.json",
+        "pipeline": {
+            "build": {
+                "dependsOn": ["^build"],
+                "outputs": ["dist/**"],
+                "env": ["NODE_ENV"]
+            },
+            "test": {
+                "dependsOn": ["build"],
+                "outputs": ["coverage/**"]
+            },
+            "lint": {
+                "outputs": []
+            },
+            "typecheck": {
+                "dependsOn": ["^build"],
+                "outputs": []
+            },
+            "deploy": {
+                "dependsOn": ["build", "test", "lint"],
+                "outputs": []
+            }
+        }
+    }
+assertions:
+  must_include:
+  - turbo.json
+options:
+  commit_message: Add lint, typecheck and deploy pipelines

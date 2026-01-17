@@ -1,0 +1,46 @@
+name: swift_330_combine_publisher
+initial:
+  SearchService.swift: |
+    import Combine
+
+    class SearchService {
+        func search(query: String) -> AnyPublisher<[String], Never> {
+            Just(["Result 1", "Result 2"])
+                .eraseToAnyPublisher()
+        }
+    }
+    // unused_marker_67890
+  SearchViewModel.swift: |
+    // Initial
+    class SearchViewModel {}
+changed:
+  SearchViewModel.swift: |
+    import Combine
+
+    class SearchViewModel: ObservableObject {
+        @Published var searchText = ""
+        @Published var results: [String] = []
+
+        private let service = SearchService()
+        private var cancellables = Set<AnyCancellable>()
+
+        init() {
+            $searchText
+                .debounce(for: .milliseconds(300), scheduler: RunLoop.main)
+                .removeDuplicates()
+                .flatMap { [weak self] query in
+                    self?.service.search(query: query) ?? Just([]).eraseToAnyPublisher()
+                }
+                .assign(to: &$results)
+        }
+    }
+assertions:
+  must_include:
+  - SearchViewModel
+  - SearchService
+  - search
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add Combine publisher

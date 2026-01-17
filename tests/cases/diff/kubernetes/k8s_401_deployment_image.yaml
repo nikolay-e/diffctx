@@ -1,0 +1,44 @@
+name: k8s_401_deployment_image
+initial:
+  Dockerfile: |
+    FROM python:3.11-slim
+    WORKDIR /app
+    COPY . .
+    RUN pip install -r requirements.txt
+    CMD ["python", "main.py"]
+  deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: myapp
+    spec:
+      replicas: 1
+      template:
+        spec:
+          containers:
+          - name: app
+            image: myapp:v1.0
+  unrelated.py: |
+    garbage_marker_12345 = True
+    unused_marker_67890 = False
+changed:
+  deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: myapp
+    spec:
+      replicas: 1
+      template:
+        spec:
+          containers:
+          - name: app
+            image: myapp:v2.0
+assertions:
+  must_include:
+  - 'image: myapp:v2.0'
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Update image

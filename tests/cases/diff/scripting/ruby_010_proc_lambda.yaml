@@ -1,0 +1,34 @@
+name: ruby_010_proc_lambda
+initial:
+  validators.rb: |
+    module Validators
+      POSITIVE = ->(x) { x > 0 }
+      NON_EMPTY = ->(s) { !s.nil? && !s.empty? }
+      EMAIL_FORMAT = ->(e) { e =~ /\A[^@\s]+@[^@\s]+\z/ }
+    end
+  form.rb: |
+    # Initial
+    class Form
+    end
+  garbage.rb: |
+    GARBAGE_VALIDATOR_UNUSED = "never_used_12345"
+    unused_marker_67890 = "not used"
+changed:
+  form.rb: |
+    require_relative 'validators'
+
+    class Form
+      def validate(data)
+        return false unless Validators::POSITIVE.call(data[:age])
+        return false unless Validators::NON_EMPTY.call(data[:name])
+        return false unless Validators::EMAIL_FORMAT.call(data[:email])
+        true
+      end
+    end
+assertions:
+  must_include:
+  - form.rb
+  - POSITIVE
+  must_not_include:
+  - GARBAGE_VALIDATOR_UNUSED
+  - unused_marker_67890

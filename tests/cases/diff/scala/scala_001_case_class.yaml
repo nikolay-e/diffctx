@@ -1,0 +1,37 @@
+name: scala_001_case_class
+initial:
+  User.scala: |
+    case class User(name: String, age: Int) {
+      def isAdult: Boolean = age >= 18
+    }
+
+    object User {
+      def apply(name: String): User = User(name, 0)
+    }
+  UserService.scala: |
+    class UserService {}
+changed:
+  UserService.scala: |
+    class UserService {
+      def createUser(name: String, age: Int): User = {
+        User(name, age)
+      }
+
+      def copyWithNewAge(user: User, newAge: Int): User = {
+        user.copy(age = newAge)
+      }
+
+      def compareUsers(u1: User, u2: User): Boolean = {
+        u1 == u2
+      }
+    }
+assertions:
+  must_include:
+  - UserService
+  - createUser
+  - copy
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add case class usage

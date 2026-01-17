@@ -1,0 +1,37 @@
+name: php_315_laravel_controller
+initial:
+  StoreUserRequest.php: |
+    <?php
+    namespace App\Http\Requests;
+
+    class StoreUserRequest {
+        public function validated(): array {
+            return [
+                'name' => 'John',
+                'email' => 'john@example.com'
+            ];
+        }
+    }
+  UserController.php: |
+    <?php
+    class UserController {}
+changed:
+  UserController.php: |
+    <?php
+    use App\Http\Requests\StoreUserRequest;
+
+    class UserController {
+        public function store(StoreUserRequest $request): array {
+            $data = $request->validated();
+            return ['user' => $data, 'created' => true];
+        }
+    }
+assertions:
+  must_include:
+  - StoreUserRequest
+  - validated
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add Laravel controller

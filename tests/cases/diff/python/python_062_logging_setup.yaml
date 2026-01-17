@@ -1,0 +1,31 @@
+name: python_062_logging_setup
+initial:
+  logging_config.py: |
+    import logging
+
+    def setup_logging(level: str = "INFO"):
+        logging.basicConfig(
+            level=getattr(logging, level),
+            format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+        )
+        return logging.getLogger(__name__)
+  app.py: |
+    def main():
+        pass
+  garbage.py: |
+    garbage_marker_12345 = "logging garbage"
+    unused_marker_67890 = "unused logging"
+changed:
+  app.py: |
+    from logging_config import setup_logging
+
+    logger = setup_logging("DEBUG")
+
+    def main():
+        logger.info("Application started")
+assertions:
+  must_include:
+  - def setup_logging
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890

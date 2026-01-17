@@ -1,0 +1,55 @@
+name: monorepo_internal_package
+initial:
+  internal/logger/index.ts: |
+    export class Logger {
+        log(message: string) {
+            console.log(message);
+        }
+    }
+  packages/api/src/server.ts: |
+    import { Logger } from '../../internal/logger';
+
+    const logger = new Logger();
+
+    export function startServer() {
+        logger.log('Server started');
+    }
+  packages/worker/src/main.ts: |
+    import { Logger } from '../../internal/logger';
+
+    const logger = new Logger();
+
+    export function runWorker() {
+        logger.log('Worker started');
+    }
+changed:
+  internal/logger/index.ts: |
+    export enum LogLevel {
+        DEBUG,
+        INFO,
+        WARN,
+        ERROR,
+    }
+
+    export class Logger {
+        constructor(private level: LogLevel = LogLevel.INFO) {}
+
+        log(message: string, level: LogLevel = LogLevel.INFO) {
+            if (level >= this.level) {
+                console.log(`[${LogLevel[level]}] ${message}`);
+            }
+        }
+
+        debug(message: string) {
+            this.log(message, LogLevel.DEBUG);
+        }
+
+        error(message: string) {
+            this.log(message, LogLevel.ERROR);
+        }
+    }
+assertions:
+  must_include:
+  - index.ts
+options:
+  commit_message: Add log levels to internal logger

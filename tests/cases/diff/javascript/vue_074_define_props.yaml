@@ -1,0 +1,32 @@
+name: vue_074_define_props
+initial:
+  types.ts: |
+    export interface CardProps {
+        title: string;
+        subtitle?: string;
+        variant: 'primary' | 'secondary';
+    }
+  Card.vue: |
+    <template><div>initial</div></template>
+changed:
+  Card.vue: |
+    <script setup lang="ts">
+    import type { CardProps } from './types';
+
+    const props = defineProps<CardProps>();
+    </script>
+
+    <template>
+        <div :class="props.variant">
+            <h2>{{ props.title }}</h2>
+            <p v-if="props.subtitle">{{ props.subtitle }}</p>
+        </div>
+    </template>
+assertions:
+  must_include:
+  - CardProps
+  - Card.vue
+  must_not_include:
+  - js_garbage_marker_001
+options:
+  commit_message: Add defineProps with type

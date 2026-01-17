@@ -1,0 +1,43 @@
+name: ts_002_type_extension
+initial:
+  types.ts: |
+    export type User = {
+        id: string;
+        name: string;
+        email: string;
+    };
+
+    export type Timestamps = {
+        createdAt: Date;
+        updatedAt: Date;
+    };
+
+    // ts_garbage_marker_002
+    type GarbageType = { unused: boolean };
+  extended.ts: |
+    console.log('initial');
+changed:
+  extended.ts: |
+    import { User, Timestamps } from './types';
+
+    export type ExtendedUser = User & {
+        metadata: Record<string, unknown>;
+        role: 'admin' | 'user';
+    };
+
+    export type TimestampedUser = User & Timestamps;
+
+    export type FullUser = User & Timestamps & {
+        preferences: {
+            theme: 'light' | 'dark';
+            notifications: boolean;
+        };
+    };
+assertions:
+  must_include:
+  - extended.ts
+  - ExtendedUser
+  must_not_include:
+  - ts_garbage_marker_002
+options:
+  commit_message: Add extended user types

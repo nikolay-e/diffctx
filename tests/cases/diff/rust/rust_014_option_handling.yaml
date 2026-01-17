@@ -1,0 +1,33 @@
+name: rust_014_option_handling
+initial:
+  src/finder.rs: |
+    pub fn find_first(items: &[i32], target: i32) -> i32 {
+        for item in items {
+            if *item == target {
+                return *item;
+            }
+        }
+        -1
+    }
+changed:
+  src/finder.rs: |
+    pub fn find_first(items: &[i32], target: i32) -> Option<i32> {
+        items.iter().find(|&&x| x == target).copied()
+    }
+
+    pub fn find_index(items: &[i32], target: i32) -> Option<usize> {
+        items.iter().position(|&x| x == target)
+    }
+
+    pub fn find_or_default(items: &[i32], target: i32, default: i32) -> i32 {
+        find_first(items, target).unwrap_or(default)
+    }
+assertions:
+  must_include:
+  - Option<i32>
+  - find_index
+  - find_or_default
+  must_not_include:
+  - garbage_option_fn
+options:
+  commit_message: Return Option instead of sentinel values

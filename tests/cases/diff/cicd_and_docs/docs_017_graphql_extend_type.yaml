@@ -1,0 +1,61 @@
+name: docs_017_graphql_extend_type
+initial:
+  schema/base.graphql: |
+    type Query {
+        health: String!
+    }
+
+    type User {
+        id: ID!
+        name: String!
+    }
+  schema/orders.graphql: |
+    extend type Query {
+        orders: [Order!]!
+    }
+
+    extend type User {
+        orders: [Order!]!
+    }
+
+    type Order {
+        id: ID!
+        total: Float!
+    }
+changed:
+  schema/orders.graphql: |
+    extend type Query {
+        orders(status: OrderStatus): [Order!]!
+        order(id: ID!): Order
+    }
+
+    extend type User {
+        orders(limit: Int = 10): [Order!]!
+        totalSpent: Float!
+    }
+
+    type Order {
+        id: ID!
+        total: Float!
+        status: OrderStatus!
+        items: [OrderItem!]!
+    }
+
+    type OrderItem {
+        id: ID!
+        product: String!
+        quantity: Int!
+    }
+
+    enum OrderStatus {
+        PENDING
+        CONFIRMED
+        SHIPPED
+        DELIVERED
+    }
+assertions:
+  must_include:
+  - orders.graphql
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890

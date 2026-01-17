@@ -1,0 +1,30 @@
+name: helm_552_subchart_values
+initial:
+  charts/postgresql/values.yaml: |
+    auth:
+      username: postgres
+      password: ""
+      database: postgres
+  values.yaml: |
+    postgresql:
+      enabled: true
+  junk.py: |
+    garbage_marker_12345 = 1
+    unused_marker_67890 = 2
+changed:
+  values.yaml: |
+    postgresql:
+      enabled: true
+      auth:
+        username: myapp
+        database: myapp
+        existingSecret: db-secret
+assertions:
+  must_include:
+  - 'postgresql:'
+  - existingSecret
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add subchart values

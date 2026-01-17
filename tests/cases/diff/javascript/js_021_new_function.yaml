@@ -1,0 +1,26 @@
+name: js_021_new_function
+initial:
+  target.ts: |
+    export function targetFn() {
+        return 42;
+    }
+  main.ts: |
+    console.log('initial');
+changed:
+  main.ts: |
+    import { targetFn } from './target';
+
+    function createDynamicFunction() {
+        const fn = new Function('return targetFn()');
+        return fn;
+    }
+
+    const dynamic = createDynamicFunction();
+assertions:
+  must_include:
+  - targetFn
+  - main.ts
+  must_not_include:
+  - js_garbage_marker_001
+options:
+  commit_message: Add new Function usage

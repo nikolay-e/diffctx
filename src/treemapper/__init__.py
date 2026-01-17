@@ -4,6 +4,7 @@ import io
 from pathlib import Path
 from typing import Any
 
+from .diffctx import build_diff_context
 from .ignore import get_ignore_specs
 from .tree import TreeBuildContext, build_tree
 from .version import __version__
@@ -11,6 +12,7 @@ from .writer import write_tree_json, write_tree_markdown, write_tree_text, write
 
 __all__ = [
     "__version__",
+    "build_diff_context",
     "map_directory",
     "to_json",
     "to_markdown",

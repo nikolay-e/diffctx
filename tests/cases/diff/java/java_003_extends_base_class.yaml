@@ -1,0 +1,50 @@
+name: java_003_extends_base_class
+initial:
+  src/main/java/com/example/BaseEntity.java: |
+    package com.example;
+
+    import java.time.LocalDateTime;
+
+    public abstract class BaseEntity {
+        private Long id;
+        private LocalDateTime createdAt;
+
+        public Long getId() { return id; }
+        public LocalDateTime getCreatedAt() { return createdAt; }
+    }
+  src/main/java/com/example/Product.java: |
+    package com.example;
+
+    public class Product extends BaseEntity {
+        private String name;
+        private Double price;
+    }
+changed:
+  src/main/java/com/example/BaseEntity.java: |
+    package com.example;
+
+    import java.time.LocalDateTime;
+
+    public abstract class BaseEntity {
+        private Long id;
+        private LocalDateTime createdAt;
+        private LocalDateTime updatedAt;
+
+        protected void onUpdate() {
+            updatedAt = LocalDateTime.now();
+        }
+
+        public Long getId() { return id; }
+        public LocalDateTime getCreatedAt() { return createdAt; }
+        public LocalDateTime getUpdatedAt() { return updatedAt; }
+    }
+assertions:
+  must_include:
+  - BaseEntity
+  - updatedAt
+  - onUpdate
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add updatedAt field with onUpdate

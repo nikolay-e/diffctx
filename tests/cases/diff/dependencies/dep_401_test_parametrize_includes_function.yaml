@@ -1,0 +1,52 @@
+name: dep_401_test_parametrize_includes_function
+initial:
+  src/calculator.py: |
+    def add(a: int, b: int) -> int:
+        return a + b
+
+    def subtract(a: int, b: int) -> int:
+        return a - b
+
+    def multiply(a: int, b: int) -> int:
+        return a * b
+
+    def divide(a: int, b: int) -> float:
+        if b == 0:
+            raise ValueError("Cannot divide by zero")
+        return a / b
+  tests/test_calculator.py: |
+    import pytest
+    from src.calculator import add
+
+    def test_add_basic():
+        assert add(1, 2) == 3
+changed:
+  tests/test_calculator.py: |
+    import pytest
+    from src.calculator import add, subtract, multiply
+
+    @pytest.mark.parametrize("a,b,expected", [
+        (1, 2, 3),
+        (0, 0, 0),
+        (-1, 1, 0),
+        (100, 200, 300),
+        (-5, -3, -8),
+    ])
+    def test_add_parametrized(a, b, expected):
+        assert add(a, b) == expected
+
+    @pytest.mark.parametrize("a,b,expected", [
+        (5, 3, 2),
+        (0, 0, 0),
+        (-1, -1, 0),
+    ])
+    def test_subtract_parametrized(a, b, expected):
+        assert subtract(a, b) == expected
+
+    def test_multiply_basic():
+        assert multiply(2, 3) == 6
+assertions:
+  must_include:
+  - test_calculator.py
+  must_not_include:
+  - garbage_marker_12345

@@ -1,0 +1,49 @@
+name: cpp_253_dynamic_cast
+initial:
+  shapes.h: |
+    #pragma once
+
+    class Shape {
+    public:
+        virtual ~Shape() = default;
+        virtual void draw() = 0;
+    };
+
+    class Circle : public Shape {
+    public:
+        void draw() override {}
+        double radius() { return 1.0; }
+    };
+
+    class Rectangle : public Shape {
+    public:
+        void draw() override {}
+        double width() { return 1.0; }
+    };
+    // garbage_marker_12345
+  renderer.cpp: |
+    #include <iostream>
+    int main() { return 0; }
+changed:
+  renderer.cpp: |
+    #include "shapes.h"
+    #include <iostream>
+
+    void render(Shape* shape) {
+        if (auto* circle = dynamic_cast<Circle*>(shape)) {
+            std::cout << "Circle radius: " << circle->radius() << std::endl;
+        } else if (auto* rect = dynamic_cast<Rectangle*>(shape)) {
+            std::cout << "Rectangle width: " << rect->width() << std::endl;
+        }
+    }
+assertions:
+  must_include:
+  - render
+  - dynamic_cast
+  - Circle
+  - Rectangle
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add dynamic_cast

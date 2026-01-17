@@ -1,0 +1,44 @@
+name: k8s_422_service_port
+initial:
+  deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: myapp
+    spec:
+      template:
+        spec:
+          containers:
+          - name: app
+            ports:
+            - containerPort: 8080
+  service.yaml: |
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: myapp
+    spec:
+      ports:
+      - port: 80
+        targetPort: 3000
+  unrelated.txt: |
+    garbage_marker_k8s422 = True
+    unused_marker_k8s422 = False
+changed:
+  service.yaml: |
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: myapp
+    spec:
+      ports:
+      - port: 80
+        targetPort: 8080
+assertions:
+  must_include:
+  - 'targetPort: 8080'
+  must_not_include:
+  - garbage_marker_k8s422
+  - unused_marker_k8s422
+options:
+  commit_message: Update service port

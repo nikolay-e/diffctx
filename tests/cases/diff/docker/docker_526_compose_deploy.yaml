@@ -1,0 +1,32 @@
+name: docker_526_compose_deploy
+initial:
+  docker-compose.yml: |
+    version: '3.8'
+    services:
+      api:
+        build: .
+  unrelated.py: |
+    garbage_marker_12345 = True
+    unused_marker_67890 = False
+changed:
+  docker-compose.yml: |
+    version: '3.8'
+    services:
+      api:
+        build: .
+        deploy:
+          replicas: 3
+          resources:
+            limits:
+              cpus: '0.5'
+              memory: 512M
+          restart_policy:
+            condition: on-failure
+assertions:
+  must_include:
+  - 'deploy:'
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add deploy

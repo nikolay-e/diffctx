@@ -1,0 +1,30 @@
+name: cpp_variadic_template
+initial:
+  logger.h: |
+    #pragma once
+    #include <iostream>
+    #include <sstream>
+
+    template<typename... Args>
+    void log(Args... args) {
+        std::ostringstream oss;
+        ((oss << args << " "), ...);
+        std::cout << oss.str() << std::endl;
+    }
+  app.cpp: |
+    #include <iostream>
+    int main() { return 0; }
+changed:
+  app.cpp: |
+    #include "logger.h"
+
+    void process() {
+        log("Starting", "process", 42, 3.14);
+        log("Done");
+    }
+assertions:
+  must_include:
+  - app.cpp
+  - log("Starting"
+options:
+  commit_message: Add variadic template usage

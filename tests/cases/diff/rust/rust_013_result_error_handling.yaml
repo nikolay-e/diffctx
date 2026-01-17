@@ -1,0 +1,26 @@
+name: rust_013_result_error_handling
+initial:
+  src/parser.rs: |
+    pub fn parse(s: &str) -> i32 {
+        s.parse().unwrap()
+    }
+changed:
+  src/parser.rs: |
+    use std::num::ParseIntError;
+
+    pub fn parse(s: &str) -> Result<i32, ParseIntError> {
+        s.parse()
+    }
+
+    pub fn parse_or_default(s: &str, default: i32) -> i32 {
+        parse(s).unwrap_or(default)
+    }
+assertions:
+  must_include:
+  - Result
+  - ParseIntError
+  - parse_or_default
+  must_not_include:
+  - garbage_error_handler
+options:
+  commit_message: Add proper error handling

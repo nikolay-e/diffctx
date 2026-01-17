@@ -1,0 +1,49 @@
+name: go_005_go_generate_directive
+initial:
+  generate.go: |
+    package main
+
+    //go:generate mockgen -source=interfaces.go -destination=mocks.go
+  interfaces.go: |
+    package main
+
+    type UserService interface {
+        GetUser(id int) (*User, error)
+    }
+
+    type User struct {
+        ID   int
+        Name string
+    }
+  unrelated/garbage.go: |
+    package unrelated
+
+    func UnusedGenerate_12345() {
+        println("garbage_marker_12345")
+    }
+
+    func UnusedInterface_67890() {
+        println("unused_marker_67890")
+    }
+changed:
+  interfaces.go: |
+    package main
+
+    type UserService interface {
+        GetUser(id int) (*User, error)
+        CreateUser(name string) (*User, error)
+    }
+
+    type User struct {
+        ID   int
+        Name string
+    }
+assertions:
+  must_include:
+  - UserService
+  - CreateUser
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add CreateUser to interface

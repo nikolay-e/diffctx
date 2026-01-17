@@ -1,0 +1,42 @@
+name: cpp_243_malloc_free
+initial:
+  memory.h: |
+    #pragma once
+    #include <cstdlib>
+    #include <cstddef>
+
+    inline void* safe_malloc(size_t size) {
+        void* ptr = malloc(size);
+        if (!ptr && size > 0) {
+            abort();
+        }
+        return ptr;
+    }
+    // garbage_marker_12345 - irrelevant content
+  array.c: |
+    #include <stdio.h>
+    int main() { return 0; }
+changed:
+  array.c: |
+    #include "memory.h"
+
+    int* create_array(size_t n) {
+        int* arr = (int*)safe_malloc(n * sizeof(int));
+        for (size_t i = 0; i < n; i++) {
+            arr[i] = 0;
+        }
+        return arr;
+    }
+
+    void destroy_array(int* arr) {
+        free(arr);
+    }
+assertions:
+  must_include:
+  - create_array
+  - safe_malloc
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add malloc/free

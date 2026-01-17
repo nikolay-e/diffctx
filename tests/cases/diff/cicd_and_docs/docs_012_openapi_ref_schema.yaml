@@ -1,0 +1,63 @@
+name: docs_012_openapi_ref_schema
+initial:
+  openapi.yaml: |
+    openapi: 3.0.0
+    paths:
+      /users/{id}:
+        get:
+          responses:
+            '200':
+              content:
+                application/json:
+                  schema:
+                    $ref: '#/components/schemas/User'
+    components:
+      schemas:
+        User:
+          type: object
+          properties:
+            id:
+              type: integer
+            name:
+              type: string
+changed:
+  openapi.yaml: |
+    openapi: 3.0.0
+    paths:
+      /users/{id}:
+        get:
+          responses:
+            '200':
+              content:
+                application/json:
+                  schema:
+                    $ref: '#/components/schemas/User'
+    components:
+      schemas:
+        User:
+          type: object
+          properties:
+            id:
+              type: integer
+            name:
+              type: string
+            email:
+              type: string
+              format: email
+            address:
+              $ref: '#/components/schemas/Address'
+        Address:
+          type: object
+          properties:
+            street:
+              type: string
+            city:
+              type: string
+            country:
+              type: string
+assertions:
+  must_include:
+  - openapi.yaml
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890

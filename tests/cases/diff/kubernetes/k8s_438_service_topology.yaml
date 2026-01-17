@@ -1,0 +1,38 @@
+name: k8s_438_service_topology
+initial:
+  service.yaml: |
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: myapp
+    spec:
+      selector:
+        app: myapp
+      ports:
+      - port: 80
+  unrelated.txt: |
+    garbage_marker_k8s438 = True
+    unused_marker_k8s438 = False
+changed:
+  service.yaml: |
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: myapp
+    spec:
+      selector:
+        app: myapp
+      ports:
+      - port: 80
+      topologyKeys:
+      - "kubernetes.io/hostname"
+      - "topology.kubernetes.io/zone"
+      - "*"
+assertions:
+  must_include:
+  - topologyKeys
+  must_not_include:
+  - garbage_marker_k8s438
+  - unused_marker_k8s438
+options:
+  commit_message: Add service topology

@@ -1,0 +1,34 @@
+name: dep_104_backward_base_class_method_changed
+initial:
+  base.py: |
+    class BaseProcessor:
+        def process(self, data):
+            return data
+  processors/json.py: |
+    from base import BaseProcessor
+
+    class JsonProcessor(BaseProcessor):
+        def process(self, data):
+            import json
+            return json.loads(data)
+  processors/xml.py: |
+    from base import BaseProcessor
+
+    class XmlProcessor(BaseProcessor):
+        def process(self, data):
+            return f"<xml>{data}</xml>"
+changed:
+  base.py: |
+    class BaseProcessor:
+        def process(self, data, options=None):
+            if options:
+                data = self.preprocess(data, options)
+            return data
+
+        def preprocess(self, data, options):
+            return data
+assertions:
+  must_include:
+  - base.py
+  must_not_include:
+  - garbage_marker_12345

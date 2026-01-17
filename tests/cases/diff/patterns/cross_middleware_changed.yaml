@@ -1,0 +1,25 @@
+name: cross_middleware_changed
+initial:
+  middleware/auth.py: |
+    class AuthMiddleware:
+        def process_request(self, request):
+            if not request.get("token"):
+                raise ValueError("Unauthorized")
+            return request
+  settings.py: |
+    MIDDLEWARE = [
+        "middleware.auth.AuthMiddleware",
+    ]
+changed:
+  middleware/auth.py: |
+    import time
+
+    class AuthMiddleware:
+        def process_request(self, request):
+            if not request.get("token"):
+                raise ValueError("Unauthorized")
+            request["authenticated_at"] = time.time()
+            return request
+assertions:
+  must_include:
+  - auth.py

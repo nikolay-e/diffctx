@@ -1,0 +1,52 @@
+name: ts_001_interface_implementation
+initial:
+  interfaces.ts: |
+    export interface IService {
+        start(): void;
+        stop(): void;
+        getStatus(): string;
+    }
+
+    export interface ILogger {
+        log(message: string): void;
+        error(message: string): void;
+    }
+
+    // ts_garbage_marker_001
+    const GARBAGE_INTERFACE_CONFIG = { version: 1 };
+  service.ts: |
+    console.log('initial');
+changed:
+  service.ts: |
+    import { IService, ILogger } from './interfaces';
+
+    export class MyService implements IService {
+        private running = false;
+        private logger: ILogger;
+
+        constructor(logger: ILogger) {
+            this.logger = logger;
+        }
+
+        start(): void {
+            this.running = true;
+            this.logger.log('Service started');
+        }
+
+        stop(): void {
+            this.running = false;
+            this.logger.log('Service stopped');
+        }
+
+        getStatus(): string {
+            return this.running ? 'running' : 'stopped';
+        }
+    }
+assertions:
+  must_include:
+  - service.ts
+  - implements IService
+  must_not_include:
+  - ts_garbage_marker_001
+options:
+  commit_message: Add service implementing IService

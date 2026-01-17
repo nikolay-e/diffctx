@@ -1,0 +1,36 @@
+name: python_016_classmethod_call
+initial:
+  models/config.py: |
+    import json
+
+    class Config:
+        def __init__(self, data: dict):
+            self.data = data
+
+        @classmethod
+        def from_json(cls, json_str: str) -> "Config":
+            data = json.loads(json_str)
+            return cls(data)
+
+        @classmethod
+        def from_file(cls, path: str) -> "Config":
+            with open(path) as f:
+                return cls.from_json(f.read())
+  loader.py: |
+    def load():
+        pass
+  garbage.py: |
+    garbage_marker_12345 = "config garbage"
+    unused_marker_67890 = "unused config"
+changed:
+  loader.py: |
+    from models.config import Config
+
+    def load(json_data: str) -> Config:
+        return Config.from_json(json_data)
+assertions:
+  must_include:
+  - '@classmethod'
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890

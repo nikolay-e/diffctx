@@ -32,3 +32,11 @@ def test_main_module_execution(temp_project):
     result = run_treemapper_subprocess([str(temp_project), "-o", str(output_file)])
     assert result.returncode == 0
     assert output_file.exists()
+
+
+def test_output_file_saved_message(temp_project):
+    output_file = temp_project / "saved.yaml"
+    result = run_treemapper_subprocess([str(temp_project), "-o", str(output_file)])
+    assert result.returncode == 0
+    assert "Saved to" in result.stderr
+    assert str(output_file) in result.stderr

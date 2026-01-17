@@ -1,0 +1,21 @@
+name: fragment_multiple_decorators_all_included
+initial:
+  multi_dec.py: |
+    @decorator1
+    @decorator2
+    @decorator3
+    def decorated_func():
+        pass
+changed:
+  multi_dec.py: |
+    @decorator1
+    @decorator2
+    @decorator3
+    def decorated_func():
+        return 1
+assertions:
+  must_include:
+  - '@decorator1'
+  - '@decorator2'
+  - '@decorator3'
+  - decorated_func

@@ -1,0 +1,26 @@
+name: cicd_020_gha_timeout
+initial:
+  .github/workflows/ci.yml: |
+    name: CI
+    jobs:
+      build:
+        runs-on: ubuntu-latest
+        steps:
+          - run: npm run build
+changed:
+  .github/workflows/ci.yml: |
+    name: CI
+    jobs:
+      build:
+        runs-on: ubuntu-latest
+        timeout-minutes: 30
+        steps:
+          - uses: actions/checkout@v4
+          - run: npm run build
+            timeout-minutes: 15
+assertions:
+  must_include:
+  - ci.yml
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890

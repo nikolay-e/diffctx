@@ -1,0 +1,37 @@
+name: edge_generated_code_comment
+initial:
+  codegen.yaml: |
+    generates:
+      src/generated/types.ts:
+        schema: schema.graphql
+        plugins:
+          - typescript
+  src/generated/types.ts: |
+    // THIS FILE IS GENERATED - DO NOT EDIT
+    // Generated from codegen.yaml
+
+    export interface User {
+        id: string;
+        name: string;
+    }
+  src/services/user.ts: |
+    import { User } from '../generated/types';
+
+    export function processUser(user: User) {
+        return user.name;
+    }
+changed:
+  codegen.yaml: |
+    generates:
+      src/generated/types.ts:
+        schema: schema.graphql
+        plugins:
+          - typescript
+          - typescript-operations
+      src/generated/hooks.ts:
+        schema: schema.graphql
+        plugins:
+          - typescript-react-query
+assertions:
+  must_include:
+  - codegen.yaml

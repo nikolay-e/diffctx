@@ -1,0 +1,49 @@
+name: k8s_409_liveness_probe
+initial:
+  app.py: |
+    from flask import Flask
+    app = Flask(__name__)
+
+    @app.route('/health')
+    def health():
+        return {'status': 'healthy'}, 200
+  deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: myapp
+    spec:
+      template:
+        spec:
+          containers:
+          - name: app
+            image: myapp:latest
+  unrelated.txt: |
+    garbage_marker_k8s409 = True
+    unused_marker_k8s409 = False
+changed:
+  deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: myapp
+    spec:
+      template:
+        spec:
+          containers:
+          - name: app
+            image: myapp:latest
+            livenessProbe:
+              httpGet:
+                path: /health
+                port: 8080
+              initialDelaySeconds: 30
+              periodSeconds: 10
+assertions:
+  must_include:
+  - livenessProbe
+  must_not_include:
+  - garbage_marker_k8s409
+  - unused_marker_k8s409
+options:
+  commit_message: Add liveness probe

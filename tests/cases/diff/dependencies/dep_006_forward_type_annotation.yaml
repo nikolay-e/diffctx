@@ -1,0 +1,26 @@
+name: dep_006_forward_type_annotation
+initial:
+  models/request.py: |
+    class RequestModel:
+        def __init__(self, data):
+            self.data = data
+  models/response.py: |
+    class ResponseModel:
+        def __init__(self, result):
+            self.result = result
+  service.py: |
+    def process():
+        pass
+changed:
+  service.py: |
+    from models.request import RequestModel
+    from models.response import ResponseModel
+
+    def process(request: RequestModel) -> ResponseModel:
+        result = request.data * 2
+        return ResponseModel(result)
+assertions:
+  must_include:
+  - service.py
+  must_not_include:
+  - garbage_marker_12345

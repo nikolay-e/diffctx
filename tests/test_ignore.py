@@ -579,3 +579,86 @@ def test_cache_dirs_not_traversed_during_aggregation(tmp_path):
 
     assert "*.pyc" in patterns
     assert not any("should_not_be_found" in p for p in patterns)
+
+
+def test_parent_directory_ignore_patterns(tmp_path):
+    from treemapper.ignore import _collect_parent_ignore_patterns
+
+    parent = tmp_path / "parent"
+    parent.mkdir()
+    (parent / ".git").mkdir()
+    child = parent / "packages" / "tools"
+    child.mkdir(parents=True)
+
+    (parent / ".treemapperignore").write_text("packages/tools/data/\npackages/tools/cache/\n*.log\n")
+    (parent / ".gitignore").write_text("packages/tools/generated/\n**/__pycache__/\n")
+
+    patterns = _collect_parent_ignore_patterns(child, [".gitignore", ".treemapperignore"])
+
+    assert "/data/" in patterns
+    assert "/cache/" in patterns
+    assert "/generated/" in patterns
+    assert "*.log" in patterns
+    assert "**/__pycache__/" in patterns
+
+
+def test_transform_parent_pattern_cases():
+    from treemapper.ignore import _transform_parent_pattern
+
+    assert _transform_parent_pattern("pkg/sub/data/", "pkg/sub") == "/data/"
+    assert _transform_parent_pattern("/pkg/sub/data/", "pkg/sub") == "/data/"
+    assert _transform_parent_pattern("other/dir/", "pkg/sub") is None
+    assert _transform_parent_pattern("/other/dir/", "pkg/sub") is None
+    assert _transform_parent_pattern("*.log", "pkg/sub") == "*.log"
+    assert _transform_parent_pattern("**/*.pyc", "pkg/sub") == "**/*.pyc"
+    assert _transform_parent_pattern("!pkg/sub/keep/", "pkg/sub") == "!/keep/"
+
+
+def test_parent_ignore_integration(tmp_path, run_mapper):
+    from .utils import find_node_by_path
+
+    parent = tmp_path / "parent_project"
+    parent.mkdir()
+    (parent / ".git").mkdir()
+    subdir = parent / "packages" / "app"
+    subdir.mkdir(parents=True)
+
+    (parent / ".treemapperignore").write_text("packages/app/ignored_dir/\npackages/app/data/\n")
+    (subdir / "ignored_dir").mkdir()
+    (subdir / "ignored_dir" / "secret.txt").write_text("secret")
+    (subdir / "data").mkdir()
+    (subdir / "data" / "large.json").write_text('{"big": "data"}')
+    (subdir / "src").mkdir()
+    (subdir / "src" / "main.py").write_text("print('hello')")
+    (subdir / "README.md").write_text("# App")
+
+    output_path = tmp_path / "output.yaml"
+    assert run_mapper([str(subdir), "-o", str(output_path)])
+    result = load_yaml(output_path)
+
+    assert find_node_by_path(result, ["ignored_dir"]) is None
+    assert find_node_by_path(result, ["data"]) is None
+    assert find_node_by_path(result, ["src"]) is not None
+    assert find_node_by_path(result, ["src", "main.py"]) is not None
+    assert find_node_by_path(result, ["README.md"]) is not None
+
+
+def test_parent_ignore_stops_at_git_root(tmp_path):
+    from treemapper.ignore import _collect_parent_ignore_patterns
+
+    grandparent = tmp_path / "grandparent"
+    grandparent.mkdir()
+    (grandparent / ".treemapperignore").write_text("should_not_appear/\n")
+
+    parent = grandparent / "parent"
+    parent.mkdir()
+    (parent / ".git").mkdir()
+    (parent / ".treemapperignore").write_text("packages/app/from_parent/\n")
+
+    child = parent / "packages" / "app"
+    child.mkdir(parents=True)
+
+    patterns = _collect_parent_ignore_patterns(child, [".treemapperignore"])
+
+    assert "/from_parent/" in patterns
+    assert "should_not_appear/" not in patterns

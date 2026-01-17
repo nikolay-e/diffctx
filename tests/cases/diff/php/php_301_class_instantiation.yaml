@@ -1,0 +1,36 @@
+name: php_301_class_instantiation
+initial:
+  User.php: |
+    <?php
+    class User {
+        private string $name;
+        private string $email;
+
+        public function __construct(string $name, string $email) {
+            $this->name = $name;
+            $this->email = $email;
+        }
+
+        public function getName(): string {
+            return $this->name;
+        }
+    }
+  app.php: |
+    <?php
+    echo "Hello";
+changed:
+  app.php: |
+    <?php
+    require_once 'User.php';
+
+    $user = new User('John', 'john@example.com');
+    echo $user->getName();
+assertions:
+  must_include:
+  - new User
+  - getName
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add class instantiation

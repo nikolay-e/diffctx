@@ -1,0 +1,48 @@
+name: go_019_closure
+initial:
+  counter.go: |
+    package main
+
+    type Counter struct {
+        value int
+    }
+  factory.go: |
+    package main
+
+    func placeholder() {}
+  unrelated/garbage.go: |
+    package unrelated
+
+    func UnusedCounter_12345() {
+        println("garbage_marker_12345")
+    }
+
+    func UnusedFactory_67890() {
+        println("unused_marker_67890")
+    }
+changed:
+  factory.go: |
+    package main
+
+    func NewCounter() func() int {
+        count := 0
+        return func() int {
+            count++
+            return count
+        }
+    }
+
+    func NewAdder(base int) func(int) int {
+        return func(n int) int {
+            return base + n
+        }
+    }
+assertions:
+  must_include:
+  - NewCounter
+  - NewAdder
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add closure factories

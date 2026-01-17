@@ -1,0 +1,41 @@
+name: rust_023_macro_rules
+initial:
+  src/macros.rs: |
+    #[macro_export]
+    macro_rules! vec_of_strings {
+        ($($x:expr),*) => {
+            vec![$($x.to_string()),*]
+        };
+    }
+  src/main.rs: |
+    mod macros;
+
+    fn main() {
+        let v = vec_of_strings!["a", "b", "c"];
+        println!("{:?}", v);
+    }
+changed:
+  src/macros.rs: |
+    #[macro_export]
+    macro_rules! vec_of_strings {
+        ($($x:expr),*) => {
+            vec![$($x.to_string()),*]
+        };
+    }
+
+    #[macro_export]
+    macro_rules! hashmap {
+        ($($key:expr => $value:expr),*) => {{
+            let mut map = std::collections::HashMap::new();
+            $(map.insert($key, $value);)*
+            map
+        }};
+    }
+assertions:
+  must_include:
+  - hashmap
+  - HashMap
+  must_not_include:
+  - garbage_macro_name
+options:
+  commit_message: Add hashmap macro

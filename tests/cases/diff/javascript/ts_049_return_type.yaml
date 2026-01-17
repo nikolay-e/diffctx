@@ -1,0 +1,25 @@
+name: ts_049_return_type
+initial:
+  factory.ts: |
+    export function createUser(name: string, age: number) {
+        return { id: Date.now().toString(), name, age, createdAt: new Date() };
+    }
+  types.ts: |
+    console.log('initial');
+changed:
+  types.ts: |
+    import { createUser } from './factory';
+
+    type User = ReturnType<typeof createUser>;
+
+    function processUser(user: User) {
+        console.log(`User ${user.name} created at ${user.createdAt}`);
+    }
+assertions:
+  must_include:
+  - createUser
+  - types.ts
+  must_not_include:
+  - js_garbage_marker_001
+options:
+  commit_message: Add ReturnType usage

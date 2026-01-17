@@ -1,0 +1,28 @@
+name: python_033_dataclass_usage
+initial:
+  models.py: |
+    from dataclasses import dataclass
+
+    @dataclass
+    class User:
+        name: str
+        age: int
+        email: str = ""
+  service.py: |
+    def create():
+        pass
+  garbage.py: |
+    garbage_marker_12345 = "dataclass garbage"
+    unused_marker_67890 = "unused dataclass"
+changed:
+  service.py: |
+    from models import User
+
+    def create(name: str, age: int) -> User:
+        return User(name=name, age=age)
+assertions:
+  must_include:
+  - '@dataclass'
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890

@@ -1,0 +1,41 @@
+name: shell_007_case_statement
+initial:
+  service.sh: |
+    #!/bin/bash
+    echo "Service"
+  garbage.sh: |
+    #!/bin/bash
+    shelltest_service_008="never_referenced"
+    unused_marker_12345="not_used"
+changed:
+  service.sh: |
+    #!/bin/bash
+
+    case "$1" in
+        start)
+            echo "Starting service..."
+            ./bin/app start
+            ;;
+        stop)
+            echo "Stopping service..."
+            ./bin/app stop
+            ;;
+        restart)
+            $0 stop
+            sleep 2
+            $0 start
+            ;;
+        status)
+            ./bin/app status
+            ;;
+        *)
+            echo "Usage: $0 {start|stop|restart|status}"
+            exit 1
+            ;;
+    esac
+assertions:
+  must_include:
+  - service.sh
+  must_not_include:
+  - shelltest_service_008
+  - unused_marker_12345

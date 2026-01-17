@@ -1,0 +1,44 @@
+name: cpp_252_static_cast
+initial:
+  hierarchy.h: |
+    #pragma once
+
+    class Base {
+    public:
+        virtual ~Base() = default;
+        virtual void process() {}
+    };
+
+    class Derived : public Base {
+    public:
+        void process() override {}
+        void special() {}
+    };
+    // unused_marker_67890
+  handler.cpp: |
+    #include <iostream>
+    int main() { return 0; }
+changed:
+  handler.cpp: |
+    #include "hierarchy.h"
+
+    void handleDerived(Base* base) {
+        auto* derived = static_cast<Derived*>(base);
+        derived->special();
+    }
+
+    int main() {
+        Derived d;
+        handleDerived(&d);
+        return 0;
+    }
+assertions:
+  must_include:
+  - handleDerived
+  - static_cast
+  - Derived
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add static_cast

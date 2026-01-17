@@ -1,0 +1,41 @@
+name: php_011_attribute
+initial:
+  Route.php: |
+    <?php
+    #[Attribute]
+    class Route {
+        public function __construct(
+            public string $path,
+            public string $method = 'GET'
+        ) {}
+    }
+  Controller.php: |
+    <?php
+    class Controller {}
+  garbage.php: |
+    <?php
+    $garbageRoute12345 = "never called";
+    $unused_marker_67890 = "not used";
+changed:
+  Controller.php: |
+    <?php
+    require_once 'Route.php';
+
+    class Controller {
+        #[Route('/api/users', 'GET')]
+        public function index(): array {
+            return ['users' => []];
+        }
+
+        #[Route('/api/users', 'POST')]
+        public function store(): array {
+            return ['created' => true];
+        }
+    }
+assertions:
+  must_include:
+  - Controller.php
+  - Route
+  must_not_include:
+  - garbageRoute12345
+  - unused_marker_67890

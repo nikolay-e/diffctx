@@ -1,0 +1,58 @@
+name: csharp_285_cancellation_token
+initial:
+  Services/DownloadService.cs: |
+    using System.Threading;
+
+    namespace MyApp.Services;
+
+    public class DownloadService
+    {
+        public async Task<byte[]> DownloadAsync(string url, CancellationToken cancellationToken)
+        {
+            await Task.Delay(1000, cancellationToken);
+            return new byte[100];
+        }
+    }
+    // garbage_marker_12345
+  Program.cs: |
+    using System;
+
+    class Program
+    {
+        static void Main() { }
+    }
+changed:
+  Program.cs: |
+    using System;
+    using System.Threading;
+    using System.Threading.Tasks;
+    using MyApp.Services;
+
+    class Program
+    {
+        static async Task Main()
+        {
+            var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            var service = new DownloadService();
+
+            try
+            {
+                var data = await service.DownloadAsync("http://example.com", cts.Token);
+                Console.WriteLine($"Downloaded {data.Length} bytes");
+            }
+            catch (OperationCanceledException)
+            {
+                Console.WriteLine("Download cancelled");
+            }
+        }
+    }
+assertions:
+  must_include:
+  - DownloadService
+  - DownloadAsync
+  - CancellationToken
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add cancellation token usage

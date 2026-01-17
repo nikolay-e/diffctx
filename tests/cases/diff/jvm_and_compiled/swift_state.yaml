@@ -1,0 +1,38 @@
+name: swift_state
+initial:
+  ContentView.swift: |
+    // Initial
+    import SwiftUI
+    struct ContentView: View {
+        var body: some View { Text("") }
+    }
+changed:
+  ContentView.swift: |
+    import SwiftUI
+
+    struct ContentView: View {
+        @State private var isLoading = false
+        @State private var items: [String] = []
+
+        var body: some View {
+            VStack {
+                if isLoading {
+                    ProgressView()
+                } else {
+                    List(items, id: \.self) { item in
+                        Text(item)
+                    }
+                }
+                Button("Load") {
+                    isLoading = true
+                }
+            }
+        }
+    }
+assertions:
+  must_include:
+  - ContentView.swift
+  - '@State'
+  - isLoading
+options:
+  commit_message: Add @State

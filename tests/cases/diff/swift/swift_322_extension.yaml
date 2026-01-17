@@ -1,0 +1,35 @@
+name: swift_322_extension
+initial:
+  StringExtensions.swift: |
+    extension String {
+        func isValidEmail() -> Bool {
+            let pattern = "[A-Z0-9a-z._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}"
+            return self.range(of: pattern, options: .regularExpression) != nil
+        }
+
+        var trimmed: String {
+            trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+    }
+    // unused_marker_67890
+  Validator.swift: |
+    // Initial
+    struct Validator {}
+changed:
+  Validator.swift: |
+    struct Validator {
+        func validateEmail(_ email: String) -> Bool {
+            return email.trimmed.isValidEmail()
+        }
+    }
+assertions:
+  must_include:
+  - Validator
+  - validateEmail
+  - trimmed
+  - isValidEmail
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add extension usage

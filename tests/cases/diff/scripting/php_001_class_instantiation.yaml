@@ -1,0 +1,38 @@
+name: php_001_class_instantiation
+initial:
+  User.php: |
+    <?php
+    class User {
+        private string $name;
+        private string $email;
+
+        public function __construct(string $name, string $email) {
+            $this->name = $name;
+            $this->email = $email;
+        }
+
+        public function getName(): string {
+            return $this->name;
+        }
+    }
+  app.php: |
+    <?php
+    echo "Hello";
+  garbage.php: |
+    <?php
+    $garbageUnused99999 = "never called";
+    $unused_marker_12345 = "not used";
+changed:
+  app.php: |
+    <?php
+    require_once 'User.php';
+
+    $user = new User('John', 'john@example.com');
+    echo $user->getName();
+assertions:
+  must_include:
+  - app.php
+  - getName
+  must_not_include:
+  - garbageUnused99999
+  - unused_marker_12345

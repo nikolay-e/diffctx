@@ -1,0 +1,65 @@
+name: go_029_generic_type
+initial:
+  container.go: |
+    package main
+
+    type IntSlice []int
+
+    func (s IntSlice) First() int {
+        if len(s) == 0 {
+            return 0
+        }
+        return s[0]
+    }
+  unrelated/garbage.go: |
+    package unrelated
+
+    func UnusedContainer_12345() {
+        println("garbage_marker_12345")
+    }
+
+    func AnotherUnused_67890() {
+        println("unused_marker_67890")
+    }
+changed:
+  container.go: |
+    package main
+
+    type Slice[T any] []T
+
+    func (s Slice[T]) First() (T, bool) {
+        var zero T
+        if len(s) == 0 {
+            return zero, false
+        }
+        return s[0], true
+    }
+
+    func (s Slice[T]) Map(fn func(T) T) Slice[T] {
+        result := make(Slice[T], len(s))
+        for i, v := range s {
+            result[i] = fn(v)
+        }
+        return result
+    }
+
+    type Ordered interface {
+        ~int | ~int64 | ~float64 | ~string
+    }
+
+    func Max[T Ordered](a, b T) T {
+        if a > b {
+            return a
+        }
+        return b
+    }
+assertions:
+  must_include:
+  - Slice[T]
+  - Ordered
+  - Max[T
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add generic types

@@ -1,0 +1,45 @@
+name: react_066_custom_hook
+initial:
+  useApi.ts: |
+    import { useState, useEffect } from 'react';
+
+    export function useApi<T>(url: string) {
+        const [data, setData] = useState<T | null>(null);
+        const [loading, setLoading] = useState(true);
+        const [error, setError] = useState<Error | null>(null);
+
+        useEffect(() => {
+            fetch(url)
+                .then(res => res.json())
+                .then(setData)
+                .catch(setError)
+                .finally(() => setLoading(false));
+        }, [url]);
+
+        return { data, loading, error };
+    }
+  UserList.tsx: |
+    console.log('initial');
+changed:
+  UserList.tsx: |
+    import { useApi } from './useApi';
+
+    interface User {
+        id: string;
+        name: string;
+    }
+
+    export function UserList() {
+        const { data, loading, error } = useApi<User[]>('/api/users');
+        if (loading) return <div>Loading...</div>;
+        if (error) return <div>Error: {error.message}</div>;
+        return <ul>{data?.map(u => <li key={u.id}>{u.name}</li>)}</ul>;
+    }
+assertions:
+  must_include:
+  - useApi
+  - UserList.tsx
+  must_not_include:
+  - js_garbage_marker_001
+options:
+  commit_message: Add useApi hook usage

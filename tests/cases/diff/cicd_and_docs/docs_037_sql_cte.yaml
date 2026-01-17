@@ -1,0 +1,42 @@
+name: docs_037_sql_cte
+initial:
+  sql/queries/monthly_sales.sql: |
+    WITH monthly_totals AS (
+        SELECT
+            DATE_TRUNC('month', created_at) AS month,
+            SUM(total) AS revenue
+        FROM orders
+        GROUP BY DATE_TRUNC('month', created_at)
+    )
+    SELECT * FROM monthly_totals ORDER BY month;
+changed:
+  sql/queries/monthly_sales.sql: |
+    WITH monthly_totals AS (
+        SELECT
+            DATE_TRUNC('month', created_at) AS month,
+            SUM(total) AS revenue,
+            COUNT(*) AS order_count
+        FROM orders
+        WHERE status != 'cancelled'
+        GROUP BY DATE_TRUNC('month', created_at)
+    ),
+    monthly_growth AS (
+        SELECT
+            month,
+            revenue,
+            order_count,
+            LAG(revenue) OVER (ORDER BY month) AS prev_revenue,
+            ROUND(
+                (revenue - LAG(revenue) OVER (ORDER BY month)) /
+                NULLIF(LAG(revenue) OVER (ORDER BY month), 0) * 100,
+                2
+            ) AS growth_percent
+        FROM monthly_totals
+    )
+    SELECT * FROM monthly_growth ORDER BY month DESC;
+assertions:
+  must_include:
+  - monthly_sales.sql
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890

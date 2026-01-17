@@ -1,0 +1,47 @@
+name: scala_014_future
+initial:
+  ExpensiveComputation.scala: |
+    object ExpensiveComputation {
+      def compute(input: Int): Int = {
+        Thread.sleep(100)
+        input * 2
+      }
+
+      def computeString(input: String): String = {
+        Thread.sleep(100)
+        input.toUpperCase
+      }
+    }
+  AsyncProcessor.scala: |
+    class AsyncProcessor {}
+changed:
+  AsyncProcessor.scala: |
+    import scala.concurrent.{Future, ExecutionContext}
+    import scala.concurrent.ExecutionContext.Implicits.global
+
+    class AsyncProcessor {
+      def processAsync(input: Int): Future[Int] = Future {
+        ExpensiveComputation.compute(input)
+      }
+
+      def processMany(inputs: List[Int]): Future[List[Int]] = {
+        Future.sequence(inputs.map(i => Future(ExpensiveComputation.compute(i))))
+      }
+
+      def processCombined(a: Int, b: String): Future[(Int, String)] = {
+        for {
+          resultA <- Future(ExpensiveComputation.compute(a))
+          resultB <- Future(ExpensiveComputation.computeString(b))
+        } yield (resultA, resultB)
+      }
+    }
+assertions:
+  must_include:
+  - AsyncProcessor
+  - Future
+  - Future.sequence
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add Future usage

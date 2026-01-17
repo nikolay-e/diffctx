@@ -1,0 +1,25 @@
+name: python_import_resolution
+initial:
+  utils.py: |
+    def helper():
+        return "helper result"
+
+    def unused_function():
+        return "this should not be included"
+  main.py: |
+    print("initial")
+changed:
+  main.py: |
+    from utils import helper
+
+    def main():
+        result = helper()
+        print(result)
+assertions:
+  must_include:
+  - def helper()
+  - def main()
+  must_not_include:
+  - unused_function
+options:
+  commit_message: Add import and usage

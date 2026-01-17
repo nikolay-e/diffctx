@@ -1,0 +1,38 @@
+name: vue_071_reactive_ref
+initial:
+  Counter.vue: |
+    <script setup lang="ts">
+    import { ref } from 'vue';
+
+    const count = ref(0);
+
+    function increment() {
+        count.value++;
+    }
+    </script>
+
+    <template>
+        <button @click="increment">{{ count }}</button>
+    </template>
+  App.vue: |
+    <template><div>initial</div></template>
+changed:
+  App.vue: |
+    <script setup lang="ts">
+    import Counter from './Counter.vue';
+    </script>
+
+    <template>
+        <div>
+            <h1>App</h1>
+            <Counter />
+        </div>
+    </template>
+assertions:
+  must_include:
+  - Counter
+  - App.vue
+  must_not_include:
+  - js_garbage_marker_001
+options:
+  commit_message: Add Counter component

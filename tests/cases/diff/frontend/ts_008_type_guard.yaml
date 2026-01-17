@@ -1,0 +1,68 @@
+name: ts_008_type_guard
+initial:
+  entities.ts: |
+    export interface User {
+        type: 'user';
+        id: string;
+        name: string;
+        email: string;
+    }
+
+    export interface Admin extends User {
+        type: 'admin';
+        permissions: string[];
+    }
+
+    export interface Guest {
+        type: 'guest';
+        sessionId: string;
+    }
+
+    // ts_garbage_marker_008
+    interface GarbageEntity { type: 'garbage' }
+  guards.ts: |
+    console.log('initial');
+changed:
+  guards.ts: |
+    import { User, Admin, Guest } from './entities';
+
+    export type Person = User | Admin | Guest;
+
+    export function isUser(obj: unknown): obj is User {
+        return (
+            typeof obj === 'object' &&
+            obj !== null &&
+            'type' in obj &&
+            (obj as User).type === 'user'
+        );
+    }
+
+    export function isAdmin(person: Person): person is Admin {
+        return person.type === 'admin';
+    }
+
+    export function isGuest(person: Person): person is Guest {
+        return person.type === 'guest';
+    }
+
+    export function hasEmail(person: Person): person is User | Admin {
+        return 'email' in person;
+    }
+
+    export function processIdentity(person: Person): string {
+        if (isAdmin(person)) {
+            return \`Admin: \${person.name} with \${person.permissions.length} permissions\`;
+        }
+        if (isGuest(person)) {
+            return \`Guest session: \${person.sessionId}\`;
+        }
+        return \`User: \${person.name}\`;
+    }
+assertions:
+  must_include:
+  - guards.ts
+  - person is Admin
+  must_not_include:
+  - ts_garbage_marker_008
+options:
+  commit_message: Add type guards

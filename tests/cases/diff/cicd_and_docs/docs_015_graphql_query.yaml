@@ -1,0 +1,43 @@
+name: docs_015_graphql_query
+initial:
+  schema.graphql: |
+    type Query {
+        user(id: ID!): User
+        users: [User!]!
+    }
+
+    type User {
+        id: ID!
+        name: String!
+    }
+  src/resolvers/user_resolver.py: |
+    def resolve_user(obj, info, id):
+        return get_user_by_id(id)
+
+    def resolve_users(obj, info):
+        return get_all_users()
+changed:
+  schema.graphql: |
+    type Query {
+        user(id: ID!): User
+        users(limit: Int = 10, offset: Int = 0): [User!]!
+        searchUsers(query: String!): [User!]!
+    }
+
+    type User {
+        id: ID!
+        name: String!
+        email: String
+        orders: [Order!]!
+    }
+
+    type Order {
+        id: ID!
+        total: Float!
+    }
+assertions:
+  must_include:
+  - schema.graphql
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890

@@ -1,0 +1,48 @@
+name: rust_024_async_await
+initial:
+  src/async_service.rs: |
+    pub async fn fetch_data(url: &str) -> Result<String, Error> {
+        let response = reqwest::get(url).await?;
+        response.text().await
+    }
+
+    pub struct Error;
+  src/main.rs: |
+    mod async_service;
+
+    #[tokio::main]
+    async fn main() {
+        let data = async_service::fetch_data("http://example.com").await;
+        println!("{:?}", data);
+    }
+changed:
+  src/async_service.rs: |
+    use std::time::Duration;
+
+    pub async fn fetch_data(url: &str) -> Result<String, Error> {
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(30))
+            .build()?;
+        let response = client.get(url).send().await?;
+        response.text().await
+    }
+
+    pub async fn fetch_with_retry(url: &str, retries: u32) -> Result<String, Error> {
+        for _ in 0..retries {
+            if let Ok(data) = fetch_data(url).await {
+                return Ok(data);
+            }
+        }
+        Err(Error)
+    }
+
+    pub struct Error;
+assertions:
+  must_include:
+  - fetch_with_retry
+  - timeout
+  - Duration
+  must_not_include:
+  - garbage_async_function
+options:
+  commit_message: Add fetch_with_retry and timeout

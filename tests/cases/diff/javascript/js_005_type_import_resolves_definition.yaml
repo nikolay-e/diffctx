@@ -1,0 +1,32 @@
+name: js_005_type_import_resolves_definition
+initial:
+  types.ts: |
+    export interface User {
+        id: string;
+        name: string;
+        email: string;
+    }
+
+    export type UserRole = 'admin' | 'user' | 'guest';
+  service.ts: |
+    console.log('initial');
+changed:
+  service.ts: |
+    import type { User, UserRole } from './types';
+
+    function getUser(id: string): User {
+        return { id, name: 'Test', email: 'test@example.com' };
+    }
+
+    function checkRole(role: UserRole): boolean {
+        return role === 'admin';
+    }
+assertions:
+  must_include:
+  - User
+  - UserRole
+  - service.ts
+  must_not_include:
+  - js_garbage_marker_001
+options:
+  commit_message: Add type imports

@@ -1,0 +1,23 @@
+name: rust_001_basic_function
+initial:
+  src/lib.rs: |
+    pub fn greet(name: &str) -> String {
+        format!("Hello, {}!", name)
+    }
+changed:
+  src/lib.rs: |
+    pub fn greet(name: &str) -> String {
+        format!("Hello, {}!", name)
+    }
+
+    pub fn farewell(name: &str) -> String {
+        format!("Goodbye, {}!", name)
+    }
+assertions:
+  must_include:
+  - farewell
+  - Goodbye
+  must_not_include:
+  - garbage_marker_12345
+options:
+  commit_message: Add farewell function

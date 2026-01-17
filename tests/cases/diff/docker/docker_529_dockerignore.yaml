@@ -1,0 +1,26 @@
+name: docker_529_dockerignore
+initial:
+  .dockerignore: |
+    *.log
+  junk.py: |
+    garbage_marker_12345 = 1
+    unused_marker_67890 = 2
+changed:
+  .dockerignore: |
+    node_modules
+    *.log
+    .git
+    .env*
+    __pycache__
+    *.pyc
+    .pytest_cache
+    coverage/
+    dist/
+assertions:
+  must_include:
+  - node_modules
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Update dockerignore

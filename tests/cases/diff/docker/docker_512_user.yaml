@@ -1,0 +1,25 @@
+name: docker_512_user
+initial:
+  Dockerfile: |
+    FROM python:3.11-slim
+    COPY . /app
+    CMD ["python", "/app/main.py"]
+  unrelated.md: |
+    # garbage_marker_12345
+    unused_marker_67890
+changed:
+  Dockerfile: |
+    FROM python:3.11-slim
+    RUN useradd -m appuser
+    COPY --chown=appuser:appuser . /app
+    USER appuser
+    WORKDIR /app
+    CMD ["python", "main.py"]
+assertions:
+  must_include:
+  - USER appuser
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add USER

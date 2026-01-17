@@ -1,0 +1,29 @@
+name: bash_002_nameref
+initial:
+  indirect.sh: |
+    #!/bin/bash
+    echo "Indirect"
+  garbage.sh: |
+    #!/bin/bash
+    shelltest_nameref_023="never_referenced_67890"
+    unused_marker_12345="not_used"
+changed:
+  indirect.sh: |
+    #!/bin/bash
+
+    modify_array() {
+        local -n arr_ref=$1
+        arr_ref+=("new_element")
+    }
+
+    my_array=("first" "second")
+    modify_array my_array
+
+    echo "Array: ${my_array[@]}"
+assertions:
+  must_include:
+  - indirect.sh
+  - arr_ref
+  must_not_include:
+  - shelltest_nameref_023
+  - unused_marker_12345

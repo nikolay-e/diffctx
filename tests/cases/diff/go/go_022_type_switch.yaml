@@ -1,0 +1,77 @@
+name: go_022_type_switch
+initial:
+  shapes.go: |
+    package main
+
+    type Shape interface {
+        Area() float64
+    }
+
+    type Circle struct {
+        Radius float64
+    }
+
+    func (c Circle) Area() float64 {
+        return 3.14 * c.Radius * c.Radius
+    }
+
+    type Rectangle struct {
+        Width, Height float64
+    }
+
+    func (r Rectangle) Area() float64 {
+        return r.Width * r.Height
+    }
+
+    type Triangle struct {
+        Base, Height float64
+    }
+
+    func (t Triangle) Area() float64 {
+        return 0.5 * t.Base * t.Height
+    }
+  describe.go: |
+    package main
+
+    func Describe(s Shape) string {
+        return "shape"
+    }
+  unrelated/garbage.go: |
+    package unrelated
+
+    func UnusedShapes_12345() {
+        println("garbage_marker_12345")
+    }
+
+    func UnusedDescribe_67890() {
+        println("unused_marker_67890")
+    }
+changed:
+  describe.go: |
+    package main
+
+    import "fmt"
+
+    func Describe(s Shape) string {
+        switch v := s.(type) {
+        case Circle:
+            return fmt.Sprintf("Circle with radius %.2f", v.Radius)
+        case Rectangle:
+            return fmt.Sprintf("Rectangle %.2fx%.2f", v.Width, v.Height)
+        case Triangle:
+            return fmt.Sprintf("Triangle base=%.2f height=%.2f", v.Base, v.Height)
+        default:
+            return "Unknown shape"
+        }
+    }
+assertions:
+  must_include:
+  - Describe
+  - Circle
+  - Rectangle
+  - Triangle
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add type switch

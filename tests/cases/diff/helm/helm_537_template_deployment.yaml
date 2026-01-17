@@ -1,0 +1,36 @@
+name: helm_537_template_deployment
+initial:
+  values.yaml: |
+    image:
+      repository: myapp
+      tag: latest
+  templates/deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    spec:
+      template:
+        spec:
+          containers:
+          - name: app
+            image: myapp:latest
+  unrelated.py: |
+    garbage_marker_12345 = True
+    unused_marker_67890 = False
+changed:
+  templates/deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    spec:
+      template:
+        spec:
+          containers:
+          - name: app
+            image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
+assertions:
+  must_include:
+  - '{{ .Values.image.repository }}'
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add template values

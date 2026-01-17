@@ -1,0 +1,24 @@
+name: cicd_033_gitlab_include
+initial:
+  .gitlab/ci/deploy.yml: |
+    deploy:
+      script:
+        - ./deploy.sh
+  .gitlab-ci.yml: |
+    build:
+      script:
+        - npm run build
+changed:
+  .gitlab-ci.yml: |
+    include:
+      - local: .gitlab/ci/deploy.yml
+
+    build:
+      script:
+        - npm run build
+assertions:
+  must_include:
+  - .gitlab-ci.yml
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890

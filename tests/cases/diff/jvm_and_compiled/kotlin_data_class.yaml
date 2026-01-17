@@ -1,0 +1,34 @@
+name: kotlin_data_class
+initial:
+  src/main/kotlin/com/example/User.kt: |
+    package com.example
+
+    data class User(
+        val id: Long,
+        val name: String
+    )
+  src/main/kotlin/com/example/UserMapper.kt: |
+    package com.example
+
+    object UserMapper {
+        fun toDto(user: User): UserDto = UserDto(user.id, user.name)
+    }
+
+    data class UserDto(val id: Long, val name: String)
+changed:
+  src/main/kotlin/com/example/User.kt: |
+    package com.example
+
+    data class User(
+        val id: Long,
+        val name: String,
+        val email: String,
+        val active: Boolean = true
+    )
+assertions:
+  must_include:
+  - User.kt
+  - email
+  - active
+options:
+  commit_message: Add email and active fields to User

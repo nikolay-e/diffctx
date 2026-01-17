@@ -1,0 +1,35 @@
+name: dep_105_backward_protocol_changed
+initial:
+  interfaces.py: |
+    from typing import Protocol
+
+    class Repository(Protocol):
+        def find(self, id: int):
+            ...
+  repos/user_repo.py: |
+    from interfaces import Repository
+
+    class UserRepository:
+        def find(self, id: int):
+            return {"id": id, "name": "User"}
+  repos/order_repo.py: |
+    from interfaces import Repository
+
+    class OrderRepository:
+        def find(self, id: int):
+            return {"id": id, "total": 100}
+changed:
+  interfaces.py: |
+    from typing import Protocol
+
+    class Repository(Protocol):
+        def find(self, id: int):
+            ...
+
+        def find_by_criteria(self, criteria: dict) -> list:
+            ...
+assertions:
+  must_include:
+  - interfaces.py
+  must_not_include:
+  - garbage_marker_12345

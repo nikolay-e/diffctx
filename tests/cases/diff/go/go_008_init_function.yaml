@@ -1,0 +1,52 @@
+name: go_008_init_function
+initial:
+  config.go: |
+    package main
+
+    var Config map[string]string
+
+    func init() {
+        Config = make(map[string]string)
+        Config["env"] = "development"
+    }
+  main.go: |
+    package main
+
+    func main() {
+        println(Config["env"])
+    }
+  unrelated/garbage.go: |
+    package unrelated
+
+    func UnusedMainFunc_12345() {
+        println("garbage_marker_12345")
+    }
+
+    func AnotherUnused_67890() {
+        println("unused_marker_67890")
+    }
+changed:
+  config.go: |
+    package main
+
+    import "os"
+
+    var Config map[string]string
+
+    func init() {
+        Config = make(map[string]string)
+        Config["env"] = os.Getenv("APP_ENV")
+        if Config["env"] == "" {
+            Config["env"] = "development"
+        }
+    }
+assertions:
+  must_include:
+  - Config
+  - init
+  - APP_ENV
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Read env from environment

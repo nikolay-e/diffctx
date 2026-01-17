@@ -1,0 +1,46 @@
+name: k8s_426_ingress_rules
+initial:
+  service.yaml: |
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: api
+    spec:
+      ports:
+      - port: 80
+  ingress.yaml: |
+    apiVersion: networking.k8s.io/v1
+    kind: Ingress
+    metadata:
+      name: api-ingress
+    spec:
+      rules: []
+  unrelated.txt: |
+    garbage_marker_k8s426 = True
+    unused_marker_k8s426 = False
+changed:
+  ingress.yaml: |
+    apiVersion: networking.k8s.io/v1
+    kind: Ingress
+    metadata:
+      name: api-ingress
+    spec:
+      rules:
+      - host: api.example.com
+        http:
+          paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: api
+                port:
+                  number: 80
+assertions:
+  must_include:
+  - api.example.com
+  must_not_include:
+  - garbage_marker_k8s426
+  - unused_marker_k8s426
+options:
+  commit_message: Add ingress rules

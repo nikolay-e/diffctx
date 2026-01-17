@@ -1,0 +1,27 @@
+name: ts_ext_009_return_type
+initial:
+  factory.ts: |
+    export function createUser(name: string, age: number) {
+        return { id: Date.now().toString(), name, age, createdAt: new Date() };
+    }
+
+    // ts_ext_garbage_marker_009
+    function garbageFactory() { return { garbage: true }; }
+  types.ts: |
+    console.log('initial');
+changed:
+  types.ts: |
+    import { createUser } from './factory';
+
+    type User = ReturnType<typeof createUser>;
+
+    function processUser(user: User) {
+        console.log(`User ${user.name} created at ${user.createdAt}`);
+    }
+assertions:
+  must_include:
+  - types.ts
+  must_not_include:
+  - ts_ext_garbage_marker_009
+options:
+  commit_message: Add ReturnType usage

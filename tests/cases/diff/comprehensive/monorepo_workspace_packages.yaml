@@ -1,0 +1,43 @@
+name: monorepo_workspace_packages
+initial:
+  package.json: |
+    {
+        "name": "monorepo",
+        "workspaces": ["packages/*"]
+    }
+  packages/core/package.json: |
+    {
+        "name": "@myorg/core",
+        "version": "1.0.0"
+    }
+  packages/core/src/index.ts: |
+    export function coreFunction() {
+        return "core";
+    }
+  packages/web/package.json: |
+    {
+        "name": "@myorg/web",
+        "dependencies": {
+            "@myorg/core": "workspace:*"
+        }
+    }
+changed:
+  packages/api/package.json: |
+    {
+        "name": "@myorg/api",
+        "version": "1.0.0",
+        "dependencies": {
+            "@myorg/core": "workspace:*"
+        }
+    }
+  packages/api/src/index.ts: |
+    import { coreFunction } from '@myorg/core';
+
+    export function apiHandler() {
+        return coreFunction();
+    }
+assertions:
+  must_include:
+  - index.ts
+options:
+  commit_message: Add api package

@@ -1,0 +1,41 @@
+name: cpp_251_reinterpret_cast
+initial:
+  packet.h: |
+    #pragma once
+    #include <cstdint>
+
+    struct Packet {
+        uint32_t type;
+        uint32_t length;
+        char data[256];
+    };
+    // garbage_marker_12345
+  serializer.cpp: |
+    #include <iostream>
+    int main() { return 0; }
+changed:
+  serializer.cpp: |
+    #include "packet.h"
+    #include <cstring>
+
+    void serialize(const Packet& pkt, char* buffer) {
+        auto* bytes = reinterpret_cast<const char*>(&pkt);
+        std::memcpy(buffer, bytes, sizeof(Packet));
+    }
+
+    Packet deserialize(const char* buffer) {
+        Packet pkt;
+        auto* bytes = reinterpret_cast<char*>(&pkt);
+        std::memcpy(bytes, buffer, sizeof(Packet));
+        return pkt;
+    }
+assertions:
+  must_include:
+  - serialize
+  - deserialize
+  - reinterpret_cast
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add reinterpret_cast

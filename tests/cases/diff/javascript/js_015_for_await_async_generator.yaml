@@ -1,0 +1,30 @@
+name: js_015_for_await_async_generator
+initial:
+  generator.ts: |
+    export async function* asyncGenerator() {
+        for (let i = 0; i < 5; i++) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+            yield i;
+        }
+    }
+  consumer.ts: |
+    console.log('initial');
+changed:
+  consumer.ts: |
+    import { asyncGenerator } from './generator';
+
+    async function consume() {
+        for await (const value of asyncGenerator()) {
+            console.log(value);
+        }
+    }
+
+    consume();
+assertions:
+  must_include:
+  - asyncGenerator
+  - consumer.ts
+  must_not_include:
+  - js_garbage_marker_001
+options:
+  commit_message: Add async iteration

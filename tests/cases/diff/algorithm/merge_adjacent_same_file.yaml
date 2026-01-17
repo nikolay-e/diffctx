@@ -1,0 +1,25 @@
+name: merge_adjacent_same_file
+initial:
+  adjacent.py: |
+    def func1():
+        return 1
+
+    def func2():
+        return 2
+
+    def func3():
+        return 3
+changed:
+  adjacent.py: |
+    def func1():
+        return 10
+
+    def func2():
+        return 20
+
+    def func3():
+        return 3
+assertions:
+  must_include:
+  - func1
+  - func2

@@ -1,0 +1,55 @@
+name: go_012_select_case
+initial:
+  multiplexer.go: |
+    package main
+
+    func multiplex(ch1, ch2 <-chan int, out chan<- int) {
+        for {
+            select {
+            case v := <-ch1:
+                out <- v
+            case v := <-ch2:
+                out <- v
+            }
+        }
+    }
+  unrelated/garbage.go: |
+    package unrelated
+
+    func UnusedMux_12345() {
+        println("garbage_marker_12345")
+    }
+
+    func AnotherUnused_67890() {
+        println("unused_marker_67890")
+    }
+changed:
+  multiplexer.go: |
+    package main
+
+    import "time"
+
+    func multiplex(ch1, ch2 <-chan int, out chan<- int, done <-chan struct{}) {
+        for {
+            select {
+            case v := <-ch1:
+                out <- v
+            case v := <-ch2:
+                out <- v
+            case <-done:
+                return
+            case <-time.After(time.Second * 5):
+                return
+            }
+        }
+    }
+assertions:
+  must_include:
+  - multiplex
+  - select
+  - done
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add done channel and timeout

@@ -1,0 +1,46 @@
+name: cross_decorator_definition_changed
+initial:
+  decorators.py: |
+    def cache(ttl=60):
+        def decorator(func):
+            cache_store = {}
+            def wrapper(*args):
+                if args in cache_store:
+                    return cache_store[args]
+                result = func(*args)
+                cache_store[args] = result
+                return result
+            return wrapper
+        return decorator
+  services.py: |
+    from decorators import cache
+
+    @cache(ttl=300)
+    def expensive_computation(x):
+        return x ** 2
+
+    @cache(ttl=60)
+    def quick_lookup(key):
+        return {"key": key}
+changed:
+  decorators.py: |
+    import time
+
+    def cache(ttl=60):
+        def decorator(func):
+            cache_store = {}
+            cache_times = {}
+            def wrapper(*args):
+                now = time.time()
+                if args in cache_store:
+                    if now - cache_times[args] < ttl:
+                        return cache_store[args]
+                result = func(*args)
+                cache_store[args] = result
+                cache_times[args] = now
+                return result
+            return wrapper
+        return decorator
+assertions:
+  must_include:
+  - decorators.py

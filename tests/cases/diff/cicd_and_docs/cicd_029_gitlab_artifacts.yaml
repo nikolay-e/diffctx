@@ -1,0 +1,21 @@
+name: cicd_029_gitlab_artifacts
+initial:
+  .gitlab-ci.yml: |
+    build:
+      script:
+        - npm run build
+changed:
+  .gitlab-ci.yml: |
+    build:
+      script:
+        - npm run build
+      artifacts:
+        paths:
+          - dist/
+        expire_in: 1 week
+assertions:
+  must_include:
+  - .gitlab-ci.yml
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890

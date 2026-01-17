@@ -1,0 +1,27 @@
+name: helm_531_values_image
+initial:
+  Dockerfile: |
+    FROM python:3.11-slim
+    COPY . .
+    CMD ["python", "app.py"]
+  values.yaml: |
+    replicaCount: 1
+  unrelated.py: |
+    garbage_marker_12345 = True
+    unused_marker_67890 = False
+changed:
+  values.yaml: |
+    replicaCount: 1
+    image:
+      repository: myapp
+      tag: latest
+      pullPolicy: IfNotPresent
+assertions:
+  must_include:
+  - 'image:'
+  - 'repository: myapp'
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add image values

@@ -1,0 +1,35 @@
+name: js_013_promise_chain_change
+initial:
+  api.ts: |
+    export function fetchData(): Promise<{ data: string }> {
+        return fetch('/api/data').then(res => res.json());
+    }
+
+    // js_garbage_marker_013
+    function garbageApiFunction() { return Promise.resolve(null); }
+  consumer.ts: |
+    import { fetchData } from './api';
+
+    fetchData().then(result => {
+        console.log(result.data);
+    });
+changed:
+  api.ts: |
+    export function fetchData(): Promise<{ data: string; metadata: { timestamp: number } }> {
+        return fetch('/api/data')
+            .then(res => res.json())
+            .then(data => ({
+                ...data,
+                metadata: { timestamp: Date.now() },
+            }));
+    }
+
+    // js_garbage_marker_013
+    function garbageApiFunction() { return Promise.resolve(null); }
+assertions:
+  must_include:
+  - api.ts
+  must_not_include:
+  - js_garbage_marker_013
+options:
+  commit_message: Add metadata to fetchData

@@ -1,0 +1,40 @@
+name: scala_052_application_conf
+initial:
+  src/main/resources/application.conf: |
+    app {
+      name = "myapp"
+      port = 8080
+    }
+  src/main/scala/Config.scala: |
+    import com.typesafe.config.ConfigFactory
+
+    object Config {
+      private val config = ConfigFactory.load()
+      val appName: String = config.getString("app.name")
+      val port: Int = config.getInt("app.port")
+    }
+changed:
+  src/main/resources/application.conf: |
+    app {
+      name = "myapp"
+      port = 8080
+      database {
+        url = "jdbc:postgresql://localhost/db"
+        pool-size = 10
+        timeout = 30s
+      }
+      kafka {
+        bootstrap-servers = "localhost:9092"
+        topic = "events"
+      }
+    }
+assertions:
+  must_include:
+  - application.conf
+  - database
+  - kafka
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add database and Kafka configuration

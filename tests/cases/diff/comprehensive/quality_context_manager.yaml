@@ -1,0 +1,26 @@
+name: quality_context_manager
+initial:
+  managers.py: |
+    class DatabaseConnection:
+        def __enter__(self):
+            self.conn = "connected"
+            return self
+
+        def __exit__(self, *args):
+            self.conn = None
+
+        def query(self, sql):
+            return f"Result of {sql}"
+  main.py: |
+    data = None
+changed:
+  main.py: |
+    from managers import DatabaseConnection
+
+    with DatabaseConnection() as db:
+        data = db.query("SELECT *")
+assertions:
+  must_include:
+  - class DatabaseConnection
+options:
+  commit_message: Use context manager

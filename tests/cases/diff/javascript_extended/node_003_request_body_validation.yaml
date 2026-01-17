@@ -1,0 +1,29 @@
+name: node_003_request_body_validation
+initial:
+  schemas.ts: |
+    export interface CreateUserBody {
+        name: string;
+        email: string;
+        password: string;
+    }
+
+    // node_garbage_marker_003
+    interface GarbageBody { garbage: string }
+  controller.ts: |
+    console.log('initial');
+changed:
+  controller.ts: |
+    import { Request, Response } from 'express';
+    import { CreateUserBody } from './schemas';
+
+    export function createUser(req: Request, res: Response) {
+        const body = req.body as CreateUserBody;
+        res.status(201).json({ id: '1', name: body.name, email: body.email });
+    }
+assertions:
+  must_include:
+  - controller.ts
+  must_not_include:
+  - node_garbage_marker_003
+options:
+  commit_message: Add body validation

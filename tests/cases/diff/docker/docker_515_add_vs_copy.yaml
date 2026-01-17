@@ -1,0 +1,21 @@
+name: docker_515_add_vs_copy
+initial:
+  Dockerfile: |
+    FROM python:3.11-slim
+    COPY files.tar.gz /app/
+  junk.md: |
+    garbage_marker_12345
+    unused_marker_67890
+changed:
+  Dockerfile: |
+    FROM python:3.11-slim
+    ADD files.tar.gz /app/
+    ADD https://example.com/config.json /app/config.json
+assertions:
+  must_include:
+  - ADD files.tar.gz
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Use ADD

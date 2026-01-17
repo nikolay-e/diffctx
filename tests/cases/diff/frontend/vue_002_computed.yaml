@@ -1,0 +1,62 @@
+name: vue_002_computed
+initial:
+  utils.ts: |
+    export function formatPrice(price: number): string {
+        return new Intl.NumberFormat('en-US', {
+            style: 'currency',
+            currency: 'USD',
+        }).format(price);
+    }
+
+    export function calculateDiscount(price: number, discount: number): number {
+        return price * (1 - discount / 100);
+    }
+
+    // vue_garbage_marker_002
+    function garbageUtilFunction() { return 0; }
+  PriceCalculator.vue: |
+    <template>
+        <div>Initial</div>
+    </template>
+
+    <script setup lang="ts">
+    </script>
+changed:
+  PriceCalculator.vue: |
+    <template>
+        <div class="price-calculator">
+            <input v-model.number="basePrice" type="number" placeholder="Price" />
+            <input v-model.number="discountPercent" type="number" placeholder="Discount %" />
+            <p>Original: {{ formattedPrice }}</p>
+            <p>Discounted: {{ formattedDiscountedPrice }}</p>
+            <p>Savings: {{ formattedSavings }}</p>
+        </div>
+    </template>
+
+    <script setup lang="ts">
+    import { ref, computed } from 'vue';
+    import { formatPrice, calculateDiscount } from './utils';
+
+    const basePrice = ref(100);
+    const discountPercent = ref(10);
+
+    const discountedPrice = computed(() => {
+        return calculateDiscount(basePrice.value, discountPercent.value);
+    });
+
+    const savings = computed(() => {
+        return basePrice.value - discountedPrice.value;
+    });
+
+    const formattedPrice = computed(() => formatPrice(basePrice.value));
+    const formattedDiscountedPrice = computed(() => formatPrice(discountedPrice.value));
+    const formattedSavings = computed(() => formatPrice(savings.value));
+    </script>
+assertions:
+  must_include:
+  - PriceCalculator.vue
+  - computed
+  must_not_include:
+  - vue_garbage_marker_002
+options:
+  commit_message: Add Vue computed properties

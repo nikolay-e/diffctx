@@ -1,0 +1,48 @@
+name: cpp_264_partial_specialization
+initial:
+  ptr_traits.h: |
+    #pragma once
+
+    template<typename T>
+    struct PtrTraits {
+        using element_type = T;
+        static constexpr bool is_pointer = false;
+    };
+
+    template<typename T>
+    struct PtrTraits<T*> {
+        using element_type = T;
+        static constexpr bool is_pointer = true;
+    };
+    // garbage_marker_12345
+  checker.cpp: |
+    #include <iostream>
+    int main() { return 0; }
+changed:
+  checker.cpp: |
+    #include "ptr_traits.h"
+    #include <iostream>
+
+    template<typename T>
+    void checkType() {
+        if constexpr (PtrTraits<T>::is_pointer) {
+            std::cout << "Pointer type" << std::endl;
+        } else {
+            std::cout << "Value type" << std::endl;
+        }
+    }
+
+    int main() {
+        checkType<int>();
+        checkType<int*>();
+        return 0;
+    }
+assertions:
+  must_include:
+  - checkType
+  - PtrTraits
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add partial specialization usage

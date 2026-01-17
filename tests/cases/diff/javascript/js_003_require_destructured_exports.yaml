@@ -1,0 +1,26 @@
+name: js_003_require_destructured_exports
+initial:
+  module.js: |
+    const a = 1;
+    const b = 2;
+
+    module.exports = { a, b };
+  main.js: |
+    console.log('initial');
+changed:
+  main.js: |
+    const { a, b } = require('./module');
+
+    function main() {
+        console.log(a + b);
+    }
+
+    main();
+assertions:
+  must_include:
+  - require('./module')
+  - main.js
+  must_not_include:
+  - js_garbage_marker_001
+options:
+  commit_message: Add require with destructuring

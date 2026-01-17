@@ -1,0 +1,46 @@
+name: go_007_go_mod_replace
+initial:
+  go.mod: |
+    module myproject
+
+    go 1.21
+
+    require mymodule/pkg v0.0.0
+
+    replace mymodule/pkg => ./pkg
+  pkg/lib.go: |
+    package pkg
+
+    func Helper() string {
+        return "helper"
+    }
+  unrelated/garbage.go: |
+    package unrelated
+
+    func UnusedPkgFunc_12345() {
+        println("garbage_marker_12345")
+    }
+
+    func AnotherUnused_67890() {
+        println("unused_marker_67890")
+    }
+changed:
+  pkg/lib.go: |
+    package pkg
+
+    func Helper() string {
+        return "improved helper"
+    }
+
+    func NewHelper() string {
+        return "new helper"
+    }
+assertions:
+  must_include:
+  - Helper
+  - NewHelper
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Update local module

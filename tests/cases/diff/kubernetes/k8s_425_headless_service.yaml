@@ -1,0 +1,44 @@
+name: k8s_425_headless_service
+initial:
+  statefulset.yaml: |
+    apiVersion: apps/v1
+    kind: StatefulSet
+    metadata:
+      name: postgres
+    spec:
+      serviceName: postgres
+      replicas: 3
+      template:
+        spec:
+          containers:
+          - name: postgres
+            image: postgres:13
+  service.yaml: |
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: postgres
+    spec:
+      ports:
+      - port: 5432
+  unrelated.txt: |
+    garbage_marker_k8s425 = True
+    unused_marker_k8s425 = False
+changed:
+  service.yaml: |
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: postgres
+    spec:
+      clusterIP: None
+      ports:
+      - port: 5432
+assertions:
+  must_include:
+  - 'clusterIP: None'
+  must_not_include:
+  - garbage_marker_k8s425
+  - unused_marker_k8s425
+options:
+  commit_message: Add headless service

@@ -1,0 +1,29 @@
+name: python_061_pytest_parametrize
+initial:
+  validators.py: |
+    def validate_email(email: str) -> bool:
+        return "@" in email and "." in email
+  test_validators.py: |
+    def test_email():
+        pass
+  garbage.py: |
+    garbage_marker_12345 = "parametrize garbage"
+    unused_marker_67890 = "unused parametrize"
+changed:
+  test_validators.py: |
+    import pytest
+    from validators import validate_email
+
+    @pytest.mark.parametrize("email,expected", [
+        ("test@example.com", True),
+        ("invalid", False),
+        ("no@dot", False),
+    ])
+    def test_email(email, expected):
+        assert validate_email(email) == expected
+assertions:
+  must_include:
+  - def validate_email
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890

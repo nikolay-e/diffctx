@@ -1,0 +1,44 @@
+name: dep_210_reverse_flask_signal_change
+initial:
+  app/signals.py: |
+    from blinker import signal
+
+    user_registered = signal('user-registered')
+    user_logged_in = signal('user-logged-in')
+    user_logged_out = signal('user-logged-out')
+  handlers/email_handler.py: |
+    from app.signals import user_registered
+
+    @user_registered.connect
+    def send_welcome_email(sender, user, **kwargs):
+        print(f"Sending welcome email to {user.email}")
+  handlers/metrics_handler.py: |
+    from app.signals import user_registered, user_logged_in
+
+    @user_registered.connect
+    def track_registration(sender, user, **kwargs):
+        print(f"Tracking registration for {user.id}")
+
+    @user_logged_in.connect
+    def track_login(sender, user, **kwargs):
+        print(f"Tracking login for {user.id}")
+changed:
+  app/signals.py: |
+    from blinker import signal
+
+    user_registered = signal('user-registered')
+    user_logged_in = signal('user-logged-in')
+    user_logged_out = signal('user-logged-out')
+    user_profile_updated = signal('user-profile-updated')
+    user_password_changed = signal('user-password-changed')
+
+    def emit_user_registered(sender, user, source='web'):
+        user_registered.send(sender, user=user, source=source)
+
+    def emit_user_logged_in(sender, user, ip_address=None):
+        user_logged_in.send(sender, user=user, ip_address=ip_address)
+assertions:
+  must_include:
+  - signals.py
+  must_not_include:
+  - garbage_marker_12345

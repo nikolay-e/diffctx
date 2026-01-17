@@ -1,0 +1,44 @@
+name: cicd_017_gha_service_container
+initial:
+  tests/db.test.js: |
+    const { Pool } = require('pg');
+    test('connects to database', async () => {
+      const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+      await pool.query('SELECT 1');
+    });
+  .github/workflows/test.yml: |
+    name: Test
+    jobs:
+      test:
+        runs-on: ubuntu-latest
+        steps:
+          - run: npm test
+changed:
+  .github/workflows/test.yml: |
+    name: Test
+    jobs:
+      test:
+        runs-on: ubuntu-latest
+        services:
+          postgres:
+            image: postgres:15
+            env:
+              POSTGRES_PASSWORD: postgres
+            ports:
+              - 5432:5432
+            options: >-
+              --health-cmd pg_isready
+              --health-interval 10s
+              --health-timeout 5s
+              --health-retries 5
+        steps:
+          - uses: actions/checkout@v4
+          - run: npm test
+            env:
+              DATABASE_URL: ${{ secrets.DATABASE_URL }}
+assertions:
+  must_include:
+  - test.yml
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890

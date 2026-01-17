@@ -1,0 +1,56 @@
+name: cpp_278_operator_overloading
+initial:
+  vector2d.h: |
+    #pragma once
+
+    class Vector2D {
+    public:
+        double x, y;
+
+        Vector2D(double x = 0, double y = 0) : x(x), y(y) {}
+
+        Vector2D operator+(const Vector2D& other) const {
+            return Vector2D(x + other.x, y + other.y);
+        }
+
+        Vector2D operator-(const Vector2D& other) const {
+            return Vector2D(x - other.x, y - other.y);
+        }
+
+        Vector2D operator*(double scalar) const {
+            return Vector2D(x * scalar, y * scalar);
+        }
+
+        Vector2D& operator+=(const Vector2D& other) {
+            x += other.x;
+            y += other.y;
+            return *this;
+        }
+    };
+    // garbage_marker_12345
+  physics.cpp: |
+    #include <iostream>
+    int main() { return 0; }
+changed:
+  physics.cpp: |
+    #include "vector2d.h"
+
+    Vector2D computePosition(Vector2D pos, Vector2D vel, double dt) {
+        return pos + vel * dt;
+    }
+
+    void simulate() {
+        Vector2D position(0, 0);
+        Vector2D velocity(1, 2);
+        position += velocity * 0.1;
+    }
+assertions:
+  must_include:
+  - computePosition
+  - simulate
+  - Vector2D
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add operator overloading usage

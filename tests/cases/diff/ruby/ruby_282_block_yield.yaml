@@ -1,0 +1,42 @@
+name: ruby_282_block_yield
+initial:
+  retry_helper.rb: |
+    module RetryHelper
+      def with_retry(max_attempts: 3)
+        attempts = 0
+        begin
+          attempts += 1
+          yield
+        rescue StandardError => e
+          retry if attempts < max_attempts
+          raise e
+        end
+      end
+    end
+  service.rb: |
+    # Initial
+    class Service
+    end
+changed:
+  service.rb: |
+    require_relative 'retry_helper'
+
+    class Service
+      include RetryHelper
+
+      def fetch_data
+        with_retry(max_attempts: 5) do
+          # API call
+          raise "Error" if rand < 0.5
+        end
+      end
+    end
+assertions:
+  must_include:
+  - with_retry
+  - include RetryHelper
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add block usage

@@ -1,0 +1,29 @@
+name: dep_002_forward_method_on_imported_class
+initial:
+  services/user.py: |
+    class UserService:
+        def __init__(self):
+            self.users = []
+
+        def validate(self):
+            return len(self.users) > 0
+
+        def add_user(self, name):
+            self.users.append(name)
+  handler.py: |
+    def handle():
+        pass
+changed:
+  handler.py: |
+    from services.user import UserService
+
+    def handle():
+        user = UserService()
+        user.validate()
+        return user
+assertions:
+  must_include:
+  - handler.py
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890

@@ -1,0 +1,38 @@
+name: k8s_433_ingress_class
+initial:
+  ingress-class.yaml: |
+    apiVersion: networking.k8s.io/v1
+    kind: IngressClass
+    metadata:
+      name: nginx
+    spec:
+      controller: k8s.io/ingress-nginx
+  ingress.yaml: |
+    apiVersion: networking.k8s.io/v1
+    kind: Ingress
+    metadata:
+      name: api-ingress
+    spec:
+      rules:
+      - host: api.example.com
+  unrelated.txt: |
+    garbage_marker_k8s433 = True
+    unused_marker_k8s433 = False
+changed:
+  ingress.yaml: |
+    apiVersion: networking.k8s.io/v1
+    kind: Ingress
+    metadata:
+      name: api-ingress
+    spec:
+      ingressClassName: nginx
+      rules:
+      - host: api.example.com
+assertions:
+  must_include:
+  - ingressClassName
+  must_not_include:
+  - garbage_marker_k8s433
+  - unused_marker_k8s433
+options:
+  commit_message: Add ingress class

@@ -1,0 +1,34 @@
+name: js_007_optional_chaining_definitions
+initial:
+  api.ts: |
+    export interface Response {
+        data?: {
+            user?: {
+                name?: string;
+            };
+        };
+    }
+
+    export function fetchResponse(): Response {
+        return { data: { user: { name: 'Test' } } };
+    }
+  main.ts: |
+    console.log('initial');
+changed:
+  main.ts: |
+    import { fetchResponse } from './api';
+
+    function getName() {
+        const response = fetchResponse();
+        return response?.data?.user?.name ?? 'Unknown';
+    }
+
+    console.log(getName());
+assertions:
+  must_include:
+  - fetchResponse
+  - main.ts
+  must_not_include:
+  - js_garbage_marker_001
+options:
+  commit_message: Add optional chaining

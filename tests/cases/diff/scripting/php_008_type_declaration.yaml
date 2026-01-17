@@ -1,0 +1,46 @@
+name: php_008_type_declaration
+initial:
+  Response.php: |
+    <?php
+    class Response {
+        private int $status;
+        private array $data;
+
+        public function __construct(int $status, array $data) {
+            $this->status = $status;
+            $this->data = $data;
+        }
+
+        public function getStatus(): int {
+            return $this->status;
+        }
+
+        public function getData(): array {
+            return $this->data;
+        }
+    }
+  Processor.php: |
+    <?php
+    class Processor {}
+  garbage.php: |
+    <?php
+    $garbageResponse12345 = -1;
+    $unused_marker_67890 = "not used";
+changed:
+  Processor.php: |
+    <?php
+    require_once 'Response.php';
+
+    class Processor {
+        public function process(array $data): Response {
+            $result = array_map(fn($x) => $x * 2, $data);
+            return new Response(200, $result);
+        }
+    }
+assertions:
+  must_include:
+  - Processor.php
+  - Response
+  must_not_include:
+  - garbageResponse12345
+  - unused_marker_67890

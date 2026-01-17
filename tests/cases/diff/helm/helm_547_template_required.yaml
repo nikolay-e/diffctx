@@ -1,0 +1,26 @@
+name: helm_547_template_required
+initial:
+  values.yaml: |
+    apiKey: ""
+  templates/secret.yaml: |
+    apiVersion: v1
+    kind: Secret
+    data:
+      api-key: {{ .Values.apiKey | b64enc }}
+  unrelated.txt: |
+    garbage_marker_12345
+    unused_marker_67890
+changed:
+  templates/secret.yaml: |
+    apiVersion: v1
+    kind: Secret
+    data:
+      api-key: {{ required "apiKey is required" .Values.apiKey | b64enc }}
+assertions:
+  must_include:
+  - required
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add required

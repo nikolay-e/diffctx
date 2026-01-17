@@ -1,0 +1,60 @@
+name: docs_003_tsdoc_link
+initial:
+  src/utils/formatter.ts: |
+    export class Formatter {
+        format(value: string): string {
+            return value.trim();
+        }
+    }
+  src/services/data.ts: |
+    import { Formatter } from '../utils/formatter';
+
+    /**
+     * Data processor that uses {@link Formatter} for output
+     */
+    export class DataProcessor {
+        private formatter: Formatter;
+
+        constructor() {
+            this.formatter = new Formatter();
+        }
+    }
+changed:
+  src/services/data.ts: |
+    import { Formatter, JsonFormatter } from '../utils/formatter';
+
+    /**
+     * Data processor that uses {@link Formatter} for output
+     *
+     * @remarks
+     * This class provides data processing capabilities.
+     * See {@link JsonFormatter} for JSON-specific formatting.
+     *
+     * @example
+     * ```typescript
+     * const processor = new DataProcessor();
+     * const result = processor.process(data);
+     * ```
+     */
+    export class DataProcessor {
+        private formatter: Formatter;
+
+        constructor(formatter?: Formatter) {
+            this.formatter = formatter ?? new Formatter();
+        }
+
+        /**
+         * Process data and return formatted result
+         * @param data - Input data to process
+         * @returns Formatted output string
+         */
+        process(data: unknown): string {
+            return this.formatter.format(String(data));
+        }
+    }
+assertions:
+  must_include:
+  - data.ts
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890

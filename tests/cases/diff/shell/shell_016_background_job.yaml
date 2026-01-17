@@ -1,0 +1,43 @@
+name: shell_016_background_job
+initial:
+  jobs.sh: |
+    #!/bin/bash
+    long_process() {
+        sleep 30
+        echo "Long process complete"
+    }
+  parallel.sh: |
+    #!/bin/bash
+    echo "Parallel"
+  garbage.sh: |
+    #!/bin/bash
+    shelltest_job_017() { echo "never started 67890"; }
+    unused_marker_12345="not_used"
+changed:
+  parallel.sh: |
+    #!/bin/bash
+    source ./jobs.sh
+
+    long_process &
+    pid1=$!
+
+    ./another-task.sh &
+    pid2=$!
+
+    echo "Started background jobs: $pid1 $pid2"
+
+    wait $pid1
+    echo "Job 1 complete"
+
+    wait $pid2
+    echo "Job 2 complete"
+
+    wait
+    echo "All jobs complete"
+assertions:
+  must_include:
+  - parallel.sh
+  - long_process
+  must_not_include:
+  - shelltest_job_017
+  - unused_marker_12345

@@ -1,0 +1,67 @@
+name: react_007_forwardref
+initial:
+  InputField.tsx: |
+    import React from 'react';
+
+    export function InputField() {
+        return <input />;
+    }
+
+    // react_garbage_marker_007
+    const UNUSED_INPUT_CONFIG = { maxLength: 100 };
+  Form.tsx: |
+    import React from 'react';
+
+    export function Form() {
+        return <form>Initial</form>;
+    }
+changed:
+  InputField.tsx: |
+    import React, { forwardRef, InputHTMLAttributes } from 'react';
+
+    export interface InputFieldProps extends InputHTMLAttributes<HTMLInputElement> {
+        label: string;
+        error?: string;
+    }
+
+    export const InputField = forwardRef<HTMLInputElement, InputFieldProps>(
+        ({ label, error, ...props }, ref) => {
+            return (
+                <div>
+                    <label>{label}</label>
+                    <input ref={ref} {...props} />
+                    {error && <span className="error">{error}</span>}
+                </div>
+            );
+        }
+    );
+
+    InputField.displayName = 'InputField';
+  Form.tsx: |
+    import React, { useRef } from 'react';
+    import { InputField } from './InputField';
+
+    export function Form() {
+        const nameRef = useRef<HTMLInputElement>(null);
+        const emailRef = useRef<HTMLInputElement>(null);
+
+        const handleSubmit = (e: React.FormEvent) => {
+            e.preventDefault();
+            nameRef.current?.focus();
+        };
+
+        return (
+            <form onSubmit={handleSubmit}>
+                <InputField ref={nameRef} label="Name" name="name" />
+                <InputField ref={emailRef} label="Email" name="email" type="email" />
+                <button type="submit">Submit</button>
+            </form>
+        );
+    }
+assertions:
+  must_include:
+  - forwardRef
+  must_not_include:
+  - react_garbage_marker_007
+options:
+  commit_message: Add forwardRef to InputField

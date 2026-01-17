@@ -1,0 +1,48 @@
+name: k8s_407_volume_mount
+initial:
+  config.yaml: |
+    server:
+      port: 8080
+      host: 0.0.0.0
+  deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: myapp
+    spec:
+      template:
+        spec:
+          containers:
+          - name: app
+            volumeMounts: []
+          volumes: []
+  unrelated.txt: |
+    garbage_marker_k8s407 = True
+    unused_marker_k8s407 = False
+changed:
+  deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: myapp
+    spec:
+      template:
+        spec:
+          containers:
+          - name: app
+            volumeMounts:
+            - name: config
+              mountPath: /app/config
+              readOnly: true
+          volumes:
+          - name: config
+            configMap:
+              name: app-config
+assertions:
+  must_include:
+  - volumeMounts
+  must_not_include:
+  - garbage_marker_k8s407
+  - unused_marker_k8s407
+options:
+  commit_message: Add volume mount

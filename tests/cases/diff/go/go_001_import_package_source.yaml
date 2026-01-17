@@ -1,0 +1,47 @@
+name: go_001_import_package_source
+initial:
+  pkg/utils/helpers.go: |
+    package utils
+
+    func FormatString(s string) string {
+        return "[" + s + "]"
+    }
+  main.go: |
+    package main
+
+    import "mymodule/pkg/utils"
+
+    func main() {
+        result := utils.FormatString("hello")
+        println(result)
+    }
+  unrelated/garbage.go: |
+    package unrelated
+
+    func GarbageHelperUnused_12345() string {
+        return "garbage_marker_12345"
+    }
+
+    func AnotherUnused_67890() {
+        println("unused_marker_67890")
+    }
+changed:
+  pkg/utils/helpers.go: |
+    package utils
+
+    func FormatString(s string) string {
+        return "[[" + s + "]]"
+    }
+
+    func TrimString(s string) string {
+        return s
+    }
+assertions:
+  must_include:
+  - FormatString
+  - TrimString
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Update FormatString and add TrimString

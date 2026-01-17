@@ -1,0 +1,27 @@
+name: ts_046_required_type
+initial:
+  options.ts: |
+    export interface Options {
+        name?: string;
+        value?: number;
+        enabled?: boolean;
+    }
+  validator.ts: |
+    console.log('initial');
+changed:
+  validator.ts: |
+    import { Options } from './options';
+
+    type StrictOptions = Required<Options>;
+
+    function validate(options: StrictOptions): boolean {
+        return options.name.length > 0 && options.value >= 0 && typeof options.enabled === 'boolean';
+    }
+assertions:
+  must_include:
+  - Options
+  - validator.ts
+  must_not_include:
+  - js_garbage_marker_001
+options:
+  commit_message: Add Required usage

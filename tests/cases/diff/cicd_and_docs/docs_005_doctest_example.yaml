@@ -1,0 +1,40 @@
+name: docs_005_doctest_example
+initial:
+  src/calculator.py: |
+    def add(a, b):
+        """Add two numbers.
+
+        >>> add(2, 3)
+        5
+        """
+        return a + b
+changed:
+  src/calculator.py: |
+    def add(a, b):
+        """Add two numbers.
+
+        >>> add(2, 3)
+        5
+        >>> add(-1, 1)
+        0
+        >>> add(0.1, 0.2)  # doctest: +ELLIPSIS
+        0.3...
+        """
+        return a + b
+
+
+    def multiply(a, b):
+        """Multiply two numbers.
+
+        >>> multiply(2, 3)
+        6
+        >>> multiply(0, 100)
+        0
+        """
+        return a * b
+assertions:
+  must_include:
+  - calculator.py
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890

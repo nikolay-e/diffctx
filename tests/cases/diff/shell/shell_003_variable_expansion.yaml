@@ -1,0 +1,30 @@
+name: shell_003_variable_expansion
+initial:
+  env.sh: |
+    #!/bin/bash
+    export CONFIG_PATH="/etc/myapp"
+    export DATA_DIR="/var/lib/myapp"
+    export APP_NAME="myapp"
+  setup.sh: |
+    #!/bin/bash
+    echo "Setup"
+  garbage.sh: |
+    #!/bin/bash
+    SHELLTEST_GVAR_004="unused_value"
+    unused_marker_12345="not_used"
+changed:
+  setup.sh: |
+    #!/bin/bash
+    source ./env.sh
+
+    mkdir -p "${CONFIG_PATH}/conf.d"
+    mkdir -p "${DATA_DIR}/logs"
+    echo "Created directories for ${APP_NAME}"
+    cp template.conf "${CONFIG_PATH}/${APP_NAME}.conf"
+assertions:
+  must_include:
+  - setup.sh
+  - CONFIG_PATH
+  must_not_include:
+  - SHELLTEST_GVAR_004
+  - unused_marker_12345

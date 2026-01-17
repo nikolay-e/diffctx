@@ -1,0 +1,100 @@
+name: go_015_wire_build
+initial:
+  wire.go: |
+    //go:build wireinject
+    // +build wireinject
+
+    package main
+
+    import "github.com/google/wire"
+
+    func InitializeApp() *App {
+        wire.Build(NewApp, NewDB, NewConfig)
+        return nil
+    }
+  providers.go: |
+    package main
+
+    type App struct {
+        db *DB
+    }
+
+    type DB struct {
+        config *Config
+    }
+
+    type Config struct {
+        DSN string
+    }
+
+    func NewApp(db *DB) *App {
+        return &App{db: db}
+    }
+
+    func NewDB(config *Config) *DB {
+        return &DB{config: config}
+    }
+
+    func NewConfig() *Config {
+        return &Config{DSN: "postgres://localhost/db"}
+    }
+  unrelated/garbage.go: |
+    package unrelated
+
+    func UnusedWire_12345() {
+        println("garbage_marker_12345")
+    }
+
+    func UnusedProvider_67890() {
+        println("unused_marker_67890")
+    }
+changed:
+  providers.go: |
+    package main
+
+    type App struct {
+        db     *DB
+        cache  *Cache
+    }
+
+    type DB struct {
+        config *Config
+    }
+
+    type Config struct {
+        DSN      string
+        CacheURL string
+    }
+
+    type Cache struct {
+        url string
+    }
+
+    func NewApp(db *DB, cache *Cache) *App {
+        return &App{db: db, cache: cache}
+    }
+
+    func NewDB(config *Config) *DB {
+        return &DB{config: config}
+    }
+
+    func NewConfig() *Config {
+        return &Config{
+            DSN:      "postgres://localhost/db",
+            CacheURL: "redis://localhost:6379",
+        }
+    }
+
+    func NewCache(config *Config) *Cache {
+        return &Cache{url: config.CacheURL}
+    }
+assertions:
+  must_include:
+  - Cache
+  - NewCache
+  - CacheURL
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add Cache provider

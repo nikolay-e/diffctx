@@ -1,0 +1,24 @@
+name: docker_505_workdir
+initial:
+  Dockerfile: |
+    FROM python:3.11-slim
+    COPY . /app
+    RUN cd /app && pip install -r requirements.txt
+    CMD ["python", "/app/main.py"]
+  unrelated.txt: |
+    garbage_marker_12345 unused_marker_67890
+changed:
+  Dockerfile: |
+    FROM python:3.11-slim
+    WORKDIR /app
+    COPY . .
+    RUN pip install -r requirements.txt
+    CMD ["python", "main.py"]
+assertions:
+  must_include:
+  - WORKDIR /app
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add WORKDIR

@@ -1,0 +1,36 @@
+name: docker_525_compose_configs
+initial:
+  nginx.conf: |
+    server {
+        listen 80;
+        location / {
+            proxy_pass http://api:8080;
+        }
+    }
+  docker-compose.yml: |
+    version: '3.8'
+    services:
+      nginx:
+        image: nginx:latest
+  junk.txt: |
+    garbage_marker_12345 unused_marker_67890
+changed:
+  docker-compose.yml: |
+    version: '3.8'
+    services:
+      nginx:
+        image: nginx:latest
+        configs:
+          - source: nginx_conf
+            target: /etc/nginx/conf.d/default.conf
+    configs:
+      nginx_conf:
+        file: ./nginx.conf
+assertions:
+  must_include:
+  - 'configs:'
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add configs

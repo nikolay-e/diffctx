@@ -1,0 +1,31 @@
+name: helm_534_values_env
+initial:
+  app.py: |
+    import os
+    log_level = os.environ.get('LOG_LEVEL', 'info')
+  values.yaml: |
+    replicaCount: 1
+    env: []
+  junk.py: |
+    garbage_marker_12345 = 1
+    unused_marker_67890 = 2
+changed:
+  values.yaml: |
+    replicaCount: 1
+    env:
+      - name: LOG_LEVEL
+        value: debug
+      - name: DATABASE_URL
+        valueFrom:
+          secretKeyRef:
+            name: db-secret
+            key: url
+assertions:
+  must_include:
+  - 'env:'
+  - LOG_LEVEL
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add env values

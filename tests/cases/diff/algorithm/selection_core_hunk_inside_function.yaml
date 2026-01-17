@@ -1,0 +1,20 @@
+name: selection_core_hunk_inside_function
+initial:
+  module.py: |
+    def long_function():
+        line1 = 1
+        line2 = 2
+        line3 = 3
+        line4 = 4
+        return line4
+changed:
+  module.py: |
+    def long_function():
+        line1 = 1
+        modified = 'changed'
+        line3 = 3
+        line4 = 4
+        return line4
+assertions:
+  must_include:
+  - long_function

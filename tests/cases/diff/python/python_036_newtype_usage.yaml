@@ -1,0 +1,25 @@
+name: python_036_newtype_usage
+initial:
+  types.py: |
+    from typing import NewType
+
+    UserId = NewType('UserId', int)
+    OrderId = NewType('OrderId', int)
+  service.py: |
+    def get_user():
+        pass
+  garbage.py: |
+    garbage_marker_12345 = "newtype garbage"
+    unused_marker_67890 = "unused newtype"
+changed:
+  service.py: |
+    from types import UserId
+
+    def get_user(user_id: UserId) -> dict:
+        return {"id": user_id}
+assertions:
+  must_include:
+  - UserId = NewType
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890

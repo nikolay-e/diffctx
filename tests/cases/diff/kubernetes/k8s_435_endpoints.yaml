@@ -1,0 +1,39 @@
+name: k8s_435_endpoints
+initial:
+  service.yaml: |
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: external-api
+    spec:
+      ports:
+      - port: 443
+  endpoints.yaml: |
+    apiVersion: v1
+    kind: Endpoints
+    metadata:
+      name: external-api
+    subsets: []
+  unrelated.txt: |
+    garbage_marker_k8s435 = True
+    unused_marker_k8s435 = False
+changed:
+  endpoints.yaml: |
+    apiVersion: v1
+    kind: Endpoints
+    metadata:
+      name: external-api
+    subsets:
+    - addresses:
+      - ip: 10.0.0.1
+      - ip: 10.0.0.2
+      ports:
+      - port: 443
+assertions:
+  must_include:
+  - Endpoints
+  must_not_include:
+  - garbage_marker_k8s435
+  - unused_marker_k8s435
+options:
+  commit_message: Add Endpoints

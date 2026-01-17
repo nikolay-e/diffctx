@@ -1,0 +1,31 @@
+name: js_027_default_export_change_pulls_importers
+initial:
+  api.ts: |
+    export default function apiClient() {
+        return { get: (url: string) => fetch(url) };
+    }
+  service.ts: |
+    import client from './api';
+
+    export function getData(url: string) {
+        return client().get(url);
+    }
+changed:
+  api.ts: |
+    export default function apiClient(baseUrl = '') {
+        return {
+            get: (url: string) => fetch(baseUrl + url),
+            post: (url: string, data: any) => fetch(baseUrl + url, {
+                method: 'POST',
+                body: JSON.stringify(data),
+            }),
+        };
+    }
+assertions:
+  must_include:
+  - apiClient
+  - api.ts
+  must_not_include:
+  - js_garbage_marker_001
+options:
+  commit_message: Extend apiClient

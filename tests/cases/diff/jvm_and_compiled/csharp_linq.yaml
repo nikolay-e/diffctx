@@ -1,0 +1,52 @@
+name: csharp_linq
+initial:
+  User.cs: |
+    public class User
+    {
+        public int Id { get; set; }
+        public string Name { get; set; }
+        public int Age { get; set; }
+        public bool IsActive { get; set; }
+    }
+  UserService.cs: |
+    // Initial
+    class UserService { }
+changed:
+  UserService.cs: |
+    using System.Collections.Generic;
+    using System.Linq;
+
+    class UserService
+    {
+        private readonly List<User> _users;
+
+        public UserService(List<User> users)
+        {
+            _users = users;
+        }
+
+        public IEnumerable<User> GetAdults()
+        {
+            return _users.Where(u => u.Age >= 18);
+        }
+
+        public IEnumerable<string> GetActiveUserNames()
+        {
+            return _users
+                .Where(u => u.IsActive)
+                .OrderBy(u => u.Name)
+                .Select(u => u.Name);
+        }
+
+        public double AverageAge()
+        {
+            return _users.Average(u => u.Age);
+        }
+    }
+assertions:
+  must_include:
+  - UserService.cs
+  - Where(
+  - Select(
+options:
+  commit_message: Add LINQ usage

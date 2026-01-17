@@ -1,0 +1,42 @@
+name: k8s_408_resource_limits
+initial:
+  deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: myapp
+    spec:
+      template:
+        spec:
+          containers:
+          - name: app
+            resources: {}
+  unrelated.txt: |
+    garbage_marker_k8s408 = True
+    unused_marker_k8s408 = False
+changed:
+  deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: myapp
+    spec:
+      template:
+        spec:
+          containers:
+          - name: app
+            resources:
+              requests:
+                memory: "256Mi"
+                cpu: "250m"
+              limits:
+                memory: "512Mi"
+                cpu: "500m"
+assertions:
+  must_include:
+  - 'resources:'
+  must_not_include:
+  - garbage_marker_k8s408
+  - unused_marker_k8s408
+options:
+  commit_message: Add resource limits

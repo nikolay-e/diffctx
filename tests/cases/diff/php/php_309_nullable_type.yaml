@@ -1,0 +1,41 @@
+name: php_309_nullable_type
+initial:
+  User.php: |
+    <?php
+    class User {
+        public int $id;
+        public string $name;
+
+        public function __construct(int $id, string $name) {
+            $this->id = $id;
+            $this->name = $name;
+        }
+    }
+  Repository.php: |
+    <?php
+    class Repository {}
+changed:
+  Repository.php: |
+    <?php
+    require_once 'User.php';
+
+    class Repository {
+        private array $users = [];
+
+        public function find(int $id): ?User {
+            return $this->users[$id] ?? null;
+        }
+
+        public function save(User $user): void {
+            $this->users[$user->id] = $user;
+        }
+    }
+assertions:
+  must_include:
+  - ?User
+  - save(User
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add nullable type

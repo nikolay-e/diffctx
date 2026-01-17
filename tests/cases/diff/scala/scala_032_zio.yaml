@@ -1,0 +1,44 @@
+name: scala_032_zio
+initial:
+  Client.scala: |
+    import zio._
+
+    trait Client {
+      def fetch(url: String): Task[String]
+    }
+
+    object Client {
+      val live: ULayer[Client] = ZLayer.succeed(new Client {
+        def fetch(url: String): Task[String] = ZIO.succeed(s"Response from $url")
+      })
+    }
+  DataFetcher.scala: |
+    object DataFetcher {}
+changed:
+  DataFetcher.scala: |
+    import zio._
+
+    case class Data(content: String)
+
+    object DataFetcher {
+      def fetch(url: String): ZIO[Client, Throwable, Data] = {
+        for {
+          client <- ZIO.service[Client]
+          response <- client.fetch(url)
+        } yield Data(response)
+      }
+
+      def fetchMultiple(urls: List[String]): ZIO[Client, Throwable, List[Data]] = {
+        ZIO.foreach(urls)(fetch)
+      }
+    }
+assertions:
+  must_include:
+  - DataFetcher
+  - ZIO.service
+  - ZIO.foreach
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add ZIO

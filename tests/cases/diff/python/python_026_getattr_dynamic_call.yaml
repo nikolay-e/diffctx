@@ -1,0 +1,35 @@
+name: python_026_getattr_dynamic_call
+initial:
+  actions.py: |
+    class ActionHandler:
+        def process(self, data):
+            return {"action": "process", "data": data}
+
+        def validate(self, data):
+            return {"action": "validate", "data": data}
+
+        def transform(self, data):
+            return {"action": "transform", "data": data}
+  dispatcher.py: |
+    def dispatch():
+        pass
+  garbage.py: |
+    garbage_marker_12345 = "action garbage"
+    unused_marker_67890 = "unused action"
+changed:
+  dispatcher.py: |
+    from actions import ActionHandler
+
+    handler = ActionHandler()
+
+    def dispatch(action: str, data: dict):
+        method = getattr(handler, action, None)
+        if method:
+            return method(data)
+        return None
+assertions:
+  must_include:
+  - def process
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890

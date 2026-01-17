@@ -1,0 +1,28 @@
+name: docker_513_volume
+initial:
+  app.py: |
+    import os
+    data_dir = '/data'
+    os.makedirs(data_dir, exist_ok=True)
+    with open(os.path.join(data_dir, 'test.txt'), 'w') as f:
+        f.write('test')
+  Dockerfile: |
+    FROM python:3.11-slim
+    COPY app.py .
+    CMD ["python", "app.py"]
+  junk.txt: |
+    garbage_marker_12345 unused_marker_67890
+changed:
+  Dockerfile: |
+    FROM python:3.11-slim
+    VOLUME /data
+    COPY app.py .
+    CMD ["python", "app.py"]
+assertions:
+  must_include:
+  - VOLUME /data
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add VOLUME

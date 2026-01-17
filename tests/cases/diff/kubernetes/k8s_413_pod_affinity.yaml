@@ -1,0 +1,49 @@
+name: k8s_413_pod_affinity
+initial:
+  deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: myapp
+    spec:
+      template:
+        metadata:
+          labels:
+            app: myapp
+        spec:
+          containers:
+          - name: app
+            image: myapp:latest
+  unrelated.txt: |
+    garbage_marker_k8s413 = True
+    unused_marker_k8s413 = False
+changed:
+  deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: myapp
+    spec:
+      template:
+        metadata:
+          labels:
+            app: myapp
+        spec:
+          affinity:
+            podAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+              - labelSelector:
+                  matchLabels:
+                    app: cache
+                topologyKey: kubernetes.io/hostname
+          containers:
+          - name: app
+            image: myapp:latest
+assertions:
+  must_include:
+  - podAffinity
+  must_not_include:
+  - garbage_marker_k8s413
+  - unused_marker_k8s413
+options:
+  commit_message: Add pod affinity

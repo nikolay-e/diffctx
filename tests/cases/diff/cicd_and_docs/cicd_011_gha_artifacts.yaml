@@ -1,0 +1,35 @@
+name: cicd_011_gha_artifacts
+initial:
+  .github/workflows/ci.yml: |
+    name: CI
+    jobs:
+      build:
+        runs-on: ubuntu-latest
+        steps:
+          - run: npm run build
+changed:
+  .github/workflows/ci.yml: |
+    name: CI
+    jobs:
+      build:
+        runs-on: ubuntu-latest
+        steps:
+          - uses: actions/checkout@v4
+          - run: npm run build
+          - uses: actions/upload-artifact@v4
+            with:
+              name: dist
+              path: dist/
+      deploy:
+        needs: build
+        runs-on: ubuntu-latest
+        steps:
+          - uses: actions/download-artifact@v4
+            with:
+              name: dist
+assertions:
+  must_include:
+  - ci.yml
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890

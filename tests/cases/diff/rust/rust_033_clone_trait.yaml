@@ -1,0 +1,52 @@
+name: rust_033_clone_trait
+initial:
+  src/entity.rs: |
+    #[derive(Debug)]
+    pub struct Entity {
+        id: u64,
+        name: String,
+    }
+
+    impl Entity {
+        pub fn new(id: u64, name: String) -> Self {
+            Self { id, name }
+        }
+    }
+changed:
+  src/entity.rs: |
+    #[derive(Debug, Clone)]
+    pub struct Entity {
+        id: u64,
+        name: String,
+    }
+
+    impl Entity {
+        pub fn new(id: u64, name: String) -> Self {
+            Self { id, name }
+        }
+
+        pub fn duplicate(&self) -> Self {
+            self.clone()
+        }
+    }
+  src/service.rs: |
+    use crate::entity::Entity;
+
+    pub fn clone_entities(entities: &[Entity]) -> Vec<Entity> {
+        entities.iter().cloned().collect()
+    }
+
+    pub fn process_with_backup(entity: &Entity) -> Entity {
+        let backup = entity.clone();
+        println!("Processing: {:?}", entity);
+        backup
+    }
+assertions:
+  must_include:
+  - Clone
+  - duplicate
+  - clone_entities
+  must_not_include:
+  - garbage_clone_fn
+options:
+  commit_message: Add Clone derive and cloning functions

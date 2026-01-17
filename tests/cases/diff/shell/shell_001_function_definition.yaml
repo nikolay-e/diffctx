@@ -1,0 +1,39 @@
+name: shell_001_function_definition
+initial:
+  utils.sh: |
+    #!/bin/bash
+
+    process_file() {
+        local file=$1
+        echo "Processing $file"
+        cat "$file" | wc -l
+    }
+
+    log_message() {
+        local level=$1
+        local message=$2
+        echo "[$level] $(date): $message"
+    }
+  main.sh: |
+    #!/bin/bash
+    echo "Main script"
+  garbage.sh: |
+    #!/bin/bash
+    shelltest_garbage_xyz001() { echo "unused"; }
+    shelltest_unused_abc002="never_used"
+changed:
+  main.sh: |
+    #!/bin/bash
+    source ./utils.sh
+
+    for file in *.txt; do
+        process_file "$file"
+        log_message "INFO" "Processed $file"
+    done
+assertions:
+  must_include:
+  - main.sh
+  - process_file
+  must_not_include:
+  - shelltest_garbage_xyz001
+  - shelltest_unused_abc002

@@ -1,0 +1,48 @@
+name: python_004_context_manager_changed
+initial:
+  db.py: |
+    from contextlib import contextmanager
+
+    @contextmanager
+    def transaction():
+        print("Starting transaction")
+        try:
+            yield
+            print("Committing")
+        except Exception:
+            print("Rolling back")
+            raise
+  service.py: |
+    from db import transaction
+
+    def save_data(data):
+        with transaction():
+            store(data)
+
+    def store(data):
+        print(f"Storing {data}")
+  garbage.py: |
+    garbage_marker_12345 = None
+    unused_marker_67890 = []
+changed:
+  db.py: |
+    from contextlib import contextmanager
+    import time
+
+    @contextmanager
+    def transaction():
+        start = time.time()
+        print("Starting transaction")
+        try:
+            yield
+            print(f"Committing (took {time.time() - start:.2f}s)")
+        except Exception:
+            print(f"Rolling back (took {time.time() - start:.2f}s)")
+            raise
+assertions:
+  must_include:
+  - '@contextmanager'
+  - transaction
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890

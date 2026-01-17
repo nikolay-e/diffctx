@@ -1,0 +1,24 @@
+name: docker_503_copy_source
+initial:
+  requirements.txt: |
+    flask==2.0.0
+    requests==2.26.0
+  Dockerfile: |
+    FROM python:3.11-slim
+    RUN pip install flask
+  unrelated.md: |
+    # garbage_marker_12345
+    unused_marker_67890
+changed:
+  Dockerfile: |
+    FROM python:3.11-slim
+    COPY requirements.txt .
+    RUN pip install -r requirements.txt
+assertions:
+  must_include:
+  - COPY requirements.txt
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add COPY

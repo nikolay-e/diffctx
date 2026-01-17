@@ -1,0 +1,34 @@
+name: k8s_424_loadbalancer
+initial:
+  service.yaml: |
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: myapp
+    spec:
+      type: ClusterIP
+      ports:
+      - port: 80
+  unrelated.txt: |
+    garbage_marker_k8s424 = True
+    unused_marker_k8s424 = False
+changed:
+  service.yaml: |
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: myapp
+      annotations:
+        service.beta.kubernetes.io/aws-load-balancer-type: nlb
+    spec:
+      type: LoadBalancer
+      ports:
+      - port: 80
+assertions:
+  must_include:
+  - LoadBalancer
+  must_not_include:
+  - garbage_marker_k8s424
+  - unused_marker_k8s424
+options:
+  commit_message: Add LoadBalancer

@@ -1,0 +1,69 @@
+name: java_025_strategy_pattern
+initial:
+  src/main/java/com/example/PaymentProcessor.java: |
+    package com.example;
+
+    public class PaymentProcessor {
+        public void process(String type, double amount) {
+            if ("credit".equals(type)) {
+                System.out.println("Credit: " + amount);
+            } else if ("debit".equals(type)) {
+                System.out.println("Debit: " + amount);
+            }
+        }
+    }
+changed:
+  src/main/java/com/example/PaymentStrategy.java: |
+    package com.example;
+
+    public interface PaymentStrategy {
+        void pay(double amount);
+        boolean validate(double amount);
+    }
+  src/main/java/com/example/CreditCardPayment.java: |
+    package com.example;
+
+    public class CreditCardPayment implements PaymentStrategy {
+        private final String cardNumber;
+
+        public CreditCardPayment(String cardNumber) {
+            this.cardNumber = cardNumber;
+        }
+
+        @Override
+        public void pay(double amount) {
+            System.out.println("Credit card " + cardNumber + ": " + amount);
+        }
+
+        @Override
+        public boolean validate(double amount) {
+            return amount > 0 && amount < 10000;
+        }
+    }
+  src/main/java/com/example/PaymentProcessor.java: |
+    package com.example;
+
+    public class PaymentProcessor {
+        private PaymentStrategy strategy;
+
+        public void setStrategy(PaymentStrategy strategy) {
+            this.strategy = strategy;
+        }
+
+        public void process(double amount) {
+            if (strategy.validate(amount)) {
+                strategy.pay(amount);
+            } else {
+                throw new IllegalArgumentException("Invalid amount");
+            }
+        }
+    }
+assertions:
+  must_include:
+  - PaymentStrategy
+  - setStrategy
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Refactor to strategy pattern

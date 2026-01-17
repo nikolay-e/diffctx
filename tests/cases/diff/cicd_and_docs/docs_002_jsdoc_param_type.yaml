@@ -1,0 +1,50 @@
+name: docs_002_jsdoc_param_type
+initial:
+  src/types.ts: |
+    export interface User {
+        id: number;
+        name: string;
+    }
+
+    export interface Order {
+        id: number;
+        userId: number;
+    }
+  src/service.ts: |
+    import { User, Order } from './types';
+
+    /**
+     * Process an order for a user
+     * @param {User} user - The user placing the order
+     * @param {Order} order - The order to process
+     * @returns {boolean} Success status
+     */
+    function processOrder(user: User, order: Order): boolean {
+        return true;
+    }
+changed:
+  src/service.ts: |
+    import { User, Order, PaymentMethod } from './types';
+
+    /**
+     * Process an order for a user
+     * @param {User} user - The user placing the order
+     * @param {Order} order - The order to process
+     * @param {PaymentMethod} payment - Payment method to use
+     * @returns {Promise<ProcessResult>} Processing result
+     * @throws {ValidationError} If order is invalid
+     */
+    async function processOrder(
+        user: User,
+        order: Order,
+        payment: PaymentMethod
+    ): Promise<ProcessResult> {
+        validateOrder(order);
+        return { success: true, orderId: order.id };
+    }
+assertions:
+  must_include:
+  - service.ts
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890

@@ -1,1 +1,37 @@
-tests
+# Tests and test artifacts
+.hypothesis
+.pytest_cache
+.coverage
+htmlcov
+.treemapperignore
+
+# Build and cache
+build
+dist
+*.egg-info
+.mypy_cache
+.ruff_cache
+__pycache__
+
+# Config files (not code)
+.gitignore
+.pre-commit-config.yaml
+.secrets.baseline
+.dockerignore
+renovate.json
+
+# Output files
+tree.yaml
+tree.json
+tree.md
+tree.txt
+.markdownlintignore
+
+# Other
+LICENSE
+README.md
+CLAUDE.md
+*.bbl
+*.bib
+*.tmp
+.claude

@@ -1,0 +1,45 @@
+name: k8s_427_ingress_tls
+initial:
+  certificate.yaml: |
+    apiVersion: cert-manager.io/v1
+    kind: Certificate
+    metadata:
+      name: api-tls
+    spec:
+      secretName: tls-cert
+      issuerRef:
+        name: letsencrypt-prod
+      dnsNames:
+      - api.example.com
+  ingress.yaml: |
+    apiVersion: networking.k8s.io/v1
+    kind: Ingress
+    metadata:
+      name: api-ingress
+    spec:
+      rules:
+      - host: api.example.com
+  unrelated.txt: |
+    garbage_marker_k8s427 = True
+    unused_marker_k8s427 = False
+changed:
+  ingress.yaml: |
+    apiVersion: networking.k8s.io/v1
+    kind: Ingress
+    metadata:
+      name: api-ingress
+    spec:
+      tls:
+      - hosts:
+        - api.example.com
+        secretName: tls-cert
+      rules:
+      - host: api.example.com
+assertions:
+  must_include:
+  - 'tls:'
+  must_not_include:
+  - garbage_marker_k8s427
+  - unused_marker_k8s427
+options:
+  commit_message: Add ingress TLS

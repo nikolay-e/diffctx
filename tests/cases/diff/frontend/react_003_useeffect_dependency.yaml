@@ -1,0 +1,48 @@
+name: react_003_useeffect_dependency
+initial:
+  api.ts: |
+    export async function fetchData(endpoint: string): Promise<any> {
+        const response = await fetch(\`/api/\${endpoint}\`);
+        return response.json();
+    }
+
+    export async function fetchUsers(): Promise<any[]> {
+        return fetchData('users');
+    }
+
+    // react_garbage_marker_003
+    function garbageHelperFunction() {
+        return null;
+    }
+  Dashboard.tsx: |
+    import React from 'react';
+
+    export function Dashboard() {
+        return <div>Initial</div>;
+    }
+changed:
+  Dashboard.tsx: |
+    import React, { useEffect, useState } from 'react';
+    import { fetchData } from './api';
+
+    export function Dashboard() {
+        const [data, setData] = useState(null);
+
+        useEffect(() => {
+            fetchData('dashboard').then(setData);
+        }, []);
+
+        return (
+            <div>
+                {data ? <pre>{JSON.stringify(data)}</pre> : <p>Loading...</p>}
+            </div>
+        );
+    }
+assertions:
+  must_include:
+  - Dashboard.tsx
+  - useEffect
+  must_not_include:
+  - react_garbage_marker_003
+options:
+  commit_message: Add useEffect with fetchData dependency

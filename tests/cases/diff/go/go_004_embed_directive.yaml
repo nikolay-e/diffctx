@@ -1,0 +1,43 @@
+name: go_004_embed_directive
+initial:
+  templates/index.html: |
+    <!DOCTYPE html>
+    <html><body>Hello</body></html>
+  server.go: |
+    package main
+
+    import (
+        "embed"
+        "net/http"
+    )
+
+    //go:embed templates/*
+    var content embed.FS
+
+    func handler(w http.ResponseWriter, r *http.Request) {
+        data, _ := content.ReadFile("templates/index.html")
+        w.Write(data)
+    }
+  unrelated/garbage.go: |
+    package unrelated
+
+    func UnusedServerFunc_12345() {
+        println("garbage_marker_12345")
+    }
+
+    func AnotherUnused_67890() {
+        println("unused_marker_67890")
+    }
+changed:
+  templates/index.html: |
+    <!DOCTYPE html>
+    <html><body>Hello World!</body></html>
+assertions:
+  must_include:
+  - index.html
+  - Hello World
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Update template

@@ -1,0 +1,34 @@
+name: js_002_namespace_import_includes_module
+initial:
+  utils.ts: |
+    export const VERSION = '1.0.0';
+
+    export function add(a: number, b: number): number {
+        return a + b;
+    }
+
+    export function multiply(a: number, b: number): number {
+        return a * b;
+    }
+  main.ts: |
+    console.log('initial');
+changed:
+  main.ts: |
+    import * as utils from './utils';
+
+    function calculate() {
+        const sum = utils.add(1, 2);
+        const product = utils.multiply(3, 4);
+        console.log(`Version: ${utils.VERSION}, Sum: ${sum}, Product: ${product}`);
+    }
+
+    calculate();
+assertions:
+  must_include:
+  - utils.add
+  - utils.multiply
+  - main.ts
+  must_not_include:
+  - js_garbage_marker_001
+options:
+  commit_message: Add namespace import

@@ -1,0 +1,30 @@
+name: shell_013_pipe
+initial:
+  data.txt: |
+    John,25,Engineer
+    Jane,30,Manager
+    Bob,22,Developer
+  analyze.sh: |
+    #!/bin/bash
+    echo "Analyze"
+  garbage.sh: |
+    #!/bin/bash
+    shelltest_data_014="0,Unused"
+    unused_marker_12345="not_used"
+changed:
+  analyze.sh: |
+    #!/bin/bash
+
+    cat data.txt | grep "Engineer" | sort | head -10
+
+    find . -name "*.log" | xargs grep "ERROR" | wc -l
+
+    ps aux | grep "[n]ginx" | awk '{print $2}' | xargs kill 2>/dev/null
+
+    cat data.txt | cut -d',' -f2 | sort -n | tail -1
+assertions:
+  must_include:
+  - analyze.sh
+  must_not_include:
+  - shelltest_data_014
+  - unused_marker_12345

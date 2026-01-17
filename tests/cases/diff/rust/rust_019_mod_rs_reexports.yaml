@@ -1,0 +1,33 @@
+name: rust_019_mod_rs_reexports
+initial:
+  src/lib/mod.rs: |
+    mod utils;
+    mod helpers;
+
+    pub use utils::format;
+    pub use helpers::process;
+  src/lib/utils.rs: |
+    pub fn format(s: &str) -> String {
+        s.to_uppercase()
+    }
+  src/lib/helpers.rs: |
+    pub fn process(data: &[u8]) -> Vec<u8> {
+        data.to_vec()
+    }
+changed:
+  src/lib/utils.rs: |
+    pub fn format(s: &str) -> String {
+        s.to_uppercase()
+    }
+
+    pub fn format_lower(s: &str) -> String {
+        s.to_lowercase()
+    }
+assertions:
+  must_include:
+  - format_lower
+  - to_lowercase
+  must_not_include:
+  - garbage_format_function
+options:
+  commit_message: Add format_lower function

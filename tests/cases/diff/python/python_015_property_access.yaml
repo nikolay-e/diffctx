@@ -1,0 +1,30 @@
+name: python_015_property_access
+initial:
+  models/person.py: |
+    class Person:
+        def __init__(self, first: str, last: str):
+            self.first = first
+            self.last = last
+
+        @property
+        def full_name(self) -> str:
+            return f"{self.first} {self.last}"
+  views.py: |
+    def render():
+        pass
+  garbage.py: |
+    garbage_marker_12345 = "person garbage"
+    unused_marker_67890 = "unused person"
+changed:
+  views.py: |
+    from models.person import Person
+
+    def render(person: Person) -> str:
+        name = person.full_name
+        return f"<h1>{name}</h1>"
+assertions:
+  must_include:
+  - '@property'
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890

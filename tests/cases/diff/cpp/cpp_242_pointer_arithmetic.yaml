@@ -1,0 +1,34 @@
+name: cpp_242_pointer_arithmetic
+initial:
+  string_utils.h: |
+    #pragma once
+    #include <cstring>
+
+    inline size_t safe_strlen(const char* str) {
+        if (!str) return 0;
+        return strlen(str);
+    }
+    // unused_marker_67890 - not relevant
+  parser.cpp: |
+    #include <iostream>
+    int main() { return 0; }
+changed:
+  parser.cpp: |
+    #include "string_utils.h"
+
+    void parse(const char* str) {
+        size_t len = safe_strlen(str);
+        char* end = const_cast<char*>(str) + len;
+        while (str < end) {
+            str++;
+        }
+    }
+assertions:
+  must_include:
+  - parse
+  - safe_strlen
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add pointer arithmetic

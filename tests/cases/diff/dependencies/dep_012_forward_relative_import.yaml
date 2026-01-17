@@ -1,0 +1,22 @@
+name: dep_012_forward_relative_import
+initial:
+  pkg/__init__.py: ''
+  pkg/utils.py: |
+    def helper():
+        return "help"
+  pkg/subpkg/__init__.py: ''
+  pkg/subpkg/module.py: |
+    def action():
+        pass
+changed:
+  pkg/subpkg/module.py: |
+    from ..utils import helper
+
+    def action():
+        result = helper()
+        return result
+assertions:
+  must_include:
+  - module.py
+  must_not_include:
+  - garbage_marker_12345

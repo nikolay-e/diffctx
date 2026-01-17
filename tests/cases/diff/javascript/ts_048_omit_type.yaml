@@ -1,0 +1,29 @@
+name: ts_048_omit_type
+initial:
+  full.ts: |
+    export interface FullRecord {
+        id: string;
+        name: string;
+        secret: string;
+        internal: boolean;
+    }
+  public.ts: |
+    console.log('initial');
+changed:
+  public.ts: |
+    import { FullRecord } from './full';
+
+    type PublicRecord = Omit<FullRecord, 'secret' | 'internal'>;
+
+    function sanitize(record: FullRecord): PublicRecord {
+        const { secret, internal, ...publicData } = record;
+        return publicData;
+    }
+assertions:
+  must_include:
+  - FullRecord
+  - public.ts
+  must_not_include:
+  - js_garbage_marker_001
+options:
+  commit_message: Add Omit usage

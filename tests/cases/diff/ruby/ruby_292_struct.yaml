@@ -1,0 +1,43 @@
+name: ruby_292_struct
+initial:
+  types.rb: |
+    Point = Struct.new(:x, :y) do
+      def distance_from_origin
+        Math.sqrt(x**2 + y**2)
+      end
+    end
+
+    Rectangle = Struct.new(:width, :height) do
+      def area
+        width * height
+      end
+    end
+  geometry.rb: |
+    # Initial
+    module Geometry
+    end
+changed:
+  geometry.rb: |
+    require_relative 'types'
+
+    module Geometry
+      def self.create_point(x, y)
+        Point.new(x, y)
+      end
+
+      def self.create_rectangle(w, h)
+        Rectangle.new(w, h)
+      end
+    end
+
+    p = Geometry.create_point(3, 4)
+    puts p.distance_from_origin
+assertions:
+  must_include:
+  - Point.new
+  - distance_from_origin
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add struct usage

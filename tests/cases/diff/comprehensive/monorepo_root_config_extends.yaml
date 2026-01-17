@@ -1,0 +1,45 @@
+name: monorepo_root_config_extends
+initial:
+  tsconfig.base.json: |
+    {
+        "compilerOptions": {
+            "target": "ES2020",
+            "module": "commonjs",
+            "strict": true
+        }
+    }
+  packages/core/tsconfig.json: |
+    {
+        "extends": "../../tsconfig.base.json",
+        "compilerOptions": {
+            "outDir": "./dist"
+        }
+    }
+  packages/web/tsconfig.json: |
+    {
+        "extends": "../../tsconfig.base.json",
+        "compilerOptions": {
+            "jsx": "react",
+            "outDir": "./dist"
+        }
+    }
+changed:
+  tsconfig.base.json: |
+    {
+        "compilerOptions": {
+            "target": "ES2022",
+            "module": "ESNext",
+            "moduleResolution": "bundler",
+            "strict": true,
+            "skipLibCheck": true,
+            "esModuleInterop": true,
+            "paths": {
+                "@myorg/*": ["packages/*/src"]
+            }
+        }
+    }
+assertions:
+  must_include:
+  - tsconfig.base.json
+options:
+  commit_message: Update base tsconfig with ESNext and paths

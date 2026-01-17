@@ -1,0 +1,44 @@
+name: cicd_015_gha_reusable_workflow
+initial:
+  .github/workflows/deploy.yml: |
+    name: Deploy
+    on:
+      workflow_call:
+        inputs:
+          environment:
+            required: true
+            type: string
+    jobs:
+      deploy:
+        runs-on: ubuntu-latest
+        environment: ${{ inputs.environment }}
+        steps:
+          - run: ./deploy.sh
+  .github/workflows/ci.yml: |
+    name: CI
+    on: [push]
+    jobs:
+      build:
+        runs-on: ubuntu-latest
+        steps:
+          - run: npm run build
+changed:
+  .github/workflows/ci.yml: |
+    name: CI
+    on: [push]
+    jobs:
+      build:
+        runs-on: ubuntu-latest
+        steps:
+          - run: npm run build
+      deploy:
+        needs: build
+        uses: ./.github/workflows/deploy.yml
+        with:
+          environment: production
+assertions:
+  must_include:
+  - ci.yml
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890

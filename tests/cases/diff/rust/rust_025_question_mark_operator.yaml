@@ -1,0 +1,63 @@
+name: rust_025_question_mark_operator
+initial:
+  src/errors.rs: |
+    use std::fmt;
+
+    #[derive(Debug)]
+    pub enum AppError {
+        IoError(std::io::Error),
+        ParseError(String),
+    }
+
+    impl fmt::Display for AppError {
+        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            match self {
+                AppError::IoError(e) => write!(f, "IO error: {}", e),
+                AppError::ParseError(s) => write!(f, "Parse error: {}", s),
+            }
+        }
+    }
+
+    impl std::error::Error for AppError {}
+  src/parser.rs: |
+    use crate::errors::AppError;
+    use std::fs;
+
+    pub fn parse_file(path: &str) -> Result<String, AppError> {
+        let content = fs::read_to_string(path).map_err(AppError::IoError)?;
+        Ok(content)
+    }
+changed:
+  src/errors.rs: |
+    use std::fmt;
+
+    #[derive(Debug)]
+    pub enum AppError {
+        IoError(std::io::Error),
+        ParseError(String),
+        NetworkError(String),
+        ValidationError { field: String, message: String },
+    }
+
+    impl fmt::Display for AppError {
+        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            match self {
+                AppError::IoError(e) => write!(f, "IO error: {}", e),
+                AppError::ParseError(s) => write!(f, "Parse error: {}", s),
+                AppError::NetworkError(s) => write!(f, "Network error: {}", s),
+                AppError::ValidationError { field, message } => {
+                    write!(f, "Validation error in {}: {}", field, message)
+                }
+            }
+        }
+    }
+
+    impl std::error::Error for AppError {}
+assertions:
+  must_include:
+  - NetworkError
+  - ValidationError
+  must_not_include:
+  - garbage_error_variant
+options:
+  commit_message: Add NetworkError and ValidationError variants

@@ -1,0 +1,37 @@
+name: scala_010_path_dependent_type
+initial:
+  Outer.scala: |
+    class Outer {
+      class Inner {
+        def greet: String = "Hello from Inner"
+      }
+
+      type T = Inner
+
+      def createInner: Inner = new Inner
+    }
+  PathDependent.scala: |
+    class PathDependent {}
+changed:
+  PathDependent.scala: |
+    class PathDependent {
+      def processInner(outer: Outer)(inner: outer.Inner): String = {
+        inner.greet
+      }
+
+      def createAndProcess(): String = {
+        val outer = new Outer
+        val inner: outer.T = outer.createInner
+        processInner(outer)(inner)
+      }
+    }
+assertions:
+  must_include:
+  - PathDependent
+  - outer.Inner
+  - createAndProcess
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add path-dependent type usage

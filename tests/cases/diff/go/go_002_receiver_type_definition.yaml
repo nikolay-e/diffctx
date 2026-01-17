@@ -1,0 +1,60 @@
+name: go_002_receiver_type_definition
+initial:
+  repo.go: |
+    package main
+
+    type Repo struct {
+        db *Database
+    }
+
+    func (r *Repo) Find(id int) *Entity {
+        return r.db.Query(id)
+    }
+  types.go: |
+    package main
+
+    type Database struct {
+        conn string
+    }
+
+    func (d *Database) Query(id int) *Entity {
+        return &Entity{ID: id}
+    }
+
+    type Entity struct {
+        ID int
+    }
+  unrelated/garbage.go: |
+    package unrelated
+
+    func GarbageUnused_12345() {
+        println("garbage_marker_12345")
+    }
+
+    func AnotherUnused_67890() {
+        println("unused_marker_67890")
+    }
+changed:
+  repo.go: |
+    package main
+
+    type Repo struct {
+        db *Database
+    }
+
+    func (r *Repo) Find(id int) *Entity {
+        return r.db.Query(id)
+    }
+
+    func (r *Repo) FindAll() []*Entity {
+        return r.db.QueryAll()
+    }
+assertions:
+  must_include:
+  - FindAll
+  - Repo
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add FindAll method

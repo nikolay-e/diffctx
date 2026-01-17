@@ -1,0 +1,25 @@
+name: python_027_type_hint_parameter
+initial:
+  models/user.py: |
+    class UserModel:
+        def __init__(self, id: int, name: str):
+            self.id = id
+            self.name = name
+  services.py: |
+    def process():
+        pass
+  garbage.py: |
+    garbage_marker_12345 = "model garbage"
+    unused_marker_67890 = "unused model"
+changed:
+  services.py: |
+    from models.user import UserModel
+
+    def process(user: UserModel) -> dict:
+        return {"id": user.id, "name": user.name}
+assertions:
+  must_include:
+  - class UserModel
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890

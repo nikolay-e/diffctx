@@ -1,0 +1,39 @@
+name: docs_038_sql_create_function
+initial:
+  sql/functions/format_currency.sql: |
+    CREATE OR REPLACE FUNCTION format_currency(amount DECIMAL)
+    RETURNS TEXT AS $$
+    BEGIN
+        RETURN '$' || TO_CHAR(amount, 'FM999,999,990.00');
+    END;
+    $$ LANGUAGE plpgsql IMMUTABLE;
+  sql/queries/order_report.sql: |
+    SELECT
+        id,
+        format_currency(total) AS formatted_total
+    FROM orders;
+changed:
+  sql/functions/format_currency.sql: |
+    CREATE OR REPLACE FUNCTION format_currency(
+        amount DECIMAL,
+        currency_code TEXT DEFAULT 'USD'
+    )
+    RETURNS TEXT AS $$
+    DECLARE
+        symbol TEXT;
+    BEGIN
+        symbol := CASE currency_code
+            WHEN 'USD' THEN '$'
+            WHEN 'EUR' THEN '€'
+            WHEN 'GBP' THEN '£'
+            ELSE currency_code || ' '
+        END;
+        RETURN symbol || TO_CHAR(amount, 'FM999,999,990.00');
+    END;
+    $$ LANGUAGE plpgsql IMMUTABLE;
+assertions:
+  must_include:
+  - format_currency.sql
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890

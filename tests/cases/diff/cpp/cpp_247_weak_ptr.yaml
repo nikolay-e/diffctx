@@ -1,0 +1,48 @@
+name: cpp_247_weak_ptr
+initial:
+  node.h: |
+    #pragma once
+    #include <memory>
+    #include <vector>
+
+    class Node {
+    public:
+        int value;
+        std::weak_ptr<Node> parent;
+        std::vector<std::shared_ptr<Node>> children;
+
+        Node(int v) : value(v) {}
+    };
+    // garbage_marker_12345
+  tree.cpp: |
+    #include <iostream>
+    int main() { return 0; }
+changed:
+  tree.cpp: |
+    #include "node.h"
+
+    class Tree {
+        std::shared_ptr<Node> root;
+
+    public:
+        void addChild(std::shared_ptr<Node> parent, int value) {
+            auto child = std::make_shared<Node>(value);
+            child->parent = parent;
+            parent->children.push_back(child);
+        }
+
+        std::shared_ptr<Node> getParent(std::shared_ptr<Node> node) {
+            return node->parent.lock();
+        }
+    };
+assertions:
+  must_include:
+  - Tree
+  - addChild
+  - getParent
+  - weak_ptr
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add weak_ptr usage

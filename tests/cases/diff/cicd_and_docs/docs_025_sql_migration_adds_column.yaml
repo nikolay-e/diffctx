@@ -1,0 +1,28 @@
+name: docs_025_sql_migration_adds_column
+initial:
+  migrations/001_create_users.sql: |
+    CREATE TABLE users (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        email VARCHAR(255) UNIQUE NOT NULL
+    );
+  src/models/user.py: |
+    from dataclasses import dataclass
+
+    @dataclass
+    class User:
+        id: int
+        name: str
+        email: str
+changed:
+  migrations/002_add_user_status.sql: |
+    ALTER TABLE users
+    ADD COLUMN status VARCHAR(50) DEFAULT 'active';
+
+    CREATE INDEX idx_users_status ON users(status);
+assertions:
+  must_include:
+  - 002_add_user_status.sql
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890

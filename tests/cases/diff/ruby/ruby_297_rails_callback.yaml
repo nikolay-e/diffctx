@@ -1,0 +1,59 @@
+name: ruby_297_rails_callback
+initial:
+  callbacks.rb: |
+    module Callbacks
+      def self.included(base)
+        base.extend(ClassMethods)
+      end
+
+      module ClassMethods
+        def before_save(*methods)
+          @before_save_callbacks ||= []
+          @before_save_callbacks.concat(methods)
+        end
+
+        def before_save_callbacks
+          @before_save_callbacks || []
+        end
+      end
+
+      def run_callbacks
+        self.class.before_save_callbacks.each { |m| send(m) }
+      end
+    end
+  user.rb: |
+    # Initial
+    class User
+    end
+changed:
+  user.rb: |
+    require_relative 'callbacks'
+
+    class User
+      include Callbacks
+
+      attr_accessor :email
+
+      before_save :normalize_email
+
+      def save
+        run_callbacks
+        true
+      end
+
+      private
+
+      def normalize_email
+        @email = @email.downcase.strip if @email
+      end
+    end
+assertions:
+  must_include:
+  - include Callbacks
+  - before_save
+  - run_callbacks
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add Rails callback

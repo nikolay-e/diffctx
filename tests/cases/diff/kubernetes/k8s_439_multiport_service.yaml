@@ -1,0 +1,38 @@
+name: k8s_439_multiport_service
+initial:
+  service.yaml: |
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: myapp
+    spec:
+      ports:
+      - port: 80
+  unrelated.txt: |
+    garbage_marker_k8s439 = True
+    unused_marker_k8s439 = False
+changed:
+  service.yaml: |
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: myapp
+    spec:
+      ports:
+      - name: http
+        port: 80
+        targetPort: 8080
+      - name: grpc
+        port: 9090
+        targetPort: 9090
+      - name: metrics
+        port: 9100
+        targetPort: 9100
+assertions:
+  must_include:
+  - grpc
+  must_not_include:
+  - garbage_marker_k8s439
+  - unused_marker_k8s439
+options:
+  commit_message: Add multi-port service

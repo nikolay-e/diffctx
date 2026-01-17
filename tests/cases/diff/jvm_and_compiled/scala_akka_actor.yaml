@@ -1,0 +1,44 @@
+name: scala_akka_actor
+initial:
+  Messages.scala: |
+    sealed trait UserMessage
+    case class CreateUser(name: String) extends UserMessage
+    case class DeleteUser(id: String) extends UserMessage
+    case class GetUser(id: String) extends UserMessage
+    case class UserCreated(id: String, name: String)
+  UserActor.scala: |
+    // Initial
+    class UserActor {}
+changed:
+  UserActor.scala: |
+    import akka.actor.{Actor, ActorLogging, Props}
+
+    class UserActor extends Actor with ActorLogging {
+      private var users: Map[String, String] = Map.empty
+
+      def receive: Receive = {
+        case CreateUser(name) =>
+          val id = java.util.UUID.randomUUID().toString
+          users = users + (id -> name)
+          log.info(s"Created user $id: $name")
+          sender() ! UserCreated(id, name)
+
+        case DeleteUser(id) =>
+          users = users - id
+          log.info(s"Deleted user $id")
+
+        case GetUser(id) =>
+          sender() ! users.get(id)
+      }
+    }
+
+    object UserActor {
+      def props: Props = Props[UserActor]()
+    }
+assertions:
+  must_include:
+  - UserActor.scala
+  - Actor
+  - 'receive: Receive'
+options:
+  commit_message: Add Akka actor

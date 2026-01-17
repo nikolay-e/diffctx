@@ -1,0 +1,51 @@
+name: intra_private_module_variable
+initial:
+  registry.py: |
+    _handlers = {}
+    _initialized = False
+
+    def register(name, handler):
+        global _initialized
+        if not _initialized:
+            _initialize()
+        _handlers[name] = handler
+
+    def get_handler(name):
+        return _handlers.get(name)
+
+    def _initialize():
+        global _initialized
+        _handlers.clear()
+        _initialized = True
+
+    def list_handlers():
+        return list(_handlers.keys())
+changed:
+  registry.py: |
+    _handlers = {}
+    _initialized = False
+    _default_handler = None
+
+    def register(name, handler):
+        global _initialized
+        if not _initialized:
+            _initialize()
+        _handlers[name] = handler
+
+    def get_handler(name):
+        return _handlers.get(name, _default_handler)
+
+    def _initialize():
+        global _initialized
+        _handlers.clear()
+        _initialized = True
+
+    def list_handlers():
+        return list(_handlers.keys())
+
+    def set_default(handler):
+        global _default_handler
+        _default_handler = handler
+assertions:
+  must_include:
+  - registry.py

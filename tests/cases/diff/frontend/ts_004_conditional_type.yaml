@@ -1,0 +1,44 @@
+name: ts_004_conditional_type
+initial:
+  primitives.ts: |
+    export type Primitive = string | number | boolean | null | undefined;
+
+    export type JsonValue = Primitive | JsonObject | JsonArray;
+    export interface JsonObject { [key: string]: JsonValue }
+    export interface JsonArray extends Array<JsonValue> {}
+
+    // ts_garbage_marker_004
+    type GarbagePrimitive = never;
+  conditional.ts: |
+    console.log('initial');
+changed:
+  conditional.ts: |
+    import { Primitive } from './primitives';
+
+    export type Unwrap<T> = T extends Promise<infer U> ? U : T;
+
+    export type UnwrapArray<T> = T extends Array<infer U> ? U : T;
+
+    export type IsArray<T> = T extends unknown[] ? true : false;
+
+    export type IsPrimitive<T> = T extends Primitive ? true : false;
+
+    export type DeepUnwrap<T> = T extends Promise<infer U>
+        ? DeepUnwrap<U>
+        : T extends Array<infer V>
+        ? Array<DeepUnwrap<V>>
+        : T;
+
+    export type Flatten<T> = T extends Array<infer U>
+        ? U extends Array<unknown>
+            ? Flatten<U>
+            : U
+        : T;
+assertions:
+  must_include:
+  - conditional.ts
+  - Unwrap
+  must_not_include:
+  - ts_garbage_marker_004
+options:
+  commit_message: Add conditional types

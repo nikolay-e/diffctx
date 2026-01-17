@@ -1,0 +1,85 @@
+name: rust_040_drop_trait
+initial:
+  src/connection.rs: |
+    pub struct Connection {
+        host: String,
+        connected: bool,
+    }
+
+    impl Connection {
+        pub fn new(host: String) -> Self {
+            println!("Connecting to {}", host);
+            Self { host, connected: true }
+        }
+
+        pub fn disconnect(&mut self) {
+            self.connected = false;
+        }
+    }
+changed:
+  src/connection.rs: |
+    pub struct Connection {
+        host: String,
+        connected: bool,
+    }
+
+    impl Connection {
+        pub fn new(host: String) -> Self {
+            println!("Connecting to {}", host);
+            Self { host, connected: true }
+        }
+
+        pub fn is_connected(&self) -> bool {
+            self.connected
+        }
+    }
+
+    impl Drop for Connection {
+        fn drop(&mut self) {
+            if self.connected {
+                println!("Disconnecting from {}", self.host);
+                self.connected = false;
+            }
+        }
+    }
+  src/pool.rs: |
+    use crate::connection::Connection;
+
+    pub struct ConnectionPool {
+        connections: Vec<Connection>,
+        max_size: usize,
+    }
+
+    impl ConnectionPool {
+        pub fn new(max_size: usize) -> Self {
+            Self {
+                connections: Vec::new(),
+                max_size,
+            }
+        }
+
+        pub fn acquire(&mut self, host: &str) -> Option<&Connection> {
+            if self.connections.len() < self.max_size {
+                self.connections.push(Connection::new(host.to_string()));
+                self.connections.last()
+            } else {
+                None
+            }
+        }
+    }
+
+    impl Drop for ConnectionPool {
+        fn drop(&mut self) {
+            println!("Dropping pool with {} connections", self.connections.len());
+        }
+    }
+assertions:
+  must_include:
+  - Drop
+  - is_connected
+  - ConnectionPool
+  - acquire
+  must_not_include:
+  - garbage_drop_fn
+options:
+  commit_message: Implement Drop trait for cleanup

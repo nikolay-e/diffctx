@@ -1,0 +1,25 @@
+name: docs_028_sql_migration_adds_fk
+initial:
+  migrations/001_create_tables.sql: |
+    CREATE TABLE categories (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(255) NOT NULL
+    );
+
+    CREATE TABLE products (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        category_id INTEGER
+    );
+changed:
+  migrations/002_add_category_fk.sql: |
+    ALTER TABLE products
+    ADD CONSTRAINT fk_products_category
+    FOREIGN KEY (category_id) REFERENCES categories(id)
+    ON DELETE SET NULL;
+assertions:
+  must_include:
+  - 002_add_category_fk.sql
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890

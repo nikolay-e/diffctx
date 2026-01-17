@@ -1,0 +1,26 @@
+name: js_026_exported_function_change_pulls_importers
+initial:
+  utils.ts: |
+    export function fetchUser(id: string) {
+        return fetch(`/api/users/${id}`);
+    }
+  consumer.ts: |
+    import { fetchUser } from './utils';
+
+    async function loadUser(id: string) {
+        const response = await fetchUser(id);
+        return response.json();
+    }
+changed:
+  utils.ts: |
+    export function fetchUser(id: string, options?: RequestInit) {
+        return fetch(`/api/users/${id}`, options);
+    }
+assertions:
+  must_include:
+  - fetchUser
+  - utils.ts
+  must_not_include:
+  - js_garbage_marker_001
+options:
+  commit_message: Change fetchUser signature

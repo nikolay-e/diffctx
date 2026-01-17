@@ -1,0 +1,46 @@
+name: js_009_express_route_change
+initial:
+  routes.ts: |
+    import { Router } from 'express';
+
+    export const userRouter = Router();
+
+    userRouter.get('/:id', (req, res) => {
+        res.json({ id: req.params.id });
+    });
+
+    // js_garbage_marker_009
+    const GARBAGE_ROUTE = '/garbage';
+  middleware.ts: |
+    import { userRouter } from './routes';
+
+    export function setupRoutes(app: any) {
+        app.use('/users', userRouter);
+    }
+changed:
+  routes.ts: |
+    import { Router } from 'express';
+
+    export const userRouter = Router();
+
+    userRouter.get('/:id', (req, res) => {
+        res.json({ id: req.params.id });
+    });
+
+    userRouter.post('/', (req, res) => {
+        res.status(201).json(req.body);
+    });
+
+    userRouter.delete('/:id', (req, res) => {
+        res.status(204).send();
+    });
+
+    // js_garbage_marker_009
+    const GARBAGE_ROUTE = '/garbage';
+assertions:
+  must_include:
+  - routes.ts
+  must_not_include:
+  - js_garbage_marker_009
+options:
+  commit_message: Add POST and DELETE routes

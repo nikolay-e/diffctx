@@ -1,0 +1,26 @@
+name: structural_import_include_imported
+initial:
+  helpers.py: |
+    def normalize(data):
+        return [x.strip() for x in data]
+
+    def validate(data):
+        return all(x for x in data)
+  processor.py: |
+    def process(data):
+        return data
+changed:
+  processor.py: |
+    from helpers import normalize, validate
+
+    def process(data):
+        data = normalize(data)
+        if validate(data):
+            return data
+        return []
+assertions:
+  must_include:
+  - processor.py
+  - helpers.py
+options:
+  commit_message: Use helpers

@@ -1,0 +1,53 @@
+name: k8s_432_gateway
+initial:
+  virtual-service.yaml: |
+    apiVersion: networking.istio.io/v1beta1
+    kind: VirtualService
+    metadata:
+      name: api
+    spec:
+      hosts:
+      - api.example.com
+      gateways:
+      - api-gateway
+  gateway.yaml: |
+    apiVersion: networking.istio.io/v1beta1
+    kind: Gateway
+    metadata:
+      name: api-gateway
+    spec:
+      selector:
+        istio: ingressgateway
+      servers:
+      - port:
+          number: 80
+          protocol: HTTP
+  unrelated.txt: |
+    garbage_marker_k8s432 = True
+    unused_marker_k8s432 = False
+changed:
+  gateway.yaml: |
+    apiVersion: networking.istio.io/v1beta1
+    kind: Gateway
+    metadata:
+      name: api-gateway
+    spec:
+      selector:
+        istio: ingressgateway
+      servers:
+      - port:
+          number: 443
+          protocol: HTTPS
+        tls:
+          mode: SIMPLE
+          credentialName: api-tls
+        hosts:
+        - api.example.com
+assertions:
+  must_include:
+  - Gateway
+  must_not_include:
+  - garbage_marker_k8s432
+  - unused_marker_k8s432
+options:
+  commit_message: Add Gateway TLS

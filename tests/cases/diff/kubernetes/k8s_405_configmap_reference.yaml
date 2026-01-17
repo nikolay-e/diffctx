@@ -1,0 +1,49 @@
+name: k8s_405_configmap_reference
+initial:
+  configmap.yaml: |
+    apiVersion: v1
+    kind: ConfigMap
+    metadata:
+      name: app-config
+    data:
+      LOG_LEVEL: info
+      MAX_CONNECTIONS: "100"
+  deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: myapp
+    spec:
+      template:
+        spec:
+          containers:
+          - name: app
+            env: []
+  unrelated.txt: |
+    garbage_marker_k8s405 = True
+    unused_marker_k8s405 = False
+changed:
+  deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: myapp
+    spec:
+      template:
+        spec:
+          containers:
+          - name: app
+            env:
+            - name: LOG_LEVEL
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: LOG_LEVEL
+assertions:
+  must_include:
+  - configMapKeyRef
+  must_not_include:
+  - garbage_marker_k8s405
+  - unused_marker_k8s405
+options:
+  commit_message: Add ConfigMap reference

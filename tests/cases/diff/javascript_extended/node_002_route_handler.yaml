@@ -1,0 +1,28 @@
+name: node_002_route_handler
+initial:
+  userHandler.ts: |
+    import { Request, Response } from 'express';
+
+    export async function getUserHandler(req: Request, res: Response) {
+        const { id } = req.params;
+        res.json({ id, name: 'User' });
+    }
+
+    // node_garbage_marker_002
+    async function garbageHandler() { return null; }
+  routes.ts: |
+    console.log('initial');
+changed:
+  routes.ts: |
+    import { Router } from 'express';
+    import { getUserHandler } from './userHandler';
+
+    export const router = Router();
+    router.get('/users/:id', getUserHandler);
+assertions:
+  must_include:
+  - routes.ts
+  must_not_include:
+  - node_garbage_marker_002
+options:
+  commit_message: Add route handler

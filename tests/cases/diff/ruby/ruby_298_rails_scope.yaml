@@ -1,0 +1,47 @@
+name: ruby_298_rails_scope
+initial:
+  scopes.rb: |
+    module Scopes
+      def self.included(base)
+        base.extend(ClassMethods)
+      end
+
+      module ClassMethods
+        def scope(name, body)
+          define_singleton_method(name, &body)
+        end
+      end
+    end
+  user.rb: |
+    # Initial
+    class User
+    end
+changed:
+  user.rb: |
+    require_relative 'scopes'
+
+    class User
+      include Scopes
+
+      attr_accessor :active, :role
+
+      scope :active, -> { all.select(&:active) }
+      scope :admins, -> { all.select { |u| u.role == 'admin' } }
+
+      def self.all
+        []
+      end
+    end
+
+    # Usage
+    User.active
+    User.admins
+assertions:
+  must_include:
+  - include Scopes
+  - scope :active
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add Rails scope

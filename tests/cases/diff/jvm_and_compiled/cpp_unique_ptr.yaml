@@ -1,0 +1,38 @@
+name: cpp_unique_ptr
+initial:
+  resource.h: |
+    #pragma once
+    #include <string>
+
+    class Resource {
+    public:
+        std::string id;
+        Resource(const std::string& id) : id(id) {}
+        void use() {}
+    };
+  manager.cpp: |
+    #include <iostream>
+    int main() { return 0; }
+changed:
+  manager.cpp: |
+    #include "resource.h"
+    #include <memory>
+
+    class ResourceManager {
+    public:
+        std::unique_ptr<Resource> acquire(const std::string& id) {
+            return std::make_unique<Resource>(id);
+        }
+
+        void process() {
+            auto res = acquire("resource-1");
+            res->use();
+        }
+    };
+assertions:
+  must_include:
+  - manager.cpp
+  - unique_ptr
+  - make_unique
+options:
+  commit_message: Add unique_ptr usage

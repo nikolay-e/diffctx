@@ -1,0 +1,50 @@
+name: k8s_411_init_container
+initial:
+  init-db.sh: |
+    #!/bin/bash
+    until pg_isready -h $DB_HOST; do
+      echo "Waiting for database..."
+      sleep 2
+    done
+    echo "Database is ready"
+  deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: myapp
+    spec:
+      template:
+        spec:
+          containers:
+          - name: app
+            image: myapp:latest
+  unrelated.txt: |
+    garbage_marker_k8s411 = True
+    unused_marker_k8s411 = False
+changed:
+  deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: myapp
+    spec:
+      template:
+        spec:
+          initContainers:
+          - name: init-db
+            image: postgres:13
+            command: ['sh', '-c', 'until pg_isready -h $DB_HOST; do sleep 2; done']
+            env:
+            - name: DB_HOST
+              value: "postgres"
+          containers:
+          - name: app
+            image: myapp:latest
+assertions:
+  must_include:
+  - initContainers
+  must_not_include:
+  - garbage_marker_k8s411
+  - unused_marker_k8s411
+options:
+  commit_message: Add init container

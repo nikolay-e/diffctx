@@ -1,0 +1,38 @@
+name: ruby_283_module_mixin
+initial:
+  logging.rb: |
+    module Logging
+      def log(message)
+        puts "[LOG] \#{message}"
+      end
+
+      def log_error(message)
+        puts "[ERROR] \#{message}"
+      end
+    end
+  worker.rb: |
+    # Initial
+    class Worker
+    end
+changed:
+  worker.rb: |
+    require_relative 'logging'
+
+    class Worker
+      include Logging
+
+      def perform
+        log("Starting work")
+        # Do work
+        log("Work completed")
+      end
+    end
+assertions:
+  must_include:
+  - include Logging
+  - log(
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add module mixin

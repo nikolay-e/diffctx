@@ -1,0 +1,22 @@
+name: graph_markdown_anchor_link
+initial:
+  docs.md: |
+    # Introduction
+
+    See [Installation](#installation).
+
+    # Installation
+
+    Run `pip install package`.
+changed:
+  docs.md: |
+    # Introduction
+
+    See [Installation](#installation).
+
+    # Installation
+
+    Run `pip install package-v2`.
+assertions:
+  must_include:
+  - Installation

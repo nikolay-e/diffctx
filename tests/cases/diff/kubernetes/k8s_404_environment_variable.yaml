@@ -1,0 +1,43 @@
+name: k8s_404_environment_variable
+initial:
+  app.py: |
+    import os
+
+    DATABASE_URL = os.environ.get('DATABASE_URL')
+    print(f'Connecting to {DATABASE_URL}')
+  deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: myapp
+    spec:
+      template:
+        spec:
+          containers:
+          - name: app
+            env: []
+  unrelated.txt: |
+    garbage_marker_k8s404 = True
+    unused_marker_k8s404 = False
+changed:
+  deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: myapp
+    spec:
+      template:
+        spec:
+          containers:
+          - name: app
+            env:
+            - name: DATABASE_URL
+              value: "postgres://db:5432/myapp"
+assertions:
+  must_include:
+  - DATABASE_URL
+  must_not_include:
+  - garbage_marker_k8s404
+  - unused_marker_k8s404
+options:
+  commit_message: Add environment variable

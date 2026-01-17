@@ -1,0 +1,48 @@
+name: rust_020_cargo_features
+initial:
+  Cargo.toml: |
+    [package]
+    name = "myapp"
+    version = "0.1.0"
+    edition = "2021"
+
+    [features]
+    default = []
+    async = ["tokio"]
+
+    [dependencies]
+    tokio = { version = "1", optional = true }
+  src/lib.rs: |
+    #[cfg(feature = "async")]
+    pub mod async_utils {
+        pub async fn fetch() -> String {
+            "data".to_string()
+        }
+    }
+
+    pub fn sync_fetch() -> String {
+        "sync data".to_string()
+    }
+changed:
+  Cargo.toml: |
+    [package]
+    name = "myapp"
+    version = "0.1.0"
+    edition = "2021"
+
+    [features]
+    default = []
+    async = ["tokio"]
+    serde = ["dep:serde"]
+
+    [dependencies]
+    tokio = { version = "1", optional = true }
+    serde = { version = "1", optional = true, features = ["derive"] }
+assertions:
+  must_include:
+  - serde
+  - features
+  must_not_include:
+  - garbage_dependency
+options:
+  commit_message: Add serde feature

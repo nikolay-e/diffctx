@@ -1,0 +1,38 @@
+name: python_041_type_checking_import
+initial:
+  models.py: |
+    from typing import TYPE_CHECKING
+
+    if TYPE_CHECKING:
+        from services import UserService
+
+    class User:
+        def __init__(self, name: str):
+            self.name = name
+  services.py: |
+    from models import User
+
+    class UserService:
+        def create(self, name: str) -> User:
+            return User(name)
+  garbage.py: |
+    garbage_marker_12345 = "type checking garbage"
+    unused_marker_67890 = "unused type checking"
+changed:
+  models.py: |
+    from typing import TYPE_CHECKING
+
+    if TYPE_CHECKING:
+        from services import UserService
+
+    class User:
+        def __init__(self, name: str, service: "UserService | None" = None):
+            self.name = name
+            self.service = service
+assertions:
+  must_include:
+  - class User
+  - UserService
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890

@@ -1,0 +1,17 @@
+name: graph_test_file_to_source
+initial:
+  calculator.py: |
+    def add(a, b):
+        return a + b
+  tests/test_calculator.py: |
+    from calculator import add
+
+    def test_add():
+        assert add(1, 2) == 3
+changed:
+  calculator.py: |
+    def add(a, b):
+        return float(a) + float(b)
+assertions:
+  must_include:
+  - add

@@ -1,0 +1,43 @@
+name: cpp_244_new_delete
+initial:
+  user.h: |
+    #pragma once
+    #include <string>
+
+    class User {
+    public:
+        std::string name;
+        User(const std::string& n) : name(n) {}
+        ~User() {}
+    };
+    // unused_marker_67890
+  main.cpp: |
+    int main() { return 0; }
+changed:
+  main.cpp: |
+    #include "user.h"
+
+    User* createUser(const std::string& name) {
+        User* user = new User(name);
+        return user;
+    }
+
+    void deleteUser(User* user) {
+        delete user;
+    }
+
+    int main() {
+        User* u = createUser("John");
+        deleteUser(u);
+        return 0;
+    }
+assertions:
+  must_include:
+  - createUser
+  - deleteUser
+  - User
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add new/delete

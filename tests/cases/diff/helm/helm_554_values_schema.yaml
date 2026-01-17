@@ -1,0 +1,37 @@
+name: helm_554_values_schema
+initial:
+  values.schema.json: |
+    {}
+  junk.md: |
+    garbage_marker_12345
+    unused_marker_67890
+changed:
+  values.schema.json: |
+    {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "required": ["image", "replicaCount"],
+      "properties": {
+        "replicaCount": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "image": {
+          "type": "object",
+          "required": ["repository"],
+          "properties": {
+            "repository": { "type": "string" },
+            "tag": { "type": "string" }
+          }
+        }
+      }
+    }
+assertions:
+  must_include:
+  - $schema
+  - replicaCount
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add values schema

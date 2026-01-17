@@ -1,0 +1,40 @@
+name: java_002_interface_implementation
+initial:
+  src/main/java/com/example/PaymentProcessor.java: |
+    package com.example;
+
+    public interface PaymentProcessor {
+        boolean process(double amount);
+        void refund(String transactionId);
+    }
+  src/main/java/com/example/StripeProcessor.java: |
+    package com.example;
+
+    public class StripeProcessor implements PaymentProcessor {
+        @Override
+        public boolean process(double amount) {
+            return true;
+        }
+
+        @Override
+        public void refund(String transactionId) {
+        }
+    }
+changed:
+  src/main/java/com/example/PaymentProcessor.java: |
+    package com.example;
+
+    public interface PaymentProcessor {
+        boolean process(double amount);
+        void refund(String transactionId);
+        PaymentStatus getStatus(String transactionId);
+    }
+assertions:
+  must_include:
+  - interface PaymentProcessor
+  - getStatus
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add getStatus method to interface

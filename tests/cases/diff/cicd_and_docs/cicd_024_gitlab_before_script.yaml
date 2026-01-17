@@ -1,0 +1,20 @@
+name: cicd_024_gitlab_before_script
+initial:
+  .gitlab-ci.yml: |
+    test:
+      script:
+        - npm test
+changed:
+  .gitlab-ci.yml: |
+    test:
+      before_script:
+        - apt-get update
+        - apt-get install -y curl
+      script:
+        - npm test
+assertions:
+  must_include:
+  - .gitlab-ci.yml
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890

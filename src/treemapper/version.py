@@ -1,1 +1,1 @@
-__version__ = "1.1.3"  # This will be replaced during the build process
+__version__ = "1.2.1"  # This will be replaced during the build process

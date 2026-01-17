@@ -1,0 +1,40 @@
+name: scala_008_type_class
+initial:
+  Show.scala: |
+    trait Show[A] {
+      def show(a: A): String
+    }
+
+    object Show {
+      def apply[A](implicit sh: Show[A]): Show[A] = sh
+
+      implicit val intShow: Show[Int] = (a: Int) => a.toString
+      implicit val stringShow: Show[String] = (a: String) => a
+    }
+  Printer.scala: |
+    class Printer {}
+changed:
+  Printer.scala: |
+    class Printer {
+      def print[A: Show](value: A): String = {
+        Show[A].show(value)
+      }
+
+      def printInt(value: Int): String = {
+        print(value)
+      }
+
+      def printString(value: String): String = {
+        print(value)
+      }
+    }
+assertions:
+  must_include:
+  - Printer
+  - Show[A].show
+  - print
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add type class usage

@@ -1,0 +1,39 @@
+name: python_005_async_function_with_timeout
+initial:
+  async_utils.py: |
+    async def fetch_data(url):
+        await simulate_delay()
+        return {"url": url, "data": "content"}
+
+    async def simulate_delay():
+        import asyncio
+        await asyncio.sleep(0.1)
+  handler.py: |
+    from async_utils import fetch_data
+
+    async def handle_request(url):
+        data = await fetch_data(url)
+        return data
+  garbage.py: |
+    garbage_marker_12345 = "async garbage"
+    unused_marker_67890 = "not used"
+changed:
+  async_utils.py: |
+    import asyncio
+
+    async def fetch_data(url, timeout=30):
+        try:
+            await asyncio.wait_for(simulate_delay(), timeout=timeout)
+            return {"url": url, "data": "content", "timeout": timeout}
+        except asyncio.TimeoutError:
+            return {"url": url, "error": "timeout"}
+
+    async def simulate_delay():
+        await asyncio.sleep(0.1)
+assertions:
+  must_include:
+  - async def fetch_data
+  - timeout
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890

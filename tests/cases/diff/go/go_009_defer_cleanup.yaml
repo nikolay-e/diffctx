@@ -1,0 +1,48 @@
+name: go_009_defer_cleanup
+initial:
+  cleanup.go: |
+    package main
+
+    func cleanup() {
+        println("Cleanup resources")
+    }
+  handler.go: |
+    package main
+
+    func process() {
+        defer cleanup()
+        println("Processing")
+    }
+  unrelated/garbage.go: |
+    package unrelated
+
+    func UnusedCleanup_12345() {
+        println("garbage_marker_12345")
+    }
+
+    func UnusedHandler_67890() {
+        println("unused_marker_67890")
+    }
+changed:
+  cleanup.go: |
+    package main
+
+    import "log"
+
+    func cleanup() {
+        log.Println("Cleanup resources")
+        flushLogs()
+    }
+
+    func flushLogs() {
+        log.Println("Flushing logs")
+    }
+assertions:
+  must_include:
+  - cleanup
+  - flushLogs
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Enhanced cleanup with logging

@@ -1,0 +1,20 @@
+name: context_basic_diff
+initial:
+  main.py: |
+    def hello():
+        pass
+
+    def world():
+        pass
+changed:
+  main.py: |
+    def hello():
+        print("hello")
+
+    def world():
+        pass
+assertions:
+  must_include:
+  - hello
+options:
+  commit_message: Update hello

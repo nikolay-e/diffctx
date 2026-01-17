@@ -1,0 +1,20 @@
+name: selection_rare_identifier_expansion
+initial:
+  core.py: |
+    from rare_module import unique_helper
+
+    def main():
+        return unique_helper()
+  rare_module.py: |
+    def unique_helper():
+        return 42
+changed:
+  core.py: |
+    from rare_module import unique_helper
+
+    def main():
+        result = unique_helper()
+        return result * 2
+assertions:
+  must_include:
+  - main

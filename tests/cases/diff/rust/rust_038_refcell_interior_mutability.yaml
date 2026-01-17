@@ -1,0 +1,78 @@
+name: rust_038_refcell_interior_mutability
+initial:
+  src/counter.rs: |
+    pub struct Counter {
+        count: u64,
+    }
+
+    impl Counter {
+        pub fn new() -> Self {
+            Self { count: 0 }
+        }
+
+        pub fn increment(&mut self) {
+            self.count += 1;
+        }
+
+        pub fn get(&self) -> u64 {
+            self.count
+        }
+    }
+changed:
+  src/counter.rs: |
+    use std::cell::RefCell;
+
+    pub struct Counter {
+        count: RefCell<u64>,
+    }
+
+    impl Counter {
+        pub fn new() -> Self {
+            Self { count: RefCell::new(0) }
+        }
+
+        pub fn increment(&self) {
+            *self.count.borrow_mut() += 1;
+        }
+
+        pub fn get(&self) -> u64 {
+            *self.count.borrow()
+        }
+
+        pub fn reset(&self) {
+            *self.count.borrow_mut() = 0;
+        }
+    }
+  src/tracker.rs: |
+    use crate::counter::Counter;
+    use std::rc::Rc;
+
+    pub struct Tracker {
+        counters: Vec<Rc<Counter>>,
+    }
+
+    impl Tracker {
+        pub fn new() -> Self {
+            Self { counters: Vec::new() }
+        }
+
+        pub fn add_counter(&mut self) -> Rc<Counter> {
+            let counter = Rc::new(Counter::new());
+            self.counters.push(Rc::clone(&counter));
+            counter
+        }
+
+        pub fn total(&self) -> u64 {
+            self.counters.iter().map(|c| c.get()).sum()
+        }
+    }
+assertions:
+  must_include:
+  - RefCell
+  - borrow_mut
+  - Tracker
+  - Rc
+  must_not_include:
+  - garbage_refcell_fn
+options:
+  commit_message: Add RefCell for interior mutability

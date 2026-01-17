@@ -1,0 +1,52 @@
+name: csharp_304_nullable_reference
+initial:
+  Models/Configuration.cs: |
+    namespace MyApp.Models;
+
+    public class Configuration
+    {
+        public string? ConnectionString { get; set; }
+        public int? Port { get; set; }
+        public string Environment { get; set; } = "Development";
+    }
+    // unused_marker_67890
+  Services/ConfigService.cs: |
+    namespace MyApp.Services;
+
+    public class ConfigService { }
+changed:
+  Services/ConfigService.cs: |
+    using MyApp.Models;
+
+    namespace MyApp.Services;
+
+    public class ConfigService
+    {
+        private readonly Configuration _config;
+
+        public ConfigService(Configuration config)
+        {
+            _config = config;
+        }
+
+        public string GetConnectionString()
+        {
+            return _config.ConnectionString
+                ?? throw new InvalidOperationException("Connection string not configured");
+        }
+
+        public int GetPort()
+        {
+            return _config.Port ?? 8080;
+        }
+    }
+assertions:
+  must_include:
+  - ConfigService
+  - Configuration
+  - GetConnectionString
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add nullable reference usage

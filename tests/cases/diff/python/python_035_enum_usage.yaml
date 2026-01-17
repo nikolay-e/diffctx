@@ -1,0 +1,29 @@
+name: python_035_enum_usage
+initial:
+  enums.py: |
+    from enum import Enum, auto
+
+    class OrderStatus(Enum):
+        PENDING = auto()
+        PROCESSING = auto()
+        SHIPPED = auto()
+        DELIVERED = auto()
+        CANCELLED = auto()
+  orders.py: |
+    def update_status():
+        pass
+  garbage.py: |
+    garbage_marker_12345 = "enum garbage"
+    unused_marker_67890 = "unused enum"
+changed:
+  orders.py: |
+    from enums import OrderStatus
+
+    def update_status(order_id: int) -> OrderStatus:
+        return OrderStatus.PENDING
+assertions:
+  must_include:
+  - class OrderStatus
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890

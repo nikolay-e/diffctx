@@ -1,0 +1,51 @@
+name: go_011_channel_receive
+initial:
+  producer.go: |
+    package main
+
+    func produce(ch chan<- int) {
+        for i := 0; i < 10; i++ {
+            ch <- i
+        }
+        close(ch)
+    }
+  consumer.go: |
+    package main
+
+    func consume(ch <-chan int) {
+        for v := range ch {
+            println(v)
+        }
+    }
+  unrelated/garbage.go: |
+    package unrelated
+
+    func UnusedProducer_12345() {
+        println("garbage_marker_12345")
+    }
+
+    func UnusedConsumer_67890() {
+        println("unused_marker_67890")
+    }
+changed:
+  producer.go: |
+    package main
+
+    import "time"
+
+    func produce(ch chan<- int) {
+        for i := 0; i < 10; i++ {
+            time.Sleep(time.Millisecond * 50)
+            ch <- i * 2
+        }
+        close(ch)
+    }
+assertions:
+  must_include:
+  - produce
+  - chan<- int
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Double values in producer

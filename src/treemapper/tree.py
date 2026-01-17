@@ -139,9 +139,9 @@ def build_tree(dir_path: Path, ctx: TreeBuildContext, current_depth: int = 0) ->
             if node:
                 tree.append(node)
     except PermissionError:
-        logging.warning(f"Permission denied accessing directory {dir_path}")
+        logging.warning("Permission denied accessing directory %s", dir_path)
     except OSError as e:
-        logging.warning(f"Error accessing directory {dir_path}: {e}")
+        logging.warning("Error accessing directory %s: %s", dir_path, e)
 
     return tree
 
@@ -151,11 +151,11 @@ def _process_entry(entry: Path, ctx: TreeBuildContext, current_depth: int) -> di
         relative_path = entry.relative_to(ctx.base_dir).as_posix()
         is_dir = entry.is_dir()
     except (OSError, ValueError) as e:
-        logging.warning(f"Could not process path for entry {entry}: {e}")
+        logging.warning("Could not process path for entry %s: %s", entry, e)
         return None
 
     if ctx.is_output_file(entry):
-        logging.debug(f"Skipping output file: {entry}")
+        logging.debug("Skipping output file: %s", entry)
         return None
 
     path_to_check = relative_path + "/" if is_dir else relative_path
@@ -163,7 +163,7 @@ def _process_entry(entry: Path, ctx: TreeBuildContext, current_depth: int) -> di
         return None
 
     if entry.is_symlink() or not entry.exists():
-        logging.debug(f"Skipping '{path_to_check}': symlink or not exists")
+        logging.debug("Skipping '%s': symlink or not exists", path_to_check)
         return None
 
     return _create_node(entry, ctx, current_depth, is_dir)
@@ -181,9 +181,40 @@ def _create_node(entry: Path, ctx: TreeBuildContext, current_depth: int, is_dir:
             node["content"] = _read_file_content(entry, ctx.max_file_bytes)
 
         return node
-    except (OSError, PermissionError) as e:
-        logging.error(f"Failed to create node for {entry.name}: {e}")
+    except OSError as e:
+        logging.error("Failed to create node for %s: %s", entry.name, e)
         return None
+
+
+def _format_binary_placeholder(file_size: int) -> str:
+    return f"<binary file: {file_size} bytes>\n"
+
+
+def _format_size_placeholder(file_size: int) -> str:
+    return f"<file too large: {file_size} bytes>\n"
+
+
+def _detect_binary_in_sample(file_path: Path, file_size: int) -> tuple[bytes | None, str | None]:
+    with file_path.open("rb") as f:
+        sample = f.read(BINARY_DETECTION_SAMPLE_SIZE)
+        if b"\x00" in sample:
+            logging.debug("Detected binary file %s", file_path.name)
+            return None, _format_binary_placeholder(file_size)
+        rest = f.read()
+        raw_bytes = sample + rest if rest else sample
+    return raw_bytes, None
+
+
+def _decode_file_content(raw_bytes: bytes, file_path: Path, file_size: int) -> str:
+    if b"\x00" in raw_bytes[BINARY_DETECTION_SAMPLE_SIZE:]:
+        logging.debug("Detected binary file %s (null in remainder)", file_path.name)
+        return _format_binary_placeholder(file_size)
+
+    content = raw_bytes.decode("utf-8")
+    content = content.replace("\r\n", "\n").replace("\r", "\n")
+    if not content:
+        return ""
+    return content if content.endswith("\n") else content + "\n"
 
 
 def _read_file_content(file_path: Path, max_file_bytes: int | None) -> str:
@@ -191,43 +222,27 @@ def _read_file_content(file_path: Path, max_file_bytes: int | None) -> str:
         file_size = file_path.stat().st_size
 
         if file_path.suffix.lower() in KNOWN_BINARY_EXTENSIONS:
-            if logging.getLogger().isEnabledFor(logging.DEBUG):
-                logging.debug(f"Skipping known binary extension: {file_path.name}")
-            return f"<binary file: {file_size} bytes>\n"
+            logging.debug("Skipping known binary extension: %s", file_path.name)
+            return _format_binary_placeholder(file_size)
 
         effective_limit = max_file_bytes if max_file_bytes is not None else MAX_SAFE_FILE_SIZE
         if file_size > effective_limit:
-            if logging.getLogger().isEnabledFor(logging.INFO):
-                logging.info(f"Skipping large file {file_path.name}: {file_size} bytes > {effective_limit} bytes")
-            return f"<file too large: {file_size} bytes>\n"
+            logging.info("Skipping large file %s: %d bytes > %d bytes", file_path.name, file_size, effective_limit)
+            return _format_size_placeholder(file_size)
 
-        with file_path.open("rb") as f:
-            sample = f.read(BINARY_DETECTION_SAMPLE_SIZE)
-            if b"\x00" in sample:
-                if logging.getLogger().isEnabledFor(logging.DEBUG):
-                    logging.debug(f"Detected binary file {file_path.name}")
-                return f"<binary file: {file_size} bytes>\n"
-            rest = f.read()
-            raw_bytes = sample + rest if rest else sample
+        raw_bytes, binary_result = _detect_binary_in_sample(file_path, file_size)
+        if binary_result is not None:
+            return binary_result
 
-        if b"\x00" in raw_bytes[BINARY_DETECTION_SAMPLE_SIZE:]:
-            if logging.getLogger().isEnabledFor(logging.DEBUG):
-                logging.debug(f"Detected binary file {file_path.name} (null in remainder)")
-            return f"<binary file: {file_size} bytes>\n"
-
-        content = raw_bytes.decode("utf-8")
-        content = content.replace("\r\n", "\n").replace("\r", "\n")
-
-        if not content:
-            return ""
-        return content if content.endswith("\n") else content + "\n"
+        assert raw_bytes is not None
+        return _decode_file_content(raw_bytes, file_path, file_size)
 
     except PermissionError:
-        logging.error(f"Could not read {file_path.name}: Permission denied")
+        logging.error("Could not read %s: Permission denied", file_path.name)
         return "<unreadable content>\n"
     except UnicodeDecodeError:
-        logging.error(f"Cannot decode {file_path.name} as UTF-8. Marking as unreadable.")
+        logging.error("Cannot decode %s as UTF-8. Marking as unreadable.", file_path.name)
         return "<unreadable content: not utf-8>\n"
     except OSError as e:
-        logging.error(f"Could not read {file_path.name}: {e}")
+        logging.error("Could not read %s: %s", file_path.name, e)
         return "<unreadable content>\n"

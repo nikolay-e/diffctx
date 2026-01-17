@@ -1,0 +1,42 @@
+name: scala_042_sealed_trait_adt
+initial:
+  Expression.scala: |
+    sealed trait Expression
+    case class Number(value: Double) extends Expression
+    case class Add(left: Expression, right: Expression) extends Expression
+    case class Multiply(left: Expression, right: Expression) extends Expression
+    case class Variable(name: String) extends Expression
+  Evaluator.scala: |
+    class Evaluator {}
+changed:
+  Evaluator.scala: |
+    class Evaluator {
+      def evaluate(expr: Expression, vars: Map[String, Double] = Map.empty): Double = expr match {
+        case Number(value) => value
+        case Add(left, right) => evaluate(left, vars) + evaluate(right, vars)
+        case Multiply(left, right) => evaluate(left, vars) * evaluate(right, vars)
+        case Variable(name) => vars.getOrElse(name, 0.0)
+      }
+
+      def simplify(expr: Expression): Expression = expr match {
+        case Add(Number(0), right) => simplify(right)
+        case Add(left, Number(0)) => simplify(left)
+        case Multiply(Number(1), right) => simplify(right)
+        case Multiply(left, Number(1)) => simplify(left)
+        case Multiply(Number(0), _) => Number(0)
+        case Multiply(_, Number(0)) => Number(0)
+        case Add(left, right) => Add(simplify(left), simplify(right))
+        case Multiply(left, right) => Multiply(simplify(left), simplify(right))
+        case other => other
+      }
+    }
+assertions:
+  must_include:
+  - Evaluator
+  - evaluate
+  - simplify
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add sealed trait ADT evaluation

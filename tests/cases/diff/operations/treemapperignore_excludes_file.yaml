@@ -1,0 +1,16 @@
+name: treemapperignore_excludes_file
+initial:
+  .treemapperignore: |
+    *.tmp
+  main.py: x = 1
+  cache.tmp: temp data
+changed:
+  main.py: x = 2
+  cache.tmp: new temp data
+assertions:
+  must_include:
+  - main.py
+  must_not_include:
+  - cache.tmp
+options:
+  commit_message: Modify files

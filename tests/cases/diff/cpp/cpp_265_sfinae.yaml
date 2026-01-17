@@ -1,0 +1,40 @@
+name: cpp_265_sfinae
+initial:
+  type_check.h: |
+    #pragma once
+    #include <type_traits>
+
+    template<typename T, typename = void>
+    struct has_size : std::false_type {};
+
+    template<typename T>
+    struct has_size<T, std::void_t<decltype(std::declval<T>().size())>> : std::true_type {};
+    // unused_marker_67890
+  printer.cpp: |
+    #include <iostream>
+    int main() { return 0; }
+changed:
+  printer.cpp: |
+    #include "type_check.h"
+    #include <vector>
+    #include <string>
+
+    template<typename T>
+    std::enable_if_t<has_size<T>::value, void> printInfo(const T& container) {
+        std::cout << "Size: " << container.size() << std::endl;
+    }
+
+    int main() {
+        std::vector<int> v{1, 2, 3};
+        printInfo(v);
+        return 0;
+    }
+assertions:
+  must_include:
+  - printInfo
+  - has_size
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add SFINAE usage

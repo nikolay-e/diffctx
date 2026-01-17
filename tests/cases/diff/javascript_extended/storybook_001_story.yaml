@@ -1,0 +1,59 @@
+name: storybook_001_story
+initial:
+  Button.tsx: |
+    export interface ButtonProps {
+        label: string;
+        variant?: 'primary' | 'secondary';
+        size?: 'small' | 'medium' | 'large';
+        onClick?: () => void;
+    }
+
+    export function Button({ label, variant = 'primary', size = 'medium', onClick }: ButtonProps) {
+        return (
+            <button className={`btn btn-${variant} btn-${size}`} onClick={onClick}>
+                {label}
+            </button>
+        );
+    }
+
+    // storybook_garbage_marker_001
+    const GARBAGE_BUTTON_CONFIG = { maxWidth: 200 };
+  Button.stories.tsx: |
+    console.log('initial');
+changed:
+  Button.stories.tsx: |
+    import type { Meta, StoryObj } from '@storybook/react';
+    import { Button, ButtonProps } from './Button';
+
+    const meta: Meta<typeof Button> = {
+        title: 'Components/Button',
+        component: Button,
+        argTypes: {
+            variant: { control: 'select', options: ['primary', 'secondary'] },
+            size: { control: 'select', options: ['small', 'medium', 'large'] },
+        },
+    };
+
+    export default meta;
+    type Story = StoryObj<typeof Button>;
+
+    export const Primary: Story = {
+        args: {
+            label: 'Primary Button',
+            variant: 'primary',
+        },
+    };
+
+    export const Secondary: Story = {
+        args: {
+            label: 'Secondary Button',
+            variant: 'secondary',
+        },
+    };
+assertions:
+  must_include:
+  - Button.stories.tsx
+  must_not_include:
+  - storybook_garbage_marker_001
+options:
+  commit_message: Add Button storybook

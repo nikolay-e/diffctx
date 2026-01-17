@@ -1,0 +1,59 @@
+name: cpp_280_namespace
+initial:
+  utils.h: |
+    #pragma once
+    #include <string>
+
+    namespace myapp::utils {
+
+    std::string trim(const std::string& s);
+    std::string toUpper(const std::string& s);
+
+    }
+    // unused_marker_67890
+  utils.cpp: |
+    #include "utils.h"
+    #include <algorithm>
+    #include <cctype>
+
+    namespace myapp::utils {
+
+    std::string trim(const std::string& s) {
+        size_t start = s.find_first_not_of(" \t\n");
+        size_t end = s.find_last_not_of(" \t\n");
+        return (start == std::string::npos) ? "" : s.substr(start, end - start + 1);
+    }
+
+    std::string toUpper(const std::string& s) {
+        std::string result = s;
+        std::transform(result.begin(), result.end(), result.begin(), ::toupper);
+        return result;
+    }
+
+    }
+  app.cpp: |
+    #include <iostream>
+    int main() { return 0; }
+changed:
+  app.cpp: |
+    #include "utils.h"
+    #include <iostream>
+
+    using myapp::utils::trim;
+    using myapp::utils::toUpper;
+
+    int main() {
+        std::string input = "  Hello World  ";
+        std::cout << toUpper(trim(input)) << std::endl;
+        return 0;
+    }
+assertions:
+  must_include:
+  - trim
+  - toUpper
+  - myapp::utils
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add namespace usage

@@ -1,0 +1,32 @@
+name: python_019_getitem_access
+initial:
+  cache.py: |
+    class Cache:
+        def __init__(self):
+            self._data = {}
+
+        def __getitem__(self, key: str):
+            return self._data.get(key)
+
+        def __setitem__(self, key: str, value):
+            self._data[key] = value
+  service.py: |
+    def get_value():
+        pass
+  garbage.py: |
+    garbage_marker_12345 = "cache garbage"
+    unused_marker_67890 = "unused cache"
+changed:
+  service.py: |
+    from cache import Cache
+
+    cache = Cache()
+
+    def get_value(key: str):
+        return cache[key]
+assertions:
+  must_include:
+  - __getitem__
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890

@@ -1,0 +1,41 @@
+name: scala_004_companion_object
+initial:
+  User.scala: |
+    case class User(id: String, name: String)
+
+    object User {
+      def apply(name: String): User = User(java.util.UUID.randomUUID().toString, name)
+
+      def fromJson(json: String): User = {
+        User("parsed-id", json)
+      }
+
+      val anonymous: User = User("anon", "Anonymous")
+    }
+  UserFactory.scala: |
+    class UserFactory {}
+changed:
+  UserFactory.scala: |
+    class UserFactory {
+      def createUser(name: String): User = {
+        User(name)
+      }
+
+      def createFromJson(json: String): User = {
+        User.fromJson(json)
+      }
+
+      def getAnonymous: User = {
+        User.anonymous
+      }
+    }
+assertions:
+  must_include:
+  - UserFactory
+  - User.fromJson
+  - User.anonymous
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add companion object usage

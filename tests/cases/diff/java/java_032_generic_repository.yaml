@@ -1,0 +1,80 @@
+name: java_032_generic_repository
+initial:
+  src/main/java/com/example/UserRepository.java: |
+    package com.example;
+
+    import java.util.HashMap;
+    import java.util.Map;
+
+    public class UserRepository {
+        private final Map<Long, User> storage = new HashMap<>();
+
+        public void save(User user) {
+            storage.put(user.getId(), user);
+        }
+
+        public User findById(Long id) {
+            return storage.get(id);
+        }
+    }
+changed:
+  src/main/java/com/example/Entity.java: |
+    package com.example;
+
+    public interface Entity<ID> {
+        ID getId();
+    }
+  src/main/java/com/example/Repository.java: |
+    package com.example;
+
+    import java.util.List;
+    import java.util.Optional;
+
+    public interface Repository<T extends Entity<ID>, ID> {
+        void save(T entity);
+        Optional<T> findById(ID id);
+        List<T> findAll();
+        void delete(ID id);
+    }
+  src/main/java/com/example/InMemoryRepository.java: |
+    package com.example;
+
+    import java.util.ArrayList;
+    import java.util.HashMap;
+    import java.util.List;
+    import java.util.Map;
+    import java.util.Optional;
+
+    public class InMemoryRepository<T extends Entity<ID>, ID> implements Repository<T, ID> {
+        private final Map<ID, T> storage = new HashMap<>();
+
+        @Override
+        public void save(T entity) {
+            storage.put(entity.getId(), entity);
+        }
+
+        @Override
+        public Optional<T> findById(ID id) {
+            return Optional.ofNullable(storage.get(id));
+        }
+
+        @Override
+        public List<T> findAll() {
+            return new ArrayList<>(storage.values());
+        }
+
+        @Override
+        public void delete(ID id) {
+            storage.remove(id);
+        }
+    }
+assertions:
+  must_include:
+  - Repository
+  - Entity
+  - Generic
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add generic repository pattern

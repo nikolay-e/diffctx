@@ -1,0 +1,43 @@
+name: cpp_246_shared_ptr
+initial:
+  data.h: |
+    #pragma once
+
+    struct Data {
+        int value;
+        Data(int v) : value(v) {}
+    };
+    // unused_marker_67890
+  cache.cpp: |
+    #include <iostream>
+    int main() { return 0; }
+changed:
+  cache.cpp: |
+    #include "data.h"
+    #include <memory>
+    #include <unordered_map>
+    #include <string>
+
+    class Cache {
+        std::unordered_map<std::string, std::shared_ptr<Data>> store;
+
+    public:
+        std::shared_ptr<Data> get(const std::string& key) {
+            if (store.count(key)) {
+                return store[key];
+            }
+            auto data = std::make_shared<Data>(0);
+            store[key] = data;
+            return data;
+        }
+    };
+assertions:
+  must_include:
+  - Cache
+  - shared_ptr
+  - Data
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add shared_ptr usage

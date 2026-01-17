@@ -1,0 +1,38 @@
+name: swift_swiftui_view
+initial:
+  User.swift: |
+    struct User: Identifiable {
+        let id: String
+        let name: String
+        let email: String
+    }
+  UserView.swift: |
+    // Initial
+    import SwiftUI
+    struct UserView: View {
+        var body: some View { Text("") }
+    }
+changed:
+  UserView.swift: |
+    import SwiftUI
+
+    struct UserView: View {
+        let user: User
+
+        var body: some View {
+            VStack(alignment: .leading) {
+                Text(user.name)
+                    .font(.headline)
+                Text(user.email)
+                    .font(.subheadline)
+                    .foregroundColor(.gray)
+            }
+        }
+    }
+assertions:
+  must_include:
+  - UserView.swift
+  - VStack
+  - Text(user.name)
+options:
+  commit_message: Add SwiftUI view

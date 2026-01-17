@@ -1,0 +1,28 @@
+name: rust_008_basic_trait_definition
+initial:
+  src/traits.rs: |
+    pub trait Named {
+        fn name(&self) -> &str;
+    }
+changed:
+  src/traits.rs: |
+    pub trait Named {
+        fn name(&self) -> &str;
+    }
+
+    pub trait Describable {
+        fn describe(&self) -> String;
+
+        fn short_description(&self) -> String {
+            self.describe().chars().take(50).collect()
+        }
+    }
+assertions:
+  must_include:
+  - Describable
+  - describe
+  - short_description
+  must_not_include:
+  - garbage_trait_method
+options:
+  commit_message: Add Describable trait

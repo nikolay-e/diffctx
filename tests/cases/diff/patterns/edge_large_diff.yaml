@@ -1,0 +1,16 @@
+name: edge_large_diff
+initial:
+  large.py: |
+    def original_function():
+        pass
+changed:
+  large.py: |
+    def original_function():
+        return 1
+
+    def new_function():
+        return 2
+assertions:
+  must_include:
+  - original_function
+  - new_function

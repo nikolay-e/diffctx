@@ -1,0 +1,28 @@
+name: rust_003_basic_struct
+initial:
+  src/models.rs: |
+    pub struct Point {
+        pub x: f64,
+        pub y: f64,
+    }
+changed:
+  src/models.rs: |
+    pub struct Point {
+        pub x: f64,
+        pub y: f64,
+        pub z: f64,
+    }
+
+    pub struct Rectangle {
+        pub width: f64,
+        pub height: f64,
+    }
+assertions:
+  must_include:
+  - Point
+  - z
+  - Rectangle
+  must_not_include:
+  - garbage_struct_field
+options:
+  commit_message: Add z coordinate and Rectangle struct

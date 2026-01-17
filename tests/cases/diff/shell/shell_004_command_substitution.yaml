@@ -1,0 +1,30 @@
+name: shell_004_command_substitution
+initial:
+  backup.sh: |
+    #!/bin/bash
+    echo "Backup script"
+  garbage.sh: |
+    #!/bin/bash
+    shelltest_backup_005="never_used_value"
+    shelltest_unused_abc002="not_used"
+changed:
+  backup.sh: |
+    #!/bin/bash
+    current_date=$(date +%Y-%m-%d)
+    current_time=$(date +%H-%M-%S)
+    hostname=$(hostname)
+    git_hash=$(git rev-parse --short HEAD)
+
+    backup_name="backup_${hostname}_${current_date}_${current_time}"
+    echo "Creating backup: $backup_name"
+    echo "Git version: $git_hash"
+
+    file_count=$(find . -type f | wc -l)
+    echo "Total files: $file_count"
+assertions:
+  must_include:
+  - backup.sh
+  - backup_name
+  must_not_include:
+  - shelltest_backup_005
+  - shelltest_unused_abc002

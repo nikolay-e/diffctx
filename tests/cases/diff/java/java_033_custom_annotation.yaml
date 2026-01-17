@@ -1,0 +1,76 @@
+name: java_033_custom_annotation
+initial:
+  src/main/java/com/example/Validator.java: |
+    package com.example;
+
+    public class Validator {
+        public boolean validate(Object obj) {
+            return obj != null;
+        }
+    }
+changed:
+  src/main/java/com/example/NotNull.java: |
+    package com.example;
+
+    import java.lang.annotation.ElementType;
+    import java.lang.annotation.Retention;
+    import java.lang.annotation.RetentionPolicy;
+    import java.lang.annotation.Target;
+
+    @Retention(RetentionPolicy.RUNTIME)
+    @Target({ElementType.FIELD, ElementType.PARAMETER})
+    public @interface NotNull {
+        String message() default "Value cannot be null";
+    }
+  src/main/java/com/example/Size.java: |
+    package com.example;
+
+    import java.lang.annotation.ElementType;
+    import java.lang.annotation.Retention;
+    import java.lang.annotation.RetentionPolicy;
+    import java.lang.annotation.Target;
+
+    @Retention(RetentionPolicy.RUNTIME)
+    @Target(ElementType.FIELD)
+    public @interface Size {
+        int min() default 0;
+        int max() default Integer.MAX_VALUE;
+        String message() default "Size out of bounds";
+    }
+  src/main/java/com/example/Validator.java: |
+    package com.example;
+
+    import java.lang.reflect.Field;
+
+    public class Validator {
+        public void validate(Object obj) throws ValidationException {
+            for (Field field : obj.getClass().getDeclaredFields()) {
+                field.setAccessible(true);
+                try {
+                    Object value = field.get(obj);
+                    if (field.isAnnotationPresent(NotNull.class) && value == null) {
+                        NotNull ann = field.getAnnotation(NotNull.class);
+                        throw new ValidationException(ann.message());
+                    }
+                    if (field.isAnnotationPresent(Size.class) && value instanceof String s) {
+                        Size size = field.getAnnotation(Size.class);
+                        if (s.length() < size.min() || s.length() > size.max()) {
+                            throw new ValidationException(size.message());
+                        }
+                    }
+                } catch (IllegalAccessException e) {
+                    throw new RuntimeException(e);
+                }
+            }
+        }
+    }
+assertions:
+  must_include:
+  - '@interface NotNull'
+  - '@Retention'
+  - isAnnotationPresent
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add custom validation annotations

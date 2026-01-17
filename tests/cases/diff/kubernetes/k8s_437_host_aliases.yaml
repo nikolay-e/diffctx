@@ -1,0 +1,45 @@
+name: k8s_437_host_aliases
+initial:
+  app.py: |
+    import socket
+    host = socket.gethostbyname('legacy-service')
+    print(f'Connecting to {host}')
+  deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: myapp
+    spec:
+      template:
+        spec:
+          containers:
+          - name: app
+            image: myapp:latest
+  unrelated.txt: |
+    garbage_marker_k8s437 = True
+    unused_marker_k8s437 = False
+changed:
+  deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: myapp
+    spec:
+      template:
+        spec:
+          hostAliases:
+          - ip: "10.0.0.1"
+            hostnames:
+            - "legacy-service"
+            - "legacy.local"
+          containers:
+          - name: app
+            image: myapp:latest
+assertions:
+  must_include:
+  - hostAliases
+  must_not_include:
+  - garbage_marker_k8s437
+  - unused_marker_k8s437
+options:
+  commit_message: Add host aliases

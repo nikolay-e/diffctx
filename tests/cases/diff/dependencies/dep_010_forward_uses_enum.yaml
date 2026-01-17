@@ -1,0 +1,27 @@
+name: dep_010_forward_uses_enum
+initial:
+  enums/order.py: |
+    from enum import Enum
+
+    class OrderStatus(Enum):
+        PENDING = "pending"
+        COMPLETED = "completed"
+        CANCELLED = "cancelled"
+  order.py: |
+    def create_order():
+        pass
+changed:
+  order.py: |
+    from enums.order import OrderStatus
+
+    class Order:
+        def __init__(self):
+            self.status = OrderStatus.PENDING
+
+        def complete(self):
+            self.status = OrderStatus.COMPLETED
+assertions:
+  must_include:
+  - order.py
+  must_not_include:
+  - garbage_marker_12345

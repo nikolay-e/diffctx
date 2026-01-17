@@ -1,0 +1,29 @@
+name: python_049_exception_chaining
+initial:
+  exceptions.py: |
+    class AppError(Exception):
+        pass
+
+    class DataError(AppError):
+        pass
+  parser.py: |
+    def parse():
+        pass
+  garbage.py: |
+    garbage_marker_12345 = "chain garbage"
+    unused_marker_67890 = "unused chain"
+changed:
+  parser.py: |
+    from exceptions import DataError
+
+    def parse(data: str):
+        try:
+            return eval(data)
+        except SyntaxError as e:
+            raise DataError("Invalid syntax") from e
+assertions:
+  must_include:
+  - class DataError
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890

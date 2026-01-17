@@ -1,0 +1,51 @@
+name: go_024_build_tags
+initial:
+  platform.go: |
+    package main
+
+    func GetPlatform() string {
+        return "unknown"
+    }
+  unrelated/garbage.go: |
+    package unrelated
+
+    func UnusedPlatform_12345() {
+        println("garbage_marker_12345")
+    }
+
+    func AnotherUnused_67890() {
+        println("unused_marker_67890")
+    }
+changed:
+  platform_linux.go: |
+    //go:build linux
+
+    package main
+
+    func GetPlatform() string {
+        return "linux"
+    }
+
+    func LinuxSpecific() {
+        println("Linux only")
+    }
+  platform_darwin.go: |
+    //go:build darwin
+
+    package main
+
+    func GetPlatform() string {
+        return "darwin"
+    }
+
+    func DarwinSpecific() {
+        println("macOS only")
+    }
+assertions:
+  must_include:
+  - GetPlatform
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add platform-specific files

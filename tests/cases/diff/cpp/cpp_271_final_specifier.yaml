@@ -1,0 +1,34 @@
+name: cpp_271_final_specifier
+initial:
+  node.h: |
+    #pragma once
+    #include <string>
+
+    class Node {
+    public:
+        virtual ~Node() = default;
+        virtual std::string type() const { return "Node"; }
+    };
+    // unused_marker_67890
+  leaf.cpp: |
+    #include <iostream>
+    int main() { return 0; }
+changed:
+  leaf.cpp: |
+    #include "node.h"
+
+    class Leaf final : public Node {
+    public:
+        std::string type() const override { return "Leaf"; }
+        void processLeaf() {}
+    };
+assertions:
+  must_include:
+  - Leaf
+  - final
+  - Node
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add final specifier

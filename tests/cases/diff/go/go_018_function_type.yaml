@@ -1,0 +1,64 @@
+name: go_018_function_type
+initial:
+  types.go: |
+    package main
+
+    type Handler func(req Request) Response
+    type Middleware func(Handler) Handler
+
+    type Request struct {
+        Path string
+    }
+
+    type Response struct {
+        Status int
+    }
+  router.go: |
+    package main
+
+    func NewRouter() *Router {
+        return &Router{}
+    }
+  unrelated/garbage.go: |
+    package unrelated
+
+    func UnusedTypes_12345() {
+        println("garbage_marker_12345")
+    }
+
+    func UnusedRouter_67890() {
+        println("unused_marker_67890")
+    }
+changed:
+  router.go: |
+    package main
+
+    type Router struct {
+        middleware []Middleware
+    }
+
+    func NewRouter() *Router {
+        return &Router{}
+    }
+
+    func (r *Router) Use(m Middleware) {
+        r.middleware = append(r.middleware, m)
+    }
+
+    func (r *Router) Handle(h Handler) Handler {
+        for i := len(r.middleware) - 1; i >= 0; i-- {
+            h = r.middleware[i](h)
+        }
+        return h
+    }
+assertions:
+  must_include:
+  - Router
+  - Use
+  - Handle
+  - Middleware
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add middleware support

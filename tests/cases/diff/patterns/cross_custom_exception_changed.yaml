@@ -1,0 +1,33 @@
+name: cross_custom_exception_changed
+initial:
+  exceptions.py: |
+    class ValidationError(Exception):
+        pass
+  validators.py: |
+    from exceptions import ValidationError
+
+    def validate(data):
+        if not data:
+            raise ValidationError("Data is empty")
+        return True
+  handlers.py: |
+    from exceptions import ValidationError
+
+    def handle_request(data):
+        try:
+            return process(data)
+        except ValidationError:
+            return {"error": "Validation failed"}
+
+    def process(data):
+        return data
+changed:
+  exceptions.py: |
+    class ValidationError(Exception):
+        def __init__(self, field, message):
+            self.field = field
+            self.message = message
+            super().__init__(f"{field}: {message}")
+assertions:
+  must_include:
+  - exceptions.py

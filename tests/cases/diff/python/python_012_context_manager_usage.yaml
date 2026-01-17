@@ -1,0 +1,38 @@
+name: python_012_context_manager_usage
+initial:
+  db.py: |
+    class DatabaseConnection:
+        def __init__(self, url: str):
+            self.url = url
+            self.conn = None
+
+        def __enter__(self):
+            self.conn = self._connect()
+            return self.conn
+
+        def __exit__(self, exc_type, exc_val, exc_tb):
+            if self.conn:
+                self.conn.close()
+            return False
+
+        def _connect(self):
+            return {"url": self.url}
+  service.py: |
+    def run_query():
+        pass
+  garbage.py: |
+    garbage_marker_12345 = "db garbage"
+    unused_marker_67890 = "unused db"
+changed:
+  service.py: |
+    from db import DatabaseConnection
+
+    def run_query(url: str, query: str):
+        with DatabaseConnection(url) as db:
+            return db.execute(query)
+assertions:
+  must_include:
+  - __enter__
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890

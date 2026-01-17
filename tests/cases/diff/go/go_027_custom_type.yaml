@@ -1,0 +1,57 @@
+name: go_027_custom_type
+initial:
+  types.go: |
+    package main
+
+    type UserID int64
+    type Status string
+
+    const (
+        StatusPending Status = "pending"
+        StatusActive  Status = "active"
+        StatusClosed  Status = "closed"
+    )
+
+    func (s Status) IsActive() bool {
+        return s == StatusActive
+    }
+  service.go: |
+    package main
+
+    func GetUserStatus(id int) string {
+        return "unknown"
+    }
+  unrelated/garbage.go: |
+    package unrelated
+
+    func UnusedTypes_12345() {
+        println("garbage_marker_12345")
+    }
+
+    func UnusedService_67890() {
+        println("unused_marker_67890")
+    }
+changed:
+  service.go: |
+    package main
+
+    func GetUserStatus(id UserID) Status {
+        return StatusActive
+    }
+
+    func ProcessActive(id UserID) {
+        status := GetUserStatus(id)
+        if status.IsActive() {
+            println("User is active")
+        }
+    }
+assertions:
+  must_include:
+  - GetUserStatus
+  - UserID
+  - Status
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Use custom types

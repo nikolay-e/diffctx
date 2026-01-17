@@ -1,0 +1,37 @@
+name: cpp_262_function_template
+initial:
+  algorithm.h: |
+    #pragma once
+
+    template<typename T>
+    T maxValue(T a, T b) {
+        return (a > b) ? a : b;
+    }
+
+    template<typename T>
+    T minValue(T a, T b) {
+        return (a < b) ? a : b;
+    }
+    // garbage_marker_12345
+  math.cpp: |
+    #include <iostream>
+    int main() { return 0; }
+changed:
+  math.cpp: |
+    #include "algorithm.h"
+
+    int computeRange(int a, int b, int c) {
+        int maximum = maxValue(maxValue(a, b), c);
+        int minimum = minValue(minValue(a, b), c);
+        return maximum - minimum;
+    }
+assertions:
+  must_include:
+  - computeRange
+  - maxValue
+  - minValue
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add function template usage

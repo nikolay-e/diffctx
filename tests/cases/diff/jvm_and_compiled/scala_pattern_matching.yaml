@@ -1,0 +1,35 @@
+name: scala_pattern_matching
+initial:
+  User.scala: |
+    case class User(name: String, age: Int, email: Option[String])
+  UserValidator.scala: |
+    // Initial
+    class UserValidator {}
+changed:
+  UserValidator.scala: |
+    class UserValidator {
+      def validate(user: User): String = user match {
+        case User(name, _, _) if name.isEmpty =>
+          "Name cannot be empty"
+        case User(_, age, _) if age < 0 =>
+          "Age cannot be negative"
+        case User(name, age, Some(email)) if email.contains("@") =>
+          s"Valid user: $name, $age, $email"
+        case User(name, age, None) =>
+          s"Valid user without email: $name, $age"
+        case _ =>
+          "Invalid user"
+      }
+
+      def extractEmail(user: User): String = user match {
+        case User(_, _, Some(email)) => email
+        case User(name, _, None) => s"$name@default.com"
+      }
+    }
+assertions:
+  must_include:
+  - UserValidator.scala
+  - match
+  - case User
+options:
+  commit_message: Add pattern matching

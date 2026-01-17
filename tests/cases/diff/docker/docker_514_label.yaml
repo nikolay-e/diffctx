@@ -1,0 +1,23 @@
+name: docker_514_label
+initial:
+  Dockerfile: |
+    FROM python:3.11-slim
+    COPY . .
+  unrelated.py: |
+    garbage_marker_12345 = True
+    unused_marker_67890 = False
+changed:
+  Dockerfile: |
+    FROM python:3.11-slim
+    LABEL version="1.0" \
+          maintainer="team@example.com" \
+          description="My application"
+    COPY . .
+assertions:
+  must_include:
+  - LABEL
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add LABEL

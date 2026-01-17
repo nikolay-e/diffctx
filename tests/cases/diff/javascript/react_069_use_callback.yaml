@@ -1,0 +1,28 @@
+name: react_069_use_callback
+initial:
+  handlers.ts: |
+    export function createClickHandler(id: string) {
+        return () => console.log('Clicked:', id);
+    }
+  ActionButton.tsx: |
+    console.log('initial');
+changed:
+  ActionButton.tsx: |
+    import { useCallback } from 'react';
+    import { createClickHandler } from './handlers';
+
+    export function ActionButton({ id }: { id: string }) {
+        const handleClick = useCallback(() => {
+            createClickHandler(id)();
+        }, [id]);
+
+        return <button onClick={handleClick}>Action</button>;
+    }
+assertions:
+  must_include:
+  - createClickHandler
+  - ActionButton.tsx
+  must_not_include:
+  - js_garbage_marker_001
+options:
+  commit_message: Add useCallback

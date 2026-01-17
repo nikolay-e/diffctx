@@ -1,0 +1,25 @@
+name: docker_509_entrypoint
+initial:
+  app.py: |
+    import sys
+    print(f'Args: {sys.argv[1:]}')
+  Dockerfile: |
+    FROM python:3.11-slim
+    COPY app.py .
+    CMD ["python", "app.py"]
+  junk.txt: |
+    garbage_marker_12345 unused_marker_67890
+changed:
+  Dockerfile: |
+    FROM python:3.11-slim
+    COPY app.py .
+    ENTRYPOINT ["python", "app.py"]
+    CMD ["--default-arg"]
+assertions:
+  must_include:
+  - ENTRYPOINT
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add ENTRYPOINT

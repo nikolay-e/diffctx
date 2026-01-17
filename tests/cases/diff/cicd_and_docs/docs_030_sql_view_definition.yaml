@@ -1,0 +1,39 @@
+name: docs_030_sql_view_definition
+initial:
+  sql/views/user_orders_view.sql: |
+    CREATE OR REPLACE VIEW user_orders_summary AS
+    SELECT
+        u.id AS user_id,
+        u.name AS user_name,
+        COUNT(o.id) AS order_count,
+        SUM(o.total) AS total_spent
+    FROM users u
+    LEFT JOIN orders o ON u.id = o.user_id
+    GROUP BY u.id, u.name;
+  src/reports/user_report.py: |
+    class UserReport:
+        def get_summary(self, user_id: int):
+            return self.db.query(
+                "SELECT * FROM user_orders_summary WHERE user_id = %s",
+                [user_id]
+            )
+changed:
+  sql/views/user_orders_view.sql: |
+    CREATE OR REPLACE VIEW user_orders_summary AS
+    SELECT
+        u.id AS user_id,
+        u.name AS user_name,
+        u.email AS user_email,
+        COUNT(o.id) AS order_count,
+        SUM(o.total) AS total_spent,
+        AVG(o.total) AS avg_order_value,
+        MAX(o.created_at) AS last_order_date
+    FROM users u
+    LEFT JOIN orders o ON u.id = o.user_id
+    GROUP BY u.id, u.name, u.email;
+assertions:
+  must_include:
+  - user_orders_view.sql
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890

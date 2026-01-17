@@ -1,0 +1,26 @@
+name: python_037_from_import
+initial:
+  utils/helpers.py: |
+    def format_date(dt) -> str:
+        return dt.strftime("%Y-%m-%d")
+
+    def format_time(dt) -> str:
+        return dt.strftime("%H:%M:%S")
+  views.py: |
+    def render():
+        pass
+  garbage.py: |
+    garbage_marker_12345 = "helper garbage"
+    unused_marker_67890 = "unused helper"
+changed:
+  views.py: |
+    from utils.helpers import format_date
+
+    def render(event):
+        return f"Date: {format_date(event.date)}"
+assertions:
+  must_include:
+  - def format_date
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890

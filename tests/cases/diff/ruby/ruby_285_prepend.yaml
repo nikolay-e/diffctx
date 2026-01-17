@@ -1,0 +1,37 @@
+name: ruby_285_prepend
+initial:
+  wrapper.rb: |
+    module Wrapper
+      def process(data)
+        puts "Before processing"
+        result = super
+        puts "After processing"
+        result
+      end
+    end
+  handler.rb: |
+    # Initial
+    class Handler
+      def process(data)
+        data.upcase
+      end
+    end
+changed:
+  handler.rb: |
+    require_relative 'wrapper'
+
+    class Handler
+      prepend Wrapper
+
+      def process(data)
+        data.upcase
+      end
+    end
+assertions:
+  must_include:
+  - prepend Wrapper
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add prepend

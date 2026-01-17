@@ -1,0 +1,23 @@
+name: docker_507_arg
+initial:
+  Dockerfile: |
+    FROM node:18
+    COPY . .
+  unrelated.py: |
+    garbage_marker_12345 = True
+    unused_marker_67890 = False
+changed:
+  Dockerfile: |
+    ARG VERSION=latest
+    FROM node:18
+    ARG BUILD_DATE
+    LABEL version="${VERSION}" build-date="${BUILD_DATE}"
+    COPY . .
+assertions:
+  must_include:
+  - ARG VERSION=latest
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add ARG

@@ -1,0 +1,95 @@
+name: cross_file_strategy_pattern
+initial:
+  strategies/base.py: |
+    from abc import ABC, abstractmethod
+
+    class SortStrategy(ABC):
+        @abstractmethod
+        def sort(self, data: list) -> list:
+            pass
+
+        @abstractmethod
+        def get_name(self) -> str:
+            pass
+  strategies/quicksort.py: |
+    from strategies.base import SortStrategy
+
+    class QuickSortStrategy(SortStrategy):
+        def sort(self, data: list) -> list:
+            if len(data) <= 1:
+                return data
+            pivot = data[len(data) // 2]
+            left = [x for x in data if x < pivot]
+            middle = [x for x in data if x == pivot]
+            right = [x for x in data if x > pivot]
+            return self.sort(left) + middle + self.sort(right)
+
+        def get_name(self) -> str:
+            return "QuickSort"
+  strategies/mergesort.py: |
+    from strategies.base import SortStrategy
+
+    class MergeSortStrategy(SortStrategy):
+        def sort(self, data: list) -> list:
+            if len(data) <= 1:
+                return data
+            mid = len(data) // 2
+            left = self.sort(data[:mid])
+            right = self.sort(data[mid:])
+            return self._merge(left, right)
+
+        def _merge(self, left: list, right: list) -> list:
+            result = []
+            i = j = 0
+            while i < len(left) and j < len(right):
+                if left[i] <= right[j]:
+                    result.append(left[i])
+                    i += 1
+                else:
+                    result.append(right[j])
+                    j += 1
+            result.extend(left[i:])
+            result.extend(right[j:])
+            return result
+
+        def get_name(self) -> str:
+            return "MergeSort"
+  app/sorter.py: |
+    from strategies.base import SortStrategy
+
+    class Sorter:
+        def __init__(self, strategy: SortStrategy):
+            self._strategy = strategy
+
+        def set_strategy(self, strategy: SortStrategy):
+            self._strategy = strategy
+
+        def execute(self, data: list) -> list:
+            print(f"Sorting with {self._strategy.get_name()}")
+            return self._strategy.sort(data)
+changed:
+  strategies/base.py: |
+    from abc import ABC, abstractmethod
+    from typing import TypeVar, Generic
+
+    T = TypeVar('T')
+
+    class SortStrategy(ABC, Generic[T]):
+        @abstractmethod
+        def sort(self, data: list[T]) -> list[T]:
+            pass
+
+        @abstractmethod
+        def get_name(self) -> str:
+            pass
+
+        @abstractmethod
+        def get_complexity(self) -> str:
+            pass
+
+        def is_stable(self) -> bool:
+            return False
+assertions:
+  must_include:
+  - base.py
+  - SortStrategy

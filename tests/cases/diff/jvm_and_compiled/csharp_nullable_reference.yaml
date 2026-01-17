@@ -1,0 +1,47 @@
+name: csharp_nullable_reference
+initial:
+  User.cs: |
+    public class User
+    {
+        public int Id { get; set; }
+        public string Name { get; set; }
+    }
+  UserRepository.cs: |
+    // Initial
+    class UserRepository { }
+changed:
+  UserRepository.cs: |
+    using System.Collections.Generic;
+
+    class UserRepository
+    {
+        private readonly Dictionary<int, User> _users = new();
+
+        public User? FindUser(int id)
+        {
+            return _users.TryGetValue(id, out var user) ? user : null;
+        }
+
+        public void Save(User user)
+        {
+            _users[user.Id] = user;
+        }
+
+        public User GetOrCreate(int id, string name)
+        {
+            var user = FindUser(id);
+            if (user is null)
+            {
+                user = new User { Id = id, Name = name };
+                Save(user);
+            }
+            return user;
+        }
+    }
+assertions:
+  must_include:
+  - UserRepository.cs
+  - User?
+  - is null
+options:
+  commit_message: Add nullable reference

@@ -1,0 +1,27 @@
+name: js_016_yield_star_generator
+initial:
+  sub_generator.ts: |
+    export function* subGenerator() {
+        yield 1;
+        yield 2;
+        yield 3;
+    }
+  main_generator.ts: |
+    console.log('initial');
+changed:
+  main_generator.ts: |
+    import { subGenerator } from './sub_generator';
+
+    export function* mainGenerator() {
+        yield 0;
+        yield* subGenerator();
+        yield 4;
+    }
+assertions:
+  must_include:
+  - subGenerator
+  - main_generator.ts
+  must_not_include:
+  - js_garbage_marker_001
+options:
+  commit_message: Add yield* delegation

@@ -1,0 +1,50 @@
+name: cpp_250_placement_new
+initial:
+  object.h: |
+    #pragma once
+    #include <string>
+
+    class Object {
+    public:
+        std::string name;
+        Object(const std::string& n) : name(n) {}
+        ~Object() {}
+    };
+    // unused_marker_67890
+  pool.cpp: |
+    #include <iostream>
+    int main() { return 0; }
+changed:
+  pool.cpp: |
+    #include "object.h"
+    #include <new>
+    #include <cstdlib>
+    #include <cstdint>
+
+    class ObjectPool {
+        alignas(Object) char buffer[sizeof(Object) * 10];
+        size_t used = 0;
+
+    public:
+        Object* allocate(const std::string& name) {
+            if (used >= 10) return nullptr;
+            void* ptr = buffer + sizeof(Object) * used;
+            Object* obj = new (ptr) Object(name);
+            used++;
+            return obj;
+        }
+
+        void deallocate(Object* obj) {
+            obj->~Object();
+        }
+    };
+assertions:
+  must_include:
+  - ObjectPool
+  - allocate
+  - Object
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add placement new

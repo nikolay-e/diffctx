@@ -1,0 +1,20 @@
+name: quality_method_call_on_object
+initial:
+  service.py: |
+    class DataService:
+        def process(self, data):
+            return data.upper()
+  main.py: |
+    def run(): pass
+changed:
+  main.py: |
+    from service import DataService
+
+    def run():
+        svc = DataService()
+        return svc.process("hello")
+assertions:
+  must_include:
+  - class DataService
+options:
+  commit_message: Add service call

@@ -1,0 +1,39 @@
+name: k8s_414_node_selector
+initial:
+  deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: ml-training
+    spec:
+      template:
+        spec:
+          containers:
+          - name: trainer
+            image: ml-trainer:latest
+  unrelated.txt: |
+    garbage_marker_k8s414 = True
+    unused_marker_k8s414 = False
+changed:
+  deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: ml-training
+    spec:
+      template:
+        spec:
+          nodeSelector:
+            gpu: "true"
+            accelerator: nvidia-tesla-v100
+          containers:
+          - name: trainer
+            image: ml-trainer:latest
+assertions:
+  must_include:
+  - nodeSelector
+  must_not_include:
+  - garbage_marker_k8s414
+  - unused_marker_k8s414
+options:
+  commit_message: Add node selector

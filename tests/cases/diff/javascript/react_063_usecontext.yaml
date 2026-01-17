@@ -1,0 +1,30 @@
+name: react_063_usecontext
+initial:
+  ThemeContext.tsx: |
+    import { createContext } from 'react';
+
+    export interface Theme {
+        primary: string;
+        secondary: string;
+    }
+
+    export const ThemeContext = createContext<Theme>({ primary: '#000', secondary: '#fff' });
+  Button.tsx: |
+    console.log('initial');
+changed:
+  Button.tsx: |
+    import { useContext } from 'react';
+    import { ThemeContext } from './ThemeContext';
+
+    export function Button({ children }: { children: React.ReactNode }) {
+        const theme = useContext(ThemeContext);
+        return <button style={{ backgroundColor: theme.primary }}>{children}</button>;
+    }
+assertions:
+  must_include:
+  - ThemeContext
+  - Button.tsx
+  must_not_include:
+  - js_garbage_marker_001
+options:
+  commit_message: Add ThemeContext usage

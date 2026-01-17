@@ -1,0 +1,31 @@
+name: selection_new_function_at_end
+initial:
+  calculator.py: |
+    def add(a, b):
+        return a + b
+
+    def sub(a, b):
+        return a - b
+
+    def mul(a, b):
+        return a * b
+changed:
+  calculator.py: |
+    def add(a, b):
+        return a + b
+
+    def sub(a, b):
+        return a - b
+
+    def mul(a, b):
+        return a * b
+
+    def div(a, b):
+        if b == 0:
+            raise ValueError('division by zero')
+        return a / b
+assertions:
+  must_include:
+  - def div
+  must_not_include:
+  - def mul

@@ -1,0 +1,37 @@
+name: cpp_270_override_specifier
+initial:
+  base.h: |
+    #pragma once
+    #include <string>
+
+    class Base {
+    public:
+        virtual ~Base() = default;
+        virtual std::string name() const { return "Base"; }
+        virtual void process() {}
+    };
+    // garbage_marker_12345
+  derived.cpp: |
+    #include <iostream>
+    int main() { return 0; }
+changed:
+  derived.cpp: |
+    #include "base.h"
+
+    class Derived : public Base {
+    public:
+        std::string name() const override { return "Derived"; }
+        void process() override {
+            // Custom processing
+        }
+    };
+assertions:
+  must_include:
+  - Derived
+  - override
+  - Base
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add override specifier

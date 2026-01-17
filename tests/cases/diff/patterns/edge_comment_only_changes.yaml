@@ -1,0 +1,13 @@
+name: edge_comment_only_changes
+initial:
+  test.py: |
+    def process():
+        return 42
+changed:
+  test.py: |
+    # TODO: refactor this later
+    def process():
+        return 42
+assertions:
+  must_include:
+  - test.py

@@ -1,0 +1,39 @@
+name: php_303_trait
+initial:
+  LoggingTrait.php: |
+    <?php
+    trait LoggingTrait {
+        public function log(string $message): void {
+            echo "[LOG] " . $message . "\n";
+        }
+
+        public function logError(string $message): void {
+            echo "[ERROR] " . $message . "\n";
+        }
+    }
+  Service.php: |
+    <?php
+    class Service {}
+changed:
+  Service.php: |
+    <?php
+    require_once 'LoggingTrait.php';
+
+    class Service {
+        use LoggingTrait;
+
+        public function process(): void {
+            $this->log("Processing started");
+            // Do work
+            $this->log("Processing completed");
+        }
+    }
+assertions:
+  must_include:
+  - use LoggingTrait
+  - $this->log
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add trait

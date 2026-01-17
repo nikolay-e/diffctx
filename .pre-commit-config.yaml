@@ -1,3 +1,11 @@
+minimum_pre_commit_version: '3.5.0'
+default_stages: [pre-commit]
+default_language_version:
+  python: python3.12
+  node: system
+
+fail_fast: false
+
 repos:
   # ============================================================================
   # BASIC FILE QUALITY CHECKS (baseline hygiene)
@@ -21,33 +29,58 @@ repos:
       - id: debug-statements
       - id: name-tests-test
         args: ["--pytest-test-first"]
-        exclude: ^tests/(utils|conftest)\.py$
+        exclude: ^tests/(utils|conftest|framework/.*)\.py$
+      - id: fix-byte-order-marker
+      - id: detect-private-key
 
   # ============================================================================
-  # CODE FORMATTING (minimal - consistency only, not quality)
-  # Order matters: isort must run before black to avoid conflicts
+  # GITHUB ACTIONS VALIDATION
+  # ============================================================================
+  - repo: https://github.com/python-jsonschema/check-jsonschema
+    rev: 0.35.0
+    hooks:
+      - id: check-github-workflows
+        name: Validate GitHub workflows
+        args: ['--verbose']
+      - id: check-dependabot
+        name: Validate Dependabot config
+
+  - repo: https://github.com/rhysd/actionlint
+    rev: v1.7.8
+    hooks:
+      - id: actionlint
+        name: Lint GitHub Actions
+
+  # ============================================================================
+  # CODE FORMATTING (Order: isort → black to avoid conflicts)
   # ============================================================================
   - repo: https://github.com/pycqa/isort
-    rev: 5.13.2
+    rev: 7.0.0
     hooks:
       - id: isort
 
   - repo: https://github.com/psf/black
-    rev: 25.9.0
+    rev: 25.1.0
     hooks:
       - id: black
         language_version: python3
 
+  - repo: https://github.com/asottile/pyupgrade
+    rev: v3.21.1
+    hooks:
+      - id: pyupgrade
+        name: pyupgrade (auto-upgrade Python syntax)
+        args: ['--py312-plus']
+        files: ^src/.*\.py$
+
   # ============================================================================
-  # STATIC TYPING (proven to reduce TypeError/AttributeError in production)
-  # Evidence: Dropbox/Instagram case studies show 15-40% reduction in type errors
+  # STATIC TYPING
   # ============================================================================
   - repo: https://github.com/pre-commit/mirrors-mypy
     rev: v1.18.2
     hooks:
       - id: mypy
-        name: mypy (strict mode for code health)
-        # Runtime deps + stubs needed for mypy's isolated virtualenv
+        name: mypy (strict mode)
         additional_dependencies:
           - types-PyYAML
           - PyYAML
@@ -55,50 +88,32 @@ repos:
         files: ^src/
 
   # ============================================================================
-  # SECURITY & VULNERABILITY DETECTION
-  # Evidence: CVE databases with reproducible advisories
+  # LINTING (Ruff for speed + correctness)
   # ============================================================================
-  - repo: https://github.com/trailofbits/pip-audit
-    rev: v2.9.0
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.14.0
     hooks:
-      - id: pip-audit
-        name: pip-audit (CVE detection in dependencies)
-        # CVE Ignores Documentation:
-        # - GHSA-4xh5-x5gv-qwph (CVE-2025-8869): pip tar extraction path traversal.
-        #   Fix planned for pip 25.3 (not yet released). Low risk: requires attacker-controlled
-        #   sdist AND Python < 3.11.4. Project uses Python 3.9+ with modern interpreters.
-        #   Review after pip 25.3 release.
-        # - GHSA-gm62-xv2j-4w53 (CVE-2025-66418): urllib3 decompression chain DoS.
-        #   Fixed in urllib3 2.6.0. Transitive dependency from pip-audit itself.
-        #   Project pins urllib3>=2.6.0 in pyproject.toml.
-        # - GHSA-2xpw-w6gg-jr37 (CVE-2025-66471): urllib3 highly compressed data handling.
-        #   Fixed in urllib3 2.6.0. Transitive dependency from pip-audit itself.
-        #   Project pins urllib3>=2.6.0 in pyproject.toml.
-        args:
-          [
-            "--desc",
-            "on",
-            "--skip-editable",
-            "--ignore-vuln",
-            "GHSA-4xh5-x5gv-qwph",
-            "--ignore-vuln",
-            "GHSA-gm62-xv2j-4w53",
-            "--ignore-vuln",
-            "GHSA-2xpw-w6gg-jr37",
-          ]
+      - id: ruff
+        name: ruff (correctness-focused checks)
+        args: ["--fix", "--unsafe-fixes"]
 
+  # ============================================================================
+  # SECURITY & VULNERABILITY DETECTION
+  # ============================================================================
   - repo: https://github.com/Yelp/detect-secrets
     rev: v1.5.0
     hooks:
       - id: detect-secrets
         args: ["--baseline", ".secrets.baseline"]
 
-  # ============================================================================
-  # SEMANTIC SECURITY ANALYSIS (replaces basic Bandit)
-  # Evidence: Testable rulepacks, widely adopted in SAST programs
-  # ============================================================================
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.29.0
+    hooks:
+      - id: gitleaks
+        name: Scan for secrets (gitleaks)
+
   - repo: https://github.com/returntocorp/semgrep
-    rev: v1.89.0
+    rev: v1.99.0
     hooks:
       - id: semgrep
         name: semgrep (AST-based security & policy)
@@ -113,8 +128,7 @@ repos:
         files: ^src/
 
   # ============================================================================
-  # DEAD CODE DETECTION (reduces attack surface & maintenance burden)
-  # Evidence: Direct verification - unused code is measurably wasteful
+  # DEAD CODE DETECTION
   # ============================================================================
   - repo: https://github.com/jendrikseipp/vulture
     rev: v2.14
@@ -126,9 +140,7 @@ repos:
         pass_filenames: false
 
   # ============================================================================
-  # CODE DUPLICATION DETECTION (reduces maintenance burden & bug propagation)
-  # Evidence: Studies show duplicated code increases bug density by 2-3x
-  # Detects copy-pasted code blocks that should be refactored into functions
+  # CODE DUPLICATION DETECTION
   # ============================================================================
   - repo: https://github.com/PyCQA/pylint
     rev: v4.0.1
@@ -147,29 +159,17 @@ repos:
         files: ^src/
 
   # ============================================================================
-  # LINTING (focused on correctness, not style)
-  # Using Ruff for speed; flake8 removed to avoid redundancy
-  # ============================================================================
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.14.0
-    hooks:
-      - id: ruff
-        name: ruff (correctness-focused checks)
-        args: ["--fix", "--unsafe-fixes"]
-
-  # ============================================================================
-  # SPELL CHECKING (reduces documentation defects)
+  # SPELL CHECKING
   # ============================================================================
   - repo: https://github.com/codespell-project/codespell
     rev: v2.4.1
     hooks:
       - id: codespell
-        args:
-          ["--write-changes", "--ignore-words-list=crate,nd,ser,llm,async,cli,theses,datas"]
+        args: ["--write-changes", "--ignore-words-list=crate,nd,ser,llm,async,cli,theses,datas"]
         exclude: ^(\.git/|\.venv/|venv/)
 
   # ============================================================================
-  # YAML/JSON LINTING
+  # YAML LINTING
   # ============================================================================
   - repo: https://github.com/adrienverge/yamllint
     rev: v1.37.1
@@ -183,6 +183,34 @@ repos:
             indentation: disable, comments: disable}}
 
   # ============================================================================
+  # SHELL LINTING
+  # ============================================================================
+  - repo: https://github.com/scop/pre-commit-shfmt
+    rev: v3.12.0-2
+    hooks:
+      - id: shfmt
+        name: shfmt (shell script formatting)
+        args: [-w, -i, '2']
+
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.11.0.1
+    hooks:
+      - id: shellcheck
+        name: shellcheck (shell script linting)
+        args: [-x]
+
+  # ============================================================================
+  # MARKDOWN LINTING
+  # ============================================================================
+  - repo: https://github.com/igorshubovych/markdownlint-cli
+    rev: v0.45.0
+    hooks:
+      - id: markdownlint
+        name: Lint Markdown files
+        args: ['--fix']
+        files: \.(md|markdown)$
+
+  # ============================================================================
   # COMMIT MESSAGE QUALITY
   # ============================================================================
   - repo: https://github.com/commitizen-tools/commitizen
@@ -190,18 +218,3 @@ repos:
     hooks:
       - id: commitizen
         stages: [commit-msg]
-
-# ============================================================================
-# TOOLS DEFERRED TO CI (too slow or complex for pre-commit)
-# ============================================================================
-# - CodeQL: GitHub-specific, requires workflow setup
-# - Pysa: Requires framework-specific taint configuration
-# - SonarQube/Cloud: Platform-based, not a hook
-# - Radon: No official pre-commit hook, run via pip in CI
-# - Hypothesis: Property-based testing, runs with pytest in CI
-# - Mutation testing (mutmut/Cosmic Ray): Too slow, CI only
-# - Coverage: Measured in CI with pytest-cov
-# - Import Linter: Requires project-specific contract definition
-# - Atheris/CrossHair: Fuzzing/symbolic execution - CI only
-#
-# See .github/workflows/ci.yml for integration of these tools

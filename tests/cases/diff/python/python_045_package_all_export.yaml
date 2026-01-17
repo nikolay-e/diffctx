@@ -1,0 +1,26 @@
+name: python_045_package_all_export
+initial:
+  mylib/foo.py: |
+    def foo_func():
+        return "foo"
+  mylib/bar.py: |
+    def bar_func():
+        return "bar"
+  mylib/__init__.py: |
+    from .foo import foo_func
+    from .bar import bar_func
+  garbage.py: |
+    garbage_marker_12345 = "package garbage"
+    unused_marker_67890 = "unused package"
+changed:
+  mylib/__init__.py: |
+    from .foo import foo_func
+    from .bar import bar_func
+
+    __all__ = ["foo_func", "bar_func"]
+assertions:
+  must_include:
+  - __all__
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890

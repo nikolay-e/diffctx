@@ -1,0 +1,23 @@
+name: selection_new_function_added
+initial:
+  add_test.py: |
+    def func1():
+        pass
+
+    def func2():
+        pass
+changed:
+  add_test.py: |
+    def func1():
+        pass
+
+    def new_function():
+        x = 1
+        y = 2
+        return x + y
+
+    def func2():
+        pass
+assertions:
+  must_include:
+  - new_function

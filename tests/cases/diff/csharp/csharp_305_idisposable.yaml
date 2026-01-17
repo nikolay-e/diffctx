@@ -1,0 +1,70 @@
+name: csharp_305_idisposable
+initial:
+  Resources/FileResource.cs: |
+    namespace MyApp.Resources;
+
+    public class FileResource : IDisposable
+    {
+        private readonly StreamWriter _writer;
+        private bool _disposed;
+
+        public FileResource(string path)
+        {
+            _writer = new StreamWriter(path);
+        }
+
+        public void Write(string content)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            _writer.Write(content);
+        }
+
+        public void Dispose()
+        {
+            if (!_disposed)
+            {
+                _writer.Dispose();
+                _disposed = true;
+            }
+        }
+    }
+    // garbage_marker_12345
+  Services/FileService.cs: |
+    namespace MyApp.Services;
+
+    public class FileService { }
+changed:
+  Services/FileService.cs: |
+    using MyApp.Resources;
+
+    namespace MyApp.Services;
+
+    public class FileService
+    {
+        public void WriteToFile(string path, string content)
+        {
+            using var resource = new FileResource(path);
+            resource.Write(content);
+        }
+
+        public void WriteMultiple(string path, string[] lines)
+        {
+            using (var resource = new FileResource(path))
+            {
+                foreach (var line in lines)
+                {
+                    resource.Write(line);
+                }
+            }
+        }
+    }
+assertions:
+  must_include:
+  - FileService
+  - FileResource
+  - WriteToFile
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add IDisposable usage

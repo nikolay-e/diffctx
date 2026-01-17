@@ -1,0 +1,52 @@
+name: angular_078_service_injection
+initial:
+  user.service.ts: |
+    import { Injectable } from '@angular/core';
+    import { HttpClient } from '@angular/common/http';
+    import { Observable } from 'rxjs';
+
+    interface User {
+        id: string;
+        name: string;
+    }
+
+    @Injectable({ providedIn: 'root' })
+    export class UserService {
+        constructor(private http: HttpClient) {}
+
+        getUsers(): Observable<User[]> {
+            return this.http.get<User[]>('/api/users');
+        }
+    }
+  user-list.component.ts: |
+    console.log('initial');
+changed:
+  user-list.component.ts: |
+    import { Component, OnInit } from '@angular/core';
+    import { UserService } from './user.service';
+
+    @Component({
+        selector: 'app-user-list',
+        template: `
+            <ul>
+                <li *ngFor="let user of users">{{ user.name }}</li>
+            </ul>
+        `
+    })
+    export class UserListComponent implements OnInit {
+        users: any[] = [];
+
+        constructor(private userService: UserService) {}
+
+        ngOnInit() {
+            this.userService.getUsers().subscribe(users => this.users = users);
+        }
+    }
+assertions:
+  must_include:
+  - UserService
+  - user-list.component.ts
+  must_not_include:
+  - js_garbage_marker_001
+options:
+  commit_message: Add service injection

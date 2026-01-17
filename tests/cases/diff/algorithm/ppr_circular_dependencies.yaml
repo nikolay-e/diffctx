@@ -1,0 +1,19 @@
+name: ppr_circular_dependencies
+initial:
+  circular.py: |
+    def alpha():
+        beta()
+
+    def beta():
+        alpha()
+changed:
+  circular.py: |
+    def alpha():
+        beta()
+        return 1
+
+    def beta():
+        alpha()
+assertions:
+  must_include:
+  - alpha

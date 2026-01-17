@@ -1,0 +1,23 @@
+name: js_004_reexport_traces_to_original
+initial:
+  core.ts: |
+    export function coreFunction(): void {
+        console.log('core');
+    }
+  other.ts: |
+    export { coreFunction } from './core';
+  main.ts: |
+    console.log('initial');
+changed:
+  main.ts: |
+    import { coreFunction } from './other';
+
+    coreFunction();
+assertions:
+  must_include:
+  - coreFunction
+  - main.ts
+  must_not_include:
+  - js_garbage_marker_001
+options:
+  commit_message: Import re-exported function

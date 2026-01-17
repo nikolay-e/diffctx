@@ -1,0 +1,23 @@
+name: helm_532_values_replicas
+initial:
+  templates/deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    spec:
+      replicas: {{ .Values.replicaCount }}
+  values.yaml: |
+    replicaCount: 1
+  junk.txt: |
+    garbage_marker_12345
+    unused_marker_67890
+changed:
+  values.yaml: |
+    replicaCount: 3
+assertions:
+  must_include:
+  - 'replicaCount: 3'
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Update replicas

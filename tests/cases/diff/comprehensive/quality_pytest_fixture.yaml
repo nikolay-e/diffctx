@@ -1,0 +1,29 @@
+name: quality_pytest_fixture
+initial:
+  models.py: |
+    class User:
+        def __init__(self, name, email):
+            self.name = name
+            self.email = email
+
+        def display_name(self):
+            return f"{self.name} <{self.email}>"
+  test_models.py: |
+    def test_placeholder():
+        pass
+changed:
+  test_models.py: |
+    import pytest
+    from models import User
+
+    @pytest.fixture
+    def sample_user():
+        return User("Alice", "alice@example.com")
+
+    def test_display_name(sample_user):
+        assert sample_user.display_name() == "Alice <alice@example.com>"
+assertions:
+  must_include:
+  - class User
+options:
+  commit_message: Add fixture and test

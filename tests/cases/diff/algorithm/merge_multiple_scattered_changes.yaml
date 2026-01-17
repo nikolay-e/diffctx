@@ -1,0 +1,41 @@
+name: merge_multiple_scattered_changes
+initial:
+  module.py: |
+    import os
+
+    CONFIG = 'default'
+
+    def func1():
+        return 1
+
+    def func2():
+        return 2
+
+    def func3():
+        return 3
+
+    class Helper:
+        def method(self):
+            pass
+changed:
+  module.py: |
+    import os
+
+    CONFIG = 'modified'
+
+    def func1():
+        return 10
+
+    def func2():
+        return 2
+
+    def func3():
+        return 30
+
+    class Helper:
+        def method(self):
+            return True
+assertions:
+  must_include:
+  - func1
+  - func3

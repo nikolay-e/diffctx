@@ -1,0 +1,32 @@
+name: rust_016_use_crate_module
+initial:
+  src/utils.rs: |
+    pub fn format_string(s: &str) -> String {
+        format!("[{}]", s)
+    }
+  src/main.rs: |
+    mod utils;
+
+    use crate::utils::format_string;
+
+    fn main() {
+        let result = format_string("hello");
+        println!("{}", result);
+    }
+changed:
+  src/utils.rs: |
+    pub fn format_string(s: &str) -> String {
+        format!("[[{}]]", s)
+    }
+
+    pub fn trim_string(s: &str) -> &str {
+        s.trim()
+    }
+assertions:
+  must_include:
+  - format_string
+  - trim_string
+  must_not_include:
+  - garbage_unused_symbol
+options:
+  commit_message: Update format_string and add trim_string

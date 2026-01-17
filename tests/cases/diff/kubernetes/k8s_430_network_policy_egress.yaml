@@ -1,0 +1,39 @@
+name: k8s_430_network_policy_egress
+initial:
+  networkpolicy.yaml: |
+    apiVersion: networking.k8s.io/v1
+    kind: NetworkPolicy
+    metadata:
+      name: default-deny
+    spec:
+      podSelector: {}
+      policyTypes:
+      - Egress
+  unrelated.txt: |
+    garbage_marker_k8s430 = True
+    unused_marker_k8s430 = False
+changed:
+  networkpolicy.yaml: |
+    apiVersion: networking.k8s.io/v1
+    kind: NetworkPolicy
+    metadata:
+      name: api-policy
+    spec:
+      podSelector:
+        matchLabels:
+          app: api
+      egress:
+      - to:
+        - namespaceSelector:
+            matchLabels:
+              name: database
+        ports:
+        - port: 5432
+assertions:
+  must_include:
+  - 'egress:'
+  must_not_include:
+  - garbage_marker_k8s430
+  - unused_marker_k8s430
+options:
+  commit_message: Add network policy egress

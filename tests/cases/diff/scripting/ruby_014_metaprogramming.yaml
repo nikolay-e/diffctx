@@ -1,0 +1,48 @@
+name: ruby_014_metaprogramming
+initial:
+  dsl.rb: |
+    module DSL
+      def self.define_accessors(*names)
+        names.each do |name|
+          define_method(name) do
+            instance_variable_get("@" + name.to_s)
+          end
+
+          define_method(name.to_s + "=") do |value|
+            instance_variable_set("@" + name.to_s, value)
+          end
+        end
+      end
+    end
+  config.rb: |
+    # Initial
+    class Config
+    end
+  garbage.rb: |
+    garbage_meta_unused_67890 = "never called"
+    unused_marker_12345 = "not used"
+changed:
+  config.rb: |
+    require_relative 'dsl'
+
+    class Config
+      extend DSL
+
+      define_accessors :host, :port, :debug
+
+      def initialize(host: 'localhost', port: 3000, debug: false)
+        @host = host
+        @port = port
+        @debug = debug
+      end
+    end
+
+    config = Config.new
+    puts config.host
+assertions:
+  must_include:
+  - config.rb
+  - define_accessors
+  must_not_include:
+  - garbage_meta_unused_67890
+  - unused_marker_12345

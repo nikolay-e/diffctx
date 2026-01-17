@@ -1,0 +1,37 @@
+name: csharp_entity_framework
+initial:
+  User.cs: |
+    public class User
+    {
+        public int Id { get; set; }
+        public string Name { get; set; }
+        public string Email { get; set; }
+    }
+  AppDbContext.cs: |
+    // Initial
+    class AppDbContext { }
+changed:
+  AppDbContext.cs: |
+    using Microsoft.EntityFrameworkCore;
+
+    public class AppDbContext : DbContext
+    {
+        public DbSet<User> Users { get; set; }
+
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        {
+            modelBuilder.Entity<User>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Email).IsRequired();
+                entity.HasIndex(e => e.Email).IsUnique();
+            });
+        }
+    }
+assertions:
+  must_include:
+  - AppDbContext.cs
+  - DbContext
+  - OnModelCreating
+options:
+  commit_message: Add Entity Framework

@@ -1,0 +1,101 @@
+name: vue_005_defineemits
+initial:
+  Modal.vue: |
+    <template>
+        <div>Initial</div>
+    </template>
+
+    <script setup lang="ts">
+    // vue_garbage_marker_005
+    const GARBAGE_MODAL_CONFIG = { closeOnEscape: true };
+    </script>
+  App.vue: |
+    <template>
+        <div>Initial</div>
+    </template>
+
+    <script setup lang="ts">
+    </script>
+changed:
+  Modal.vue: |
+    <template>
+        <div v-if="isOpen" class="modal-overlay" @click.self="handleClose">
+            <div class="modal-content">
+                <header>
+                    <h2>{{ title }}</h2>
+                    <button @click="handleClose">&times;</button>
+                </header>
+                <main>
+                    <slot></slot>
+                </main>
+                <footer>
+                    <button @click="handleCancel">Cancel</button>
+                    <button @click="handleConfirm">Confirm</button>
+                </footer>
+            </div>
+        </div>
+    </template>
+
+    <script setup lang="ts">
+    defineProps<{
+        isOpen: boolean;
+        title: string;
+    }>();
+
+    const emit = defineEmits<{
+        (e: 'close'): void;
+        (e: 'confirm'): void;
+        (e: 'cancel'): void;
+    }>();
+
+    function handleClose() {
+        emit('close');
+    }
+
+    function handleConfirm() {
+        emit('confirm');
+        emit('close');
+    }
+
+    function handleCancel() {
+        emit('cancel');
+        emit('close');
+    }
+    </script>
+  App.vue: |
+    <template>
+        <div>
+            <button @click="showModal = true">Open Modal</button>
+            <Modal
+                :isOpen="showModal"
+                title="Confirm Action"
+                @close="showModal = false"
+                @confirm="handleConfirm"
+                @cancel="handleCancel"
+            >
+                <p>Are you sure you want to proceed?</p>
+            </Modal>
+        </div>
+    </template>
+
+    <script setup lang="ts">
+    import { ref } from 'vue';
+    import Modal from './Modal.vue';
+
+    const showModal = ref(false);
+
+    function handleConfirm() {
+        console.log('Confirmed!');
+    }
+
+    function handleCancel() {
+        console.log('Cancelled');
+    }
+    </script>
+assertions:
+  must_include:
+  - defineEmits
+  must_not_include:
+  - vue_garbage_marker_005
+options:
+  commit_message: Add Vue defineEmits

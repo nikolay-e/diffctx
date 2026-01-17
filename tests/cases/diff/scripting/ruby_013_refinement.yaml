@@ -1,0 +1,43 @@
+name: ruby_013_refinement
+initial:
+  string_ext.rb: |
+    module StringExtensions
+      refine String do
+        def shout
+          upcase + "!"
+        end
+
+        def whisper
+          downcase + "..."
+        end
+      end
+    end
+  messenger.rb: |
+    # Initial
+    class Messenger
+    end
+  garbage.rb: |
+    garbage_refine_unused_12345 = "never used"
+    unused_marker_67890 = "not used"
+changed:
+  messenger.rb: |
+    require_relative 'string_ext'
+
+    class Messenger
+      using StringExtensions
+
+      def loud_message(text)
+        text.shout
+      end
+
+      def quiet_message(text)
+        text.whisper
+      end
+    end
+assertions:
+  must_include:
+  - messenger.rb
+  - shout
+  must_not_include:
+  - garbage_refine_unused_12345
+  - unused_marker_67890

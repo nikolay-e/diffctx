@@ -1,0 +1,25 @@
+name: cicd_001_gha_workflow_trigger
+initial:
+  .github/workflows/ci.yml: |
+    name: CI
+    on: [push]
+    jobs:
+      build:
+        runs-on: ubuntu-latest
+changed:
+  .github/workflows/ci.yml: |
+    name: CI
+    on:
+      push:
+        branches: [main, develop]
+      pull_request:
+        branches: [main]
+    jobs:
+      build:
+        runs-on: ubuntu-latest
+assertions:
+  must_include:
+  - ci.yml
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890

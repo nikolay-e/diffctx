@@ -1,0 +1,43 @@
+name: cpp_258_struct_packing
+initial:
+  protocol.h: |
+    #pragma once
+    #include <cstdint>
+
+    #pragma pack(push, 1)
+    struct PacketHeader {
+        uint8_t version;
+        uint8_t type;
+        uint16_t length;
+        uint32_t sequence;
+    };
+    #pragma pack(pop)
+    // unused_marker_67890
+  network.cpp: |
+    #include <iostream>
+    int main() { return 0; }
+changed:
+  network.cpp: |
+    #include "protocol.h"
+    #include <cstring>
+
+    void sendPacket(const void* data, size_t len) {
+        PacketHeader header;
+        header.version = 1;
+        header.type = 0;
+        header.length = static_cast<uint16_t>(len);
+        header.sequence = 0;
+
+        char buffer[sizeof(PacketHeader) + 1024];
+        std::memcpy(buffer, &header, sizeof(header));
+        std::memcpy(buffer + sizeof(header), data, len);
+    }
+assertions:
+  must_include:
+  - sendPacket
+  - PacketHeader
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add struct packing

@@ -1,0 +1,34 @@
+name: docker_530_compose_override
+initial:
+  docker-compose.yml: |
+    version: '3.8'
+    services:
+      api:
+        build: .
+        environment:
+          - NODE_ENV=production
+  docker-compose.override.yml: |
+    version: '3.8'
+  unrelated.md: |
+    # garbage_marker_12345
+    unused_marker_67890
+changed:
+  docker-compose.override.yml: |
+    version: '3.8'
+    services:
+      api:
+        environment:
+          - NODE_ENV=development
+          - DEBUG=true
+        volumes:
+          - .:/app
+        ports:
+          - "3000:3000"
+assertions:
+  must_include:
+  - NODE_ENV=development
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add override

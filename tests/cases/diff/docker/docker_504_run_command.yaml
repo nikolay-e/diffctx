@@ -1,0 +1,25 @@
+name: docker_504_run_command
+initial:
+  requirements.txt: |
+    flask==2.0.0
+    gunicorn==20.1.0
+    psycopg2-binary==2.9.0
+  Dockerfile: |
+    FROM python:3.11-slim
+    COPY requirements.txt .
+  junk.py: |
+    garbage_marker_12345 = 1
+    unused_marker_67890 = 2
+changed:
+  Dockerfile: |
+    FROM python:3.11-slim
+    COPY requirements.txt .
+    RUN pip install --no-cache-dir -r requirements.txt
+assertions:
+  must_include:
+  - RUN pip install --no-cache-dir
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add RUN

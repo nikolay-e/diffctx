@@ -164,22 +164,26 @@ class TestSampledCounting:
 
         assert SAMPLE_CHAR_THRESHOLD == 50_000_000
 
-    def test_very_large_text_uses_sampling(self):
-        from treemapper.tokens import SAMPLE_CHAR_THRESHOLD, _count_tokens_sampled, _get_encoder
+    def test_very_large_text_uses_sampling(self, monkeypatch):
+        import treemapper.tokens as tokens_module
+        from treemapper.tokens import _count_tokens_sampled, _get_encoder
 
         encoder = _get_encoder("o200k_base")
         if encoder is None:
             return
 
-        large_text = "x" * (SAMPLE_CHAR_THRESHOLD + 1000)
+        monkeypatch.setattr(tokens_module, "SAMPLE_CHAR_THRESHOLD", 10_000)
+        large_text = "x" * 15_000
         result = _count_tokens_sampled(large_text, len(large_text), encoder, "o200k_base")
         assert result.is_exact is False
         assert result.count > 0
 
-    def test_sampled_result_is_approximate(self):
-        from treemapper.tokens import SAMPLE_CHAR_THRESHOLD
+    def test_sampled_result_is_approximate(self, monkeypatch):
+        import treemapper.tokens as tokens_module
 
-        very_large_text = "word " * (SAMPLE_CHAR_THRESHOLD // 5 + 100000)
-        result = count_tokens(very_large_text)
+        monkeypatch.setattr(tokens_module, "SAMPLE_CHAR_THRESHOLD", 10_000)
+        monkeypatch.setattr(tokens_module, "CHUNK_THRESHOLD", 1_000)
+        text = "word " * 5_000
+        result = count_tokens(text)
         if result.encoding != "approximation":
             assert result.is_exact is False

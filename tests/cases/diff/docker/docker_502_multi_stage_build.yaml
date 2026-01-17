@@ -1,0 +1,33 @@
+name: docker_502_multi_stage_build
+initial:
+  Dockerfile: |
+    FROM node:18
+    COPY . .
+    RUN npm run build
+    CMD ["node", "dist/index.js"]
+  unrelated.txt: |
+    garbage_marker_12345
+    unused_marker_67890
+changed:
+  Dockerfile: |
+    FROM node:18 AS builder
+    WORKDIR /app
+    COPY package*.json ./
+    RUN npm ci
+    COPY . .
+    RUN npm run build
+
+    FROM node:18-slim
+    WORKDIR /app
+    COPY --from=builder /app/dist ./dist
+    COPY --from=builder /app/node_modules ./node_modules
+    CMD ["node", "dist/index.js"]
+assertions:
+  must_include:
+  - FROM node:18 AS builder
+  - COPY --from=builder
+  must_not_include:
+  - garbage_marker_12345
+  - unused_marker_67890
+options:
+  commit_message: Add multi-stage build
