@@ -1,0 +1,28 @@
+name: helm_066_values_volumes
+initial:
+  chart/values.yaml: |
+    persistence:
+      enabled: false
+  chart/templates/deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    spec:
+      template:
+        spec:
+          {{- if .Values.persistence.enabled }}
+          volumes:
+            - name: data
+              persistentVolumeClaim:
+                claimName: {{ .Release.Name }}-data
+          {{- end }}
+changed:
+  chart/values.yaml: |
+    persistence:
+      enabled: true
+      size: 10Gi
+      storageClass: standard
+assertions:
+  must_include:
+    - Deployment
+options:
+  commit_message: enable persistence

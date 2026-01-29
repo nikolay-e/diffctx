@@ -1,0 +1,14 @@
+name: internals_019_math_symbols_in_diff
+initial:
+  math_diff.py: |
+    x = 1
+changed:
+  math_diff.py: |
+    ∑ = sum
+    ∏ = prod
+    result = calculate(α, β)
+assertions:
+  must_include:
+  - calculate
+options:
+  add_garbage: true

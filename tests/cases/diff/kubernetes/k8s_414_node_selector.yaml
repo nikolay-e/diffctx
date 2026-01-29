@@ -1,39 +1,141 @@
 name: k8s_414_node_selector
 initial:
-  deployment.yaml: |
+  k8s/ml/training-job.yaml: |
     apiVersion: apps/v1
     kind: Deployment
     metadata:
       name: ml-training
+      namespace: ml-workloads
+      labels:
+        app: ml-training
+        workload-type: gpu-intensive
+    spec:
+      replicas: 1
+      selector:
+        matchLabels:
+          app: ml-training
+      template:
+        metadata:
+          labels:
+            app: ml-training
+            workload-type: gpu-intensive
+        spec:
+          containers:
+          - name: trainer
+            image: pytorch/pytorch:2.0.1-cuda11.7-cudnn8-runtime
+            command: ["python", "train.py"]
+            env:
+            - name: MODEL_NAME
+              value: "gpt-finetune"
+            - name: BATCH_SIZE
+              value: "32"
+            resources:
+              requests:
+                memory: "16Gi"
+                cpu: "4"
+              limits:
+                memory: "32Gi"
+                cpu: "8"
+
+  k8s/ml/service.yaml: |
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: ml-training-metrics
+      namespace: ml-workloads
+    spec:
+      selector:
+        app: ml-training
+      ports:
+      - name: metrics
+        port: 9090
+        targetPort: 9090
+
+  k8s/unrelated/knative/serving.yaml: |
+    # GARBAGE_K8S_414_KNATIVE_SERVING
+    apiVersion: serving.knative.dev/v1
+    kind: Service
+    metadata:
+      name: GARBAGE_K8S_414_KNATIVE_SVC
     spec:
       template:
         spec:
           containers:
-          - name: trainer
-            image: ml-trainer:latest
-  unrelated.txt: |
-    garbage_marker_k8s414 = True
-    unused_marker_k8s414 = False
+          - image: GARBAGE_K8S_414_KNATIVE_IMAGE
+            ports:
+            - containerPort: GARBAGE_K8S_414_KNATIVE_PORT
+
+  k8s/unrelated/tekton/pipeline.yaml: |
+    # GARBAGE_K8S_414_TEKTON_PIPELINE
+    apiVersion: tekton.dev/v1beta1
+    kind: Pipeline
+    metadata:
+      name: GARBAGE_K8S_414_PIPELINE_NAME
+    spec:
+      tasks:
+      - name: GARBAGE_K8S_414_TASK_NAME
+        taskRef:
+          name: GARBAGE_K8S_414_TASK_REF
+
 changed:
-  deployment.yaml: |
+  k8s/ml/training-job.yaml: |
     apiVersion: apps/v1
     kind: Deployment
     metadata:
       name: ml-training
+      namespace: ml-workloads
+      labels:
+        app: ml-training
+        workload-type: gpu-intensive
     spec:
+      replicas: 1
+      selector:
+        matchLabels:
+          app: ml-training
       template:
+        metadata:
+          labels:
+            app: ml-training
+            workload-type: gpu-intensive
         spec:
           nodeSelector:
-            gpu: "true"
-            accelerator: nvidia-tesla-v100
+            accelerator: nvidia-tesla-a100
+            gpu-memory: "80gb"
+            node.kubernetes.io/instance-type: p4d.24xlarge
           containers:
           - name: trainer
-            image: ml-trainer:latest
+            image: pytorch/pytorch:2.0.1-cuda11.7-cudnn8-runtime
+            command: ["python", "train.py"]
+            env:
+            - name: MODEL_NAME
+              value: "gpt-finetune"
+            - name: BATCH_SIZE
+              value: "32"
+            resources:
+              requests:
+                memory: "16Gi"
+                cpu: "4"
+                nvidia.com/gpu: "8"
+              limits:
+                memory: "32Gi"
+                cpu: "8"
+                nvidia.com/gpu: "8"
+
 assertions:
   must_include:
   - nodeSelector
+  - nvidia-tesla-a100
+  - gpu-memory
+  - instance-type
+  - nvidia.com/gpu
   must_not_include:
-  - garbage_marker_k8s414
-  - unused_marker_k8s414
+  - GARBAGE_K8S_414_KNATIVE_SERVING
+  - GARBAGE_K8S_414_KNATIVE_SVC
+  - GARBAGE_K8S_414_KNATIVE_IMAGE
+  - GARBAGE_K8S_414_KNATIVE_PORT
+  - GARBAGE_K8S_414_TEKTON_PIPELINE
+  - GARBAGE_K8S_414_PIPELINE_NAME
+  - GARBAGE_K8S_414_TASK_NAME
+  - GARBAGE_K8S_414_TASK_REF
 options:
-  commit_message: Add node selector
+  commit_message: Add node selector for GPU nodes

@@ -1,49 +1,168 @@
 name: k8s_405_configmap_reference
 initial:
-  configmap.yaml: |
+  k8s/base/configmap.yaml: |
     apiVersion: v1
     kind: ConfigMap
     metadata:
       name: app-config
+      namespace: production
+      labels:
+        app: myapp
     data:
       LOG_LEVEL: info
       MAX_CONNECTIONS: "100"
-  deployment.yaml: |
+      CACHE_TTL: "3600"
+      FEATURE_FLAGS: |
+        enable_new_ui=true
+        enable_analytics=true
+        beta_features=false
+      config.yaml: |
+        server:
+          port: 8080
+          host: 0.0.0.0
+        logging:
+          level: info
+          format: json
+
+  k8s/base/deployment.yaml: |
     apiVersion: apps/v1
     kind: Deployment
     metadata:
       name: myapp
+      namespace: production
+      labels:
+        app: myapp
+        version: v1
     spec:
+      replicas: 3
+      selector:
+        matchLabels:
+          app: myapp
       template:
+        metadata:
+          labels:
+            app: myapp
+            version: v1
         spec:
           containers:
           - name: app
+            image: myapp:v1.0.0
+            ports:
+            - containerPort: 8080
             env: []
-  unrelated.txt: |
-    garbage_marker_k8s405 = True
-    unused_marker_k8s405 = False
+            volumeMounts:
+            - name: config-volume
+              mountPath: /app/config
+              readOnly: true
+          volumes:
+          - name: config-volume
+            configMap:
+              name: app-config
+              items:
+              - key: config.yaml
+                path: config.yaml
+
+  k8s/unrelated/storage/minio.yaml: |
+    # GARBAGE_K8S_405_MINIO_STORAGE
+    apiVersion: apps/v1
+    kind: StatefulSet
+    metadata:
+      name: GARBAGE_K8S_405_MINIO_SS
+    spec:
+      serviceName: GARBAGE_K8S_405_MINIO_SVC
+      replicas: 4
+      selector:
+        matchLabels:
+          app: GARBAGE_K8S_405_MINIO_LABEL
+      template:
+        spec:
+          containers:
+          - name: minio
+            image: minio/minio:GARBAGE_K8S_405_MINIO_TAG
+            env:
+            - name: MINIO_ROOT_USER
+              value: GARBAGE_K8S_405_MINIO_USER
+
+  k8s/unrelated/messaging/rabbitmq.yaml: |
+    # GARBAGE_K8S_405_RABBITMQ_CLUSTER
+    apiVersion: rabbitmq.com/v1beta1
+    kind: RabbitmqCluster
+    metadata:
+      name: GARBAGE_K8S_405_RABBIT_NAME
+    spec:
+      replicas: 3
+      image: rabbitmq:GARBAGE_K8S_405_RABBIT_VERSION
+
 changed:
-  deployment.yaml: |
+  k8s/base/deployment.yaml: |
     apiVersion: apps/v1
     kind: Deployment
     metadata:
       name: myapp
+      namespace: production
+      labels:
+        app: myapp
+        version: v1
     spec:
+      replicas: 3
+      selector:
+        matchLabels:
+          app: myapp
       template:
+        metadata:
+          labels:
+            app: myapp
+            version: v1
         spec:
           containers:
           - name: app
+            image: myapp:v1.0.0
+            ports:
+            - containerPort: 8080
             env:
             - name: LOG_LEVEL
               valueFrom:
                 configMapKeyRef:
                   name: app-config
                   key: LOG_LEVEL
+            - name: MAX_CONNECTIONS
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: MAX_CONNECTIONS
+            - name: CACHE_TTL
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: CACHE_TTL
+            volumeMounts:
+            - name: config-volume
+              mountPath: /app/config
+              readOnly: true
+          volumes:
+          - name: config-volume
+            configMap:
+              name: app-config
+              items:
+              - key: config.yaml
+                path: config.yaml
+
 assertions:
   must_include:
   - configMapKeyRef
+  - LOG_LEVEL
+  - MAX_CONNECTIONS
+  - CACHE_TTL
+  - app-config
   must_not_include:
-  - garbage_marker_k8s405
-  - unused_marker_k8s405
+  - GARBAGE_K8S_405_MINIO_STORAGE
+  - GARBAGE_K8S_405_MINIO_SS
+  - GARBAGE_K8S_405_MINIO_SVC
+  - GARBAGE_K8S_405_MINIO_LABEL
+  - GARBAGE_K8S_405_MINIO_TAG
+  - GARBAGE_K8S_405_MINIO_USER
+  - GARBAGE_K8S_405_RABBITMQ_CLUSTER
+  - GARBAGE_K8S_405_RABBIT_NAME
+  - GARBAGE_K8S_405_RABBIT_VERSION
 options:
-  commit_message: Add ConfigMap reference
+  commit_message: Reference ConfigMap values in deployment

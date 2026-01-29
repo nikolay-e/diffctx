@@ -35,7 +35,7 @@ def _process_char_in_string(char: str, string_char: str, escape_count: int) -> t
 
 
 def _process_char_outside_string(char: str, stack: list[str]) -> tuple[bool, str]:
-    if char in ('"', "'"):
+    if char in ('"', "'", "`"):
         return True, char
     if char in _BRACKET_PAIRS:
         stack.append(_BRACKET_PAIRS[char])

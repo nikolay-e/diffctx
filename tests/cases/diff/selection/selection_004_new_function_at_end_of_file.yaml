@@ -1,0 +1,119 @@
+name: selection_004_new_function_at_end_of_file
+initial:
+  calculator.py: |
+    def add(a, b):
+        add_marker = "addition_operation"
+        return a + b
+
+    def sub(a, b):
+        sub_marker = "subtraction_operation"
+        return a - b
+
+    def mul(a, b):
+        mul_marker = "multiplication_operation"
+        return a * b
+
+  math_utils.py: |
+    def square(x):
+        return x * x
+
+    def cube(x):
+        return x * x * x
+
+    def power(base, exp):
+        return base ** exp
+
+  garbage_sel_004_validators.py: |
+    def GARBAGE_SEL_004_validate_input_alpha(value):
+        return "GARBAGE_SEL_004_valid_alpha"
+
+    def GARBAGE_SEL_004_validate_input_beta(value):
+        return "GARBAGE_SEL_004_valid_beta"
+
+    def GARBAGE_SEL_004_validate_input_gamma(value):
+        return "GARBAGE_SEL_004_valid_gamma"
+
+    class GARBAGE_SEL_004_ValidatorClass:
+        def validate(self, data):
+            return "GARBAGE_SEL_004_validator_class_result"
+
+        def sanitize(self, data):
+            return "GARBAGE_SEL_004_sanitize_result"
+
+  garbage_sel_004_formatters.py: |
+    def GARBAGE_SEL_004_format_output_one(data):
+        return f"GARBAGE_SEL_004_formatted_one_{data}"
+
+    def GARBAGE_SEL_004_format_output_two(data):
+        return f"GARBAGE_SEL_004_formatted_two_{data}"
+
+    GARBAGE_SEL_004_FORMAT_CONFIG = {
+        "pattern": "GARBAGE_SEL_004_pattern_value",
+        "delimiter": "GARBAGE_SEL_004_delimiter_value",
+    }
+
+  garbage_sel_004_handlers.py: |
+    class GARBAGE_SEL_004_RequestHandler:
+        def handle_get(self):
+            return "GARBAGE_SEL_004_get_response"
+
+        def handle_post(self):
+            return "GARBAGE_SEL_004_post_response"
+
+    class GARBAGE_SEL_004_ResponseHandler:
+        def format_success(self):
+            return "GARBAGE_SEL_004_success_format"
+
+        def format_error(self):
+            return "GARBAGE_SEL_004_error_format"
+
+changed:
+  calculator.py: |
+    def add(a, b):
+        add_marker = "addition_operation"
+        return a + b
+
+    def sub(a, b):
+        sub_marker = "subtraction_operation"
+        return a - b
+
+    def mul(a, b):
+        mul_marker = "multiplication_operation"
+        return a * b
+
+    def div(a, b):
+        if b == 0:
+            raise ValueError("division by zero")
+        div_marker = "division_operation_added"
+        return a / b
+
+assertions:
+  must_include:
+    - def div
+    - division by zero
+    - division_operation_added
+  must_not_include:
+    - def mul
+    - mul_marker
+    - multiplication_operation
+    - GARBAGE_SEL_004_validate_input_alpha
+    - GARBAGE_SEL_004_validate_input_beta
+    - GARBAGE_SEL_004_valid_alpha
+    - GARBAGE_SEL_004_valid_beta
+    - GARBAGE_SEL_004_ValidatorClass
+    - GARBAGE_SEL_004_validator_class_result
+    - GARBAGE_SEL_004_sanitize_result
+    - GARBAGE_SEL_004_format_output_one
+    - GARBAGE_SEL_004_format_output_two
+    - GARBAGE_SEL_004_formatted_one
+    - GARBAGE_SEL_004_FORMAT_CONFIG
+    - GARBAGE_SEL_004_pattern_value
+    - GARBAGE_SEL_004_RequestHandler
+    - GARBAGE_SEL_004_ResponseHandler
+    - GARBAGE_SEL_004_get_response
+    - GARBAGE_SEL_004_post_response
+    - GARBAGE_SEL_004_success_format
+    - GARBAGE_SEL_004_error_format
+    - garbage_sel_004_validators.py
+    - garbage_sel_004_formatters.py
+    - garbage_sel_004_handlers.py

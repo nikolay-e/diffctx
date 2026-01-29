@@ -1,0 +1,75 @@
+name: fragments_053_markdown_empty_sections_filtered
+initial:
+  sparse.md: |
+    # Section 1
+
+    # Section 2
+
+    Content here.
+
+    # Section 3
+
+    # Garbage Empty Section GARBAGE_FRAG_empty053
+
+    # Garbage Section With Content GARBAGE_FRAG_withcontent053
+    GARBAGE_FRAG_content053a
+
+    # Another Empty Garbage GARBAGE_FRAG_anotherempty053
+
+    # Final Garbage Section GARBAGE_FRAG_final053
+    GARBAGE_FRAG_content053b
+
+    ## Garbage Subsection GARBAGE_FRAG_sub053
+    GARBAGE_FRAG_subcontent053
+  garbage_sparse_053.md: |
+    # Empty Garbage Doc Section GARBAGE_FRAG_garbempty053
+
+    # Garbage Doc With Content GARBAGE_FRAG_garbcontent053
+    GARBAGE_FRAG_garbline053a
+
+    # Another Empty GARBAGE_FRAG_garbanotherempty053
+
+    GARBAGE_FRAG_garbline053b
+changed:
+  sparse.md: |
+    # Section 1
+
+    # Section 2
+
+    Modified content here.
+
+    # Section 3
+
+    # Garbage Empty Section GARBAGE_FRAG_empty053
+
+    # Garbage Section With Content GARBAGE_FRAG_withcontent053
+    GARBAGE_FRAG_content053a
+
+    # Another Empty Garbage GARBAGE_FRAG_anotherempty053
+
+    # Final Garbage Section GARBAGE_FRAG_final053
+    GARBAGE_FRAG_content053b
+
+    ## Garbage Subsection GARBAGE_FRAG_sub053
+    GARBAGE_FRAG_subcontent053
+assertions:
+  must_include:
+    - sparse.md
+    - Modified
+  must_not_include:
+    - GARBAGE_FRAG_empty053
+    - GARBAGE_FRAG_withcontent053
+    - GARBAGE_FRAG_content053a
+    - GARBAGE_FRAG_anotherempty053
+    - GARBAGE_FRAG_final053
+    - GARBAGE_FRAG_content053b
+    - GARBAGE_FRAG_sub053
+    - GARBAGE_FRAG_subcontent053
+    - GARBAGE_FRAG_garbempty053
+    - GARBAGE_FRAG_garbcontent053
+    - GARBAGE_FRAG_garbline053a
+    - GARBAGE_FRAG_garbanotherempty053
+    - GARBAGE_FRAG_garbline053b
+    - garbage_sparse_053.md
+options:
+  commit_message: Modify content

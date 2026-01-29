@@ -1,46 +1,230 @@
 name: java_001_class_method_added
 initial:
-  src/main/java/com/example/Calculator.java: |
-    package com.example;
+  src/main/java/com/mathengine/core/Calculator.java: |
+    package com.mathengine.core;
+
+    import java.math.BigDecimal;
+    import java.math.RoundingMode;
 
     public class Calculator {
-        public int add(int a, int b) {
-            return a + b;
+        private static final int DEFAULT_SCALE = 10;
+        private final int scale;
+
+        public Calculator() {
+            this.scale = DEFAULT_SCALE;
+        }
+
+        public Calculator(int scale) {
+            if (scale < 0) {
+                throw new IllegalArgumentException("Scale must be non-negative");
+            }
+            this.scale = scale;
+        }
+
+        public BigDecimal add(BigDecimal a, BigDecimal b) {
+            validateInputs(a, b);
+            return a.add(b).setScale(scale, RoundingMode.HALF_UP);
+        }
+
+        public BigDecimal add(double a, double b) {
+            return add(BigDecimal.valueOf(a), BigDecimal.valueOf(b));
+        }
+
+        private void validateInputs(BigDecimal... values) {
+            for (BigDecimal value : values) {
+                if (value == null) {
+                    throw new IllegalArgumentException("Input values cannot be null");
+                }
+            }
+        }
+
+        public int getScale() {
+            return scale;
         }
     }
-  src/main/java/com/example/Main.java: |
-    package com.example;
+  src/main/java/com/mathengine/Main.java: |
+    package com.mathengine;
+
+    import com.mathengine.core.Calculator;
+    import java.math.BigDecimal;
 
     public class Main {
         public static void main(String[] args) {
             Calculator calc = new Calculator();
-            System.out.println(calc.add(1, 2));
+            BigDecimal result = calc.add(BigDecimal.valueOf(1.5), BigDecimal.valueOf(2.5));
+            System.out.println("Result: " + result);
+        }
+    }
+  src/main/java/com/mathengine/unrelated/ReportGenerator.java: |
+    package com.mathengine.unrelated;
+
+    import java.time.LocalDateTime;
+    import java.util.UUID;
+
+    public class ReportGenerator {
+        public static final String GARBAGE_JAVA_REPORT_001 = "unrelated_report_marker";
+        private static final String GARBAGE_JAVA_INTERNAL_002 = "internal_marker";
+
+        private final String reportId;
+        private final LocalDateTime createdAt;
+
+        public ReportGenerator() {
+            this.reportId = UUID.randomUUID().toString();
+            this.createdAt = LocalDateTime.now();
+            initializeGarbageData();
+        }
+
+        private void initializeGarbageData() {
+            String marker = GARBAGE_JAVA_REPORT_001 + GARBAGE_JAVA_INTERNAL_002;
+            System.out.println(marker);
+        }
+
+        public String generateSummary() {
+            return String.format("Report %s created at %s", reportId, createdAt);
+        }
+
+        public void processUnrelatedData() {
+            String GARBAGE_JAVA_LOCAL_003 = "local_marker";
+            System.out.println(GARBAGE_JAVA_LOCAL_003);
+        }
+    }
+  src/main/java/com/mathengine/unrelated/StatisticsCollector.java: |
+    package com.mathengine.unrelated;
+
+    import java.util.ArrayList;
+    import java.util.List;
+
+    public class StatisticsCollector {
+        public static final String GARBAGE_JAVA_STATS_004 = "stats_collector_marker";
+
+        private final List<Double> samples = new ArrayList<>();
+
+        public void addSample(double value) {
+            samples.add(value);
+        }
+
+        public double calculateMean() {
+            if (samples.isEmpty()) {
+                return 0.0;
+            }
+            return samples.stream().mapToDouble(Double::doubleValue).average().orElse(0.0);
+        }
+
+        public void clearSamples() {
+            samples.clear();
+            logGarbageMarker();
+        }
+
+        private void logGarbageMarker() {
+            System.out.println(GARBAGE_JAVA_STATS_004);
         }
     }
 changed:
-  src/main/java/com/example/Calculator.java: |
-    package com.example;
+  src/main/java/com/mathengine/core/Calculator.java: |
+    package com.mathengine.core;
+
+    import java.math.BigDecimal;
+    import java.math.RoundingMode;
+    import java.math.MathContext;
 
     public class Calculator {
-        public int add(int a, int b) {
-            return a + b;
+        private static final int DEFAULT_SCALE = 10;
+        private static final MathContext DEFAULT_CONTEXT = MathContext.DECIMAL128;
+        private final int scale;
+        private final MathContext mathContext;
+
+        public Calculator() {
+            this.scale = DEFAULT_SCALE;
+            this.mathContext = DEFAULT_CONTEXT;
         }
 
-        public int multiply(int a, int b) {
-            return a * b;
+        public Calculator(int scale) {
+            if (scale < 0) {
+                throw new IllegalArgumentException("Scale must be non-negative");
+            }
+            this.scale = scale;
+            this.mathContext = DEFAULT_CONTEXT;
         }
 
-        public int subtract(int a, int b) {
-            return a - b;
+        public Calculator(int scale, MathContext mathContext) {
+            if (scale < 0) {
+                throw new IllegalArgumentException("Scale must be non-negative");
+            }
+            this.scale = scale;
+            this.mathContext = mathContext;
+        }
+
+        public BigDecimal add(BigDecimal a, BigDecimal b) {
+            validateInputs(a, b);
+            return a.add(b, mathContext).setScale(scale, RoundingMode.HALF_UP);
+        }
+
+        public BigDecimal add(double a, double b) {
+            return add(BigDecimal.valueOf(a), BigDecimal.valueOf(b));
+        }
+
+        public BigDecimal multiply(BigDecimal a, BigDecimal b) {
+            validateInputs(a, b);
+            return a.multiply(b, mathContext).setScale(scale, RoundingMode.HALF_UP);
+        }
+
+        public BigDecimal multiply(double a, double b) {
+            return multiply(BigDecimal.valueOf(a), BigDecimal.valueOf(b));
+        }
+
+        public BigDecimal subtract(BigDecimal a, BigDecimal b) {
+            validateInputs(a, b);
+            return a.subtract(b, mathContext).setScale(scale, RoundingMode.HALF_UP);
+        }
+
+        public BigDecimal subtract(double a, double b) {
+            return subtract(BigDecimal.valueOf(a), BigDecimal.valueOf(b));
+        }
+
+        public BigDecimal divide(BigDecimal a, BigDecimal b) {
+            validateInputs(a, b);
+            if (b.compareTo(BigDecimal.ZERO) == 0) {
+                throw new ArithmeticException("Division by zero");
+            }
+            return a.divide(b, scale, RoundingMode.HALF_UP);
+        }
+
+        public BigDecimal divide(double a, double b) {
+            return divide(BigDecimal.valueOf(a), BigDecimal.valueOf(b));
+        }
+
+        private void validateInputs(BigDecimal... values) {
+            for (BigDecimal value : values) {
+                if (value == null) {
+                    throw new IllegalArgumentException("Input values cannot be null");
+                }
+            }
+        }
+
+        public int getScale() {
+            return scale;
+        }
+
+        public MathContext getMathContext() {
+            return mathContext;
         }
     }
 assertions:
   must_include:
-  - multiply
-  - subtract
-  - Calculator
+    - multiply
+    - subtract
+    - divide
+    - Calculator
+    - MathContext
+    - Division by zero
   must_not_include:
-  - garbage_marker_12345
-  - unused_marker_67890
+    - GARBAGE_JAVA_REPORT_001
+    - GARBAGE_JAVA_INTERNAL_002
+    - GARBAGE_JAVA_LOCAL_003
+    - GARBAGE_JAVA_STATS_004
+    - ReportGenerator
+    - StatisticsCollector
+    - generateSummary
+    - calculateMean
 options:
-  commit_message: Add multiply and subtract methods
+  commit_message: Add multiply, subtract, and divide methods with MathContext

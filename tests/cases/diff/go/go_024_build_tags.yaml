@@ -1,51 +1,397 @@
 name: go_024_build_tags
 initial:
-  platform.go: |
-    package main
+  internal/platform/platform.go: |
+    package platform
 
-    func GetPlatform() string {
-        return "unknown"
-    }
-  unrelated/garbage.go: |
-    package unrelated
-
-    func UnusedPlatform_12345() {
-        println("garbage_marker_12345")
+    type PlatformInfo struct {
+        OS       string
+        Arch     string
+        Version  string
+        Features []string
     }
 
-    func AnotherUnused_67890() {
-        println("unused_marker_67890")
+    type SystemResources struct {
+        CPUCores    int
+        MemoryTotal uint64
+        MemoryFree  uint64
+        DiskTotal   uint64
+        DiskFree    uint64
     }
+
+    type NetworkInterface struct {
+        Name       string
+        MacAddress string
+        IPAddress  string
+        Netmask    string
+        Gateway    string
+        IsUp       bool
+    }
+
+    func GetPlatformInfo() *PlatformInfo {
+        return &PlatformInfo{OS: "unknown", Arch: "unknown"}
+    }
+
+    func GetSystemResources() (*SystemResources, error) {
+        return &SystemResources{}, nil
+    }
+
+    func GetNetworkInterfaces() ([]NetworkInterface, error) {
+        return nil, nil
+    }
+
+  internal/platform/config.go: |
+    package platform
+
+    type Config struct {
+        DataDir     string
+        CacheDir    string
+        ConfigDir   string
+        LogDir      string
+        TempDir     string
+        Permissions uint32
+    }
+
+    func DefaultConfig() *Config {
+        return &Config{
+            DataDir:     "/data",
+            CacheDir:    "/cache",
+            ConfigDir:   "/config",
+            LogDir:      "/logs",
+            TempDir:     "/tmp",
+            Permissions: 0755,
+        }
+    }
+
+  internal/unrelated/cloud/aws_sdk.go: |
+    package cloud
+
+    import "context"
+
+    const GARBAGE_GO_AWS_SDK_A1B2C3 = "aws_garbage_marker"
+
+    type GARBAGE_GO_TYPE_S3CLIENT_D4E5F6 struct {
+        region string
+        bucket string
+    }
+
+    func GARBAGE_GO_FUNC_AWS_G7H8I9() string {
+        return "GARBAGE_GO_AWS_UNUSED_J0K1L2"
+    }
+
+    type AWSCredentials struct {
+        AccessKeyID     string
+        SecretAccessKey string
+        SessionToken    string
+        Region          string
+    }
+
+    func GARBAGE_GO_FUNC_S3_UPLOAD_M3N4O5(ctx context.Context) error {
+        println("GARBAGE_GO_S3_OUTPUT_P6Q7R8")
+        return nil
+    }
+
+  internal/unrelated/cloud/gcp_storage.go: |
+    package cloud
+
+    const GARBAGE_GO_GCP_STORAGE_S9T0U1 = "gcp_garbage"
+
+    type GARBAGE_GO_TYPE_GCSBUCKET_V2W3X4 struct {
+        projectID  string
+        bucketName string
+    }
+
+    func GARBAGE_GO_FUNC_GCP_Y5Z6A7() {
+        println("GARBAGE_GO_GCP_OUTPUT_B8C9D0")
+    }
+
+    type GCPConfig struct {
+        ProjectID       string
+        ServiceAccount  string
+        CredentialsFile string
+    }
+
+    func GARBAGE_GO_FUNC_GCS_DOWNLOAD_E1F2G3(key string) ([]byte, error) {
+        return nil, nil
+    }
+
+  internal/unrelated/cloud/azure_blob.go: |
+    package cloud
+
+    const GARBAGE_GO_AZURE_BLOB_H4I5J6 = "azure_garbage"
+
+    type GARBAGE_GO_TYPE_AZCONTAINER_K7L8M9 struct {
+        accountName   string
+        containerName string
+    }
+
+    func GARBAGE_GO_FUNC_AZURE_N0O1P2() {
+        println("GARBAGE_GO_AZURE_OUTPUT_Q3R4S5")
+    }
+
 changed:
-  platform_linux.go: |
+  internal/platform/platform_linux.go: |
     //go:build linux
 
-    package main
+    package platform
 
-    func GetPlatform() string {
-        return "linux"
+    import (
+        "os"
+        "runtime"
+        "strings"
+        "syscall"
+    )
+
+    func GetPlatformInfo() *PlatformInfo {
+        info := &PlatformInfo{
+            OS:       "linux",
+            Arch:     runtime.GOARCH,
+            Features: []string{},
+        }
+
+        if data, err := os.ReadFile("/etc/os-release"); err == nil {
+            lines := strings.Split(string(data), "\n")
+            for _, line := range lines {
+                if strings.HasPrefix(line, "VERSION_ID=") {
+                    info.Version = strings.Trim(strings.TrimPrefix(line, "VERSION_ID="), "\"")
+                    break
+                }
+            }
+        }
+
+        info.Features = detectLinuxFeatures()
+        return info
     }
 
-    func LinuxSpecific() {
-        println("Linux only")
+    func detectLinuxFeatures() []string {
+        features := []string{}
+
+        if _, err := os.Stat("/sys/fs/cgroup"); err == nil {
+            features = append(features, "cgroups")
+        }
+
+        if _, err := os.Stat("/proc/sys/kernel/unprivileged_userns_clone"); err == nil {
+            features = append(features, "user_namespaces")
+        }
+
+        if _, err := os.Stat("/dev/kvm"); err == nil {
+            features = append(features, "kvm")
+        }
+
+        return features
     }
-  platform_darwin.go: |
+
+    func GetSystemResources() (*SystemResources, error) {
+        var stat syscall.Sysinfo_t
+        if err := syscall.Sysinfo(&stat); err != nil {
+            return nil, err
+        }
+
+        resources := &SystemResources{
+            CPUCores:    runtime.NumCPU(),
+            MemoryTotal: stat.Totalram * uint64(stat.Unit),
+            MemoryFree:  stat.Freeram * uint64(stat.Unit),
+        }
+
+        var statfs syscall.Statfs_t
+        if err := syscall.Statfs("/", &statfs); err == nil {
+            resources.DiskTotal = statfs.Blocks * uint64(statfs.Bsize)
+            resources.DiskFree = statfs.Bfree * uint64(statfs.Bsize)
+        }
+
+        return resources, nil
+    }
+
+    func GetNetworkInterfaces() ([]NetworkInterface, error) {
+        return parseLinuxNetworkInterfaces()
+    }
+
+    func parseLinuxNetworkInterfaces() ([]NetworkInterface, error) {
+        return nil, nil
+    }
+
+    func LinuxSpecificInit() error {
+        return nil
+    }
+
+  internal/platform/platform_darwin.go: |
     //go:build darwin
 
-    package main
+    package platform
 
-    func GetPlatform() string {
-        return "darwin"
+    import (
+        "os/exec"
+        "runtime"
+        "strings"
+        "syscall"
+    )
+
+    func GetPlatformInfo() *PlatformInfo {
+        info := &PlatformInfo{
+            OS:       "darwin",
+            Arch:     runtime.GOARCH,
+            Features: []string{},
+        }
+
+        if out, err := exec.Command("sw_vers", "-productVersion").Output(); err == nil {
+            info.Version = strings.TrimSpace(string(out))
+        }
+
+        info.Features = detectDarwinFeatures()
+        return info
     }
 
-    func DarwinSpecific() {
-        println("macOS only")
+    func detectDarwinFeatures() []string {
+        features := []string{}
+
+        if out, err := exec.Command("sysctl", "-n", "hw.optional.arm64").Output(); err == nil {
+            if strings.TrimSpace(string(out)) == "1" {
+                features = append(features, "apple_silicon")
+            }
+        }
+
+        if _, err := exec.LookPath("metal"); err == nil {
+            features = append(features, "metal")
+        }
+
+        features = append(features, "sandboxing")
+        return features
     }
+
+    func GetSystemResources() (*SystemResources, error) {
+        resources := &SystemResources{
+            CPUCores: runtime.NumCPU(),
+        }
+
+        if out, err := exec.Command("sysctl", "-n", "hw.memsize").Output(); err == nil {
+            var mem uint64
+            if _, err := fmt.Sscanf(strings.TrimSpace(string(out)), "%d", &mem); err == nil {
+                resources.MemoryTotal = mem
+            }
+        }
+
+        var statfs syscall.Statfs_t
+        if err := syscall.Statfs("/", &statfs); err == nil {
+            resources.DiskTotal = statfs.Blocks * uint64(statfs.Bsize)
+            resources.DiskFree = statfs.Bfree * uint64(statfs.Bsize)
+        }
+
+        return resources, nil
+    }
+
+    func GetNetworkInterfaces() ([]NetworkInterface, error) {
+        return parseDarwinNetworkInterfaces()
+    }
+
+    func parseDarwinNetworkInterfaces() ([]NetworkInterface, error) {
+        return nil, nil
+    }
+
+    func DarwinSpecificInit() error {
+        return nil
+    }
+
+  internal/platform/platform_windows.go: |
+    //go:build windows
+
+    package platform
+
+    import (
+        "runtime"
+        "syscall"
+        "unsafe"
+    )
+
+    var (
+        kernel32         = syscall.NewLazyDLL("kernel32.dll")
+        getVersionExW    = kernel32.NewProc("GetVersionExW")
+        globalMemoryStatusEx = kernel32.NewProc("GlobalMemoryStatusEx")
+    )
+
+    type osVersionInfoEx struct {
+        dwOSVersionInfoSize uint32
+        dwMajorVersion      uint32
+        dwMinorVersion      uint32
+        dwBuildNumber       uint32
+        dwPlatformId        uint32
+        szCSDVersion        [128]uint16
+    }
+
+    func GetPlatformInfo() *PlatformInfo {
+        info := &PlatformInfo{
+            OS:       "windows",
+            Arch:     runtime.GOARCH,
+            Features: []string{},
+        }
+
+        var osvi osVersionInfoEx
+        osvi.dwOSVersionInfoSize = uint32(unsafe.Sizeof(osvi))
+        getVersionExW.Call(uintptr(unsafe.Pointer(&osvi)))
+
+        info.Version = fmt.Sprintf("%d.%d.%d",
+            osvi.dwMajorVersion, osvi.dwMinorVersion, osvi.dwBuildNumber)
+
+        info.Features = detectWindowsFeatures()
+        return info
+    }
+
+    func detectWindowsFeatures() []string {
+        features := []string{}
+        features = append(features, "wsl_capable")
+        features = append(features, "hyperv_capable")
+        return features
+    }
+
+    func GetSystemResources() (*SystemResources, error) {
+        resources := &SystemResources{
+            CPUCores: runtime.NumCPU(),
+        }
+        return resources, nil
+    }
+
+    func GetNetworkInterfaces() ([]NetworkInterface, error) {
+        return parseWindowsNetworkInterfaces()
+    }
+
+    func parseWindowsNetworkInterfaces() ([]NetworkInterface, error) {
+        return nil, nil
+    }
+
+    func WindowsSpecificInit() error {
+        return nil
+    }
+
 assertions:
   must_include:
-  - GetPlatform
+    - GetPlatformInfo
+    - GetSystemResources
+    - GetNetworkInterfaces
+    - PlatformInfo
+    - SystemResources
+    - detectLinuxFeatures
+    - detectDarwinFeatures
+    - detectWindowsFeatures
+    - "//go:build linux"
+    - "//go:build darwin"
+    - "//go:build windows"
   must_not_include:
-  - garbage_marker_12345
-  - unused_marker_67890
+    - GARBAGE_GO_AWS_SDK_A1B2C3
+    - GARBAGE_GO_TYPE_S3CLIENT_D4E5F6
+    - GARBAGE_GO_FUNC_AWS_G7H8I9
+    - GARBAGE_GO_AWS_UNUSED_J0K1L2
+    - GARBAGE_GO_FUNC_S3_UPLOAD_M3N4O5
+    - GARBAGE_GO_S3_OUTPUT_P6Q7R8
+    - GARBAGE_GO_GCP_STORAGE_S9T0U1
+    - GARBAGE_GO_TYPE_GCSBUCKET_V2W3X4
+    - GARBAGE_GO_FUNC_GCP_Y5Z6A7
+    - GARBAGE_GO_GCP_OUTPUT_B8C9D0
+    - GARBAGE_GO_FUNC_GCS_DOWNLOAD_E1F2G3
+    - GARBAGE_GO_AZURE_BLOB_H4I5J6
+    - GARBAGE_GO_TYPE_AZCONTAINER_K7L8M9
+    - GARBAGE_GO_FUNC_AZURE_N0O1P2
+    - GARBAGE_GO_AZURE_OUTPUT_Q3R4S5
+    - aws_sdk
+    - gcp_storage
+    - azure_blob
+
 options:
-  commit_message: Add platform-specific files
+  commit_message: Add platform-specific implementations with build tags

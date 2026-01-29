@@ -1,0 +1,16 @@
+name: internals_025_korean_comments_code
+initial:
+  korean_comments.py: |
+    def placeholder():
+        pass
+changed:
+  korean_comments.py: |
+    # 이것은 한국어 주석입니다
+    def calculate_total(items):
+        # 계산 로직
+        return sum(items)
+assertions:
+  must_include:
+  - calculate_total
+options:
+  add_garbage: true

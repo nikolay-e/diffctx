@@ -1,25 +1,166 @@
 name: python_036_newtype_usage
 initial:
   types.py: |
-    from typing import NewType
+    from typing import NewType, Optional, List, Dict, Any
+    from dataclasses import dataclass
+    from datetime import datetime
 
     UserId = NewType('UserId', int)
     OrderId = NewType('OrderId', int)
-  service.py: |
-    def get_user():
-        pass
-  garbage.py: |
-    garbage_marker_12345 = "newtype garbage"
-    unused_marker_67890 = "unused newtype"
-changed:
-  service.py: |
-    from types import UserId
+    ProductId = NewType('ProductId', int)
+    Email = NewType('Email', str)
+    Money = NewType('Money', float)
 
-    def get_user(user_id: UserId) -> dict:
-        return {"id": user_id}
+    @dataclass
+    class UserProfile:
+        user_id: UserId
+        email: Email
+        display_name: str
+        created_at: datetime
+
+        def is_valid_email(self) -> bool:
+            return "@" in str(self.email) and "." in str(self.email)
+
+    def create_user_id(raw_id: int) -> UserId:
+        if raw_id <= 0:
+            raise ValueError("User ID must be positive")
+        return UserId(raw_id)
+
+    def create_order_id(raw_id: int) -> OrderId:
+        if raw_id <= 0:
+            raise ValueError("Order ID must be positive")
+        return OrderId(raw_id)
+
+    def validate_email(email_str: str) -> Email:
+        if "@" not in email_str:
+            raise ValueError("Invalid email format")
+        return Email(email_str)
+
+    def format_money(amount: Money, currency: str = "USD") -> str:
+        return f"{currency} {float(amount):.2f}"
+
+  user_service.py: |
+    from types import UserId, Email, UserProfile
+
+    class UserService:
+        def get_user(self, user_id: UserId) -> Optional[UserProfile]:
+            pass
+
+  unrelated/notification_service.py: |
+    GARBAGE_PYTHON_036_001 = "notification service marker"
+    GARBAGE_PYTHON_036_002 = "notification queue constant"
+
+    class NotificationChannel:
+        GARBAGE_PYTHON_036_003 = "channel class marker"
+
+        def __init__(self, name: str):
+            self.name = name
+
+        def send(self, message: str) -> bool:
+            return True
+
+  unrelated/audit_logger.py: |
+    GARBAGE_PYTHON_036_004 = "audit logger marker"
+    GARBAGE_PYTHON_036_005 = "audit retention constant"
+
+    class AuditEntry:
+        GARBAGE_PYTHON_036_006 = "entry class marker"
+
+        def __init__(self, action: str, user_id: int):
+            self.action = action
+            self.user_id = user_id
+
+  unrelated/feature_flags.py: |
+    GARBAGE_PYTHON_036_007 = "feature flags marker"
+    GARBAGE_PYTHON_036_008 = "flag rollout constant"
+
+    class FeatureFlag:
+        GARBAGE_PYTHON_036_009 = "flag class marker"
+
+        def __init__(self, name: str, enabled: bool = False):
+            self.name = name
+            self.enabled = enabled
+
+changed:
+  types.py: |
+    from typing import NewType, Optional, List, Dict, Any
+    from dataclasses import dataclass
+    from datetime import datetime
+
+    UserId = NewType('UserId', int)
+    OrderId = NewType('OrderId', int)
+    ProductId = NewType('ProductId', int)
+    Email = NewType('Email', str)
+    Money = NewType('Money', float)
+    SessionToken = NewType('SessionToken', str)
+
+    @dataclass
+    class UserProfile:
+        user_id: UserId
+        email: Email
+        display_name: str
+        created_at: datetime
+        session_token: Optional[SessionToken] = None
+
+        def is_valid_email(self) -> bool:
+            return "@" in str(self.email) and "." in str(self.email)
+
+        def has_active_session(self) -> bool:
+            return self.session_token is not None
+
+    @dataclass
+    class OrderSummary:
+        order_id: OrderId
+        user_id: UserId
+        total: Money
+        item_count: int
+
+        def is_large_order(self) -> bool:
+            return self.item_count > 10 or self.total > Money(1000.0)
+
+    def create_user_id(raw_id: int) -> UserId:
+        if raw_id <= 0:
+            raise ValueError("User ID must be positive")
+        return UserId(raw_id)
+
+    def create_order_id(raw_id: int) -> OrderId:
+        if raw_id <= 0:
+            raise ValueError("Order ID must be positive")
+        return OrderId(raw_id)
+
+    def validate_email(email_str: str) -> Email:
+        if "@" not in email_str:
+            raise ValueError("Invalid email format")
+        return Email(email_str)
+
+    def format_money(amount: Money, currency: str = "USD") -> str:
+        return f"{currency} {float(amount):.2f}"
+
+    def create_session_token(user_id: UserId) -> SessionToken:
+        import secrets
+        return SessionToken(f"{user_id}_{secrets.token_hex(16)}")
+
 assertions:
   must_include:
-  - UserId = NewType
+    - UserId = NewType
+    - Email = NewType
+    - SessionToken = NewType
+    - class UserProfile
+    - class OrderSummary
+    - create_session_token
   must_not_include:
-  - garbage_marker_12345
-  - unused_marker_67890
+    - GARBAGE_PYTHON_036_001
+    - GARBAGE_PYTHON_036_002
+    - GARBAGE_PYTHON_036_003
+    - GARBAGE_PYTHON_036_004
+    - GARBAGE_PYTHON_036_005
+    - GARBAGE_PYTHON_036_006
+    - GARBAGE_PYTHON_036_007
+    - GARBAGE_PYTHON_036_008
+    - GARBAGE_PYTHON_036_009
+    - NotificationChannel
+    - AuditEntry
+    - FeatureFlag
+    - notification_service.py
+    - audit_logger.py
+    - feature_flags.py

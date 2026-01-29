@@ -1,0 +1,16 @@
+name: internals_002_cyrillic_mixed_with_ascii
+initial:
+  mixed.py: |
+    def placeholder():
+        pass
+changed:
+  mixed.py: |
+    def привет_мир():
+        result = "здравствуй"
+        return result
+assertions:
+  must_include:
+  - result
+  - привет_мир
+options:
+  add_garbage: true

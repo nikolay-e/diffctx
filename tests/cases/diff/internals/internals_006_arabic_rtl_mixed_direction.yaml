@@ -1,0 +1,16 @@
+name: internals_006_arabic_rtl_mixed_direction
+initial:
+  rtl_mixed.py: |
+    def placeholder():
+        pass
+changed:
+  rtl_mixed.py: |
+    text = "Hello مرحبا World"
+    result = process(text)
+assertions:
+  must_include:
+  - process
+  - text
+  - result
+options:
+  add_garbage: true

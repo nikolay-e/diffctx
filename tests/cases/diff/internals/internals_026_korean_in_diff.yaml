@@ -1,0 +1,14 @@
+name: internals_026_korean_in_diff
+initial:
+  korean_diff.py: |
+    x = 0
+changed:
+  korean_diff.py: |
+    # 한국어 주석
+    message = "안녕하세요"
+    result = process_data(value)
+assertions:
+  must_include:
+  - process_data
+options:
+  add_garbage: true

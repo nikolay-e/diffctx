@@ -1,43 +1,169 @@
 name: k8s_410_readiness_probe
 initial:
-  deployment.yaml: |
+  k8s/apps/gateway/deployment.yaml: |
     apiVersion: apps/v1
     kind: Deployment
     metadata:
-      name: myapp
+      name: api-gateway
+      namespace: production
+      labels:
+        app: api-gateway
+        component: networking
     spec:
+      replicas: 3
+      selector:
+        matchLabels:
+          app: api-gateway
+      strategy:
+        type: RollingUpdate
+        rollingUpdate:
+          maxSurge: 1
+          maxUnavailable: 0
       template:
+        metadata:
+          labels:
+            app: api-gateway
+            component: networking
         spec:
           containers:
-          - name: app
+          - name: gateway
+            image: api-gateway:v2.0.0
             ports:
             - containerPort: 8080
-  unrelated.txt: |
-    garbage_marker_k8s410 = True
-    unused_marker_k8s410 = False
+              name: http
+            - containerPort: 8443
+              name: https
+            - containerPort: 9090
+              name: admin
+            env:
+            - name: UPSTREAM_URL
+              value: "http://backend-api.production.svc.cluster.local"
+            resources:
+              requests:
+                memory: "128Mi"
+                cpu: "100m"
+              limits:
+                memory: "256Mi"
+                cpu: "200m"
+
+  k8s/apps/gateway/service.yaml: |
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: api-gateway
+      namespace: production
+    spec:
+      type: LoadBalancer
+      selector:
+        app: api-gateway
+      ports:
+      - name: http
+        port: 80
+        targetPort: 8080
+      - name: https
+        port: 443
+        targetPort: 8443
+
+  k8s/unrelated/flagger/canary.yaml: |
+    # GARBAGE_K8S_410_FLAGGER_CANARY
+    apiVersion: flagger.app/v1beta1
+    kind: Canary
+    metadata:
+      name: GARBAGE_K8S_410_CANARY_NAME
+    spec:
+      targetRef:
+        apiVersion: apps/v1
+        kind: Deployment
+        name: GARBAGE_K8S_410_TARGET_DEPLOY
+      progressDeadlineSeconds: GARBAGE_K8S_410_DEADLINE
+      service:
+        port: GARBAGE_K8S_410_SVC_PORT
+
+  k8s/unrelated/argo-rollouts/rollout.yaml: |
+    # GARBAGE_K8S_410_ARGO_ROLLOUT
+    apiVersion: argoproj.io/v1alpha1
+    kind: Rollout
+    metadata:
+      name: GARBAGE_K8S_410_ROLLOUT_NAME
+    spec:
+      replicas: GARBAGE_K8S_410_REPLICAS
+      strategy:
+        canary:
+          steps:
+          - setWeight: GARBAGE_K8S_410_WEIGHT
+
 changed:
-  deployment.yaml: |
+  k8s/apps/gateway/deployment.yaml: |
     apiVersion: apps/v1
     kind: Deployment
     metadata:
-      name: myapp
+      name: api-gateway
+      namespace: production
+      labels:
+        app: api-gateway
+        component: networking
     spec:
+      replicas: 3
+      selector:
+        matchLabels:
+          app: api-gateway
+      strategy:
+        type: RollingUpdate
+        rollingUpdate:
+          maxSurge: 1
+          maxUnavailable: 0
       template:
+        metadata:
+          labels:
+            app: api-gateway
+            component: networking
         spec:
           containers:
-          - name: app
+          - name: gateway
+            image: api-gateway:v2.0.0
             ports:
             - containerPort: 8080
+              name: http
+            - containerPort: 8443
+              name: https
+            - containerPort: 9090
+              name: admin
+            env:
+            - name: UPSTREAM_URL
+              value: "http://backend-api.production.svc.cluster.local"
             readinessProbe:
               tcpSocket:
                 port: 8080
               initialDelaySeconds: 5
               periodSeconds: 5
+              timeoutSeconds: 3
+              failureThreshold: 3
+              successThreshold: 1
+            resources:
+              requests:
+                memory: "128Mi"
+                cpu: "100m"
+              limits:
+                memory: "256Mi"
+                cpu: "200m"
+
 assertions:
   must_include:
   - readinessProbe
+  - tcpSocket
+  - 'port: 8080'
+  - initialDelaySeconds
+  - periodSeconds
+  - api-gateway
   must_not_include:
-  - garbage_marker_k8s410
-  - unused_marker_k8s410
+  - GARBAGE_K8S_410_FLAGGER_CANARY
+  - GARBAGE_K8S_410_CANARY_NAME
+  - GARBAGE_K8S_410_TARGET_DEPLOY
+  - GARBAGE_K8S_410_DEADLINE
+  - GARBAGE_K8S_410_SVC_PORT
+  - GARBAGE_K8S_410_ARGO_ROLLOUT
+  - GARBAGE_K8S_410_ROLLOUT_NAME
+  - GARBAGE_K8S_410_REPLICAS
+  - GARBAGE_K8S_410_WEIGHT
 options:
-  commit_message: Add readiness probe
+  commit_message: Add TCP readiness probe

@@ -1,0 +1,33 @@
+name: docker_082_compose_replicas
+initial:
+  docker-compose.yml: |
+    version: '3.8'
+    services:
+      worker:
+        build: .
+        deploy:
+          replicas: 1
+  src/worker.py: |
+    import os
+
+    WORKER_ID = os.getenv("HOSTNAME", "unknown")
+
+    def run():
+        print(f"Worker {WORKER_ID} starting")
+changed:
+  docker-compose.yml: |
+    version: '3.8'
+    services:
+      worker:
+        build: .
+        deploy:
+          replicas: 3
+          resources:
+            limits:
+              cpus: '0.5'
+              memory: 256M
+assertions:
+  must_include:
+    - WORKER_ID
+options:
+  commit_message: scale workers

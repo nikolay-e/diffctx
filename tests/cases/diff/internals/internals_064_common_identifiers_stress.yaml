@@ -1,0 +1,111 @@
+name: internals_064_common_identifiers_stress
+initial:
+  src/data/repository.py: |
+    class UserRepository:
+        def get(self, id: int) -> dict:
+            return {"id": id}
+
+        def save(self, data: dict) -> bool:
+            return True
+
+  src/handlers/base_handler.py: |
+    BASE_HANDLER_MARKER_AAA111 = "base"
+
+    class BaseHandler:
+        HANDLER_CLASS_MARKER_BBB222 = "handler"
+
+        def handle(self, request: dict) -> dict:
+            HANDLE_METHOD_MARKER_CCC333 = True
+            return {}
+
+        def validate(self, data: dict) -> bool:
+            VALIDATE_METHOD_MARKER_DDD444 = True
+            return True
+
+        def process(self, item: dict) -> dict:
+            PROCESS_METHOD_MARKER_EEE555 = True
+            return item
+
+  src/handlers/event_handler.py: |
+    EVENT_HANDLER_MARKER_FFF666 = "event"
+
+    class EventHandler:
+        EVENT_CLASS_MARKER_GGG777 = "event_handler"
+
+        def handle(self, event: dict) -> dict:
+            EVENT_HANDLE_MARKER_HHH888 = True
+            return {"handled": True}
+
+        def validate(self, event: dict) -> bool:
+            EVENT_VALIDATE_MARKER_III999 = True
+            return "type" in event
+
+        def process(self, event: dict) -> dict:
+            EVENT_PROCESS_MARKER_JJJ000 = True
+            return event
+
+  src/services/processor_service.py: |
+    PROCESSOR_SERVICE_MARKER_KKK111 = "processor"
+
+    class ProcessorService:
+        SERVICE_CLASS_MARKER_LLL222 = "service"
+
+        def handle(self, data: dict) -> dict:
+            SERVICE_HANDLE_MARKER_MMM333 = True
+            return data
+
+        def validate(self, input_data: dict) -> bool:
+            SERVICE_VALIDATE_MARKER_NNN444 = True
+            return len(input_data) > 0
+
+        def process(self, payload: dict) -> dict:
+            SERVICE_PROCESS_MARKER_OOO555 = True
+            return payload
+
+changed:
+  src/data/repository.py: |
+    class UserRepository:
+        def get(self, id: int) -> dict:
+            if id <= 0:
+                raise ValueError("Invalid id")
+            return {"id": id, "found": True}
+
+        def save(self, data: dict) -> bool:
+            if "id" not in data:
+                raise ValueError("Missing id")
+            return True
+
+        def delete(self, id: int) -> bool:
+            if id <= 0:
+                raise ValueError("Invalid id")
+            return True
+
+assertions:
+  must_include:
+    - UserRepository
+    - Invalid id
+
+  must_not_include:
+    - BASE_HANDLER_MARKER_AAA111
+    - HANDLER_CLASS_MARKER_BBB222
+    - HANDLE_METHOD_MARKER_CCC333
+    - VALIDATE_METHOD_MARKER_DDD444
+    - PROCESS_METHOD_MARKER_EEE555
+    - EVENT_HANDLER_MARKER_FFF666
+    - EVENT_CLASS_MARKER_GGG777
+    - EVENT_HANDLE_MARKER_HHH888
+    - EVENT_VALIDATE_MARKER_III999
+    - EVENT_PROCESS_MARKER_JJJ000
+    - PROCESSOR_SERVICE_MARKER_KKK111
+    - SERVICE_CLASS_MARKER_LLL222
+    - SERVICE_HANDLE_MARKER_MMM333
+    - SERVICE_VALIDATE_MARKER_NNN444
+    - SERVICE_PROCESS_MARKER_OOO555
+    - BaseHandler
+    - EventHandler
+    - ProcessorService
+
+options:
+  commit_message: "Add validation to repository"
+  add_garbage: false
+  skip_garbage_check: true

@@ -1,30 +1,201 @@
 name: python_011_override_method
 initial:
   base_processor.py: |
-    class BaseProcessor:
-        def process(self, data: list) -> list:
-            return [item.strip() for item in data]
+    from typing import List, Optional, Any, Dict, Callable
+    from abc import ABC, abstractmethod
+    from dataclasses import dataclass
+    from enum import Enum
+    import logging
+
+    logger = logging.getLogger(__name__)
+
+    class ProcessingStatus(Enum):
+        PENDING = "pending"
+        PROCESSING = "processing"
+        COMPLETED = "completed"
+        FAILED = "failed"
+
+    @dataclass
+    class ProcessingResult:
+        status: ProcessingStatus
+        items_processed: int
+        items_failed: int
+        errors: List[str]
+
+    class ValidationError(Exception):
+        def __init__(self, item: Any, message: str):
+            self.item = item
+            self.message = message
+            super().__init__(f"Validation failed for {item}: {message}")
+
+    class BaseProcessor(ABC):
+        def __init__(self, name: str = "base"):
+            self.name = name
+            self._processed_count = 0
+            self._error_count = 0
+            self._hooks: Dict[str, List[Callable]] = {
+                "pre_process": [],
+                "post_process": [],
+                "on_error": [],
+            }
+
+        def register_hook(self, event: str, callback: Callable) -> None:
+            if event in self._hooks:
+                self._hooks[event].append(callback)
+
+        def _run_hooks(self, event: str, data: Any) -> None:
+            for hook in self._hooks.get(event, []):
+                try:
+                    hook(data)
+                except Exception as e:
+                    logger.warning(f"Hook {hook} failed: {e}")
+
+        def process(self, data: List[str]) -> List[str]:
+            self._run_hooks("pre_process", data)
+            results = []
+            for item in data:
+                try:
+                    if self.validate(item):
+                        processed = self._transform(item)
+                        results.append(processed)
+                        self._processed_count += 1
+                except Exception as e:
+                    self._error_count += 1
+                    self._run_hooks("on_error", {"item": item, "error": e})
+            self._run_hooks("post_process", results)
+            return results
 
         def validate(self, item: str) -> bool:
-            return len(item) > 0
+            if not isinstance(item, str):
+                raise ValidationError(item, "Item must be a string")
+            return len(item.strip()) > 0
+
+        def _transform(self, item: str) -> str:
+            return item.strip()
+
+        @abstractmethod
+        def get_processor_type(self) -> str:
+            pass
+
+        def get_stats(self) -> Dict[str, int]:
+            return {
+                "processed": self._processed_count,
+                "errors": self._error_count,
+            }
+
+        def reset_stats(self) -> None:
+            self._processed_count = 0
+            self._error_count = 0
+
   custom_processor.py: |
+    from typing import List, Optional
+
     class CustomProcessor:
-        pass
-  garbage.py: |
-    garbage_marker_12345 = "processor garbage"
-    unused_marker_67890 = "unused processor"
+        def __init__(self):
+            self.config: Optional[dict] = None
+
+        def configure(self, config: dict) -> None:
+            self.config = config
+
+  garbage_logging.py: |
+    GARBAGE_MARKER_LOG_001 = "logging garbage"
+    UNRELATED_LOG_LEVEL_002 = "DEBUG"
+
+    class LogFormatter:
+        GARBAGE_LOG_CLASS_003 = "log class marker"
+
+        def __init__(self, format_string: str = "%(message)s"):
+            self.format_string = format_string
+
+        def format(self, record: dict) -> str:
+            return str(record)
+
+    class LogRotator:
+        GARBAGE_ROTATE_MARKER_004 = "rotate marker"
+
+        def rotate(self, filename: str) -> None:
+            pass
+
+  garbage_scheduler.py: |
+    GARBAGE_MARKER_SCHED_005 = "scheduler garbage"
+    UNRELATED_INTERVAL_006 = 60
+
+    class TaskScheduler:
+        GARBAGE_SCHED_CLASS_007 = True
+
+        def __init__(self):
+            self._tasks: List[dict] = []
+
+        def schedule(self, task: callable, interval: int) -> None:
+            self._tasks.append({"task": task, "interval": interval})
+
+        def run(self) -> None:
+            pass
+
+    def format_cron_expression(expression: str) -> str:
+        GARBAGE_FORMAT_CRON_008 = "format cron marker"
+        return expression
+
 changed:
   custom_processor.py: |
-    from base_processor import BaseProcessor
+    from typing import List, Optional, Dict
+    from base_processor import BaseProcessor, ProcessingStatus, ValidationError
 
     class CustomProcessor(BaseProcessor):
-        def process(self, data: list) -> list:
-            validated = [item for item in data if self.validate(item)]
+        def __init__(self, name: str = "custom", min_length: int = 3):
+            super().__init__(name)
+            self.min_length = min_length
+            self._uppercase_count = 0
+
+        def process(self, data: List[str]) -> List[str]:
+            validated = []
+            for item in data:
+                try:
+                    if self.validate(item):
+                        validated.append(item)
+                except ValidationError:
+                    self._error_count += 1
             return super().process(validated)
+
+        def validate(self, item: str) -> bool:
+            if not super().validate(item):
+                return False
+            if len(item.strip()) < self.min_length:
+                raise ValidationError(item, f"Item must be at least {self.min_length} chars")
+            return True
+
+        def _transform(self, item: str) -> str:
+            result = item.strip().upper()
+            self._uppercase_count += 1
+            return result
+
+        def get_processor_type(self) -> str:
+            return "custom_uppercase"
+
+        def get_stats(self) -> Dict[str, int]:
+            stats = super().get_stats()
+            stats["uppercase_transforms"] = self._uppercase_count
+            return stats
+
 assertions:
   must_include:
-  - def process
-  - BaseProcessor
+    - def process
+    - class BaseProcessor
+    - ProcessingStatus
+    - ValidationError
+    - super().process
   must_not_include:
-  - garbage_marker_12345
-  - unused_marker_67890
+    - GARBAGE_MARKER_LOG_001
+    - UNRELATED_LOG_LEVEL_002
+    - GARBAGE_LOG_CLASS_003
+    - GARBAGE_ROTATE_MARKER_004
+    - GARBAGE_MARKER_SCHED_005
+    - UNRELATED_INTERVAL_006
+    - GARBAGE_SCHED_CLASS_007
+    - GARBAGE_FORMAT_CRON_008
+    - LogFormatter
+    - LogRotator
+    - TaskScheduler
+    - format_cron_expression
+    - garbage_logging.py
+    - garbage_scheduler.py

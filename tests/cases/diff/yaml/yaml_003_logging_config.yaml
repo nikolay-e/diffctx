@@ -1,0 +1,27 @@
+name: yaml_003_logging_config
+initial:
+  logging.yaml: |
+    logging:
+      level: INFO
+      handlers:
+        - console
+        - file
+  src/logger.py: |
+    import logging
+
+    def setup_logging(level: str = "INFO"):
+        logging.basicConfig(level=getattr(logging, level))
+        return logging.getLogger(__name__)
+changed:
+  logging.yaml: |
+    logging:
+      level: DEBUG
+      handlers:
+        - console
+        - file
+        - syslog
+assertions:
+  must_include:
+    - setup_logging
+options:
+  commit_message: change log level

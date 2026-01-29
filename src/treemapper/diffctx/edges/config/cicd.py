@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import configparser
+import logging
 import re
 from pathlib import Path
 
@@ -18,8 +20,10 @@ _GITLAB_INCLUDE_RE = re.compile(
 _JENKINS_SH_RE = re.compile(r"sh\s*(?:\(['\"]|['\"])(.+?)['\"]\)?", re.MULTILINE | re.DOTALL)
 _JENKINS_SCRIPT_RE = re.compile(r"script\s*\{([^}]+)\}", re.MULTILINE | re.DOTALL)
 
-_SCRIPT_CALL_RE = re.compile(r"(?:bash|sh|python|python3|node|npm|yarn|pnpm|make|go|cargo|dotnet|mvn|gradle)\s+([^\s;&|]+)")
-_FILE_REF_RE = re.compile(r"(?:\.\/|scripts\/|bin\/|tools\/)([a-zA-Z0-9_.-]+(?:\.(?:sh|py|js|ts|rb))?)")
+_SCRIPT_CALL_RE = re.compile(
+    r"(?:bash|sh|python|python3|node|npm|yarn|pnpm|make|go|cargo|dotnet|mvn|gradle|pytest|ruff|mypy|black|isort|flake8)\s+([^\s;&|]+)"
+)
+_FILE_REF_RE = re.compile(r"(?:\.\/|scripts\/|bin\/|tools\/|src\/|tests\/)([a-zA-Z0-9_.-]+(?:\.(?:sh|py|js|ts|rb))?)")
 
 
 def _is_github_actions(path: Path) -> bool:
@@ -49,6 +53,14 @@ def _is_azure_pipelines(path: Path) -> bool:
     return name in {"azure-pipelines.yml", "azure-pipelines.yaml"} or name.startswith("azure-pipeline")
 
 
+def _is_tox(path: Path) -> bool:
+    return path.name.lower() == "tox.ini"
+
+
+def _is_nox(path: Path) -> bool:
+    return path.name.lower() == "noxfile.py"
+
+
 def _is_ci_file(path: Path) -> bool:
     return any(
         [
@@ -58,6 +70,8 @@ def _is_ci_file(path: Path) -> bool:
             _is_circleci(path),
             _is_travis(path),
             _is_azure_pipelines(path),
+            _is_tox(path),
+            _is_nox(path),
         ]
     )
 
@@ -112,6 +126,65 @@ def _extract_jenkins_refs(content: str) -> set[str]:
     return refs
 
 
+def _extract_tox_refs(content: str) -> set[str]:
+    refs: set[str] = set()
+    parser = configparser.ConfigParser()
+    try:
+        parser.read_string(content)
+    except configparser.Error:
+        return refs
+
+    for section in parser.sections():
+        if not section.lower().startswith("testenv"):
+            continue
+
+        deps = parser.get(section, "deps", fallback="")
+        commands = parser.get(section, "commands", fallback="")
+
+        for line in deps.splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or line.startswith("-r"):
+                continue
+            refs.add(line.split()[0] if line.split() else line)
+
+        for line in commands.splitlines():
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            parts = line.split()
+            for p in parts:
+                p = p.strip("'\"")
+                p = re.sub(r"\{[^}]+\}", "", p)
+                if not p or p.startswith("-"):
+                    continue
+                refs.add(p)
+            refs.update(_extract_script_refs(line))
+
+    return refs
+
+
+def _extract_nox_refs(content: str) -> set[str]:
+    refs: set[str] = set()
+    # Extract session.run calls
+    # session.run("cmd", "arg1", ...)
+    for match in re.finditer(r"session\.run\(([^)]+)\)", content):
+        args_str = match.group(1)
+        # Simple extraction of string literals
+        args = re.findall(r'["\']([^"\']+)["\']', args_str)
+        for arg in args:
+            refs.add(arg)
+            refs.update(_extract_script_refs(arg))
+
+    # Extract session.install calls
+    for match in re.finditer(r"session\.install\(([^)]+)\)", content):
+        args_str = match.group(1)
+        args = re.findall(r'["\']([^"\']+)["\']', args_str)
+        for arg in args:
+            refs.add(arg)
+
+    return refs
+
+
 class CICDEdgeBuilder(EdgeBuilder):
     weight = 0.55
     script_weight = 0.60
@@ -135,19 +208,29 @@ class CICDEdgeBuilder(EdgeBuilder):
             except (OSError, UnicodeDecodeError):
                 continue
 
+            local_refs = set()
             if _is_github_actions(ci):
-                refs.update(_extract_gha_refs(content))
+                local_refs.update(_extract_gha_refs(content))
             elif _is_gitlab_ci(ci):
-                refs.update(_extract_gitlab_refs(content))
+                local_refs.update(_extract_gitlab_refs(content))
             elif _is_jenkinsfile(ci):
-                refs.update(_extract_jenkins_refs(content))
+                local_refs.update(_extract_jenkins_refs(content))
+            elif _is_tox(ci):
+                local_refs.update(_extract_tox_refs(content))
+            elif _is_nox(ci):
+                local_refs.update(_extract_nox_refs(content))
             else:
-                refs.update(_extract_script_refs(content))
+                local_refs.update(_extract_script_refs(content))
 
             if any(cmd in content.lower() for cmd in ["npm", "yarn", "pnpm"]):
-                refs.add("package.json")
+                local_refs.add("package.json")
 
-        return discover_files_by_refs(refs, changed_files, all_candidate_files)
+            logging.debug("CICD refs for %s: %s", ci.name, local_refs)
+            refs.update(local_refs)
+
+        discovered = discover_files_by_refs(refs, changed_files, all_candidate_files)
+        logging.debug("CICD discovered for %s: %s", [c.name for c in ci_files], [d.name for d in discovered])
+        return discovered
 
     def build(self, fragments: list[Fragment], repo_root: Path | None = None) -> EdgeDict:
         ci_frags = [f for f in fragments if _is_ci_file(f.path)]
@@ -171,6 +254,10 @@ class CICDEdgeBuilder(EdgeBuilder):
             return _extract_gitlab_refs(ci.content)
         if _is_jenkinsfile(ci.path):
             return _extract_jenkins_refs(ci.content)
+        if _is_tox(ci.path):
+            return _extract_tox_refs(ci.content)
+        if _is_nox(ci.path):
+            return _extract_nox_refs(ci.content)
         return _extract_script_refs(ci.content)
 
     def _link_refs(self, ci_id: FragmentId, refs: set[str], idx: FragmentIndex, edges: EdgeDict) -> None:

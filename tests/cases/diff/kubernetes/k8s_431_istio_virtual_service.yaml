@@ -1,12 +1,101 @@
 name: k8s_431_istio_virtual_service
 initial:
-  destination-rule.yaml: |
+  k8s/base/deployment-v1.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: product-service-v1
+      namespace: production
+      labels:
+        app: product-service
+        version: v1
+    spec:
+      replicas: 3
+      selector:
+        matchLabels:
+          app: product-service
+          version: v1
+      template:
+        metadata:
+          labels:
+            app: product-service
+            version: v1
+          annotations:
+            sidecar.istio.io/inject: "true"
+        spec:
+          containers:
+          - name: product
+            image: registry.example.com/product-service:v1.0.0
+            ports:
+            - containerPort: 8080
+              name: http
+            resources:
+              requests:
+                memory: "256Mi"
+                cpu: "250m"
+
+  k8s/base/deployment-v2.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: product-service-v2
+      namespace: production
+      labels:
+        app: product-service
+        version: v2
+    spec:
+      replicas: 2
+      selector:
+        matchLabels:
+          app: product-service
+          version: v2
+      template:
+        metadata:
+          labels:
+            app: product-service
+            version: v2
+          annotations:
+            sidecar.istio.io/inject: "true"
+        spec:
+          containers:
+          - name: product
+            image: registry.example.com/product-service:v2.0.0
+            ports:
+            - containerPort: 8080
+              name: http
+            resources:
+              requests:
+                memory: "256Mi"
+                cpu: "250m"
+
+  k8s/base/service.yaml: |
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: product-service
+      namespace: production
+    spec:
+      selector:
+        app: product-service
+      ports:
+      - name: http
+        port: 80
+        targetPort: 8080
+
+  k8s/base/destination-rule.yaml: |
     apiVersion: networking.istio.io/v1beta1
     kind: DestinationRule
     metadata:
-      name: api
+      name: product-service
+      namespace: production
     spec:
-      host: api
+      host: product-service
+      trafficPolicy:
+        connectionPool:
+          tcp:
+            maxConnections: 100
+          http:
+            h2UpgradePolicy: UPGRADE
       subsets:
       - name: v1
         labels:
@@ -14,41 +103,149 @@ initial:
       - name: v2
         labels:
           version: v2
-  virtual-service.yaml: |
+
+  k8s/base/virtual-service.yaml: |
     apiVersion: networking.istio.io/v1beta1
     kind: VirtualService
     metadata:
-      name: api
+      name: product-service
+      namespace: production
     spec:
       hosts:
-      - api
-  unrelated.txt: |
-    garbage_marker_k8s431 = True
-    unused_marker_k8s431 = False
+      - product-service
+      - product.example.com
+      gateways:
+      - product-gateway
+      - mesh
+
+  k8s/unrelated/linkerd/service-profile.yaml: |
+    # GARBAGE_K8S_431_LINKERD_PROFILE
+    apiVersion: linkerd.io/v1alpha2
+    kind: ServiceProfile
+    metadata:
+      name: GARBAGE_K8S_431_PROFILE_NAME
+      namespace: linkerd
+    spec:
+      routes:
+      - name: GARBAGE_K8S_431_ROUTE_NAME
+        condition:
+          method: GARBAGE_K8S_431_METHOD
+          pathRegex: GARBAGE_K8S_431_PATH_REGEX
+
+  k8s/unrelated/contour/httpproxy.yaml: |
+    # GARBAGE_K8S_431_CONTOUR_PROXY
+    apiVersion: projectcontour.io/v1
+    kind: HTTPProxy
+    metadata:
+      name: GARBAGE_K8S_431_HTTPPROXY_NAME
+      namespace: contour
+    spec:
+      virtualhost:
+        fqdn: GARBAGE_K8S_431_FQDN
+      routes:
+      - services:
+        - name: GARBAGE_K8S_431_PROXY_SVC
+          port: GARBAGE_K8S_431_PROXY_PORT
+
+  k8s/unrelated/traefik/ingressroute.yaml: |
+    # GARBAGE_K8S_431_TRAEFIK_ROUTE
+    apiVersion: traefik.containo.us/v1alpha1
+    kind: IngressRoute
+    metadata:
+      name: GARBAGE_K8S_431_INGRESSROUTE
+      namespace: traefik
+    spec:
+      entryPoints:
+      - GARBAGE_K8S_431_ENTRYPOINT
+      routes:
+      - match: GARBAGE_K8S_431_MATCH_RULE
+        services:
+        - name: GARBAGE_K8S_431_TRAEFIK_SVC
+
+  skaffold.yaml: |
+    # GARBAGE_K8S_431_SKAFFOLD
+    apiVersion: skaffold/v4beta5
+    kind: Config
+    metadata:
+      name: GARBAGE_K8S_431_SKAFFOLD_NAME
+    build:
+      artifacts:
+      - image: GARBAGE_K8S_431_SKAFFOLD_IMAGE
+        docker:
+          dockerfile: GARBAGE_K8S_431_DOCKERFILE
+
 changed:
-  virtual-service.yaml: |
+  k8s/base/virtual-service.yaml: |
     apiVersion: networking.istio.io/v1beta1
     kind: VirtualService
     metadata:
-      name: api
+      name: product-service
+      namespace: production
+      labels:
+        app: product-service
     spec:
       hosts:
-      - api
+      - product-service
+      - product.example.com
+      gateways:
+      - product-gateway
+      - mesh
       http:
+      - match:
+        - headers:
+            x-canary:
+              exact: "true"
+        route:
+        - destination:
+            host: product-service
+            subset: v2
+          weight: 100
+      - match:
+        - uri:
+            prefix: /api/v2
+        route:
+        - destination:
+            host: product-service
+            subset: v2
+          weight: 100
       - route:
         - destination:
-            host: api
+            host: product-service
             subset: v1
           weight: 90
         - destination:
-            host: api
+            host: product-service
             subset: v2
           weight: 10
+        retries:
+          attempts: 3
+          perTryTimeout: 2s
+        timeout: 10s
+
 assertions:
   must_include:
-  - VirtualService
+  - product-service
+  - x-canary
+  - retries
   must_not_include:
-  - garbage_marker_k8s431
-  - unused_marker_k8s431
+  - GARBAGE_K8S_431_LINKERD_PROFILE
+  - GARBAGE_K8S_431_PROFILE_NAME
+  - GARBAGE_K8S_431_ROUTE_NAME
+  - GARBAGE_K8S_431_METHOD
+  - GARBAGE_K8S_431_PATH_REGEX
+  - GARBAGE_K8S_431_CONTOUR_PROXY
+  - GARBAGE_K8S_431_HTTPPROXY_NAME
+  - GARBAGE_K8S_431_FQDN
+  - GARBAGE_K8S_431_PROXY_SVC
+  - GARBAGE_K8S_431_PROXY_PORT
+  - GARBAGE_K8S_431_TRAEFIK_ROUTE
+  - GARBAGE_K8S_431_INGRESSROUTE
+  - GARBAGE_K8S_431_ENTRYPOINT
+  - GARBAGE_K8S_431_MATCH_RULE
+  - GARBAGE_K8S_431_TRAEFIK_SVC
+  - GARBAGE_K8S_431_SKAFFOLD
+  - GARBAGE_K8S_431_SKAFFOLD_NAME
+  - GARBAGE_K8S_431_SKAFFOLD_IMAGE
+  - GARBAGE_K8S_431_DOCKERFILE
 options:
-  commit_message: Add Istio virtual service
+  commit_message: Add Istio virtual service with canary routing and traffic splitting

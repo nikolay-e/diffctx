@@ -1,26 +1,124 @@
 name: docker_506_env
 initial:
-  app.js: |
-    const env = process.env.NODE_ENV || 'development';
-    console.log(`Running in ${env} mode`);
+  src/config.ts: |
+    export const config = {
+        nodeEnv: process.env.NODE_ENV || 'development',
+        port: parseInt(process.env.PORT || '3000'),
+        dbUrl: process.env.DATABASE_URL,
+        redisUrl: process.env.REDIS_URL,
+        logLevel: process.env.LOG_LEVEL || 'info'
+    };
+  src/index.ts: |
+    import { config } from './config';
+    console.log(`Running in ${config.nodeEnv} mode on port ${config.port}`);
+  package.json: |
+    {
+      "name": "api-service",
+      "version": "1.0.0",
+      "main": "dist/index.js",
+      "scripts": {
+        "build": "tsc",
+        "start": "node dist/index.js"
+      }
+    }
   Dockerfile: |
-    FROM node:18
+    FROM node:20-alpine
+    WORKDIR /app
     COPY . .
-    CMD ["node", "app.js"]
-  junk.txt: |
-    garbage_marker_12345
-    unused_marker_67890
+    RUN npm ci && npm run build
+    CMD ["node", "dist/index.js"]
+  scripts/local_dev.sh: |
+    #!/bin/bash
+    # GARBAGE_DOCKER_506_DEV_MARKER_001
+    GARBAGE_DOCKER_506_DEV_VAR_002="local"
+    export NODE_ENV=development
+    npm run dev
+  tests/config.test.ts: |
+    // GARBAGE_DOCKER_506_TEST_MARKER_003
+    const GARBAGE_DOCKER_506_TEST_CONFIG_004 = { env: 'test' };
+    describe('Config', () => {
+        it('should load env vars', () => {});
+    });
+  docs/environment.md: |
+    # Environment Variables
+    GARBAGE_DOCKER_506_ENV_DOC_005
+    GARBAGE_DOCKER_506_VAR_LIST_006="NODE_ENV,PORT,DATABASE_URL"
+  terraform/variables.tf: |
+    # GARBAGE_DOCKER_506_TF_MARKER_007
+    # GARBAGE_DOCKER_506_TF_VAR_008
+    variable "environment" { default = "production" }
+  .env.example: |
+    # GARBAGE_DOCKER_506_ENV_EXAMPLE_009
+    GARBAGE_DOCKER_506_SECRET_010="example_secret"
 changed:
   Dockerfile: |
-    FROM node:18
-    ENV NODE_ENV=production
+    FROM node:20-alpine AS base
+
+    # Build-time arguments for metadata
+    ARG BUILD_DATE
+    ARG GIT_SHA
+    ARG VERSION=0.0.0
+
+    # Python optimization environment variables
+    ENV NODE_ENV=production \
+        NPM_CONFIG_LOGLEVEL=warn \
+        NPM_CONFIG_FUND=false \
+        NPM_CONFIG_AUDIT=false
+
+    # Runtime configuration with secure defaults
+    ENV PORT=3000 \
+        LOG_LEVEL=info \
+        LOG_FORMAT=json \
+        REQUEST_TIMEOUT=30000 \
+        MAX_CONNECTIONS=100 \
+        GRACEFUL_SHUTDOWN_TIMEOUT=10000
+
+    # Container metadata labels
+    LABEL org.opencontainers.image.created="${BUILD_DATE}" \
+          org.opencontainers.image.revision="${GIT_SHA}" \
+          org.opencontainers.image.version="${VERSION}" \
+          org.opencontainers.image.title="api-service"
+
+    FROM base AS builder
+    WORKDIR /app
+    COPY package*.json ./
+    RUN npm ci --only=production && cp -R node_modules /prod_modules && npm ci
     COPY . .
-    CMD ["node", "app.js"]
+    RUN npm run build
+
+    FROM base AS production
+    WORKDIR /app
+    RUN addgroup -g 1001 -S nodejs && adduser -S nodejs -u 1001
+    COPY --from=builder --chown=nodejs:nodejs /prod_modules ./node_modules
+    COPY --from=builder --chown=nodejs:nodejs /app/dist ./dist
+    USER nodejs
+    EXPOSE ${PORT}
+
+    HEALTHCHECK --interval=30s --timeout=5s --start-period=10s \
+        CMD node -e "require('http').get('http://localhost:'+process.env.PORT+'/health', r => process.exit(r.statusCode === 200 ? 0 : 1))"
+
+    CMD ["node", "dist/index.js"]
 assertions:
   must_include:
-  - ENV NODE_ENV=production
+    - NODE_ENV=production
+    - NPM_CONFIG_LOGLEVEL=warn
+    - LOG_LEVEL=info
+    - LOG_FORMAT=json
+    - REQUEST_TIMEOUT=30000
+    - GRACEFUL_SHUTDOWN_TIMEOUT=10000
+    - ARG BUILD_DATE
+    - ARG GIT_SHA
+    - LABEL org.opencontainers.image
   must_not_include:
-  - garbage_marker_12345
-  - unused_marker_67890
+    - GARBAGE_DOCKER_506_DEV_MARKER_001
+    - GARBAGE_DOCKER_506_DEV_VAR_002
+    - GARBAGE_DOCKER_506_TEST_MARKER_003
+    - GARBAGE_DOCKER_506_TEST_CONFIG_004
+    - GARBAGE_DOCKER_506_ENV_DOC_005
+    - GARBAGE_DOCKER_506_VAR_LIST_006
+    - GARBAGE_DOCKER_506_TF_MARKER_007
+    - GARBAGE_DOCKER_506_TF_VAR_008
+    - GARBAGE_DOCKER_506_ENV_EXAMPLE_009
+    - GARBAGE_DOCKER_506_SECRET_010
 options:
-  commit_message: Add ENV
+  commit_message: Add comprehensive ENV configuration with build args and labels

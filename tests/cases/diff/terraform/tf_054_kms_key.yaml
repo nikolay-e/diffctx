@@ -1,0 +1,25 @@
+name: tf_054_kms_key
+initial:
+  kms.tf: |
+    resource "aws_kms_key" "main" {
+      description = "Main encryption key"
+    }
+  src/encrypt.py: |
+    import boto3
+
+    def encrypt_data(key_id: str, plaintext: bytes) -> bytes:
+        kms = boto3.client("kms")
+        response = kms.encrypt(KeyId=key_id, Plaintext=plaintext)
+        return response["CiphertextBlob"]
+changed:
+  kms.tf: |
+    resource "aws_kms_key" "main" {
+      description             = "Main encryption key"
+      deletion_window_in_days = 7
+      enable_key_rotation     = true
+    }
+assertions:
+  must_include:
+    - encrypt_data
+options:
+  commit_message: enable rotation

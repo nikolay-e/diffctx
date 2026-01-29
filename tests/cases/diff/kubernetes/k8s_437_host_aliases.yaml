@@ -1,45 +1,197 @@
 name: k8s_437_host_aliases
 initial:
+  k8s/base/deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: legacy-integration
+      namespace: production
+      labels:
+        app: legacy-integration
+        tier: integration
+    spec:
+      replicas: 2
+      selector:
+        matchLabels:
+          app: legacy-integration
+      template:
+        metadata:
+          labels:
+            app: legacy-integration
+            tier: integration
+        spec:
+          containers:
+          - name: app
+            image: registry.example.com/legacy-integration:v2.0.0
+            ports:
+            - containerPort: 8080
+              name: http
+            env:
+            - name: LEGACY_HOST
+              value: legacy-service
+            - name: LEGACY_PORT
+              value: "8443"
+            resources:
+              requests:
+                memory: "512Mi"
+                cpu: "500m"
+              limits:
+                memory: "1Gi"
+                cpu: "1000m"
+
+  k8s/base/service.yaml: |
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: legacy-integration
+      namespace: production
+    spec:
+      selector:
+        app: legacy-integration
+      ports:
+      - name: http
+        port: 80
+        targetPort: 8080
+
+  k8s/base/configmap.yaml: |
+    apiVersion: v1
+    kind: ConfigMap
+    metadata:
+      name: legacy-config
+      namespace: production
+    data:
+      CONNECTION_TIMEOUT: "30000"
+      MAX_RETRIES: "5"
+      ENABLE_SSL: "true"
+
   app.py: |
     import socket
-    host = socket.gethostbyname('legacy-service')
+    import os
+    legacy_host = os.environ.get('LEGACY_HOST', 'legacy-service')
+    host = socket.gethostbyname(legacy_host)
     print(f'Connecting to {host}')
-  deployment.yaml: |
+
+  k8s/unrelated/hosts/configmap.yaml: |
+    # GARBAGE_K8S_437_HOSTS_CM
+    apiVersion: v1
+    kind: ConfigMap
+    metadata:
+      name: GARBAGE_K8S_437_HOSTS_CONFIG
+      namespace: hosts
+    data:
+      hosts: GARBAGE_K8S_437_HOSTS_DATA
+      resolve.conf: GARBAGE_K8S_437_RESOLVE_CONF
+
+  k8s/unrelated/coredns/customzone.yaml: |
+    # GARBAGE_K8S_437_COREDNS_ZONE
+    apiVersion: v1
+    kind: ConfigMap
+    metadata:
+      name: GARBAGE_K8S_437_ZONE_CM
+      namespace: kube-system
+    data:
+      zone.db: GARBAGE_K8S_437_ZONE_DATA
+      custom.hosts: GARBAGE_K8S_437_CUSTOM_HOSTS
+
+  k8s/unrelated/sidecar/init-container.yaml: |
+    # GARBAGE_K8S_437_INIT_SIDECAR
     apiVersion: apps/v1
     kind: Deployment
     metadata:
-      name: myapp
+      name: GARBAGE_K8S_437_SIDECAR_DEPLOY
+      namespace: sidecar
     spec:
       template:
         spec:
-          containers:
-          - name: app
-            image: myapp:latest
-  unrelated.txt: |
-    garbage_marker_k8s437 = True
-    unused_marker_k8s437 = False
+          initContainers:
+          - name: GARBAGE_K8S_437_INIT_NAME
+            image: GARBAGE_K8S_437_INIT_IMAGE
+            command: [GARBAGE_K8S_437_INIT_CMD]
+
+  tests/integration/conftest.py: |
+    # GARBAGE_K8S_437_PYTEST
+    import pytest
+    GARBAGE_K8S_437_FIXTURE = "fixture_value"
+    def GARBAGE_K8S_437_CONFTEST_FUNC():
+        return GARBAGE_K8S_437_FIXTURE
+
 changed:
-  deployment.yaml: |
+  k8s/base/deployment.yaml: |
     apiVersion: apps/v1
     kind: Deployment
     metadata:
-      name: myapp
+      name: legacy-integration
+      namespace: production
+      labels:
+        app: legacy-integration
+        tier: integration
     spec:
+      replicas: 2
+      selector:
+        matchLabels:
+          app: legacy-integration
       template:
+        metadata:
+          labels:
+            app: legacy-integration
+            tier: integration
         spec:
           hostAliases:
-          - ip: "10.0.0.1"
+          - ip: "10.0.100.1"
             hostnames:
             - "legacy-service"
-            - "legacy.local"
+            - "legacy.internal"
+            - "legacy.prod.example.com"
+          - ip: "10.0.100.2"
+            hostnames:
+            - "legacy-service-backup"
+            - "legacy-backup.internal"
+          - ip: "10.0.100.3"
+            hostnames:
+            - "legacy-db"
+            - "db.legacy.internal"
           containers:
           - name: app
-            image: myapp:latest
+            image: registry.example.com/legacy-integration:v2.0.0
+            ports:
+            - containerPort: 8080
+              name: http
+            env:
+            - name: LEGACY_HOST
+              value: legacy-service
+            - name: LEGACY_PORT
+              value: "8443"
+            resources:
+              requests:
+                memory: "512Mi"
+                cpu: "500m"
+              limits:
+                memory: "1Gi"
+                cpu: "1000m"
+
 assertions:
   must_include:
+  - legacy-integration
   - hostAliases
+  - 10.0.100.1
+  - legacy-service
+  - legacy.internal
   must_not_include:
-  - garbage_marker_k8s437
-  - unused_marker_k8s437
+  - GARBAGE_K8S_437_HOSTS_CM
+  - GARBAGE_K8S_437_HOSTS_CONFIG
+  - GARBAGE_K8S_437_HOSTS_DATA
+  - GARBAGE_K8S_437_RESOLVE_CONF
+  - GARBAGE_K8S_437_COREDNS_ZONE
+  - GARBAGE_K8S_437_ZONE_CM
+  - GARBAGE_K8S_437_ZONE_DATA
+  - GARBAGE_K8S_437_CUSTOM_HOSTS
+  - GARBAGE_K8S_437_INIT_SIDECAR
+  - GARBAGE_K8S_437_SIDECAR_DEPLOY
+  - GARBAGE_K8S_437_INIT_NAME
+  - GARBAGE_K8S_437_INIT_IMAGE
+  - GARBAGE_K8S_437_INIT_CMD
+  - GARBAGE_K8S_437_PYTEST
+  - GARBAGE_K8S_437_FIXTURE
+  - GARBAGE_K8S_437_CONFTEST_FUNC
 options:
-  commit_message: Add host aliases
+  commit_message: Add host aliases for legacy service DNS resolution

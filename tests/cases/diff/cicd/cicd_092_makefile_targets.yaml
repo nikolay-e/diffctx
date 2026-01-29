@@ -1,0 +1,33 @@
+name: cicd_092_makefile_targets
+initial:
+  Makefile: |
+    .PHONY: build test
+
+    build:
+    	python setup.py build
+
+    test:
+    	pytest tests/
+  src/app.py: |
+    def run():
+        print("Running application")
+changed:
+  Makefile: |
+    .PHONY: build test lint deploy
+
+    build:
+    	python -m build
+
+    test:
+    	pytest tests/ --cov=src
+
+    lint:
+    	ruff check src/
+
+    deploy:
+    	./scripts/deploy.sh
+assertions:
+  must_include:
+    - run
+options:
+  commit_message: add lint and deploy

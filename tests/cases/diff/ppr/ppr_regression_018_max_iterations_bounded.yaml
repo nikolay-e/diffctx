@@ -1,0 +1,37 @@
+name: ppr_regression_018_max_iterations_bounded
+initial:
+  entry.py: |
+    from layer1 import process1
+
+    def main():
+        return process1()
+  layer1.py: |
+    from layer2 import process2
+
+    def process1():
+        return process2()
+  layer2.py: |
+    from layer3 import process3
+
+    def process2():
+        return process3()
+  layer3.py: |
+    from layer4 import process4
+
+    def process3():
+        return process4()
+  layer4.py: |
+    def process4():
+        return "deep"
+changed:
+  entry.py: |
+    from layer1 import process1
+
+    def main():
+        return process1() + "_modified"
+assertions:
+  must_include:
+  - main
+  - "_modified"
+options:
+  commit_message: Modify entry point

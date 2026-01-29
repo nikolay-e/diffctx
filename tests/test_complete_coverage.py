@@ -10,7 +10,6 @@ from .utils import find_node_by_path, get_all_files_in_tree, load_yaml
 
 
 class TestDefaultIgnorePatterns:
-
     def test_svn_directory_ignored(self, tmp_path):
         project = tmp_path / "project"
         project.mkdir()
@@ -303,7 +302,6 @@ class TestDefaultIgnorePatterns:
 
 
 class TestCLIFeatures:
-
     def test_version_flag(self, temp_project):
         result = run_treemapper_subprocess(["--version"], cwd=temp_project)
         assert result.returncode == 0
@@ -372,7 +370,6 @@ class TestCLIFeatures:
 
 
 class TestPythonAPIEdgeCases:
-
     def test_nonexistent_directory(self, tmp_path):
         nonexistent = tmp_path / "does_not_exist"
         with pytest.raises((FileNotFoundError, ValueError, SystemExit)):
@@ -477,7 +474,6 @@ class TestPythonAPIEdgeCases:
 
 
 class TestIgnorePatternEdgeCases:
-
     def test_negation_with_no_default_ignores(self, tmp_path):
         project = tmp_path / "project"
         project.mkdir()
@@ -615,7 +611,6 @@ class TestIgnorePatternEdgeCases:
 
 
 class TestContentPlaceholders:
-
     def test_large_file_placeholder(self, tmp_path):
         project = tmp_path / "project"
         project.mkdir()
@@ -680,7 +675,6 @@ class TestContentPlaceholders:
 
 
 class TestOutputFileAutoIgnore:
-
     def test_output_file_excluded_from_tree(self, tmp_path):
         project = tmp_path / "project"
         project.mkdir()
@@ -714,7 +708,6 @@ class TestOutputFileAutoIgnore:
 
 
 class TestHierarchicalIgnoreFiles:
-
     def test_nested_gitignore_files(self, tmp_path):
         project = tmp_path / "project"
         project.mkdir()

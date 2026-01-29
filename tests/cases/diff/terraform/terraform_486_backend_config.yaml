@@ -1,0 +1,30 @@
+name: terraform_486_backend_config
+initial:
+  main.tf: |
+    terraform {
+    }
+
+    resource "aws_instance" "web" {
+      ami = "ami-12345"
+    }
+changed:
+  main.tf: |
+    terraform {
+      backend "s3" {
+        bucket         = "my-terraform-state"
+        key            = "prod/terraform.tfstate"
+        region         = "us-east-1"
+        encrypt        = true
+        dynamodb_table = "terraform-locks"
+        kms_key_id     = "alias/terraform-state"
+      }
+    }
+
+    resource "aws_instance" "web" {
+      ami = "ami-12345"
+    }
+assertions:
+  must_include:
+  - main.tf
+options:
+  commit_message: Add backend config

@@ -1,0 +1,26 @@
+name: yaml_005_jwt_settings
+initial:
+  config/auth.yaml: |
+    jwt:
+      secret_key: dev-secret
+      algorithm: HS256
+      expiration_hours: 24
+  src/auth.py: |
+    import jwt
+
+    def create_token(payload: dict, secret: str, algorithm: str = "HS256") -> str:
+        return jwt.encode(payload, secret, algorithm=algorithm)
+
+    def verify_token(token: str, secret: str, algorithm: str = "HS256") -> dict:
+        return jwt.decode(token, secret, algorithms=[algorithm])
+changed:
+  config/auth.yaml: |
+    jwt:
+      secret_key: prod-secret-key
+      algorithm: RS256
+      expiration_hours: 1
+assertions:
+  must_include:
+    - create_token
+options:
+  commit_message: update jwt config

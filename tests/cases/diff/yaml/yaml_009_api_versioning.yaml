@@ -1,0 +1,22 @@
+name: yaml_009_api_versioning
+initial:
+  config/api.yaml: |
+    api:
+      version: v1
+      prefix: /api
+  src/routes.py: |
+    def register_routes(app, version: str = "v1", prefix: str = "/api"):
+        base_path = f"{prefix}/{version}"
+        app.add_route(f"{base_path}/users", users_handler)
+changed:
+  config/api.yaml: |
+    api:
+      version: v2
+      prefix: /api
+      deprecated_versions:
+        - v1
+assertions:
+  must_include:
+    - register_routes
+options:
+  commit_message: bump api version

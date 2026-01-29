@@ -1,0 +1,114 @@
+name: docker_071_dockerfile_entrypoint
+initial:
+  src/main.py: |
+    import os
+    import sys
+    import logging
+
+    logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger(__name__)
+
+    def parse_arguments():
+        return {"mode": os.getenv("APP_MODE", "server")}
+
+    def run_server():
+        logger.info("Starting HTTP server on port 8080")
+
+    def run_worker():
+        logger.info("Starting background worker")
+
+    def main():
+        args = parse_arguments()
+        if args["mode"] == "server":
+            run_server()
+        else:
+            run_worker()
+
+    if __name__ == "__main__":
+        main()
+  src/config.py: |
+    import os
+
+    DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///app.db")
+    REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
+    LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
+  requirements.txt: |
+    flask==2.3.0
+    gunicorn==21.2.0
+    redis==5.0.0
+    sqlalchemy==2.0.0
+  Dockerfile: |
+    FROM python:3.11
+    WORKDIR /app
+    COPY . .
+    ENTRYPOINT ["python", "src/main.py"]
+  scripts/start.sh: |
+    #!/bin/bash
+    # GARBAGE_DOCKER_071_START_MARKER_a1b2c3
+    GARBAGE_DOCKER_071_START_VAR_d4e5f6="development"
+    python src/main.py
+  tests/test_main.py: |
+    # GARBAGE_DOCKER_071_TEST_MARKER_g7h8i9
+    GARBAGE_DOCKER_071_TEST_CONFIG_j0k1l2 = {"timeout": 30}
+    def test_main():
+        pass
+  docs/deployment.md: |
+    # Deployment Guide
+    GARBAGE_DOCKER_071_DOC_MARKER_m3n4o5
+    GARBAGE_DOCKER_071_STRATEGY_p6q7r8="blue-green"
+  k8s/pod.yaml: |
+    # GARBAGE_DOCKER_071_K8S_MARKER_s9t0u1
+    apiVersion: v1
+    GARBAGE_DOCKER_071_K8S_KIND_v2w3x4: Pod
+  .github/workflows/ci.yml: |
+    # GARBAGE_DOCKER_071_CI_MARKER_y5z6a7
+    name: CI
+    GARBAGE_DOCKER_071_WORKFLOW_b8c9d0: build
+changed:
+  Dockerfile: |
+    # Build stage
+    FROM python:3.12-slim AS builder
+    WORKDIR /build
+    COPY requirements.txt .
+    RUN pip install --no-cache-dir --target=/deps -r requirements.txt
+
+    # Production stage
+    FROM python:3.12-slim AS production
+    WORKDIR /app
+
+    # Security: run as non-root user
+    RUN useradd --create-home --shell /bin/bash appuser
+
+    # Copy dependencies and source
+    COPY --from=builder /deps /usr/local/lib/python3.12/site-packages
+    COPY src/ ./src/
+    COPY requirements.txt .
+
+    # Set environment variables
+    ENV PYTHONUNBUFFERED=1
+    ENV PYTHONDONTWRITEBYTECODE=1
+    ENV APP_MODE=server
+
+    USER appuser
+    EXPOSE 8080
+
+    ENTRYPOINT ["python", "-m", "src.main"]
+    CMD ["--mode", "server"]
+assertions:
+  must_include:
+    - def main
+    - run_server
+    - parse_arguments
+  must_not_include:
+    - GARBAGE_DOCKER_071_START_MARKER_a1b2c3
+    - GARBAGE_DOCKER_071_START_VAR_d4e5f6
+    - GARBAGE_DOCKER_071_TEST_MARKER_g7h8i9
+    - GARBAGE_DOCKER_071_TEST_CONFIG_j0k1l2
+    - GARBAGE_DOCKER_071_DOC_MARKER_m3n4o5
+    - GARBAGE_DOCKER_071_STRATEGY_p6q7r8
+    - GARBAGE_DOCKER_071_K8S_MARKER_s9t0u1
+    - GARBAGE_DOCKER_071_K8S_KIND_v2w3x4
+    - GARBAGE_DOCKER_071_CI_MARKER_y5z6a7
+    - GARBAGE_DOCKER_071_WORKFLOW_b8c9d0
+options:
+  commit_message: Add multi-stage build with security hardening for entrypoint

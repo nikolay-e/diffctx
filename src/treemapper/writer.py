@@ -98,12 +98,12 @@ def _write_yaml_node(file: TextIO, node: dict[str, Any], indent: str = "") -> No
 
 
 def _write_yaml_fragment(file: TextIO, frag: dict[str, Any], indent: str = "") -> None:
-    file.write(f"{indent}- path: \"{_escape_yaml_string(frag.get('path', ''))}\"\n")
-    file.write(f"{indent}  lines: \"{frag.get('lines', '')}\"\n")
+    file.write(f'{indent}- path: "{_escape_yaml_string(frag.get("path", ""))}"\n')
+    file.write(f'{indent}  lines: "{frag.get("lines", "")}"\n')
     file.write(f"{indent}  kind: {frag.get('kind', 'unknown')}\n")
 
     if frag.get("symbol"):
-        file.write(f"{indent}  symbol: \"{_escape_yaml_string(frag['symbol'])}\"\n")
+        file.write(f'{indent}  symbol: "{_escape_yaml_string(frag["symbol"])}"\n')
 
     if "content" in frag:
         _write_yaml_content(file, frag["content"], indent + "  ")

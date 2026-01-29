@@ -1,0 +1,37 @@
+name: ppr_regression_015_disconnected_separate_components
+initial:
+  comp1_a.py: |
+    SHARED1 = "shared1"
+
+    def comp1_a():
+        return SHARED1
+  comp1_b.py: |
+    SHARED1 = "shared1"
+
+    def comp1_b():
+        return SHARED1
+  comp2_a.py: |
+    SHARED2 = "shared2"
+
+    def comp2_a():
+        return SHARED2
+  comp2_b.py: |
+    SHARED2 = "shared2"
+
+    def comp2_b():
+        return SHARED2
+changed:
+  comp1_a.py: |
+    SHARED1 = "shared1"
+
+    def comp1_a():
+        return SHARED1 + "_modified"
+assertions:
+  must_include:
+  - comp1_a
+  - "_modified"
+  must_not_include:
+  - comp2_a
+  - comp2_b
+options:
+  commit_message: Modify component 1

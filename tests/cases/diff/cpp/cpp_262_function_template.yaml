@@ -1,7 +1,12 @@
 name: cpp_262_function_template
 initial:
-  algorithm.h: |
+  include/algorithm/algorithm.hpp: |
     #pragma once
+    #include <type_traits>
+    #include <utility>
+    #include <functional>
+
+    namespace app::algorithm {
 
     template<typename T>
     T maxValue(T a, T b) {
@@ -12,26 +17,324 @@ initial:
     T minValue(T a, T b) {
         return (a < b) ? a : b;
     }
-    // garbage_marker_12345
-  math.cpp: |
+
+    template<typename T>
+    T clamp(T value, T minVal, T maxVal) {
+        return maxValue(minVal, minValue(value, maxVal));
+    }
+
+    template<typename T>
+    void swap(T& a, T& b) noexcept(std::is_nothrow_move_constructible_v<T>) {
+        T temp = std::move(a);
+        a = std::move(b);
+        b = std::move(temp);
+    }
+
+    template<typename Iterator, typename T>
+    Iterator find(Iterator begin, Iterator end, const T& value) {
+        for (auto it = begin; it != end; ++it) {
+            if (*it == value) {
+                return it;
+            }
+        }
+        return end;
+    }
+
+    template<typename Iterator, typename Predicate>
+    Iterator findIf(Iterator begin, Iterator end, Predicate pred) {
+        for (auto it = begin; it != end; ++it) {
+            if (pred(*it)) {
+                return it;
+            }
+        }
+        return end;
+    }
+
+    template<typename Iterator, typename Func>
+    void forEach(Iterator begin, Iterator end, Func func) {
+        for (auto it = begin; it != end; ++it) {
+            func(*it);
+        }
+    }
+
+    template<typename T, typename Compare = std::less<T>>
+    bool isSorted(const T* arr, size_t size, Compare comp = Compare{}) {
+        for (size_t i = 1; i < size; ++i) {
+            if (comp(arr[i], arr[i - 1])) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    }
+
+  include/unrelated/config_loader.hpp: |
+    #pragma once
+    // GARBAGE_CPP_CONFIG_262_001
+    #define GARBAGE_CPP_CONFIG_VERSION_262_002 "1.0.0"
+
+    namespace app::unrelated::config {
+
+    // GARBAGE_CPP_CONFIG_ENTRY_262_003
+    struct ConfigEntry {
+        const char* key;
+        const char* value;
+        // GARBAGE_CPP_CONFIG_TYPE_262_004
+    };
+
+    // GARBAGE_CPP_CONFIG_LOADER_262_005
+    class ConfigLoader {
+    public:
+        // GARBAGE_CPP_CONFIG_LOAD_262_006
+        bool loadFromFile(const char* path) {
+            // GARBAGE_CPP_CONFIG_LOAD_IMPL_262_007
+            return false;
+        }
+
+        // GARBAGE_CPP_CONFIG_GET_262_008
+        const char* getValue(const char* key) {
+            // GARBAGE_CPP_CONFIG_GET_IMPL_262_009
+            return nullptr;
+        }
+
+        // GARBAGE_CPP_CONFIG_SET_262_010
+        void setValue(const char* key, const char* value) {
+            // GARBAGE_CPP_CONFIG_SET_IMPL_262_011
+        }
+    };
+
+    }
+
+  src/unrelated/logger_backend.cpp: |
+    // GARBAGE_CPP_LOGGER_262_012
+    #include <cstdio>
+
+    namespace app::unrelated::logging {
+
+    // GARBAGE_CPP_LOGGER_LEVEL_262_013
+    enum class LogLevel {
+        Debug,
+        Info,
+        Warning,
+        Error,
+        Fatal
+    };
+
+    // GARBAGE_CPP_LOGGER_BACKEND_262_014
+    class LoggerBackend {
+    public:
+        // GARBAGE_CPP_LOGGER_WRITE_262_015
+        void write(LogLevel level, const char* message) {
+            // GARBAGE_CPP_LOGGER_WRITE_IMPL_262_016
+        }
+
+        // GARBAGE_CPP_LOGGER_FLUSH_262_017
+        void flush() {
+            // GARBAGE_CPP_LOGGER_FLUSH_IMPL_262_018
+        }
+
+        // GARBAGE_CPP_LOGGER_ROTATE_262_019
+        void rotateLog() {
+            // GARBAGE_CPP_LOGGER_ROTATE_IMPL_262_020
+        }
+    };
+
+    }
+
+  src/math.cpp: |
     #include <iostream>
     int main() { return 0; }
-changed:
-  math.cpp: |
-    #include "algorithm.h"
 
-    int computeRange(int a, int b, int c) {
-        int maximum = maxValue(maxValue(a, b), c);
-        int minimum = minValue(minValue(a, b), c);
-        return maximum - minimum;
+changed:
+  src/math.cpp: |
+    #include "algorithm/algorithm.hpp"
+    #include <iostream>
+    #include <vector>
+    #include <string>
+    #include <cmath>
+
+    namespace app::math {
+
+    struct Point {
+        double x, y;
+
+        bool operator==(const Point& other) const {
+            return x == other.x && y == other.y;
+        }
+    };
+
+    double distance(const Point& a, const Point& b) {
+        double dx = a.x - b.x;
+        double dy = a.y - b.y;
+        return std::sqrt(dx * dx + dy * dy);
     }
+
+    class Statistics {
+    public:
+        template<typename Iterator>
+        static double mean(Iterator begin, Iterator end) {
+            double sum = 0.0;
+            size_t count = 0;
+            algorithm::forEach(begin, end, [&sum, &count](const auto& val) {
+                sum += val;
+                ++count;
+            });
+            return count > 0 ? sum / count : 0.0;
+        }
+
+        static int computeRange(int a, int b, int c) {
+            int maximum = algorithm::maxValue(algorithm::maxValue(a, b), c);
+            int minimum = algorithm::minValue(algorithm::minValue(a, b), c);
+            return maximum - minimum;
+        }
+
+        static double clampedValue(double value, double low, double high) {
+            return algorithm::clamp(value, low, high);
+        }
+    };
+
+    class ArrayProcessor {
+    public:
+        explicit ArrayProcessor(std::vector<int> data)
+            : data_(std::move(data)) {}
+
+        int findValue(int target) const {
+            auto it = algorithm::find(data_.begin(), data_.end(), target);
+            return it != data_.end() ? static_cast<int>(it - data_.begin()) : -1;
+        }
+
+        int findFirstEven() const {
+            auto it = algorithm::findIf(data_.begin(), data_.end(),
+                                         [](int val) { return val % 2 == 0; });
+            return it != data_.end() ? *it : -1;
+        }
+
+        void doubleAll() {
+            algorithm::forEach(data_.begin(), data_.end(),
+                               [](int& val) { val *= 2; });
+        }
+
+        void swapElements(size_t i, size_t j) {
+            if (i < data_.size() && j < data_.size()) {
+                algorithm::swap(data_[i], data_[j]);
+            }
+        }
+
+        bool checkSorted() const {
+            return algorithm::isSorted(data_.data(), data_.size());
+        }
+
+        void print() const {
+            std::cout << "Array: ";
+            for (int val : data_) {
+                std::cout << val << " ";
+            }
+            std::cout << "\n";
+        }
+
+        const std::vector<int>& data() const { return data_; }
+
+    private:
+        std::vector<int> data_;
+    };
+
+    class PointCloud {
+    public:
+        void addPoint(double x, double y) {
+            points_.push_back(Point{x, y});
+        }
+
+        Point* findPoint(double x, double y) {
+            auto it = algorithm::find(points_.begin(), points_.end(), Point{x, y});
+            return it != points_.end() ? &(*it) : nullptr;
+        }
+
+        Point findClosestTo(const Point& target) const {
+            Point closest = points_[0];
+            double minDist = distance(closest, target);
+
+            algorithm::forEach(points_.begin(), points_.end(),
+                               [&](const Point& p) {
+                                   double d = distance(p, target);
+                                   if (d < minDist) {
+                                       minDist = d;
+                                       closest = p;
+                                   }
+                               });
+            return closest;
+        }
+
+    private:
+        std::vector<Point> points_;
+    };
+
+    }
+
+    int main() {
+        std::cout << "Range of 5, 10, 3: "
+                  << app::math::Statistics::computeRange(5, 10, 3) << "\n";
+
+        std::cout << "Clamped 15 to [0,10]: "
+                  << app::math::Statistics::clampedValue(15.0, 0.0, 10.0) << "\n";
+
+        app::math::ArrayProcessor processor({5, 2, 8, 1, 9, 3, 7});
+        processor.print();
+
+        std::cout << "Index of 8: " << processor.findValue(8) << "\n";
+        std::cout << "First even: " << processor.findFirstEven() << "\n";
+        std::cout << "Is sorted: " << processor.checkSorted() << "\n";
+
+        processor.swapElements(0, 1);
+        processor.print();
+
+        processor.doubleAll();
+        processor.print();
+
+        std::vector<double> values = {1.5, 2.5, 3.5, 4.5};
+        std::cout << "Mean: " << app::math::Statistics::mean(values.begin(), values.end()) << "\n";
+
+        app::math::PointCloud cloud;
+        cloud.addPoint(0, 0);
+        cloud.addPoint(3, 4);
+        cloud.addPoint(1, 1);
+
+        auto closest = cloud.findClosestTo(app::math::Point{2, 2});
+        std::cout << "Closest to (2,2): (" << closest.x << ", " << closest.y << ")\n";
+
+        return 0;
+    }
+
 assertions:
   must_include:
-  - computeRange
-  - maxValue
-  - minValue
+    - computeRange
+    - maxValue
+    - minValue
+    - clamp
+    - Statistics
+    - ArrayProcessor
+    - findValue
+    - forEach
+    - findIf
+    - PointCloud
   must_not_include:
-  - garbage_marker_12345
-  - unused_marker_67890
+    - GARBAGE_CPP_CONFIG_262_001
+    - GARBAGE_CPP_CONFIG_VERSION_262_002
+    - GARBAGE_CPP_CONFIG_ENTRY_262_003
+    - GARBAGE_CPP_CONFIG_TYPE_262_004
+    - GARBAGE_CPP_CONFIG_LOADER_262_005
+    - GARBAGE_CPP_CONFIG_LOAD_262_006
+    - GARBAGE_CPP_CONFIG_GET_262_008
+    - GARBAGE_CPP_CONFIG_SET_262_010
+    - GARBAGE_CPP_LOGGER_262_012
+    - GARBAGE_CPP_LOGGER_LEVEL_262_013
+    - GARBAGE_CPP_LOGGER_BACKEND_262_014
+    - GARBAGE_CPP_LOGGER_WRITE_262_015
+    - GARBAGE_CPP_LOGGER_FLUSH_262_017
+    - GARBAGE_CPP_LOGGER_ROTATE_262_019
+    - ConfigLoader
+    - LoggerBackend
+    - ConfigEntry
+    - LogLevel
 options:
-  commit_message: Add function template usage
+  commit_message: Add statistics and array processing using function templates

@@ -1,34 +1,221 @@
 name: rust_011_generic_struct
 initial:
+  src/lib.rs: |
+    pub mod container;
+    pub mod unrelated;
   src/container.rs: |
-    pub struct Box<T> {
+    use std::fmt::Debug;
+
+    #[derive(Debug, Clone)]
+    pub struct Container<T> {
         value: T,
+        label: String,
+    }
+
+    impl<T> Container<T> {
+        pub fn new(value: T, label: &str) -> Self {
+            Self {
+                value,
+                label: label.to_string(),
+            }
+        }
+
+        pub fn label(&self) -> &str {
+            &self.label
+        }
+    }
+
+    impl<T: Clone> Container<T> {
+        pub fn value(&self) -> T {
+            self.value.clone()
+        }
+    }
+
+    impl<T: Default> Default for Container<T> {
+        fn default() -> Self {
+            Self {
+                value: T::default(),
+                label: String::from("default"),
+            }
+        }
+    }
+  src/unrelated/mod.rs: |
+    pub mod storage;
+    pub mod indexing;
+  src/unrelated/storage.rs: |
+    // GARBAGE_RUST_STORAGE_001
+    use std::collections::HashMap;
+
+    pub const GARBAGE_STORAGE_LIMIT_002: usize = 1000000;
+    pub const GARBAGE_BLOCK_SIZE_003: usize = 4096;
+
+    pub struct GarbageStorageEngine004<K, V> {
+        data: HashMap<K, V>,
+        capacity: usize,
+    }
+
+    impl<K: std::hash::Hash + Eq, V> GarbageStorageEngine004<K, V> {
+        pub fn garbage_store_005(&mut self, key: K, value: V) -> Result<(), String> {
+            if self.data.len() >= self.capacity {
+                return Err("GARBAGE_STORAGE_FULL_006".to_string());
+            }
+            self.data.insert(key, value);
+            Ok(())
+        }
+
+        pub fn garbage_retrieve_007(&self, key: &K) -> Option<&V> {
+            self.data.get(key)
+        }
+
+        pub fn garbage_remove_008(&mut self, key: &K) -> Option<V> {
+            self.data.remove(key)
+        }
+    }
+
+    pub trait GarbageStorable009 {
+        fn garbage_serialize_010(&self) -> Vec<u8>;
+        fn garbage_deserialize_011(data: &[u8]) -> Self where Self: Sized;
+    }
+  src/unrelated/indexing.rs: |
+    // GARBAGE_RUST_INDEX_012
+    use std::collections::BTreeMap;
+
+    pub const GARBAGE_INDEX_FACTOR_013: usize = 16;
+
+    pub struct GarbageIndex014<K: Ord, V> {
+        tree: BTreeMap<K, V>,
+    }
+
+    impl<K: Ord, V> GarbageIndex014<K, V> {
+        pub fn garbage_insert_015(&mut self, key: K, value: V) {
+            self.tree.insert(key, value);
+        }
+
+        pub fn garbage_search_016(&self, key: &K) -> Option<&V> {
+            self.tree.get(key)
+        }
+
+        pub fn garbage_range_017(&self, start: &K, end: &K) -> Vec<(&K, &V)> {
+            self.tree.range(start..end).collect()
+        }
     }
 changed:
   src/container.rs: |
-    pub struct Box<T> {
+    use std::fmt::Debug;
+    use std::marker::PhantomData;
+
+    #[derive(Debug, Clone)]
+    pub struct Container<T> {
         value: T,
+        label: String,
     }
 
-    impl<T> Box<T> {
-        pub fn new(value: T) -> Self {
-            Self { value }
+    impl<T> Container<T> {
+        pub fn new(value: T, label: &str) -> Self {
+            Self {
+                value,
+                label: label.to_string(),
+            }
+        }
+
+        pub fn label(&self) -> &str {
+            &self.label
         }
 
         pub fn get(&self) -> &T {
             &self.value
         }
 
+        pub fn get_mut(&mut self) -> &mut T {
+            &mut self.value
+        }
+
         pub fn into_inner(self) -> T {
             self.value
+        }
+
+        pub fn map<U, F>(self, f: F) -> Container<U>
+        where
+            F: FnOnce(T) -> U,
+        {
+            Container {
+                value: f(self.value),
+                label: self.label,
+            }
+        }
+
+        pub fn replace(&mut self, new_value: T) -> T {
+            std::mem::replace(&mut self.value, new_value)
+        }
+    }
+
+    impl<T: Clone> Container<T> {
+        pub fn value(&self) -> T {
+            self.value.clone()
+        }
+
+        pub fn duplicate(&self) -> Self {
+            Self {
+                value: self.value.clone(),
+                label: self.label.clone(),
+            }
+        }
+    }
+
+    impl<T: Default> Default for Container<T> {
+        fn default() -> Self {
+            Self {
+                value: T::default(),
+                label: String::from("default"),
+            }
+        }
+    }
+
+    #[derive(Debug)]
+    pub struct TypedContainer<T, Tag> {
+        inner: Container<T>,
+        _marker: PhantomData<Tag>,
+    }
+
+    impl<T, Tag> TypedContainer<T, Tag> {
+        pub fn new(value: T, label: &str) -> Self {
+            Self {
+                inner: Container::new(value, label),
+                _marker: PhantomData,
+            }
+        }
+
+        pub fn get(&self) -> &T {
+            self.inner.get()
         }
     }
 assertions:
   must_include:
-  - Box<T>
-  - into_inner
-  - get
+    - Container<T>
+    - into_inner
+    - get
+    - get_mut
+    - map
+    - replace
+    - TypedContainer
+    - PhantomData
   must_not_include:
-  - garbage_generic_method
+    - GARBAGE_RUST_STORAGE_001
+    - GARBAGE_STORAGE_LIMIT_002
+    - GARBAGE_BLOCK_SIZE_003
+    - GarbageStorageEngine004
+    - garbage_store_005
+    - GARBAGE_STORAGE_FULL_006
+    - garbage_retrieve_007
+    - garbage_remove_008
+    - GarbageStorable009
+    - garbage_serialize_010
+    - garbage_deserialize_011
+    - GARBAGE_RUST_INDEX_012
+    - GARBAGE_INDEX_FACTOR_013
+    - GarbageIndex014
+    - garbage_insert_015
+    - garbage_search_016
+    - garbage_range_017
 options:
-  commit_message: Add Box impl block
+  commit_message: Add Container impl block

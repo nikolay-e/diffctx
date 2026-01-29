@@ -1,28 +1,64 @@
 name: go_019_closure
 initial:
-  counter.go: |
-    package main
+  internal/counter/types.go: |
+    package counter
 
     type Counter struct {
         value int
+        name  string
     }
-  factory.go: |
-    package main
+
+    func NewCounter(name string) *Counter {
+        return &Counter{name: name, value: 0}
+    }
+
+    func (c *Counter) Increment() {
+        c.value++
+    }
+
+    func (c *Counter) Value() int {
+        return c.value
+    }
+
+  internal/factory/placeholder.go: |
+    package factory
 
     func placeholder() {}
-  unrelated/garbage.go: |
-    package unrelated
 
-    func UnusedCounter_12345() {
-        println("garbage_marker_12345")
+  internal/unrelated/pool/connection.go: |
+    package pool
+
+    const GARBAGE_GO_POOL_CONN_001 = "pool_garbage"
+
+    type GARBAGE_GO_TYPE_CONN_002 struct {
+        maxSize int
     }
 
-    func UnusedFactory_67890() {
-        println("unused_marker_67890")
+    func GARBAGE_GO_FUNC_CONN_003() string {
+        return "GARBAGE_GO_CONN_UNUSED_004"
     }
+
+  internal/unrelated/pool/worker.go: |
+    package pool
+
+    const GARBAGE_GO_POOL_WORKER_005 = "worker_garbage"
+
+    type GARBAGE_GO_TYPE_WORKER_006 struct {
+        count int
+    }
+
+    func GARBAGE_GO_FUNC_WORKER_007() {
+        println("GARBAGE_GO_WORKER_OUTPUT_008")
+    }
+
 changed:
-  factory.go: |
-    package main
+  internal/factory/placeholder.go: |
+    package factory
+
+    import (
+        "sync"
+        "time"
+    )
 
     func NewCounter() func() int {
         count := 0
@@ -37,12 +73,104 @@ changed:
             return base + n
         }
     }
+
+    func NewMultiplier(factor int) func(int) int {
+        return func(n int) int {
+            return n * factor
+        }
+    }
+
+    func NewAccumulator() (add func(int), get func() int) {
+        total := 0
+        var mu sync.Mutex
+
+        add = func(n int) {
+            mu.Lock()
+            defer mu.Unlock()
+            total += n
+        }
+
+        get = func() int {
+            mu.Lock()
+            defer mu.Unlock()
+            return total
+        }
+
+        return add, get
+    }
+
+    func NewRateLimiter(maxRequests int, window time.Duration) func() bool {
+        var mu sync.Mutex
+        requests := make([]time.Time, 0, maxRequests)
+
+        return func() bool {
+            mu.Lock()
+            defer mu.Unlock()
+
+            now := time.Now()
+            cutoff := now.Add(-window)
+
+            filtered := requests[:0]
+            for _, t := range requests {
+                if t.After(cutoff) {
+                    filtered = append(filtered, t)
+                }
+            }
+            requests = filtered
+
+            if len(requests) >= maxRequests {
+                return false
+            }
+
+            requests = append(requests, now)
+            return true
+        }
+    }
+
+    func NewMemoizer[K comparable, V any](fn func(K) V) func(K) V {
+        cache := make(map[K]V)
+        var mu sync.RWMutex
+
+        return func(key K) V {
+            mu.RLock()
+            if val, ok := cache[key]; ok {
+                mu.RUnlock()
+                return val
+            }
+            mu.RUnlock()
+
+            mu.Lock()
+            defer mu.Unlock()
+
+            if val, ok := cache[key]; ok {
+                return val
+            }
+
+            val := fn(key)
+            cache[key] = val
+            return val
+        }
+    }
+
 assertions:
   must_include:
-  - NewCounter
-  - NewAdder
+    - NewCounter
+    - NewAdder
+    - NewMultiplier
+    - NewAccumulator
+    - NewRateLimiter
+    - NewMemoizer
+    - closure
   must_not_include:
-  - garbage_marker_12345
-  - unused_marker_67890
+    - GARBAGE_GO_POOL_CONN_001
+    - GARBAGE_GO_TYPE_CONN_002
+    - GARBAGE_GO_FUNC_CONN_003
+    - GARBAGE_GO_CONN_UNUSED_004
+    - GARBAGE_GO_POOL_WORKER_005
+    - GARBAGE_GO_TYPE_WORKER_006
+    - GARBAGE_GO_FUNC_WORKER_007
+    - GARBAGE_GO_WORKER_OUTPUT_008
+    - connection.go
+    - worker.go
 options:
-  commit_message: Add closure factories
+  commit_message: Add closure-based factories and utilities

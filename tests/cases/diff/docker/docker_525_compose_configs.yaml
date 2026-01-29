@@ -1,36 +1,147 @@
 name: docker_525_compose_configs
 initial:
-  nginx.conf: |
-    server {
-        listen 80;
-        location / {
-            proxy_pass http://api:8080;
+  nginx/nginx.conf: |
+    worker_processes auto;
+    events {
+        worker_connections 1024;
+    }
+    http {
+        upstream api {
+            server api:8080;
+        }
+        server {
+            listen 80;
+            location / {
+                proxy_pass http://api;
+                proxy_set_header Host $host;
+                proxy_set_header X-Real-IP $remote_addr;
+            }
         }
     }
+  nginx/ssl.conf: |
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256;
+    ssl_prefer_server_ciphers off;
+  prometheus/prometheus.yml: |
+    global:
+      scrape_interval: 15s
+    scrape_configs:
+      - job_name: 'api'
+        static_configs:
+          - targets: ['api:8080']
   docker-compose.yml: |
     version: '3.8'
     services:
       nginx:
-        image: nginx:latest
-  junk.txt: |
-    garbage_marker_12345 unused_marker_67890
+        image: nginx:alpine
+      api:
+        build: ./api
+  scripts/update_config.sh: |
+    #!/bin/bash
+    # GARBAGE_DOCKER_525_CONFIG_MARKER_001
+    GARBAGE_DOCKER_525_CONFIG_VAR_002="update"
+    docker-compose up -d --no-deps nginx
+  tests/test_configs.py: |
+    # GARBAGE_DOCKER_525_TEST_MARKER_003
+    GARBAGE_DOCKER_525_TEST_CFG_004 = {"path": "/etc/nginx"}
+    def test_config_mounted():
+        pass
+  docs/configuration.md: |
+    # Configuration Management
+    GARBAGE_DOCKER_525_CFG_DOC_005
+    GARBAGE_DOCKER_525_RELOAD_006="nginx -s reload"
+  ansible/templates/nginx.conf.j2: |
+    # GARBAGE_DOCKER_525_ANSIBLE_MARKER_007
+    GARBAGE_DOCKER_525_TEMPLATE_008: jinja2
+  k8s/configmap.yaml: |
+    # GARBAGE_DOCKER_525_K8S_MARKER_009
+    GARBAGE_DOCKER_525_CM_010: nginx-config
 changed:
   docker-compose.yml: |
     version: '3.8'
+
     services:
       nginx:
-        image: nginx:latest
+        image: nginx:alpine
+        ports:
+          - "80:80"
+          - "443:443"
         configs:
-          - source: nginx_conf
-            target: /etc/nginx/conf.d/default.conf
+          - source: nginx_main
+            target: /etc/nginx/nginx.conf
+            mode: 0440
+          - source: nginx_ssl
+            target: /etc/nginx/conf.d/ssl.conf
+            mode: 0440
+          - source: nginx_mime
+            target: /etc/nginx/mime.types
+        secrets:
+          - source: ssl_cert
+            target: /etc/nginx/ssl/cert.pem
+          - source: ssl_key
+            target: /etc/nginx/ssl/key.pem
+            mode: 0400
+        depends_on:
+          - api
+        healthcheck:
+          test: ["CMD", "curl", "-f", "http://localhost/health"]
+          interval: 30s
+          timeout: 10s
+          retries: 3
+
+      api:
+        build: ./api
+        configs:
+          - source: app_config
+            target: /app/config/app.yaml
+        expose:
+          - "8080"
+
+      prometheus:
+        image: prom/prometheus:v2.48.0
+        configs:
+          - source: prometheus_config
+            target: /etc/prometheus/prometheus.yml
+        ports:
+          - "9090:9090"
+
     configs:
-      nginx_conf:
-        file: ./nginx.conf
+      nginx_main:
+        file: ./nginx/nginx.conf
+      nginx_ssl:
+        file: ./nginx/ssl.conf
+      nginx_mime:
+        external: true
+        name: nginx_mime_types_v1
+      app_config:
+        file: ./config/app.yaml
+      prometheus_config:
+        file: ./prometheus/prometheus.yml
+
+    secrets:
+      ssl_cert:
+        file: ./secrets/ssl/cert.pem
+      ssl_key:
+        file: ./secrets/ssl/key.pem
 assertions:
   must_include:
-  - 'configs:'
+    - "configs:"
+    - "source: nginx_main"
+    - "target: /etc/nginx/nginx.conf"
+    - "mode: 0440"
+    - "external: true"
+    - "name: nginx_mime_types_v1"
+    - "file: ./nginx/nginx.conf"
   must_not_include:
-  - garbage_marker_12345
-  - unused_marker_67890
+    - GARBAGE_DOCKER_525_CONFIG_MARKER_001
+    - GARBAGE_DOCKER_525_CONFIG_VAR_002
+    - GARBAGE_DOCKER_525_TEST_MARKER_003
+    - GARBAGE_DOCKER_525_TEST_CFG_004
+    - GARBAGE_DOCKER_525_CFG_DOC_005
+    - GARBAGE_DOCKER_525_RELOAD_006
+    - GARBAGE_DOCKER_525_ANSIBLE_MARKER_007
+    - GARBAGE_DOCKER_525_TEMPLATE_008
+    - GARBAGE_DOCKER_525_K8S_MARKER_009
+    - GARBAGE_DOCKER_525_CM_010
 options:
-  commit_message: Add configs
+  commit_message: Add Docker configs with external references and file permissions

@@ -1,32 +1,160 @@
 name: docker_526_compose_deploy
 initial:
+  api/src/app.py: |
+    from flask import Flask, jsonify
+    import os
+    import socket
+
+    app = Flask(__name__)
+
+    @app.route('/health')
+    def health():
+        return jsonify(
+            status='ok',
+            hostname=socket.gethostname(),
+            instance=os.environ.get('HOSTNAME', 'unknown')
+        )
+
+    @app.route('/api/v1/data')
+    def get_data():
+        return jsonify(data=[1, 2, 3])
+  api/requirements.txt: |
+    flask==2.3.0
+    gunicorn==21.2.0
+  api/Dockerfile: |
+    FROM python:3.12-slim
+    WORKDIR /app
+    COPY requirements.txt .
+    RUN pip install -r requirements.txt
+    COPY src/ ./src/
+    CMD ["gunicorn", "-b", "0.0.0.0:8080", "src.app:app"]
   docker-compose.yml: |
     version: '3.8'
     services:
       api:
-        build: .
-  unrelated.py: |
-    garbage_marker_12345 = True
-    unused_marker_67890 = False
+        build: ./api
+      db:
+        image: postgres:16-alpine
+  scripts/scale_service.sh: |
+    #!/bin/bash
+    # GARBAGE_DOCKER_526_SCALE_MARKER_001
+    GARBAGE_DOCKER_526_SCALE_VAR_002="3"
+    docker-compose up -d --scale api=3
+  tests/test_scaling.py: |
+    # GARBAGE_DOCKER_526_TEST_MARKER_003
+    GARBAGE_DOCKER_526_TEST_SCALE_004 = {"replicas": 3}
+    def test_scaling():
+        pass
+  docs/deployment.md: |
+    # Deployment Guide
+    GARBAGE_DOCKER_526_DEPLOY_DOC_005
+    GARBAGE_DOCKER_526_STRATEGY_006="rolling"
+  k8s/deployment.yaml: |
+    # GARBAGE_DOCKER_526_K8S_MARKER_007
+    apiVersion: apps/v1
+    GARBAGE_DOCKER_526_K8S_DEPLOY_008: Deployment
+  terraform/ecs.tf: |
+    # GARBAGE_DOCKER_526_TF_MARKER_009
+    GARBAGE_DOCKER_526_ECS_010: fargate
 changed:
   docker-compose.yml: |
     version: '3.8'
+
     services:
       api:
-        build: .
+        build: ./api
+        ports:
+          - "8080-8082:8080"
         deploy:
+          mode: replicated
           replicas: 3
+          endpoint_mode: vip
           resources:
             limits:
-              cpus: '0.5'
+              cpus: '0.50'
               memory: 512M
+            reservations:
+              cpus: '0.25'
+              memory: 256M
           restart_policy:
             condition: on-failure
+            delay: 5s
+            max_attempts: 3
+            window: 120s
+          rollback_config:
+            parallelism: 1
+            delay: 10s
+            failure_action: continue
+            monitor: 60s
+            max_failure_ratio: 0.3
+          update_config:
+            parallelism: 1
+            delay: 10s
+            failure_action: rollback
+            monitor: 60s
+            max_failure_ratio: 0.3
+            order: start-first
+          placement:
+            constraints:
+              - node.role == worker
+            preferences:
+              - spread: node.labels.zone
+
+      db:
+        image: postgres:16-alpine
+        environment:
+          - POSTGRES_PASSWORD=secret
+        volumes:
+          - postgres_data:/var/lib/postgresql/data
+        deploy:
+          mode: replicated
+          replicas: 1
+          resources:
+            limits:
+              cpus: '1.0'
+              memory: 1G
+            reservations:
+              cpus: '0.5'
+              memory: 512M
+          placement:
+            constraints:
+              - node.labels.db == true
+
+      redis:
+        image: redis:7-alpine
+        deploy:
+          mode: global
+          resources:
+            limits:
+              cpus: '0.25'
+              memory: 128M
+
+    volumes:
+      postgres_data:
 assertions:
   must_include:
-  - 'deploy:'
+    - "deploy:"
+    - "mode: replicated"
+    - "replicas: 3"
+    - "endpoint_mode: vip"
+    - "cpus: '0.50'"
+    - "memory: 512M"
+    - "restart_policy:"
+    - "condition: on-failure"
+    - "rollback_config:"
+    - "update_config:"
+    - "order: start-first"
+    - "mode: global"
   must_not_include:
-  - garbage_marker_12345
-  - unused_marker_67890
+    - GARBAGE_DOCKER_526_SCALE_MARKER_001
+    - GARBAGE_DOCKER_526_SCALE_VAR_002
+    - GARBAGE_DOCKER_526_TEST_MARKER_003
+    - GARBAGE_DOCKER_526_TEST_SCALE_004
+    - GARBAGE_DOCKER_526_DEPLOY_DOC_005
+    - GARBAGE_DOCKER_526_STRATEGY_006
+    - GARBAGE_DOCKER_526_K8S_MARKER_007
+    - GARBAGE_DOCKER_526_K8S_DEPLOY_008
+    - GARBAGE_DOCKER_526_TF_MARKER_009
+    - GARBAGE_DOCKER_526_ECS_010
 options:
-  commit_message: Add deploy
+  commit_message: Add comprehensive deploy config with resources, rollback, and placement

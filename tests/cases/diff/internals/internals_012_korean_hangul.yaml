@@ -1,0 +1,16 @@
+name: internals_012_korean_hangul
+initial:
+  korean.py: |
+    def placeholder():
+        pass
+changed:
+  korean.py: |
+    def handler():
+        message = "안녕하세요"
+        return message
+assertions:
+  must_include:
+  - handler
+  - message
+options:
+  add_garbage: true

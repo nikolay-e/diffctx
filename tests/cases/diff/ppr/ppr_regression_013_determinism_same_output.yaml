@@ -1,0 +1,33 @@
+name: ppr_regression_013_determinism_same_output
+initial:
+  a.py: |
+    SHARED = "shared"
+    FUNC_A = "func_a"
+
+    def func_a():
+        return SHARED + FUNC_A
+  b.py: |
+    SHARED = "shared"
+    FUNC_B = "func_b"
+
+    def func_b():
+        return SHARED + FUNC_B
+  c.py: |
+    FUNC_C = "func_c"
+
+    def func_c():
+        return FUNC_C
+changed:
+  a.py: |
+    SHARED = "shared"
+    FUNC_A = "func_a"
+
+    def func_a():
+        return SHARED + FUNC_A + "_modified"
+assertions:
+  must_include:
+  - func_a
+  - SHARED
+  - "_modified"
+options:
+  commit_message: Modify func_a

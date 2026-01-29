@@ -1,0 +1,181 @@
+name: graph_008_naming_convention_edge
+initial:
+  user_service.py: |
+    def get_user(user_id):
+        return {"id": user_id, "name": "Unknown"}
+
+    def create_user(name, email):
+        return {"id": generate_id(), "name": name, "email": email}
+
+    def update_user(user_id, data):
+        user = get_user(user_id)
+        user.update(data)
+        return user
+
+    def delete_user(user_id):
+        return {"deleted": user_id}
+
+    def generate_id():
+        import uuid
+        return str(uuid.uuid4())
+
+    class UserRepository:
+        def __init__(self):
+            self.users = {}
+
+        def find_by_id(self, user_id):
+            return self.users.get(user_id)
+
+        def save(self, user):
+            self.users[user["id"]] = user
+            return user
+
+        def delete(self, user_id):
+            return self.users.pop(user_id, None)
+  order_service.py: |
+    def get_order(order_id):
+        return {"id": order_id, "status": "pending"}
+
+    def create_order(user_id, items):
+        return {"id": "new", "user_id": user_id, "items": items}
+
+    def update_order_status(order_id, status):
+        order = get_order(order_id)
+        order["status"] = status
+        return order
+
+    class OrderRepository:
+        def __init__(self):
+            self.orders = {}
+
+        def find_by_id(self, order_id):
+            return self.orders.get(order_id)
+
+        def find_by_user(self, user_id):
+            return [o for o in self.orders.values() if o.get("user_id") == user_id]
+  tests/test_user_service.py: |
+    from user_service import get_user, create_user, update_user, delete_user, UserRepository
+
+    def test_get_user():
+        user = get_user("123")
+        assert user["id"] == "123"
+
+    def test_create_user():
+        user = create_user("Alice", "alice@example.com")
+        assert user["name"] == "Alice"
+
+    def test_update_user():
+        user = update_user("123", {"name": "Bob"})
+        assert user["name"] == "Bob"
+
+    def test_delete_user():
+        result = delete_user("123")
+        assert result["deleted"] == "123"
+
+    class TestUserRepository:
+        def test_find_by_id(self):
+            repo = UserRepository()
+            repo.save({"id": "1", "name": "Test"})
+            assert repo.find_by_id("1") is not None
+
+        def test_save(self):
+            repo = UserRepository()
+            user = repo.save({"id": "1", "name": "Test"})
+            assert user["id"] == "1"
+  tests/test_order_service.py: |
+    from order_service import get_order, create_order, update_order_status
+
+    def test_get_order():
+        order = get_order("456")
+        assert order["id"] == "456"
+
+    def test_create_order():
+        order = create_order("user1", ["item1", "item2"])
+        assert len(order["items"]) == 2
+
+    def test_update_order_status():
+        order = update_order_status("456", "shipped")
+        assert order["status"] == "shipped"
+  garbage/payment_service_GARBAGE_GRAPH_vwx001.py: |
+    def process_payment_GARBAGE_GRAPH_vwx001(amount, card_number):
+        return {"status": "success", "transaction_id": "txn_123"}
+
+    def refund_payment_GARBAGE_GRAPH_vwx001(transaction_id):
+        return {"status": "refunded", "transaction_id": transaction_id}
+
+    class PaymentProcessor_GARBAGE_GRAPH_vwx001:
+        def charge(self, amount):
+            pass
+
+        def verify(self, card):
+            pass
+  garbage/tests/test_payment_service_GARBAGE_GRAPH_vwx002.py: |
+    def test_process_payment_GARBAGE_GRAPH_vwx002():
+        assert True
+
+    def test_refund_payment_GARBAGE_GRAPH_vwx002():
+        assert True
+
+    class TestPaymentProcessor_GARBAGE_GRAPH_vwx002:
+        def test_charge(self):
+            pass
+  garbage/inventory_service_GARBAGE_GRAPH_vwx003.py: |
+    def check_stock_GARBAGE_GRAPH_vwx003(product_id):
+        return {"product_id": product_id, "quantity": 100}
+
+    def reserve_stock_GARBAGE_GRAPH_vwx003(product_id, quantity):
+        return {"reserved": True}
+
+    def release_stock_GARBAGE_GRAPH_vwx003(reservation_id):
+        return {"released": True}
+changed:
+  user_service.py: |
+    def get_user(user_id):
+        return {"id": user_id, "name": "Unknown", "active": True}
+
+    def create_user(name, email):
+        return {"id": generate_id(), "name": name, "email": email, "active": True}
+
+    def update_user(user_id, data):
+        user = get_user(user_id)
+        user.update(data)
+        return user
+
+    def delete_user(user_id):
+        return {"deleted": user_id}
+
+    def deactivate_user(user_id):
+        return update_user(user_id, {"active": False})
+
+    def generate_id():
+        import uuid
+        return str(uuid.uuid4())
+
+    class UserRepository:
+        def __init__(self):
+            self.users = {}
+
+        def find_by_id(self, user_id):
+            return self.users.get(user_id)
+
+        def find_active(self):
+            return [u for u in self.users.values() if u.get("active")]
+
+        def save(self, user):
+            self.users[user["id"]] = user
+            return user
+
+        def delete(self, user_id):
+            return self.users.pop(user_id, None)
+assertions:
+  must_include:
+  - get_user
+  must_not_include:
+  - GARBAGE_GRAPH_vwx001
+  - GARBAGE_GRAPH_vwx002
+  - GARBAGE_GRAPH_vwx003
+  - process_payment
+  - refund_payment
+  - PaymentProcessor
+  - check_stock
+  - reserve_stock

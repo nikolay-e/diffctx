@@ -1,0 +1,20 @@
+name: ppr_regression_003_seeds_valid_high_score
+initial:
+  seed_module.py: |
+    def seed_func():
+        return "seed"
+  other_module.py: |
+    def other_func():
+        return "other"
+changed:
+  seed_module.py: |
+    def seed_func():
+        return "modified seed"
+assertions:
+  must_include:
+  - seed_func
+  - "modified seed"
+  must_not_include:
+  - other_func
+options:
+  commit_message: Modify seed function

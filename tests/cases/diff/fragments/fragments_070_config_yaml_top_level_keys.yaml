@@ -1,0 +1,84 @@
+name: fragments_070_config_yaml_top_level_keys
+initial:
+  config.yaml: |
+    database:
+      host: localhost
+      port: 5432
+      name: mydb
+      credentials:
+        user: admin
+        password: secret
+
+    server:
+      port: 8080
+      debug: true
+      workers: 4
+
+    garbage_section_a:
+      key1: GARBAGE_FRAG_yaml_a1_070
+      key2: GARBAGE_FRAG_yaml_a2_070
+      nested:
+        deep: GARBAGE_FRAG_yaml_deep_070
+
+    garbage_section_b:
+      value: GARBAGE_FRAG_yaml_b1_070
+      list:
+        - GARBAGE_FRAG_yaml_list1_070
+        - GARBAGE_FRAG_yaml_list2_070
+
+    logging:
+      level: GARBAGE_FRAG_yaml_log_070
+      format: GARBAGE_FRAG_yaml_format_070
+  garbage_config_070.yaml: |
+    garbage_root:
+      key: GARBAGE_FRAG_garbroot_070
+      nested:
+        value: GARBAGE_FRAG_garbnested_070
+
+    another_garbage:
+      items:
+        - GARBAGE_FRAG_garbitem1_070
+        - GARBAGE_FRAG_garbitem2_070
+changed:
+  config.yaml: |
+    database:
+      host: localhost
+      port: 5433
+      name: mydb
+      credentials:
+        user: admin
+        password: secret
+
+    server:
+      port: 8080
+      debug: true
+      workers: 4
+
+    garbage_section_a:
+      key1: GARBAGE_FRAG_yaml_a1_070
+      key2: GARBAGE_FRAG_yaml_a2_070
+      nested:
+        deep: GARBAGE_FRAG_yaml_deep_070
+
+    garbage_section_b:
+      value: GARBAGE_FRAG_yaml_b1_070
+      list:
+        - GARBAGE_FRAG_yaml_list1_070
+        - GARBAGE_FRAG_yaml_list2_070
+
+    logging:
+      level: GARBAGE_FRAG_yaml_log_070
+      format: GARBAGE_FRAG_yaml_format_070
+assertions:
+  must_include:
+    - config.yaml
+    - database
+    - port
+  must_not_include:
+    - GARBAGE_FRAG_garbroot_070
+    - GARBAGE_FRAG_garbnested_070
+    - GARBAGE_FRAG_garbitem1_070
+    - GARBAGE_FRAG_garbitem2_070
+    - garbage_config_070.yaml
+options:
+  commit_message: Change database port

@@ -5,6 +5,8 @@ initial:
     name = "myapp"
     version = "0.1.0"
     edition = "2021"
+    authors = ["Developer <dev@example.com>"]
+    description = "A sample application"
 
     [features]
     default = []
@@ -18,31 +20,150 @@ initial:
         pub async fn fetch() -> String {
             "data".to_string()
         }
+
+        pub async fn delay(ms: u64) {
+            tokio::time::sleep(tokio::time::Duration::from_millis(ms)).await;
+        }
     }
 
     pub fn sync_fetch() -> String {
         "sync data".to_string()
     }
+
+    pub fn version() -> &'static str {
+        env!("CARGO_PKG_VERSION")
+    }
+  src/unrelated/mod.rs: |
+    pub mod metrics;
+  src/unrelated/metrics.rs: |
+    // GARBAGE_RUST_METRICS_FEAT_001
+    use std::collections::HashMap;
+
+    pub const GARBAGE_METRICS_INTERVAL_002: u64 = 60000;
+
+    pub struct GarbageMetricsCollector003 {
+        counters: HashMap<String, u64>,
+        gauges: HashMap<String, f64>,
+    }
+
+    impl GarbageMetricsCollector003 {
+        pub fn garbage_increment_004(&mut self, name: &str) {
+            *self.counters.entry(name.to_string()).or_insert(0) += 1;
+        }
+
+        pub fn garbage_set_gauge_005(&mut self, name: &str, value: f64) {
+            self.gauges.insert(name.to_string(), value);
+        }
+
+        pub fn garbage_export_006(&self) -> String {
+            "GARBAGE_METRICS_EXPORT_007".to_string()
+        }
+    }
+
+    pub trait GarbageMetricsReporter008 {
+        fn garbage_report_009(&self, collector: &GarbageMetricsCollector003);
+    }
 changed:
   Cargo.toml: |
     [package]
     name = "myapp"
-    version = "0.1.0"
+    version = "0.2.0"
     edition = "2021"
+    authors = ["Developer <dev@example.com>"]
+    description = "A sample application with features"
 
     [features]
     default = []
     async = ["tokio"]
-    serde = ["dep:serde"]
+    serde = ["dep:serde", "dep:serde_json"]
+    full = ["async", "serde"]
 
     [dependencies]
-    tokio = { version = "1", optional = true }
+    tokio = { version = "1", optional = true, features = ["rt-multi-thread", "macros"] }
     serde = { version = "1", optional = true, features = ["derive"] }
+    serde_json = { version = "1", optional = true }
+
+    [dev-dependencies]
+    criterion = "0.5"
+
+    [[bench]]
+    name = "benchmarks"
+    harness = false
+  src/lib.rs: |
+    #[cfg(feature = "async")]
+    pub mod async_utils {
+        pub async fn fetch() -> String {
+            "data".to_string()
+        }
+
+        pub async fn delay(ms: u64) {
+            tokio::time::sleep(tokio::time::Duration::from_millis(ms)).await;
+        }
+
+        pub async fn fetch_with_timeout(timeout_ms: u64) -> Option<String> {
+            tokio::time::timeout(
+                tokio::time::Duration::from_millis(timeout_ms),
+                fetch(),
+            )
+            .await
+            .ok()
+        }
+    }
+
+    #[cfg(feature = "serde")]
+    pub mod serialization {
+        use serde::{Deserialize, Serialize};
+
+        #[derive(Debug, Clone, Serialize, Deserialize)]
+        pub struct Config {
+            pub name: String,
+            pub value: i64,
+        }
+
+        pub fn to_json<T: Serialize>(value: &T) -> Result<String, serde_json::Error> {
+            serde_json::to_string(value)
+        }
+
+        pub fn from_json<T: for<'de> Deserialize<'de>>(json: &str) -> Result<T, serde_json::Error> {
+            serde_json::from_str(json)
+        }
+    }
+
+    pub fn sync_fetch() -> String {
+        "sync data".to_string()
+    }
+
+    pub fn version() -> &'static str {
+        env!("CARGO_PKG_VERSION")
+    }
+
+    pub fn features() -> Vec<&'static str> {
+        let mut features = Vec::new();
+        #[cfg(feature = "async")]
+        features.push("async");
+        #[cfg(feature = "serde")]
+        features.push("serde");
+        features
+    }
 assertions:
   must_include:
-  - serde
-  - features
+    - serde
+    - serde_json
+    - features
+    - serialization
+    - Serialize
+    - Deserialize
+    - to_json
+    - from_json
   must_not_include:
-  - garbage_dependency
+    - GARBAGE_RUST_METRICS_FEAT_001
+    - GARBAGE_METRICS_INTERVAL_002
+    - GarbageMetricsCollector003
+    - garbage_increment_004
+    - garbage_set_gauge_005
+    - garbage_export_006
+    - GARBAGE_METRICS_EXPORT_007
+    - GarbageMetricsReporter008
+    - garbage_report_009
 options:
   commit_message: Add serde feature

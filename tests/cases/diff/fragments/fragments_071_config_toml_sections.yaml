@@ -1,0 +1,83 @@
+name: fragments_071_config_toml_sections
+initial:
+  config.toml: |
+    [database]
+    host = "localhost"
+    port = 5432
+    name = "mydb"
+
+    [database.credentials]
+    user = "admin"
+    password = "secret"
+
+    [server]
+    port = 8080
+    debug = true
+    workers = 4
+
+    [garbage_section_a]
+    key1 = "GARBAGE_FRAG_toml_a1_071"
+    key2 = "GARBAGE_FRAG_toml_a2_071"
+
+    [garbage_section_a.nested]
+    deep = "GARBAGE_FRAG_toml_deep_071"
+
+    [garbage_section_b]
+    value = "GARBAGE_FRAG_toml_b1_071"
+    list = ["GARBAGE_FRAG_toml_list1_071", "GARBAGE_FRAG_toml_list2_071"]
+
+    [logging]
+    level = "GARBAGE_FRAG_toml_log_071"
+    format = "GARBAGE_FRAG_toml_format_071"
+  garbage_config_071.toml: |
+    [garbage_root]
+    key = "GARBAGE_FRAG_garbroot_071"
+
+    [garbage_root.nested]
+    value = "GARBAGE_FRAG_garbnested_071"
+
+    [another_garbage]
+    items = ["GARBAGE_FRAG_garbitem1_071", "GARBAGE_FRAG_garbitem2_071"]
+changed:
+  config.toml: |
+    [database]
+    host = "localhost"
+    port = 5433
+    name = "mydb"
+
+    [database.credentials]
+    user = "admin"
+    password = "secret"
+
+    [server]
+    port = 8080
+    debug = true
+    workers = 4
+
+    [garbage_section_a]
+    key1 = "GARBAGE_FRAG_toml_a1_071"
+    key2 = "GARBAGE_FRAG_toml_a2_071"
+
+    [garbage_section_a.nested]
+    deep = "GARBAGE_FRAG_toml_deep_071"
+
+    [garbage_section_b]
+    value = "GARBAGE_FRAG_toml_b1_071"
+    list = ["GARBAGE_FRAG_toml_list1_071", "GARBAGE_FRAG_toml_list2_071"]
+
+    [logging]
+    level = "GARBAGE_FRAG_toml_log_071"
+    format = "GARBAGE_FRAG_toml_format_071"
+assertions:
+  must_include:
+    - config.toml
+    - database
+    - port
+  must_not_include:
+    - GARBAGE_FRAG_garbroot_071
+    - GARBAGE_FRAG_garbnested_071
+    - GARBAGE_FRAG_garbitem1_071
+    - GARBAGE_FRAG_garbitem2_071
+    - garbage_config_071.toml
+options:
+  commit_message: Change database port

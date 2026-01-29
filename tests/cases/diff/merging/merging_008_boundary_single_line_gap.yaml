@@ -1,0 +1,23 @@
+name: merging_008_boundary_single_line_gap
+initial:
+  single_gap.py: |
+    def func1():
+        pass
+
+    def func2():
+        pass
+changed:
+  single_gap.py: |
+    def func1():
+        return 1
+
+    def func2():
+        return 2
+assertions:
+  must_include:
+  - func1
+  - func2
+  - return 1
+  - return 2
+options:
+  commit_message: Modify functions with single line gap

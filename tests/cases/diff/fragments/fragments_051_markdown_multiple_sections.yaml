@@ -1,0 +1,78 @@
+name: fragments_051_markdown_multiple_sections
+initial:
+  multi_section.md: |
+    # Section One
+    Content 1
+
+    # Section Two
+    Content 2 GARBAGE_FRAG_sec2content051
+
+    # Section Three
+    Content 3
+
+    # Garbage Section A GARBAGE_FRAG_secA051
+    Garbage content A
+    GARBAGE_FRAG_contentA051
+
+    ## Garbage Subsection A1 GARBAGE_FRAG_subA1_051
+    GARBAGE_FRAG_subcontentA1_051
+
+    # Garbage Section B GARBAGE_FRAG_secB051
+    Garbage content B
+    GARBAGE_FRAG_contentB051
+
+    ## Garbage Subsection B1 GARBAGE_FRAG_subB1_051
+    GARBAGE_FRAG_subcontentB1_051
+
+    # Trailing Garbage GARBAGE_FRAG_trailing051
+    GARBAGE_FRAG_trailingcontent051
+  garbage_multi_051.md: |
+    # Garbage Doc Section 1 GARBAGE_FRAG_garbdoc1_051
+    GARBAGE_FRAG_garbcontent1_051
+
+    # Garbage Doc Section 2 GARBAGE_FRAG_garbdoc2_051
+    GARBAGE_FRAG_garbcontent2_051
+
+    ## Garbage Subsection GARBAGE_FRAG_garbsub051
+    GARBAGE_FRAG_garbsubcontent051
+changed:
+  multi_section.md: |
+    # Section One
+    Modified content 1
+
+    # Section Two
+    Content 2 GARBAGE_FRAG_sec2content051
+
+    # Section Three
+    Modified content 3
+
+    # Garbage Section A GARBAGE_FRAG_secA051
+    Garbage content A
+    GARBAGE_FRAG_contentA051
+
+    ## Garbage Subsection A1 GARBAGE_FRAG_subA1_051
+    GARBAGE_FRAG_subcontentA1_051
+
+    # Garbage Section B GARBAGE_FRAG_secB051
+    Garbage content B
+    GARBAGE_FRAG_contentB051
+
+    ## Garbage Subsection B1 GARBAGE_FRAG_subB1_051
+    GARBAGE_FRAG_subcontentB1_051
+
+    # Trailing Garbage GARBAGE_FRAG_trailing051
+    GARBAGE_FRAG_trailingcontent051
+assertions:
+  must_include:
+    - multi_section.md
+    - '# Section One'
+  must_not_include:
+    - GARBAGE_FRAG_garbdoc1_051
+    - GARBAGE_FRAG_garbcontent1_051
+    - GARBAGE_FRAG_garbdoc2_051
+    - GARBAGE_FRAG_garbcontent2_051
+    - GARBAGE_FRAG_garbsub051
+    - GARBAGE_FRAG_garbsubcontent051
+    - garbage_multi_051.md
+options:
+  commit_message: Modify two sections

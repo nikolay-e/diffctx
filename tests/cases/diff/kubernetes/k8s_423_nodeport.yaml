@@ -1,33 +1,111 @@
 name: k8s_423_nodeport
 initial:
-  service.yaml: |
+  k8s/apps/web/deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: web-frontend
+      namespace: production
+      labels:
+        app: web-frontend
+    spec:
+      replicas: 3
+      selector:
+        matchLabels:
+          app: web-frontend
+      template:
+        metadata:
+          labels:
+            app: web-frontend
+        spec:
+          containers:
+          - name: web
+            image: web-frontend:v1.0.0
+            ports:
+            - containerPort: 80
+            resources:
+              requests:
+                memory: "64Mi"
+                cpu: "50m"
+
+  k8s/apps/web/service.yaml: |
     apiVersion: v1
     kind: Service
     metadata:
-      name: myapp
+      name: web-frontend
+      namespace: production
     spec:
       type: ClusterIP
+      selector:
+        app: web-frontend
       ports:
       - port: 80
-  unrelated.txt: |
-    garbage_marker_k8s423 = True
-    unused_marker_k8s423 = False
+        targetPort: 80
+
+  k8s/unrelated/metallb/l2advertisement.yaml: |
+    # GARBAGE_K8S_423_METALLB_L2
+    apiVersion: metallb.io/v1beta1
+    kind: L2Advertisement
+    metadata:
+      name: GARBAGE_K8S_423_L2_NAME
+    spec:
+      ipAddressPools:
+      - GARBAGE_K8S_423_IP_POOL
+      interfaces:
+      - GARBAGE_K8S_423_INTERFACE
+
+  k8s/unrelated/external-dns/deployment.yaml: |
+    # GARBAGE_K8S_423_EXTERNAL_DNS
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: GARBAGE_K8S_423_DNS_NAME
+    spec:
+      replicas: 1
+      selector:
+        matchLabels:
+          app: GARBAGE_K8S_423_DNS_LABEL
+      template:
+        spec:
+          containers:
+          - name: external-dns
+            image: registry.k8s.io/external-dns/external-dns:GARBAGE_K8S_423_DNS_VERSION
+
 changed:
-  service.yaml: |
+  k8s/apps/web/service.yaml: |
     apiVersion: v1
     kind: Service
     metadata:
-      name: myapp
+      name: web-frontend
+      namespace: production
+      labels:
+        app: web-frontend
     spec:
       type: NodePort
+      selector:
+        app: web-frontend
       ports:
-      - port: 80
+      - name: http
+        port: 80
+        targetPort: 80
         nodePort: 30080
+        protocol: TCP
+      externalTrafficPolicy: Local
+
 assertions:
   must_include:
   - NodePort
+  - 'nodePort: 30080'
+  - externalTrafficPolicy
+  - Local
   must_not_include:
-  - garbage_marker_k8s423
-  - unused_marker_k8s423
+  - GARBAGE_K8S_423_METALLB_L2
+  - GARBAGE_K8S_423_L2_NAME
+  - GARBAGE_K8S_423_IP_POOL
+  - GARBAGE_K8S_423_INTERFACE
+  - GARBAGE_K8S_423_EXTERNAL_DNS
+  - GARBAGE_K8S_423_DNS_NAME
+  - GARBAGE_K8S_423_DNS_LABEL
+  - GARBAGE_K8S_423_DNS_VERSION
 options:
-  commit_message: Add NodePort
+  commit_message: Change service to NodePort with static port

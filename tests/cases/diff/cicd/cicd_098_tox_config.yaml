@@ -1,0 +1,28 @@
+name: cicd_098_tox_config
+initial:
+  tox.ini: |
+    [tox]
+    envlist = py310
+
+    [testenv]
+    commands = pytest
+  src/lib.py: |
+    def calculate(x: int, y: int) -> int:
+        return x + y
+changed:
+  tox.ini: |
+    [tox]
+    envlist = py310,py311,py312
+
+    [testenv]
+    deps = pytest
+    commands = pytest {posargs}
+
+    [testenv:lint]
+    deps = ruff
+    commands = ruff check src/
+assertions:
+  must_include:
+    - calculate
+options:
+  commit_message: add lint env

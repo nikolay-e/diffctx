@@ -1,0 +1,20 @@
+name: ppr_015_graph_builds_call_edges
+initial:
+  calls.py: |
+    def caller():
+        callee()
+
+    def callee():
+        pass
+changed:
+  calls.py: |
+    def caller():
+        callee()
+        return 1
+
+    def callee():
+        pass
+assertions:
+  must_include:
+  - caller
+  - callee

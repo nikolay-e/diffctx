@@ -1,0 +1,34 @@
+name: helm_064_values_probes
+initial:
+  chart/values.yaml: |
+    probes:
+      liveness:
+        path: /health
+        port: 8080
+  chart/templates/deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    spec:
+      template:
+        spec:
+          containers:
+            - name: app
+              livenessProbe:
+                httpGet:
+                  path: {{ .Values.probes.liveness.path }}
+                  port: {{ .Values.probes.liveness.port }}
+changed:
+  chart/values.yaml: |
+    probes:
+      liveness:
+        path: /healthz
+        port: 8080
+        initialDelaySeconds: 30
+      readiness:
+        path: /ready
+        port: 8080
+assertions:
+  must_include:
+    - livenessProbe
+options:
+  commit_message: add readiness probe

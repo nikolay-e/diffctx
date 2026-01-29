@@ -32,8 +32,8 @@ class YamlTestCase:
         content_tokens = sum(_count_tokens(content) for content in all_files.values())
         estimated_fragments = max(len(all_files), 2)
         budget = content_tokens + (estimated_fragments * fragment_overhead)
-        budget = int(budget * 1.3)
-        return max(200, budget)
+        budget = int(budget * 2.5)
+        return max(500, budget)
 
     def all_files(self) -> dict[str, str]:
         result = dict(self.initial_files)

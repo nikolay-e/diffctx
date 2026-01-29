@@ -3,31 +3,158 @@ initial:
   .env: |
     DB_URL=postgres://localhost:5432/mydb
     SECRET_KEY=mysecret
+    REDIS_URL=redis://localhost:6379
+    APP_ENV=development
   app.py: |
     import os
-    db_url = os.environ.get('DATABASE_URL')
+    from typing import Optional
+    from dataclasses import dataclass
+
+    @dataclass
+    class DatabaseConfig:
+        url: str
+        pool_size: int = 5
+        max_overflow: int = 10
+
+    @dataclass
+    class AppConfig:
+        database: DatabaseConfig
+        secret_key: str
+        redis_url: Optional[str]
+        environment: str
+
+    def load_database_config() -> DatabaseConfig:
+        return DatabaseConfig(
+            url=os.environ.get('DATABASE_URL', 'sqlite:///app.db'),
+            pool_size=int(os.environ.get('DB_POOL_SIZE', '5')),
+            max_overflow=int(os.environ.get('DB_MAX_OVERFLOW', '10'))
+        )
+
+    def load_app_config() -> AppConfig:
+        return AppConfig(
+            database=load_database_config(),
+            secret_key=os.environ['SECRET_KEY'],
+            redis_url=os.environ.get('REDIS_URL'),
+            environment=os.environ.get('APP_ENV', 'development')
+        )
+
+    if __name__ == "__main__":
+        config = load_app_config()
+        print(f"Loaded config for {config.environment}")
+  requirements.txt: |
+    psycopg2-binary==2.9.9
+    redis==5.0.0
+  Dockerfile: |
+    FROM python:3.12-slim
+    WORKDIR /app
+    COPY requirements.txt .
+    RUN pip install -r requirements.txt
+    COPY app.py .
+    CMD ["python", "app.py"]
   docker-compose.yml: |
     version: '3.8'
     services:
       api:
         build: .
-  unrelated.md: |
-    # garbage_marker_12345
-    unused_marker_67890
+  scripts/env_template.sh: |
+    #!/bin/bash
+    # GARBAGE_DOCKER_518_ENV_MARKER_q1w2e3
+    GARBAGE_DOCKER_518_TEMPLATE_r4t5y6="template.env"
+    cat template.env > .env
+  tests/test_config.py: |
+    # GARBAGE_DOCKER_518_TEST_MARKER_u7i8o9
+    GARBAGE_DOCKER_518_TEST_ENV_p0a1s2 = {"APP_ENV": "test"}
+    def test_load_config():
+        pass
+  docs/environment.md: |
+    # Environment Configuration
+    GARBAGE_DOCKER_518_DOC_MARKER_d3f4g5
+    GARBAGE_DOCKER_518_VARS_h6j7k8="DB_URL,SECRET_KEY,REDIS_URL"
+  vault/policy.hcl: |
+    # GARBAGE_DOCKER_518_VAULT_MARKER_l9z0x1
+    path "secret/data/*" {
+      GARBAGE_DOCKER_518_CAPABILITY_c2v3b4 = ["read"]
+    }
+  terraform/secrets.tf: |
+    # GARBAGE_DOCKER_518_TF_MARKER_n5m6q7
+    resource "aws_secretsmanager_secret" "app" {
+      GARBAGE_DOCKER_518_SECRET_NAME_w8e9r0 = "app-secrets"
+    }
 changed:
   docker-compose.yml: |
     version: '3.8'
+
     services:
       api:
-        build: .
+        build:
+          context: .
+          dockerfile: Dockerfile
         environment:
+          # Database configuration
           - DATABASE_URL=${DB_URL}
+          - DB_POOL_SIZE=10
+          - DB_MAX_OVERFLOW=20
+
+          # Application secrets
           - SECRET_KEY=${SECRET_KEY}
+          - JWT_SECRET=${JWT_SECRET:-default-jwt}
+
+          # Redis configuration
+          - REDIS_URL=${REDIS_URL:-redis://redis:6379}
+          - REDIS_MAX_CONNECTIONS=50
+
+          # Application settings
+          - APP_ENV=${APP_ENV:-production}
+          - LOG_LEVEL=${LOG_LEVEL:-info}
+          - DEBUG=${DEBUG:-false}
+
+          # Feature flags
+          - FEATURE_NEW_API=${FEATURE_NEW_API:-true}
+          - FEATURE_METRICS=${FEATURE_METRICS:-true}
+
+        env_file:
+          - .env
+          - .env.${APP_ENV:-production}
+
+        depends_on:
+          db:
+            condition: service_healthy
+          redis:
+            condition: service_started
+        restart: unless-stopped
+
+      db:
+        image: postgres:16-alpine
+        environment:
+          POSTGRES_USER: ${POSTGRES_USER:-app}
+          POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+          POSTGRES_DB: ${POSTGRES_DB:-mydb}
+        healthcheck:
+          test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-app}"]
+          interval: 10s
+          timeout: 5s
+          retries: 5
+
+      redis:
+        image: redis:7-alpine
+        command: redis-server --requirepass ${REDIS_PASSWORD:-redis}
+
+    networks:
+      default:
+        driver: bridge
 assertions:
   must_include:
-  - 'environment:'
+    - 'environment:'
   must_not_include:
-  - garbage_marker_12345
-  - unused_marker_67890
+    - GARBAGE_DOCKER_518_ENV_MARKER_q1w2e3
+    - GARBAGE_DOCKER_518_TEMPLATE_r4t5y6
+    - GARBAGE_DOCKER_518_TEST_MARKER_u7i8o9
+    - GARBAGE_DOCKER_518_TEST_ENV_p0a1s2
+    - GARBAGE_DOCKER_518_DOC_MARKER_d3f4g5
+    - GARBAGE_DOCKER_518_VARS_h6j7k8
+    - GARBAGE_DOCKER_518_VAULT_MARKER_l9z0x1
+    - GARBAGE_DOCKER_518_CAPABILITY_c2v3b4
+    - GARBAGE_DOCKER_518_TF_MARKER_n5m6q7
+    - GARBAGE_DOCKER_518_SECRET_NAME_w8e9r0
 options:
-  commit_message: Add compose environment
+  commit_message: Add comprehensive compose environment with secrets and feature flags

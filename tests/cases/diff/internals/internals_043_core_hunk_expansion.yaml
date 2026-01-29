@@ -1,0 +1,23 @@
+name: internals_043_core_hunk_expansion
+initial:
+  core.py: |
+    def caller_function():
+        pass
+  helper.py: |
+    def helper_function():
+        pass
+changed:
+  core.py: |
+    from helper import helper_function
+
+    def caller_function():
+        helper_function()
+  helper.py: |
+    def helper_function():
+        return "helping"
+assertions:
+  must_include:
+  - caller_function
+  - helper_function
+options:
+  add_garbage: true

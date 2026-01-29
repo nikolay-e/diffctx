@@ -1,0 +1,25 @@
+name: yaml_015_security_headers
+initial:
+  config/security.yaml: |
+    security:
+      headers:
+        x_frame_options: DENY
+        content_security_policy: default-src 'self'
+  src/security.py: |
+    def apply_security_headers(response, headers: dict):
+        for key, value in headers.items():
+            header_name = key.replace("_", "-").title()
+            response.headers[header_name] = value
+        return response
+changed:
+  config/security.yaml: |
+    security:
+      headers:
+        x_frame_options: SAMEORIGIN
+        content_security_policy: default-src 'self'; script-src 'self' 'unsafe-inline'
+        strict_transport_security: max-age=31536000
+assertions:
+  must_include:
+    - apply_security_headers
+options:
+  commit_message: update security headers

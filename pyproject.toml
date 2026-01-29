@@ -51,6 +51,7 @@ module = [
     "tree_sitter_c",
     "tree_sitter_cpp",
     "tree_sitter_ruby",
+    "tree_sitter_c_sharp",
     "mistune",
     "pysbd",
     "ruamel.yaml",
@@ -132,7 +133,7 @@ full = [
 ]
 embeddings = [
     # Semantic code embeddings for diffctx
-    "sentence-transformers>=3.0,<4.0",
+    "sentence-transformers>=3.0,<6.0",
 ]
 nlp = [
     # Natural language processing for document tokenization
@@ -148,7 +149,7 @@ dev = [
     "coverage>=7.0,<8.0",
     # Quality checks
     "ruff>=0.4,<1.0",
-    "black>=23.0.0,<26.0",
+    "black>=23.0.0,<27.0",
     "isort>=5.12,<8.0",
     "mypy>=1.0,<2.0",
     "radon>=6.0,<7.0",
@@ -177,5 +178,5 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
-norecursedirs = ["mutants", ".git", ".mypy_cache", ".pytest_cache", "__pycache__"]
-addopts = "-n 14 --dist loadfile"
+norecursedirs = ["mutants", ".git", ".mypy_cache", ".pytest_cache", "__pycache__", ".hypothesis"]
+addopts = "-n auto --dist loadfile"

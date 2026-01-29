@@ -1,52 +1,140 @@
 name: k8s_420_pod_disruption_budget
 initial:
-  deployment.yaml: |
+  k8s/apps/deployment.yaml: |
     apiVersion: apps/v1
     kind: Deployment
     metadata:
-      name: myapp
+      name: critical-api
+      namespace: production
+      labels:
+        app: critical-api
+        tier: backend
     spec:
       replicas: 5
       selector:
         matchLabels:
-          app: myapp
+          app: critical-api
+      strategy:
+        type: RollingUpdate
+        rollingUpdate:
+          maxSurge: 2
+          maxUnavailable: 0
       template:
         metadata:
           labels:
-            app: myapp
+            app: critical-api
+            tier: backend
         spec:
+          topologySpreadConstraints:
+          - maxSkew: 1
+            topologyKey: topology.kubernetes.io/zone
+            whenUnsatisfiable: DoNotSchedule
+            labelSelector:
+              matchLabels:
+                app: critical-api
           containers:
-          - name: app
-            image: myapp:latest
-  pdb.yaml: |
+          - name: api
+            image: critical-api:v1.0.0
+            ports:
+            - containerPort: 8080
+            resources:
+              requests:
+                memory: "256Mi"
+                cpu: "250m"
+              limits:
+                memory: "512Mi"
+                cpu: "500m"
+
+  k8s/apps/pdb.yaml: |
     apiVersion: policy/v1
     kind: PodDisruptionBudget
     metadata:
-      name: myapp-pdb
+      name: critical-api-pdb
+      namespace: production
     spec:
       minAvailable: 1
       selector:
         matchLabels:
-          app: myapp
-  unrelated.txt: |
-    garbage_marker_k8s420 = True
-    unused_marker_k8s420 = False
+          app: critical-api
+
+  k8s/apps/service.yaml: |
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: critical-api
+      namespace: production
+    spec:
+      selector:
+        app: critical-api
+      ports:
+      - port: 80
+        targetPort: 8080
+
+  k8s/unrelated/cluster-autoscaler/deployment.yaml: |
+    # GARBAGE_K8S_420_CLUSTER_AUTOSCALER
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: GARBAGE_K8S_420_CA_NAME
+    spec:
+      replicas: 1
+      selector:
+        matchLabels:
+          app: GARBAGE_K8S_420_CA_LABEL
+      template:
+        spec:
+          containers:
+          - name: autoscaler
+            image: registry.k8s.io/autoscaling/cluster-autoscaler:GARBAGE_K8S_420_CA_VERSION
+            command:
+            - ./cluster-autoscaler
+            - --cloud-provider=GARBAGE_K8S_420_CLOUD_PROVIDER
+
+  k8s/unrelated/vpa/vpa-recommender.yaml: |
+    # GARBAGE_K8S_420_VPA_RECOMMENDER
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: GARBAGE_K8S_420_VPA_NAME
+    spec:
+      template:
+        spec:
+          containers:
+          - name: recommender
+            image: registry.k8s.io/autoscaling/vpa-recommender:GARBAGE_K8S_420_VPA_VERSION
+
 changed:
-  pdb.yaml: |
+  k8s/apps/pdb.yaml: |
     apiVersion: policy/v1
     kind: PodDisruptionBudget
     metadata:
-      name: myapp-pdb
+      name: critical-api-pdb
+      namespace: production
+      labels:
+        app: critical-api
     spec:
-      minAvailable: 2
+      minAvailable: 3
       selector:
         matchLabels:
-          app: myapp
+          app: critical-api
+      maxUnavailable: 1
+      unhealthyPodEvictionPolicy: IfHealthyBudget
+
 assertions:
   must_include:
-  - 'minAvailable: 2'
+  - PodDisruptionBudget
+  - 'minAvailable: 3'
+  - 'maxUnavailable: 1'
+  - unhealthyPodEvictionPolicy
+  - critical-api-pdb
   must_not_include:
-  - garbage_marker_k8s420
-  - unused_marker_k8s420
+  - GARBAGE_K8S_420_CLUSTER_AUTOSCALER
+  - GARBAGE_K8S_420_CA_NAME
+  - GARBAGE_K8S_420_CA_LABEL
+  - GARBAGE_K8S_420_CA_VERSION
+  - GARBAGE_K8S_420_CLOUD_PROVIDER
+  - GARBAGE_K8S_420_VPA_RECOMMENDER
+  - GARBAGE_K8S_420_VPA_NAME
+  - GARBAGE_K8S_420_VPA_VERSION
 options:
-  commit_message: Update PDB
+  commit_message: Update PDB with stricter availability requirements

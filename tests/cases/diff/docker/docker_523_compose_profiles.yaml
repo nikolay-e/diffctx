@@ -1,32 +1,150 @@
 name: docker_523_compose_profiles
 initial:
+  api/src/app.py: |
+    from flask import Flask, jsonify
+    import os
+
+    app = Flask(__name__)
+    DEBUG = os.environ.get('DEBUG', 'false').lower() == 'true'
+
+    @app.route('/health')
+    def health():
+        return jsonify(status='ok', debug=DEBUG)
+
+    @app.route('/debug/config')
+    def debug_config():
+        if not DEBUG:
+            return jsonify(error='Debug mode disabled'), 403
+        return jsonify(config=dict(os.environ))
+  api/Dockerfile: |
+    FROM python:3.12-slim
+    WORKDIR /app
+    COPY requirements.txt .
+    RUN pip install -r requirements.txt
+    COPY src/ ./src/
+    CMD ["gunicorn", "-b", "0.0.0.0:8080", "src.app:app"]
+  api/requirements.txt: |
+    flask==2.3.0
+    gunicorn==21.2.0
   docker-compose.yml: |
     version: '3.8'
     services:
       api:
-        build: .
-      debug:
-        image: busybox
-        command: ["tail", "-f", "/dev/null"]
-  junk.py: |
-    garbage_marker_12345 = 1
-    unused_marker_67890 = 2
+        build: ./api
+      db:
+        image: postgres:16-alpine
+  scripts/run_debug.sh: |
+    #!/bin/bash
+    # GARBAGE_DOCKER_523_DEBUG_MARKER_001
+    GARBAGE_DOCKER_523_DEBUG_VAR_002="enabled"
+    docker-compose --profile debug up
+  tests/test_profiles.py: |
+    # GARBAGE_DOCKER_523_TEST_MARKER_003
+    GARBAGE_DOCKER_523_TEST_PROFILE_004 = {"name": "debug"}
+    def test_profiles():
+        pass
+  docs/profiles.md: |
+    # Compose Profiles
+    GARBAGE_DOCKER_523_PROF_DOC_005
+    GARBAGE_DOCKER_523_PROFILES_006="debug,monitoring,testing"
+  k8s/overlays/dev.yaml: |
+    # GARBAGE_DOCKER_523_K8S_MARKER_007
+    GARBAGE_DOCKER_523_OVERLAY_008: development
+  .env.local: |
+    # GARBAGE_DOCKER_523_ENV_MARKER_009
+    GARBAGE_DOCKER_523_LOCAL_010=true
 changed:
   docker-compose.yml: |
     version: '3.8'
+
     services:
       api:
-        build: .
+        build: ./api
+        ports:
+          - "8080:8080"
+        environment:
+          - DEBUG=${DEBUG:-false}
+        depends_on:
+          db:
+            condition: service_healthy
+
+      db:
+        image: postgres:16-alpine
+        environment:
+          - POSTGRES_PASSWORD=secret
+        healthcheck:
+          test: ["CMD-SHELL", "pg_isready"]
+          interval: 10s
+          timeout: 5s
+          retries: 5
+
+      # Debug tools - only started with: docker-compose --profile debug up
       debug:
-        image: busybox
+        image: nicolaka/netshoot:latest
         command: ["tail", "-f", "/dev/null"]
+        network_mode: "service:api"
         profiles:
           - debug
+
+      pgadmin:
+        image: dpage/pgadmin4:latest
+        environment:
+          - PGADMIN_DEFAULT_EMAIL=admin@example.com
+          - PGADMIN_DEFAULT_PASSWORD=admin
+        ports:
+          - "5050:80"
+        profiles:
+          - debug
+          - tools
+
+      # Monitoring stack - only with: docker-compose --profile monitoring up
+      prometheus:
+        image: prom/prometheus:v2.48.0
+        volumes:
+          - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+        ports:
+          - "9090:9090"
+        profiles:
+          - monitoring
+
+      grafana:
+        image: grafana/grafana:10.2.2
+        ports:
+          - "3000:3000"
+        profiles:
+          - monitoring
+
+      # Testing tools - only with: docker-compose --profile testing up
+      testrunner:
+        build: ./api
+        command: ["pytest", "tests/"]
+        environment:
+          - DATABASE_URL=postgresql://postgres:secret@db:5432/test
+        depends_on:
+          db:
+            condition: service_healthy
+        profiles:
+          - testing
 assertions:
   must_include:
-  - 'profiles:'
+    - "profiles:"
+    - "- debug"
+    - "- monitoring"
+    - "- testing"
+    - "- tools"
+    - "nicolaka/netshoot"
+    - "dpage/pgadmin4"
+    - "prom/prometheus"
   must_not_include:
-  - garbage_marker_12345
-  - unused_marker_67890
+    - GARBAGE_DOCKER_523_DEBUG_MARKER_001
+    - GARBAGE_DOCKER_523_DEBUG_VAR_002
+    - GARBAGE_DOCKER_523_TEST_MARKER_003
+    - GARBAGE_DOCKER_523_TEST_PROFILE_004
+    - GARBAGE_DOCKER_523_PROF_DOC_005
+    - GARBAGE_DOCKER_523_PROFILES_006
+    - GARBAGE_DOCKER_523_K8S_MARKER_007
+    - GARBAGE_DOCKER_523_OVERLAY_008
+    - GARBAGE_DOCKER_523_ENV_MARKER_009
+    - GARBAGE_DOCKER_523_LOCAL_010
 options:
-  commit_message: Add profiles
+  commit_message: Add multiple compose profiles for debug, monitoring, and testing

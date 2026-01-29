@@ -1,0 +1,82 @@
+name: fragments_002_multiple_decorators_all_included
+initial:
+  multi_dec.py: |
+    import functools
+    from contextlib import contextmanager
+
+    def unrelated_before_function():
+        return "GARBAGE_FRAG_before002"
+
+    class UnrelatedBeforeClass:
+        MARKER = "GARBAGE_FRAG_beforeclass002"
+
+    @decorator1
+    @decorator2
+    @decorator3
+    def decorated_func():
+        pass
+
+    def unrelated_after_function():
+        return "GARBAGE_FRAG_after002"
+
+    class UnrelatedAfterClass:
+        MARKER = "GARBAGE_FRAG_afterclass002"
+
+        def method_with_marker(self):
+            return "GARBAGE_FRAG_aftermethod002"
+  garbage_utils_002.py: |
+    GARBAGE_CONSTANT_002 = "GARBAGE_FRAG_constant002"
+
+    def garbage_util_function():
+        return "GARBAGE_FRAG_util002"
+
+    class GarbageHelper:
+        def __init__(self):
+            self.value = "GARBAGE_FRAG_helper002"
+changed:
+  multi_dec.py: |
+    import functools
+    from contextlib import contextmanager
+
+    def unrelated_before_function():
+        return "GARBAGE_FRAG_before002"
+
+    class UnrelatedBeforeClass:
+        MARKER = "GARBAGE_FRAG_beforeclass002"
+
+    @decorator1
+    @decorator2
+    @decorator3
+    def decorated_func():
+        return 1
+
+    def unrelated_after_function():
+        return "GARBAGE_FRAG_after002"
+
+    class UnrelatedAfterClass:
+        MARKER = "GARBAGE_FRAG_afterclass002"
+
+        def method_with_marker(self):
+            return "GARBAGE_FRAG_aftermethod002"
+assertions:
+  must_include:
+    - '@decorator1'
+    - '@decorator2'
+    - '@decorator3'
+    - decorated_func
+    - multi_dec.py
+  must_not_include:
+    - GARBAGE_FRAG_before002
+    - GARBAGE_FRAG_beforeclass002
+    - GARBAGE_FRAG_after002
+    - GARBAGE_FRAG_afterclass002
+    - GARBAGE_FRAG_aftermethod002
+    - GARBAGE_FRAG_constant002
+    - GARBAGE_FRAG_util002
+    - GARBAGE_FRAG_helper002
+    - garbage_utils_002.py
+    - unrelated_before_function
+    - unrelated_after_function
+    - GarbageHelper
+options:
+  commit_message: Change

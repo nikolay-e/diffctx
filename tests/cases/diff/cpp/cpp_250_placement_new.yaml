@@ -1,50 +1,335 @@
 name: cpp_250_placement_new
 initial:
-  object.h: |
+  include/pool/object.hpp: |
     #pragma once
     #include <string>
+    #include <vector>
+    #include <cstdint>
 
-    class Object {
-    public:
-        std::string name;
-        Object(const std::string& n) : name(n) {}
-        ~Object() {}
+    namespace app::pool {
+
+    struct ObjectStats {
+        uint32_t constructCount = 0;
+        uint32_t destructCount = 0;
+        uint32_t resetCount = 0;
     };
-    // unused_marker_67890
-  pool.cpp: |
+
+    class PooledObject {
+    public:
+        PooledObject(const std::string& name, int priority = 0)
+            : name_(name)
+            , priority_(priority)
+            , active_(true) {
+            ++globalStats().constructCount;
+        }
+
+        ~PooledObject() {
+            ++globalStats().destructCount;
+        }
+
+        const std::string& name() const { return name_; }
+        int priority() const { return priority_; }
+        bool isActive() const { return active_; }
+
+        void setActive(bool active) { active_ = active; }
+        void setPriority(int priority) { priority_ = priority; }
+
+        void reset(const std::string& newName, int newPriority) {
+            name_ = newName;
+            priority_ = newPriority;
+            active_ = true;
+            ++globalStats().resetCount;
+        }
+
+        static ObjectStats& globalStats() {
+            static ObjectStats stats;
+            return stats;
+        }
+
+    private:
+        std::string name_;
+        int priority_;
+        bool active_;
+    };
+
+    }
+
+  include/unrelated/shader_compiler.hpp: |
+    #pragma once
+    // GARBAGE_CPP_SHADER_250_001
+    #define GARBAGE_CPP_SHADER_VERSION_250_002 450
+
+    namespace app::unrelated::shader {
+
+    // GARBAGE_CPP_SHADER_TYPE_250_003
+    enum class ShaderType {
+        Vertex,
+        Fragment,
+        Geometry,
+        Compute
+    };
+
+    // GARBAGE_CPP_SHADER_RESULT_250_004
+    struct CompileResult {
+        bool success;
+        std::string errorLog;
+        // GARBAGE_CPP_SHADER_BYTECODE_250_005
+    };
+
+    // GARBAGE_CPP_SHADER_COMPILER_250_006
+    class ShaderCompiler {
+    public:
+        // GARBAGE_CPP_SHADER_COMPILE_250_007
+        CompileResult compile(ShaderType type, const char* source) {
+            // GARBAGE_CPP_SHADER_COMPILE_IMPL_250_008
+            return CompileResult{};
+        }
+
+        // GARBAGE_CPP_SHADER_LINK_250_009
+        CompileResult link() {
+            // GARBAGE_CPP_SHADER_LINK_IMPL_250_010
+            return CompileResult{};
+        }
+
+        // GARBAGE_CPP_SHADER_VALIDATE_250_011
+        bool validate() {
+            // GARBAGE_CPP_SHADER_VALIDATE_IMPL_250_012
+            return false;
+        }
+    };
+
+    }
+
+  src/unrelated/animation_system.cpp: |
+    // GARBAGE_CPP_ANIM_250_013
+    #include <string>
+
+    namespace app::unrelated::animation {
+
+    // GARBAGE_CPP_ANIM_KEYFRAME_250_014
+    struct Keyframe {
+        float time;
+        float value;
+        // GARBAGE_CPP_ANIM_INTERPOLATION_250_015
+    };
+
+    // GARBAGE_CPP_ANIM_TRACK_250_016
+    struct AnimationTrack {
+        std::string targetProperty;
+        // GARBAGE_CPP_ANIM_KEYFRAMES_250_017
+    };
+
+    // GARBAGE_CPP_ANIM_SYSTEM_250_018
+    class AnimationSystem {
+    public:
+        // GARBAGE_CPP_ANIM_UPDATE_250_019
+        void update(float deltaTime) {
+            // GARBAGE_CPP_ANIM_UPDATE_IMPL_250_020
+        }
+
+        // GARBAGE_CPP_ANIM_PLAY_250_021
+        void play(const std::string& animationName) {
+            // GARBAGE_CPP_ANIM_PLAY_IMPL_250_022
+        }
+
+        // GARBAGE_CPP_ANIM_STOP_250_023
+        void stop() {
+            // GARBAGE_CPP_ANIM_STOP_IMPL_250_024
+        }
+    };
+
+    }
+
+  src/pool.cpp: |
     #include <iostream>
     int main() { return 0; }
+
 changed:
-  pool.cpp: |
-    #include "object.h"
+  src/pool.cpp: |
+    #include "pool/object.hpp"
     #include <new>
     #include <cstdlib>
     #include <cstdint>
+    #include <iostream>
+    #include <vector>
 
+    namespace app::allocator {
+
+    template<typename T, size_t PoolSize = 16>
     class ObjectPool {
-        alignas(Object) char buffer[sizeof(Object) * 10];
-        size_t used = 0;
-
     public:
-        Object* allocate(const std::string& name) {
-            if (used >= 10) return nullptr;
-            void* ptr = buffer + sizeof(Object) * used;
-            Object* obj = new (ptr) Object(name);
-            used++;
+        ObjectPool() {
+            buffer_ = static_cast<char*>(
+                std::aligned_alloc(alignof(T), sizeof(T) * PoolSize)
+            );
+            for (size_t i = 0; i < PoolSize; ++i) {
+                freeList_.push_back(i);
+            }
+        }
+
+        ~ObjectPool() {
+            for (size_t i = 0; i < PoolSize; ++i) {
+                if (allocated_[i]) {
+                    getObject(i)->~T();
+                }
+            }
+            std::free(buffer_);
+        }
+
+        template<typename... Args>
+        T* allocate(Args&&... args) {
+            if (freeList_.empty()) {
+                return nullptr;
+            }
+
+            size_t index = freeList_.back();
+            freeList_.pop_back();
+
+            void* ptr = buffer_ + sizeof(T) * index;
+            T* obj = new (ptr) T(std::forward<Args>(args)...);
+            allocated_[index] = true;
+
             return obj;
         }
 
-        void deallocate(Object* obj) {
-            obj->~Object();
+        void deallocate(T* obj) {
+            if (!obj) return;
+
+            size_t index = (reinterpret_cast<char*>(obj) - buffer_) / sizeof(T);
+            if (index >= PoolSize || !allocated_[index]) return;
+
+            obj->~T();
+            allocated_[index] = false;
+            freeList_.push_back(index);
         }
+
+        size_t availableCount() const { return freeList_.size(); }
+        size_t allocatedCount() const { return PoolSize - freeList_.size(); }
+        size_t capacity() const { return PoolSize; }
+
+    private:
+        T* getObject(size_t index) {
+            return reinterpret_cast<T*>(buffer_ + sizeof(T) * index);
+        }
+
+        char* buffer_;
+        std::vector<size_t> freeList_;
+        bool allocated_[PoolSize] = {false};
     };
+
+    template<typename T>
+    class ArenaAllocator {
+    public:
+        explicit ArenaAllocator(size_t capacity)
+            : capacity_(capacity)
+            , used_(0) {
+            buffer_ = static_cast<char*>(
+                std::aligned_alloc(alignof(T), sizeof(T) * capacity)
+            );
+        }
+
+        ~ArenaAllocator() {
+            reset();
+            std::free(buffer_);
+        }
+
+        template<typename... Args>
+        T* allocate(Args&&... args) {
+            if (used_ >= capacity_) {
+                return nullptr;
+            }
+
+            void* ptr = buffer_ + sizeof(T) * used_;
+            T* obj = new (ptr) T(std::forward<Args>(args)...);
+            ++used_;
+
+            return obj;
+        }
+
+        void reset() {
+            for (size_t i = 0; i < used_; ++i) {
+                reinterpret_cast<T*>(buffer_ + sizeof(T) * i)->~T();
+            }
+            used_ = 0;
+        }
+
+        size_t used() const { return used_; }
+        size_t capacity() const { return capacity_; }
+        size_t available() const { return capacity_ - used_; }
+
+    private:
+        char* buffer_;
+        size_t capacity_;
+        size_t used_;
+    };
+
+    }
+
+    int main() {
+        app::allocator::ObjectPool<app::pool::PooledObject, 8> pool;
+
+        std::cout << "Pool capacity: " << pool.capacity() << "\n";
+        std::cout << "Available: " << pool.availableCount() << "\n";
+
+        auto* obj1 = pool.allocate("Object1", 10);
+        auto* obj2 = pool.allocate("Object2", 20);
+        auto* obj3 = pool.allocate("Object3", 30);
+
+        std::cout << "After allocation - Available: " << pool.availableCount() << "\n";
+
+        if (obj1) {
+            std::cout << "Object1: " << obj1->name() << ", priority: " << obj1->priority() << "\n";
+        }
+
+        pool.deallocate(obj2);
+        std::cout << "After deallocation - Available: " << pool.availableCount() << "\n";
+
+        auto* obj4 = pool.allocate("Object4", 40);
+        if (obj4) {
+            std::cout << "Object4 allocated in recycled slot\n";
+        }
+
+        app::allocator::ArenaAllocator<app::pool::PooledObject> arena(16);
+
+        for (int i = 0; i < 5; ++i) {
+            arena.allocate("Arena" + std::to_string(i), i * 10);
+        }
+
+        std::cout << "Arena used: " << arena.used() << "/" << arena.capacity() << "\n";
+
+        arena.reset();
+        std::cout << "After arena reset: " << arena.used() << "/" << arena.capacity() << "\n";
+
+        auto& stats = app::pool::PooledObject::globalStats();
+        std::cout << "Global stats - Constructed: " << stats.constructCount
+                  << ", Destructed: " << stats.destructCount << "\n";
+
+        return 0;
+    }
+
 assertions:
   must_include:
-  - ObjectPool
-  - allocate
-  - Object
+    - ObjectPool
+    - ArenaAllocator
+    - PooledObject
+    - placement new
+    - allocate
+    - deallocate
+    - reset
   must_not_include:
-  - garbage_marker_12345
-  - unused_marker_67890
+    - GARBAGE_CPP_SHADER_250_001
+    - GARBAGE_CPP_SHADER_VERSION_250_002
+    - GARBAGE_CPP_SHADER_TYPE_250_003
+    - GARBAGE_CPP_SHADER_COMPILER_250_006
+    - GARBAGE_CPP_SHADER_COMPILE_250_007
+    - GARBAGE_CPP_ANIM_250_013
+    - GARBAGE_CPP_ANIM_KEYFRAME_250_014
+    - GARBAGE_CPP_ANIM_TRACK_250_016
+    - GARBAGE_CPP_ANIM_SYSTEM_250_018
+    - GARBAGE_CPP_ANIM_UPDATE_250_019
+    - ShaderCompiler
+    - AnimationSystem
+    - Keyframe
+    - AnimationTrack
 options:
-  commit_message: Add placement new
+  commit_message: Add object pool and arena allocator with placement new

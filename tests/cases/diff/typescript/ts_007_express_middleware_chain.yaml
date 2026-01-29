@@ -1,0 +1,128 @@
+name: ts_007_express_middleware_chain
+initial:
+  src/middleware/types.ts: |
+    import { Request, Response, NextFunction } from 'express';
+
+    export interface AuthenticatedRequest extends Request {
+      user?: AuthUser;
+      requestId: string;
+    }
+
+    export interface AuthUser {
+      id: string;
+      email: string;
+      role: 'admin' | 'user';
+    }
+
+    export type MiddlewareFunction = (
+      req: AuthenticatedRequest,
+      res: Response,
+      next: NextFunction
+    ) => void | Promise<void>;
+
+    export interface RateLimitConfig {
+      windowMs: number;
+      maxRequests: number;
+      message?: string;
+    }
+
+  src/middleware/rateLimit.ts: |
+    console.log('placeholder');
+
+  vendor/upload-handler/index.ts: |
+    // GARBAGE_TS_007_UPLOAD_001 - third party upload handler
+    export const GARBAGE_TS_007_MAX_SIZE_002 = 10485760;
+
+    export function GARBAGE_TS_007_upload_003(file: unknown): void {
+      console.log('GARBAGE_TS_007_UPLOADING_004:', file);
+    }
+
+  docs/compression/overview.md: |
+    # Compression Guide
+    GARBAGE_TS_007_COMPRESS_005 documentation
+    Configure GARBAGE_TS_007_HANDLER_006 for responses.
+
+changed:
+  src/middleware/rateLimit.ts: |
+    import { Response, NextFunction } from 'express';
+    import { AuthenticatedRequest, MiddlewareFunction, RateLimitConfig } from './types';
+
+    interface RateLimitEntry {
+      count: number;
+      resetAt: number;
+    }
+
+    export class RateLimiter {
+      private store = new Map<string, RateLimitEntry>();
+
+      constructor(private config: RateLimitConfig) {
+        setInterval(() => this.cleanup(), config.windowMs);
+      }
+
+      private getKey(req: AuthenticatedRequest): string {
+        return req.user ? `user:${req.user.id}` : `ip:${req.ip}`;
+      }
+
+      check(req: AuthenticatedRequest): { allowed: boolean; remaining: number } {
+        const key = this.getKey(req);
+        const now = Date.now();
+
+        let entry = this.store.get(key);
+        if (!entry || now > entry.resetAt) {
+          entry = { count: 0, resetAt: now + this.config.windowMs };
+        }
+
+        entry.count++;
+        this.store.set(key, entry);
+
+        const remaining = Math.max(0, this.config.maxRequests - entry.count);
+        return { allowed: entry.count <= this.config.maxRequests, remaining };
+      }
+
+      private cleanup(): void {
+        const now = Date.now();
+        for (const [key, entry] of this.store.entries()) {
+          if (now > entry.resetAt) {
+            this.store.delete(key);
+          }
+        }
+      }
+    }
+
+    export function createRateLimitMiddleware(config: RateLimitConfig): MiddlewareFunction {
+      const limiter = new RateLimiter(config);
+
+      return (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+        const result = limiter.check(req);
+
+        res.setHeader('X-RateLimit-Limit', config.maxRequests.toString());
+        res.setHeader('X-RateLimit-Remaining', result.remaining.toString());
+
+        if (!result.allowed) {
+          return res.status(429).json({
+            error: config.message || 'Too many requests',
+          });
+        }
+
+        next();
+      };
+    }
+
+assertions:
+  must_include:
+    - RateLimiter
+    - createRateLimitMiddleware
+    - RateLimitConfig
+    - AuthenticatedRequest
+    - MiddlewareFunction
+    - src/middleware/rateLimit.ts
+  must_not_include:
+    - GARBAGE_TS_007_UPLOAD_001
+    - GARBAGE_TS_007_MAX_SIZE_002
+    - GARBAGE_TS_007_upload_003
+    - GARBAGE_TS_007_UPLOADING_004
+    - GARBAGE_TS_007_COMPRESS_005
+    - GARBAGE_TS_007_HANDLER_006
+
+options:
+  commit_message: Add rate limiting middleware

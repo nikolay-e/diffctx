@@ -1,0 +1,13 @@
+name: internals_041_single_function
+initial:
+  single.py: |
+    pass
+changed:
+  single.py: |
+    def only_function():
+        pass
+assertions:
+  must_include:
+  - only_function
+options:
+  add_garbage: true

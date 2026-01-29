@@ -62,8 +62,7 @@ def _verify_no_garbage_in_context(context: dict) -> None:
     for marker in GARBAGE_MARKERS:
         if marker in full_content:
             pytest.fail(
-                f"Garbage marker '{marker}' found in context! "
-                f"Algorithm included unrelated code that should have been excluded."
+                f"Garbage marker '{marker}' found in context! Algorithm included unrelated code that should have been excluded."
             )
 
 

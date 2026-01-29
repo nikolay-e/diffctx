@@ -1,0 +1,35 @@
+name: merging_007_yaml_sections
+initial:
+  config.yaml: |
+    database:
+      host: localhost
+      port: 5432
+      name: mydb
+
+    logging:
+      level: INFO
+      format: json
+
+    server:
+      port: 8080
+      workers: 4
+changed:
+  config.yaml: |
+    database:
+      host: production-db
+      port: 5432
+      name: mydb
+
+    logging:
+      level: WARNING
+      format: json
+
+    server:
+      port: 8080
+      workers: 4
+assertions:
+  must_include:
+  - production-db
+  - WARNING
+options:
+  commit_message: Update config sections

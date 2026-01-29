@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -13,6 +14,7 @@ if TYPE_CHECKING:
 _EMBED_WEIGHT = 0.35
 _EMBED_MAX_CHARS = 2048
 _EMBED_MODEL_NAME = "jinaai/jina-embeddings-v2-base-code"
+_TRUST_REMOTE_CODE = os.getenv("TREEMAPPER_TRUST_REMOTE_CODE", "0") == "1"
 
 _TOP_K_NEIGHBORS = 10
 _MIN_SIMILARITY = 0.1
@@ -30,11 +32,15 @@ def _get_embed_model() -> SentenceTransformer | None:
         try:
             from sentence_transformers import SentenceTransformer
 
-            _EMBED_MODEL = SentenceTransformer(_EMBED_MODEL_NAME, trust_remote_code=True)
+            _EMBED_MODEL = SentenceTransformer(_EMBED_MODEL_NAME, trust_remote_code=_TRUST_REMOTE_CODE)
             _EMBED_AVAILABLE = True
             logging.debug("diffctx: loaded embedding model %s", _EMBED_MODEL_NAME)
         except ImportError:
             logging.debug("diffctx: sentence-transformers not installed, skipping embeddings")
+            _EMBED_AVAILABLE = False
+            return None
+        except Exception as e:
+            logging.debug("diffctx: failed to load embedding model: %s", e)
             _EMBED_AVAILABLE = False
             return None
     return _EMBED_MODEL

@@ -1,0 +1,156 @@
+name: docker_074_compose_service_port
+initial:
+  src/server.js: |
+    const http = require('http');
+    const url = require('url');
+
+    const PORT = parseInt(process.env.PORT || '3000', 10);
+    const HOST = process.env.HOST || '0.0.0.0';
+
+    const routes = {
+        '/health': (req, res) => {
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ status: 'ok', port: PORT }));
+        },
+        '/api/status': (req, res) => {
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ running: true, uptime: process.uptime() }));
+        }
+    };
+
+    const server = http.createServer((req, res) => {
+        const pathname = url.parse(req.url).pathname;
+        const handler = routes[pathname] || ((req, res) => {
+            res.writeHead(404);
+            res.end('Not Found');
+        });
+        handler(req, res);
+    });
+
+    server.listen(PORT, HOST, () => {
+        console.log(`Server running at http://${HOST}:${PORT}/`);
+    });
+  src/config.js: |
+    module.exports = {
+        port: parseInt(process.env.PORT || '3000', 10),
+        host: process.env.HOST || '0.0.0.0',
+        nodeEnv: process.env.NODE_ENV || 'development'
+    };
+  package.json: |
+    {
+      "name": "http-server",
+      "version": "1.0.0",
+      "main": "src/server.js",
+      "scripts": {
+        "start": "node src/server.js"
+      }
+    }
+  Dockerfile: |
+    FROM node:20-alpine
+    WORKDIR /app
+    COPY package*.json ./
+    RUN npm ci --only=production
+    COPY src/ ./src/
+    CMD ["node", "src/server.js"]
+  docker-compose.yml: |
+    version: '3.8'
+    services:
+      web:
+        build: .
+        ports:
+          - "3000:3000"
+  scripts/start_dev.sh: |
+    #!/bin/bash
+    # GARBAGE_DOCKER_074_START_MARKER_m1n2b3
+    GARBAGE_DOCKER_074_DEV_PORT_v4c5x6="3000"
+    docker-compose up -d
+  tests/integration.test.js: |
+    // GARBAGE_DOCKER_074_TEST_MARKER_z7a8s9
+    const GARBAGE_DOCKER_074_TEST_PORT_d0f1g2 = 3000;
+    describe('Server', () => {
+        it('should respond on port', () => {});
+    });
+  docs/networking.md: |
+    # Network Configuration
+    GARBAGE_DOCKER_074_NET_DOC_h3j4k5
+    GARBAGE_DOCKER_074_PORT_LIST_l6q7w8="3000,8080"
+  nginx/nginx.conf: |
+    # GARBAGE_DOCKER_074_NGINX_MARKER_e9r0t1
+    upstream backend {
+      GARBAGE_DOCKER_074_UPSTREAM_y2u3i4: server;
+    }
+  k8s/service.yaml: |
+    # GARBAGE_DOCKER_074_K8S_MARKER_o5p6a7
+    apiVersion: v1
+    GARBAGE_DOCKER_074_SVC_TYPE_s8d9f0: ClusterIP
+changed:
+  docker-compose.yml: |
+    version: '3.8'
+
+    services:
+      web:
+        build:
+          context: .
+          dockerfile: Dockerfile
+        image: myregistry/web:${VERSION:-latest}
+        container_name: web-server
+        hostname: web
+        ports:
+          - "${HOST_PORT:-8080}:${CONTAINER_PORT:-8080}"
+          - "127.0.0.1:9090:9090"
+        environment:
+          - PORT=${CONTAINER_PORT:-8080}
+          - HOST=0.0.0.0
+          - NODE_ENV=production
+        healthcheck:
+          test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/health"]
+          interval: 30s
+          timeout: 10s
+          retries: 3
+          start_period: 40s
+        restart: unless-stopped
+        logging:
+          driver: json-file
+          options:
+            max-size: "10m"
+            max-file: "3"
+        deploy:
+          resources:
+            limits:
+              cpus: '0.5'
+              memory: 256M
+            reservations:
+              cpus: '0.25'
+              memory: 128M
+
+      nginx:
+        image: nginx:alpine
+        ports:
+          - "80:80"
+          - "443:443"
+        volumes:
+          - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+        depends_on:
+          web:
+            condition: service_healthy
+        restart: unless-stopped
+
+    networks:
+      default:
+        driver: bridge
+assertions:
+  must_include:
+    - 'ports:'
+  must_not_include:
+    - GARBAGE_DOCKER_074_START_MARKER_m1n2b3
+    - GARBAGE_DOCKER_074_DEV_PORT_v4c5x6
+    - GARBAGE_DOCKER_074_TEST_MARKER_z7a8s9
+    - GARBAGE_DOCKER_074_TEST_PORT_d0f1g2
+    - GARBAGE_DOCKER_074_NET_DOC_h3j4k5
+    - GARBAGE_DOCKER_074_PORT_LIST_l6q7w8
+    - GARBAGE_DOCKER_074_NGINX_MARKER_e9r0t1
+    - GARBAGE_DOCKER_074_UPSTREAM_y2u3i4
+    - GARBAGE_DOCKER_074_K8S_MARKER_o5p6a7
+    - GARBAGE_DOCKER_074_SVC_TYPE_s8d9f0
+options:
+  commit_message: Add comprehensive port mapping with nginx reverse proxy

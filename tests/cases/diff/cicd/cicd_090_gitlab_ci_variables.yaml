@@ -1,0 +1,28 @@
+name: cicd_090_gitlab_ci_variables
+initial:
+  .gitlab-ci.yml: |
+    variables:
+      DATABASE_URL: postgres://localhost/test
+
+    test:
+      script:
+        - pytest
+  src/config.py: |
+    import os
+
+    DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///local.db")
+changed:
+  .gitlab-ci.yml: |
+    variables:
+      DATABASE_URL: postgres://db/prod
+      REDIS_URL: redis://redis:6379
+      CI_DEBUG: "true"
+
+    test:
+      script:
+        - pytest --tb=short
+assertions:
+  must_include:
+    - DATABASE_URL
+options:
+  commit_message: add redis var

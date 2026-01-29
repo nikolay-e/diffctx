@@ -1,0 +1,68 @@
+name: ppr_019_alpha_near_one
+initial:
+  test.py: |
+    def func0():
+        pass
+
+    def func1():
+        func0()
+
+    def func2():
+        func1()
+
+    def func3():
+        func2()
+
+    def func4():
+        func3()
+
+    def func5():
+        func4()
+
+    def func6():
+        func5()
+
+    def func7():
+        func6()
+
+    def func8():
+        func7()
+
+    def func9():
+        func8()
+changed:
+  test.py: |
+    def func0():
+        return 1
+
+    def func1():
+        func0()
+
+    def func2():
+        func1()
+
+    def func3():
+        func2()
+
+    def func4():
+        func3()
+
+    def func5():
+        func4()
+
+    def func6():
+        func5()
+
+    def func7():
+        func6()
+
+    def func8():
+        func7()
+
+    def func9():
+        func8()
+options:
+  alpha: 0.99
+assertions:
+  must_include:
+  - func0

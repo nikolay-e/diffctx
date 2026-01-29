@@ -3,6 +3,10 @@ name: treemapper CD
 
 permissions: {}
 
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 'on':
   workflow_dispatch:
     inputs:
@@ -28,12 +32,12 @@ jobs:
       commit_sha: ${{ steps.commit_version.outputs.commit_sha }}
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0  # Need full history for git bundle
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
@@ -46,14 +50,33 @@ jobs:
             exit 1
           fi
 
-      - name: Validate version format
+      - name: Validate version format (PEP 440)
         run: |
           VERSION="${{ github.event.inputs.version }}"
-          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9]+)?$ ]]; then
-            echo "Error: Invalid version format '$VERSION'. Expected semver like 1.0.0 or 1.0.0-rc1"
+          # PEP 440: X.Y.Z with optional pre-release (a1, b1, rc1) or dev/post suffix
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+((a|b|rc)[0-9]+)?(\.dev[0-9]+)?(\.post[0-9]+)?$ ]]; then
+            echo "Error: Invalid version format '$VERSION'."
+            echo "Expected PEP 440 format: 1.0.0, 1.0.0a1, 1.0.0b1, 1.0.0rc1, 1.0.0.dev1, 1.0.0.post1"
             exit 1
           fi
-          echo "Version format valid: $VERSION"
+          echo "Version format valid (PEP 440): $VERSION"
+
+      - name: Check version is not already set
+        env:
+          VERSION: ${{ github.event.inputs.version }}
+        run: |
+          CURRENT=$(python -c "
+          import re
+          content = open('src/treemapper/version.py').read()
+          m = re.search(r'__version__\s*=\s*[\"'\'']([^\"'\'']+)[\"'\'']', content)
+          print(m.group(1) if m else '')
+          ")
+          if [ "$CURRENT" = "$VERSION" ]; then
+            echo "Error: version.py already contains version $VERSION"
+            echo "Nothing to release - version is already set."
+            exit 1
+          fi
+          echo "Current version: $CURRENT -> New version: $VERSION"
 
       - name: Set version in version.py
         env:
@@ -112,7 +135,7 @@ jobs:
           git bundle create repo.bundle --all
 
       - name: Upload bundle as artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v4
         with:
           name: git-repo-bundle
           path: repo.bundle
@@ -143,7 +166,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - name: Download git bundle
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v4
         with:
           name: git-repo-bundle
 
@@ -164,18 +187,11 @@ jobs:
           ls -la src/treemapper/ || echo "ERROR: src/treemapper not found!"
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-
-      - name: Cache pip Dependencies
-        uses: actions/cache@v5
-        with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ matrix.python-version }}-${{ hashFiles('**/pyproject.toml') }}
-          restore-keys: |
-            ${{ runner.os }}-pip-${{ matrix.python-version }}-
-            ${{ runner.os }}-pip-
+          cache: 'pip'
+          cache-dependency-path: './repo/pyproject.toml'
 
       - name: Install Dependencies (including PyInstaller)
         shell: bash
@@ -194,8 +210,9 @@ jobs:
         shell: bash
         working-directory: ./repo
         run: |
-          # Ensure PyInstaller can find the modules
-          export PYTHONPATH="${PWD}/src:${PYTHONPATH}"
+          # Ensure PyInstaller can find the modules (use correct path separator for OS)
+          SEP=$(python -c "import os; print(os.pathsep)")
+          export PYTHONPATH="${PWD}/src${SEP}${PYTHONPATH:-}"
           echo "PYTHONPATH: $PYTHONPATH"
 
           # Run PyInstaller with explicit paths
@@ -234,7 +251,7 @@ jobs:
           fi
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.asset_name }}-binary
           path: ./repo/dist/treemapper-*
@@ -252,7 +269,7 @@ jobs:
       id-token: write
     steps:
       - name: Download git bundle
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v4
         with:
           name: git-repo-bundle
 
@@ -273,7 +290,7 @@ jobs:
           ls -la src/treemapper/ || echo "ERROR: src/treemapper not found!"
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
@@ -319,7 +336,7 @@ jobs:
       contents: write
     steps:
       - name: Download git bundle
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v4
         with:
           name: git-repo-bundle
 
@@ -337,15 +354,27 @@ jobs:
           # Set up remote to point to the actual GitHub repository
           git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git"
 
-          # Verify remote is set up correctly
-          git remote -v
-
       - name: Push commit and tag to main
         working-directory: ./repo
         run: |
           git config user.name "github-actions[bot]"
           # 41898282 is GitHub's bot user ID for github-actions[bot]
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # Fetch latest state of remote main
+          git fetch origin main
+
+          # Check that remote main hasn't moved since we started the release
+          # Our commit should be based on the current remote main HEAD
+          REMOTE_MAIN=$(git rev-parse origin/main)
+          OUR_PARENT=$(git rev-parse HEAD^)
+          if [ "$REMOTE_MAIN" != "$OUR_PARENT" ]; then
+            echo "Error: Remote main has changed since release started."
+            echo "Expected parent: $OUR_PARENT"
+            echo "Remote main:     $REMOTE_MAIN"
+            echo "Please re-run the release workflow."
+            exit 1
+          fi
 
           # Push the version bump commit to main
           git push origin HEAD:main
@@ -356,7 +385,7 @@ jobs:
           echo "Successfully pushed version commit and tag"
 
       - name: Download all build artifacts
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v4
         with:
           path: ./artifacts
 

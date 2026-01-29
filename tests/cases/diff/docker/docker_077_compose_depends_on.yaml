@@ -1,0 +1,203 @@
+name: docker_077_compose_depends_on
+initial:
+  src/app.py: |
+    from flask import Flask, jsonify
+    import psycopg2
+    import redis
+    import os
+
+    app = Flask(__name__)
+
+    def get_db_connection():
+        return psycopg2.connect(
+            host=os.getenv("DB_HOST", "db"),
+            database=os.getenv("DB_NAME", "app"),
+            user=os.getenv("DB_USER", "postgres"),
+            password=os.getenv("DB_PASSWORD", "secret")
+        )
+
+    def get_redis_client():
+        return redis.Redis(
+            host=os.getenv("REDIS_HOST", "redis"),
+            port=int(os.getenv("REDIS_PORT", "6379")),
+            decode_responses=True
+        )
+
+    @app.route('/health')
+    def health():
+        return jsonify(status='ok')
+
+    @app.route('/db-check')
+    def db_check():
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('SELECT 1')
+        conn.close()
+        return jsonify(db='connected')
+
+    @app.route('/redis-check')
+    def redis_check():
+        client = get_redis_client()
+        client.ping()
+        return jsonify(redis='connected')
+  src/worker.py: |
+    import time
+    from app import get_db_connection, get_redis_client
+
+    def process_queue():
+        redis_client = get_redis_client()
+        db_conn = get_db_connection()
+
+        while True:
+            job = redis_client.lpop('jobs')
+            if job:
+                print(f"Processing job: {job}")
+            time.sleep(1)
+
+    if __name__ == "__main__":
+        process_queue()
+  requirements.txt: |
+    flask==2.3.0
+    psycopg2-binary==2.9.9
+    redis==5.0.0
+    gunicorn==21.2.0
+  Dockerfile: |
+    FROM python:3.12-slim
+    WORKDIR /app
+    COPY requirements.txt .
+    RUN pip install -r requirements.txt
+    COPY src/ ./src/
+    CMD ["gunicorn", "-b", "0.0.0.0:8080", "src.app:app"]
+  docker-compose.yml: |
+    version: '3.8'
+    services:
+      web:
+        build: .
+        depends_on:
+          - db
+      db:
+        image: postgres:15
+  scripts/wait_for_deps.sh: |
+    #!/bin/bash
+    # GARBAGE_DOCKER_077_WAIT_MARKER_q1a2z3
+    GARBAGE_DOCKER_077_TIMEOUT_w4s5x6=30
+    until pg_isready; do sleep 1; done
+  tests/test_deps.py: |
+    # GARBAGE_DOCKER_077_TEST_MARKER_e7d8c9
+    GARBAGE_DOCKER_077_TEST_ORDER_r0f1v2 = ["db", "redis", "web"]
+    def test_dependency_order():
+        pass
+  docs/services.md: |
+    # Service Dependencies
+    GARBAGE_DOCKER_077_DEP_DOC_t3g4b5
+    GARBAGE_DOCKER_077_DEP_GRAPH_y6h7n8="db->api->web"
+  k8s/deployment.yaml: |
+    # GARBAGE_DOCKER_077_K8S_MARKER_u9j0k1
+    apiVersion: apps/v1
+    GARBAGE_DOCKER_077_INIT_CONTAINER_i2o3p4: initContainers
+  helm/templates/deployment.yaml: |
+    # GARBAGE_DOCKER_077_HELM_MARKER_m5l6z7
+    GARBAGE_DOCKER_077_PROBE_TYPE_x8c9v0: livenessProbe
+changed:
+  docker-compose.yml: |
+    version: '3.8'
+
+    services:
+      web:
+        build:
+          context: .
+          dockerfile: Dockerfile
+        ports:
+          - "8080:8080"
+        environment:
+          - DB_HOST=db
+          - DB_NAME=app
+          - DB_USER=postgres
+          - DB_PASSWORD=secret
+          - REDIS_HOST=redis
+        depends_on:
+          db:
+            condition: service_healthy
+            restart: true
+          redis:
+            condition: service_healthy
+          migrations:
+            condition: service_completed_successfully
+        healthcheck:
+          test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+          interval: 30s
+          timeout: 10s
+          retries: 3
+          start_period: 40s
+        restart: unless-stopped
+
+      worker:
+        build:
+          context: .
+          dockerfile: Dockerfile
+        command: ["python", "src/worker.py"]
+        environment:
+          - DB_HOST=db
+          - REDIS_HOST=redis
+        depends_on:
+          web:
+            condition: service_healthy
+          redis:
+            condition: service_healthy
+
+      db:
+        image: postgres:16-alpine
+        environment:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: secret
+          POSTGRES_DB: app
+        volumes:
+          - postgres_data:/var/lib/postgresql/data
+        healthcheck:
+          test: ["CMD-SHELL", "pg_isready -U postgres"]
+          interval: 5s
+          timeout: 5s
+          retries: 5
+          start_period: 10s
+
+      redis:
+        image: redis:7-alpine
+        command: redis-server --appendonly yes
+        volumes:
+          - redis_data:/data
+        healthcheck:
+          test: ["CMD", "redis-cli", "ping"]
+          interval: 5s
+          timeout: 3s
+          retries: 3
+
+      migrations:
+        build:
+          context: .
+          dockerfile: Dockerfile
+        command: ["python", "-c", "print('Migrations completed')"]
+        environment:
+          - DB_HOST=db
+        depends_on:
+          db:
+            condition: service_healthy
+
+    volumes:
+      postgres_data:
+      redis_data:
+assertions:
+  must_include:
+    - 'depends_on:'
+  must_not_include:
+    - GARBAGE_DOCKER_077_WAIT_MARKER_q1a2z3
+    - GARBAGE_DOCKER_077_TIMEOUT_w4s5x6
+    - GARBAGE_DOCKER_077_TEST_MARKER_e7d8c9
+    - GARBAGE_DOCKER_077_TEST_ORDER_r0f1v2
+    - GARBAGE_DOCKER_077_DEP_DOC_t3g4b5
+    - GARBAGE_DOCKER_077_DEP_GRAPH_y6h7n8
+    - GARBAGE_DOCKER_077_K8S_MARKER_u9j0k1
+    - GARBAGE_DOCKER_077_INIT_CONTAINER_i2o3p4
+    - GARBAGE_DOCKER_077_HELM_MARKER_m5l6z7
+    - GARBAGE_DOCKER_077_PROBE_TYPE_x8c9v0
+options:
+  commit_message: Add comprehensive service dependencies with health checks and migration ordering

@@ -1,0 +1,21 @@
+name: ppr_014_graph_builds_import_edges
+initial:
+  main.py: |
+    from helper import do_work
+
+    def main():
+        do_work()
+  helper.py: |
+    def do_work():
+        pass
+changed:
+  main.py: |
+    from helper import do_work
+
+    def main():
+        do_work()
+        return 1
+assertions:
+  must_include:
+  - main
+  - do_work

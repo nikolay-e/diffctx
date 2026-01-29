@@ -1,0 +1,144 @@
+name: selection_008_determinism_same_output
+initial:
+  determinism.py: |
+    def func_a():
+        func_a_marker = "func_a_original"
+        return 1
+
+    def func_b():
+        func_b_marker = "func_b_original"
+        return 2
+
+    def func_c():
+        func_c_marker = "func_c_original"
+        return 3
+
+    def func_d_unchanged():
+        return "func_d_value"
+
+    def func_e_unchanged():
+        return "func_e_value"
+
+  determinism_helpers.py: |
+    def helper_alpha():
+        return "helper_alpha_result"
+
+    def helper_beta():
+        return "helper_beta_result"
+
+    def helper_gamma():
+        return "helper_gamma_result"
+
+    def helper_delta():
+        return "helper_delta_result"
+
+  determinism_utils.py: |
+    def util_one():
+        return "util_one_result"
+
+    def util_two():
+        return "util_two_result"
+
+    class UtilClass:
+        def process(self):
+            return "util_class_process"
+
+  garbage_sel_008_random.py: |
+    def GARBAGE_SEL_008_random_func_one():
+        return "GARBAGE_SEL_008_random_one_result"
+
+    def GARBAGE_SEL_008_random_func_two():
+        return "GARBAGE_SEL_008_random_two_result"
+
+    def GARBAGE_SEL_008_random_func_three():
+        return "GARBAGE_SEL_008_random_three_result"
+
+    def GARBAGE_SEL_008_random_func_four():
+        return "GARBAGE_SEL_008_random_four_result"
+
+    class GARBAGE_SEL_008_RandomClass:
+        def random_method(self):
+            return "GARBAGE_SEL_008_random_method_result"
+
+  garbage_sel_008_order.py: |
+    GARBAGE_SEL_008_ORDER_CONST_A = "garbage_sel_008_order_const_a_value"
+    GARBAGE_SEL_008_ORDER_CONST_B = "garbage_sel_008_order_const_b_value"
+    GARBAGE_SEL_008_ORDER_CONST_C = "garbage_sel_008_order_const_c_value"
+
+    def GARBAGE_SEL_008_order_func_alpha():
+        return "GARBAGE_SEL_008_order_alpha_result"
+
+    def GARBAGE_SEL_008_order_func_beta():
+        return "GARBAGE_SEL_008_order_beta_result"
+
+  garbage_sel_008_stability.py: |
+    class GARBAGE_SEL_008_StableOne:
+        def stable_method(self):
+            return "GARBAGE_SEL_008_stable_one_method"
+
+    class GARBAGE_SEL_008_StableTwo:
+        def stable_method(self):
+            return "GARBAGE_SEL_008_stable_two_method"
+
+    class GARBAGE_SEL_008_StableThree:
+        def stable_method(self):
+            return "GARBAGE_SEL_008_stable_three_method"
+
+    def GARBAGE_SEL_008_ensure_stability():
+        return "GARBAGE_SEL_008_stability_ensured"
+
+changed:
+  determinism.py: |
+    def func_a():
+        func_a_marker = "func_a_modified"
+        return 10
+
+    def func_b():
+        func_b_marker = "func_b_modified"
+        return 20
+
+    def func_c():
+        func_c_marker = "func_c_modified"
+        return 30
+
+    def func_d_unchanged():
+        return "func_d_value"
+
+    def func_e_unchanged():
+        return "func_e_value"
+
+assertions:
+  must_include:
+    - func_a
+    - func_b
+    - func_c
+    - func_a_modified
+    - func_b_modified
+    - func_c_modified
+  must_not_include:
+    - func_a_original
+    - func_b_original
+    - func_c_original
+    - GARBAGE_SEL_008_random_func_one
+    - GARBAGE_SEL_008_random_func_two
+    - GARBAGE_SEL_008_random_func_three
+    - GARBAGE_SEL_008_random_one_result
+    - GARBAGE_SEL_008_random_two_result
+    - GARBAGE_SEL_008_RandomClass
+    - GARBAGE_SEL_008_random_method_result
+    - GARBAGE_SEL_008_ORDER_CONST_A
+    - GARBAGE_SEL_008_ORDER_CONST_B
+    - garbage_sel_008_order_const_a_value
+    - GARBAGE_SEL_008_order_func_alpha
+    - GARBAGE_SEL_008_order_func_beta
+    - GARBAGE_SEL_008_order_alpha_result
+    - GARBAGE_SEL_008_StableOne
+    - GARBAGE_SEL_008_StableTwo
+    - GARBAGE_SEL_008_StableThree
+    - GARBAGE_SEL_008_stable_one_method
+    - GARBAGE_SEL_008_stable_two_method
+    - GARBAGE_SEL_008_ensure_stability
+    - GARBAGE_SEL_008_stability_ensured
+    - garbage_sel_008_random.py
+    - garbage_sel_008_order.py
+    - garbage_sel_008_stability.py

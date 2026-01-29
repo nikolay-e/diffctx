@@ -1,0 +1,127 @@
+name: ts_001_user_service_refactor
+initial:
+  src/types/user.ts: |
+    export interface UserDTO {
+      id: string;
+      email: string;
+      firstName: string;
+      lastName: string;
+      role: 'admin' | 'user' | 'guest';
+    }
+
+    export interface User {
+      id: string;
+      email: string;
+      fullName: string;
+      role: 'admin' | 'user' | 'guest';
+    }
+
+    export type CreateUserInput = Omit<UserDTO, 'id'>;
+    export type UpdateUserInput = Partial<Omit<UserDTO, 'id'>>;
+
+  src/api/client.ts: |
+    export interface ApiResponse<T> {
+      data: T;
+      status: number;
+      message?: string;
+    }
+
+    export class ApiClient {
+      private baseUrl: string;
+      private headers: Record<string, string>;
+
+      constructor(baseUrl: string, authToken?: string) {
+        this.baseUrl = baseUrl;
+        this.headers = {
+          'Content-Type': 'application/json',
+          ...(authToken && { Authorization: `Bearer ${authToken}` }),
+        };
+      }
+
+      async get<T>(endpoint: string): Promise<T> {
+        const response = await fetch(`${this.baseUrl}${endpoint}`, {
+          headers: this.headers,
+        });
+        return response.json();
+      }
+
+      async post<T, U>(endpoint: string, body: U): Promise<T> {
+        const response = await fetch(`${this.baseUrl}${endpoint}`, {
+          method: 'POST',
+          headers: this.headers,
+          body: JSON.stringify(body),
+        });
+        return response.json();
+      }
+    }
+
+  src/services/userService.ts: |
+    console.log('placeholder');
+
+  vendor/analytics-sdk/index.ts: |
+    // GARBAGE_TS_001_ANALYTICS_001 - third party analytics SDK
+    export const GARBAGE_TS_001_SDK_VERSION_002 = "3.0.0";
+
+    export function GARBAGE_TS_001_init_003(apiKey: string): void {
+      console.log('GARBAGE_TS_001_INIT_004:', apiKey);
+    }
+
+  docs/architecture/overview.md: |
+    # Architecture Overview
+    GARBAGE_TS_001_DOCS_005 - this is documentation
+    The system uses GARBAGE_TS_001_PATTERN_006 architecture.
+
+changed:
+  src/services/userService.ts: |
+    import { User, UserDTO, CreateUserInput, UpdateUserInput } from '../types/user';
+    import { ApiClient } from '../api/client';
+
+    export class UserService {
+      private client: ApiClient;
+
+      constructor(client: ApiClient) {
+        this.client = client;
+      }
+
+      async getUser(id: string): Promise<User> {
+        const dto = await this.client.get<UserDTO>(`/users/${id}`);
+        return this.mapDtoToUser(dto);
+      }
+
+      async getAllUsers(): Promise<User[]> {
+        const dtos = await this.client.get<UserDTO[]>('/users');
+        return dtos.map((dto) => this.mapDtoToUser(dto));
+      }
+
+      async createUser(input: CreateUserInput): Promise<User> {
+        const dto = await this.client.post<UserDTO, CreateUserInput>('/users', input);
+        return this.mapDtoToUser(dto);
+      }
+
+      private mapDtoToUser(dto: UserDTO): User {
+        return {
+          id: dto.id,
+          email: dto.email,
+          fullName: `${dto.firstName} ${dto.lastName}`,
+          role: dto.role,
+        };
+      }
+    }
+
+assertions:
+  must_include:
+    - UserService
+    - mapDtoToUser
+    - ApiClient
+    - UserDTO
+    - CreateUserInput
+    - src/services/userService.ts
+  must_not_include:
+    - GARBAGE_TS_001_ANALYTICS_001
+    - GARBAGE_TS_001_SDK_VERSION_002
+    - GARBAGE_TS_001_INIT_004
+    - GARBAGE_TS_001_DOCS_005
+    - GARBAGE_TS_001_PATTERN_006
+
+options:
+  commit_message: Add UserService with CRUD operations

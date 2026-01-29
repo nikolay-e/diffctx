@@ -1,0 +1,194 @@
+name: graph_007_test_file_to_source
+initial:
+  calculator.py: |
+    def add(a, b):
+        return a + b
+
+    def subtract(a, b):
+        return a - b
+
+    def multiply(a, b):
+        return a * b
+
+    def divide(a, b):
+        if b == 0:
+            raise ZeroDivisionError("Cannot divide by zero")
+        return a / b
+
+    class Calculator:
+        def __init__(self):
+            self.history = []
+
+        def calculate(self, op, a, b):
+            if op == "add":
+                result = add(a, b)
+            elif op == "subtract":
+                result = subtract(a, b)
+            elif op == "multiply":
+                result = multiply(a, b)
+            elif op == "divide":
+                result = divide(a, b)
+            else:
+                raise ValueError(f"Unknown operation: {op}")
+            self.history.append((op, a, b, result))
+            return result
+
+        def get_history(self):
+            return self.history.copy()
+
+        def clear_history(self):
+            self.history.clear()
+  validator.py: |
+    def validate_number(value):
+        try:
+            float(value)
+            return True
+        except (TypeError, ValueError):
+            return False
+
+    def validate_operation(op):
+        return op in ["add", "subtract", "multiply", "divide"]
+  tests/test_calculator.py: |
+    from calculator import add, subtract, multiply, divide, Calculator
+    from validator import validate_number
+
+    def test_add():
+        assert add(1, 2) == 3
+
+    def test_subtract():
+        assert subtract(5, 3) == 2
+
+    def test_multiply():
+        assert multiply(4, 5) == 20
+
+    def test_divide():
+        assert divide(10, 2) == 5
+
+    def test_divide_by_zero():
+        try:
+            divide(1, 0)
+            assert False
+        except ZeroDivisionError:
+            pass
+
+    class TestCalculator:
+        def test_calculate_add(self):
+            calc = Calculator()
+            assert calc.calculate("add", 1, 2) == 3
+
+        def test_history(self):
+            calc = Calculator()
+            calc.calculate("add", 1, 2)
+            assert len(calc.get_history()) == 1
+
+        def test_clear_history(self):
+            calc = Calculator()
+            calc.calculate("add", 1, 2)
+            calc.clear_history()
+            assert len(calc.get_history()) == 0
+  tests/test_validator.py: |
+    from validator import validate_number, validate_operation
+
+    def test_validate_number_int():
+        assert validate_number(42) is True
+
+    def test_validate_number_float():
+        assert validate_number(3.14) is True
+
+    def test_validate_number_string():
+        assert validate_number("not a number") is False
+
+    def test_validate_operation_valid():
+        assert validate_operation("add") is True
+
+    def test_validate_operation_invalid():
+        assert validate_operation("modulo") is False
+  garbage/unrelated_tests_GARBAGE_GRAPH_stu001/test_geometry_GARBAGE_GRAPH_stu001.py: |
+    def test_circle_area_GARBAGE_GRAPH_stu001():
+        import math
+        radius = 5
+        area = math.pi * radius ** 2
+        assert abs(area - 78.54) < 0.01
+
+    def test_rectangle_perimeter_GARBAGE_GRAPH_stu001():
+        width, height = 4, 6
+        perimeter = 2 * (width + height)
+        assert perimeter == 20
+
+    class TestTriangle_GARBAGE_GRAPH_stu001:
+        def test_area(self):
+            base, height = 10, 5
+            assert (base * height) / 2 == 25
+  garbage/unrelated_source_GARBAGE_GRAPH_stu002.py: |
+    def parse_json_GARBAGE_GRAPH_stu002(text):
+        import json
+        return json.loads(text)
+
+    def serialize_json_GARBAGE_GRAPH_stu002(data):
+        import json
+        return json.dumps(data)
+
+    class JsonProcessor_GARBAGE_GRAPH_stu002:
+        def process(self, data):
+            return self._transform(data)
+
+        def _transform(self, data):
+            return {k.upper(): v for k, v in data.items()}
+  garbage/test_json_GARBAGE_GRAPH_stu003.py: |
+    from garbage.unrelated_source_GARBAGE_GRAPH_stu002 import parse_json_GARBAGE_GRAPH_stu002
+
+    def test_parse_json_GARBAGE_GRAPH_stu003():
+        result = parse_json_GARBAGE_GRAPH_stu002('{"key": "value"}')
+        assert result == {"key": "value"}
+changed:
+  calculator.py: |
+    def add(a, b):
+        return float(a) + float(b)
+
+    def subtract(a, b):
+        return float(a) - float(b)
+
+    def multiply(a, b):
+        return float(a) * float(b)
+
+    def divide(a, b):
+        if b == 0:
+            raise ZeroDivisionError("Cannot divide by zero")
+        return float(a) / float(b)
+
+    class Calculator:
+        def __init__(self):
+            self.history = []
+
+        def calculate(self, op, a, b):
+            if op == "add":
+                result = add(a, b)
+            elif op == "subtract":
+                result = subtract(a, b)
+            elif op == "multiply":
+                result = multiply(a, b)
+            elif op == "divide":
+                result = divide(a, b)
+            else:
+                raise ValueError(f"Unknown operation: {op}")
+            self.history.append((op, a, b, result))
+            return result
+
+        def get_history(self):
+            return self.history.copy()
+
+        def clear_history(self):
+            self.history.clear()
+assertions:
+  must_include:
+  - add
+  - calculator.py
+  must_not_include:
+  - GARBAGE_GRAPH_stu001
+  - GARBAGE_GRAPH_stu002
+  - GARBAGE_GRAPH_stu003
+  - test_circle_area
+  - test_rectangle_perimeter
+  - TestTriangle
+  - parse_json_GARBAGE
+  - JsonProcessor

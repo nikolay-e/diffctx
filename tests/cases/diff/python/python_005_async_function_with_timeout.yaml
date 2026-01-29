@@ -1,39 +1,225 @@
 name: python_005_async_function_with_timeout
 initial:
   async_utils.py: |
-    async def fetch_data(url):
+    import asyncio
+    from typing import Any, Dict, Optional, List
+    from dataclasses import dataclass
+    from enum import Enum
+
+    class FetchStatus(Enum):
+        SUCCESS = "success"
+        ERROR = "error"
+        TIMEOUT = "timeout"
+
+    @dataclass
+    class FetchResult:
+        url: str
+        status: FetchStatus
+        data: Optional[Dict[str, Any]] = None
+        error: Optional[str] = None
+        elapsed_ms: float = 0.0
+
+    class HttpClient:
+        def __init__(self, base_url: str = ""):
+            self.base_url = base_url
+            self._session_count = 0
+
+        async def get(self, path: str) -> Dict[str, Any]:
+            url = f"{self.base_url}{path}"
+            return await fetch_data(url)
+
+        async def post(self, path: str, data: Dict[str, Any]) -> Dict[str, Any]:
+            url = f"{self.base_url}{path}"
+            await simulate_delay()
+            return {"url": url, "data": data, "method": "POST"}
+
+    async def fetch_data(url: str) -> Dict[str, Any]:
         await simulate_delay()
         return {"url": url, "data": "content"}
 
-    async def simulate_delay():
-        import asyncio
-        await asyncio.sleep(0.1)
-  handler.py: |
-    from async_utils import fetch_data
+    async def fetch_multiple(urls: List[str]) -> List[FetchResult]:
+        tasks = [fetch_data(url) for url in urls]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        return [
+            FetchResult(
+                url=url,
+                status=FetchStatus.SUCCESS if isinstance(r, dict) else FetchStatus.ERROR,
+                data=r if isinstance(r, dict) else None,
+                error=str(r) if isinstance(r, Exception) else None
+            )
+            for url, r in zip(urls, results)
+        ]
 
-    async def handle_request(url):
-        data = await fetch_data(url)
-        return data
-  garbage.py: |
-    garbage_marker_12345 = "async garbage"
-    unused_marker_67890 = "not used"
+    async def simulate_delay(seconds: float = 0.1) -> None:
+        await asyncio.sleep(seconds)
+
+    async def retry_fetch(url: str, max_retries: int = 3) -> Optional[Dict[str, Any]]:
+        for attempt in range(max_retries):
+            try:
+                return await fetch_data(url)
+            except Exception:
+                if attempt == max_retries - 1:
+                    raise
+                await asyncio.sleep(0.5 * (attempt + 1))
+        return None
+
+  handler.py: |
+    from async_utils import fetch_data, FetchResult, FetchStatus, HttpClient
+    from typing import Dict, Any, List
+
+    class RequestHandler:
+        def __init__(self):
+            self.client = HttpClient()
+
+        async def handle_request(self, url: str) -> Dict[str, Any]:
+            data = await fetch_data(url)
+            return self._process_response(data)
+
+        async def handle_batch(self, urls: List[str]) -> List[Dict[str, Any]]:
+            results = []
+            for url in urls:
+                data = await fetch_data(url)
+                results.append(self._process_response(data))
+            return results
+
+        def _process_response(self, data: Dict[str, Any]) -> Dict[str, Any]:
+            return {"processed": True, "original": data}
+
+  garbage_websocket.py: |
+    GARBAGE_MARKER_WEBSOCKET_001 = "websocket garbage"
+    UNRELATED_WS_PORT_002 = 8080
+
+    class WebSocketHandler:
+        GARBAGE_WS_CLASS_003 = "ws class marker"
+
+        def __init__(self):
+            self._connections: list = []
+
+        async def connect(self, client_id: str) -> None:
+            self._connections.append(client_id)
+
+        async def disconnect(self, client_id: str) -> None:
+            self._connections.remove(client_id)
+
+        async def broadcast(self, message: str) -> None:
+            pass
+
+    class WebSocketPool:
+        GARBAGE_WS_POOL_004 = "ws pool marker"
+
+        def get_connection(self) -> Optional["WebSocketHandler"]:
+            return None
+
+  garbage_streaming.py: |
+    GARBAGE_MARKER_STREAM_005 = "streaming garbage"
+    UNRELATED_CHUNK_SIZE_006 = 4096
+
+    class StreamProcessor:
+        GARBAGE_STREAM_CLASS_007 = True
+
+        def __init__(self, chunk_size: int = 1024):
+            self.chunk_size = chunk_size
+
+        async def process_stream(self, data: bytes) -> bytes:
+            return data
+
+        async def read_chunks(self) -> AsyncIterator[bytes]:
+            yield b""
+
+    def calculate_stream_rate(bytes_transferred: int, seconds: float) -> float:
+        GARBAGE_RATE_MARKER_008 = "rate marker"
+        return bytes_transferred / seconds if seconds > 0 else 0.0
+
 changed:
   async_utils.py: |
     import asyncio
+    from typing import Any, Dict, Optional, List
+    from dataclasses import dataclass
+    from enum import Enum
 
-    async def fetch_data(url, timeout=30):
+    class FetchStatus(Enum):
+        SUCCESS = "success"
+        ERROR = "error"
+        TIMEOUT = "timeout"
+
+    @dataclass
+    class FetchResult:
+        url: str
+        status: FetchStatus
+        data: Optional[Dict[str, Any]] = None
+        error: Optional[str] = None
+        elapsed_ms: float = 0.0
+
+    class HttpClient:
+        def __init__(self, base_url: str = "", default_timeout: float = 30.0):
+            self.base_url = base_url
+            self.default_timeout = default_timeout
+            self._session_count = 0
+
+        async def get(self, path: str, timeout: Optional[float] = None) -> Dict[str, Any]:
+            url = f"{self.base_url}{path}"
+            return await fetch_data(url, timeout=timeout or self.default_timeout)
+
+        async def post(self, path: str, data: Dict[str, Any], timeout: Optional[float] = None) -> Dict[str, Any]:
+            url = f"{self.base_url}{path}"
+            await simulate_delay()
+            return {"url": url, "data": data, "method": "POST"}
+
+    async def fetch_data(url: str, timeout: float = 30.0) -> Dict[str, Any]:
         try:
             await asyncio.wait_for(simulate_delay(), timeout=timeout)
             return {"url": url, "data": "content", "timeout": timeout}
         except asyncio.TimeoutError:
-            return {"url": url, "error": "timeout"}
+            return {"url": url, "error": "timeout", "timeout_value": timeout}
 
-    async def simulate_delay():
-        await asyncio.sleep(0.1)
+    async def fetch_multiple(urls: List[str], timeout: float = 30.0) -> List[FetchResult]:
+        tasks = [fetch_data(url, timeout=timeout) for url in urls]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        return [
+            FetchResult(
+                url=url,
+                status=FetchStatus.TIMEOUT if isinstance(r, dict) and "error" in r else (
+                    FetchStatus.SUCCESS if isinstance(r, dict) else FetchStatus.ERROR
+                ),
+                data=r if isinstance(r, dict) and "error" not in r else None,
+                error=r.get("error") if isinstance(r, dict) else str(r) if isinstance(r, Exception) else None
+            )
+            for url, r in zip(urls, results)
+        ]
+
+    async def simulate_delay(seconds: float = 0.1) -> None:
+        await asyncio.sleep(seconds)
+
+    async def retry_fetch(url: str, max_retries: int = 3, timeout: float = 30.0) -> Optional[Dict[str, Any]]:
+        for attempt in range(max_retries):
+            try:
+                result = await fetch_data(url, timeout=timeout)
+                if "error" not in result:
+                    return result
+            except Exception:
+                pass
+            if attempt < max_retries - 1:
+                await asyncio.sleep(0.5 * (attempt + 1))
+        return None
+
 assertions:
   must_include:
-  - async def fetch_data
-  - timeout
+    - async def fetch_data
+    - timeout
+    - asyncio.wait_for
+    - asyncio.TimeoutError
   must_not_include:
-  - garbage_marker_12345
-  - unused_marker_67890
+    - GARBAGE_MARKER_WEBSOCKET_001
+    - UNRELATED_WS_PORT_002
+    - GARBAGE_WS_CLASS_003
+    - GARBAGE_WS_POOL_004
+    - GARBAGE_MARKER_STREAM_005
+    - UNRELATED_CHUNK_SIZE_006
+    - GARBAGE_STREAM_CLASS_007
+    - GARBAGE_RATE_MARKER_008
+    - WebSocketHandler
+    - WebSocketPool
+    - StreamProcessor
+    - calculate_stream_rate
+    - garbage_websocket.py
+    - garbage_streaming.py

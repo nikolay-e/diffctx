@@ -1,0 +1,140 @@
+name: graph_002_method_call_creates_edge
+initial:
+  caller.py: |
+    def use_service():
+        svc = ServiceFactory.create()
+        result = svc.process()
+        svc.validate(result)
+        return svc.finalize()
+
+    def complex_workflow():
+        handler = RequestHandler()
+        handler.authenticate()
+        handler.authorize()
+        return handler.execute()
+  service.py: |
+    class Service:
+        def __init__(self):
+            self.validator = Validator()
+            self.processor = DataProcessor()
+
+        def process(self):
+            raw = self.processor.fetch()
+            return self.processor.transform(raw)
+
+        def validate(self, data):
+            return self.validator.check(data)
+
+        def finalize(self):
+            return {"status": "complete"}
+
+    class ServiceFactory:
+        @staticmethod
+        def create():
+            return Service()
+  validator.py: |
+    class Validator:
+        def check(self, data):
+            return self._validate_format(data) and self._validate_content(data)
+
+        def _validate_format(self, data):
+            return isinstance(data, dict)
+
+        def _validate_content(self, data):
+            return "error" not in data
+  processor.py: |
+    class DataProcessor:
+        def fetch(self):
+            return self._load_from_source()
+
+        def transform(self, data):
+            cleaned = self._clean(data)
+            return self._enrich(cleaned)
+
+        def _load_from_source(self):
+            return {"raw": "data"}
+
+        def _clean(self, data):
+            return {k: v.strip() if isinstance(v, str) else v for k, v in data.items()}
+
+        def _enrich(self, data):
+            data["enriched"] = True
+            return data
+  handler.py: |
+    class RequestHandler:
+        def authenticate(self):
+            return self._check_token()
+
+        def authorize(self):
+            return self._verify_permissions()
+
+        def execute(self):
+            return {"executed": True}
+
+        def _check_token(self):
+            return True
+
+        def _verify_permissions(self):
+            return True
+  garbage/geo_service_GARBAGE_GRAPH_def001.py: |
+    class GeoLocationService_GARBAGE_GRAPH_def001:
+        def calculate_distance(self, lat1, lon1, lat2, lon2):
+            import math
+            R = 6371
+            dlat = math.radians(lat2 - lat1)
+            dlon = math.radians(lon2 - lon1)
+            a = math.sin(dlat/2)**2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon/2)**2
+            return R * 2 * math.asin(math.sqrt(a))
+
+        def find_nearest(self, locations, point):
+            return min(locations, key=lambda loc: self.calculate_distance(point[0], point[1], loc[0], loc[1]))
+  garbage/cache_manager_GARBAGE_GRAPH_def002.py: |
+    class CacheManager_GARBAGE_GRAPH_def002:
+        def __init__(self):
+            self._cache = {}
+
+        def get(self, key):
+            return self._cache.get(key)
+
+        def set(self, key, value, ttl=3600):
+            self._cache[key] = {"value": value, "ttl": ttl}
+
+        def invalidate(self, key):
+            self._cache.pop(key, None)
+  garbage/notification_GARBAGE_GRAPH_def003.py: |
+    class NotificationSender_GARBAGE_GRAPH_def003:
+        def send_email(self, to, subject, body):
+            pass
+
+        def send_sms(self, phone, message):
+            pass
+
+        def send_push(self, device_id, payload):
+            pass
+changed:
+  caller.py: |
+    def use_service():
+        svc = ServiceFactory.create()
+        result = svc.process()
+        if not svc.validate(result):
+            raise ValueError("Validation failed")
+        return svc.finalize()
+
+    def complex_workflow():
+        handler = RequestHandler()
+        handler.authenticate()
+        handler.authorize()
+        return handler.execute()
+assertions:
+  must_include:
+  - use_service
+  - process
+  must_not_include:
+  - GARBAGE_GRAPH_def001
+  - GARBAGE_GRAPH_def002
+  - GARBAGE_GRAPH_def003
+  - GeoLocationService
+  - CacheManager
+  - NotificationSender
+  - calculate_distance
+  - send_email

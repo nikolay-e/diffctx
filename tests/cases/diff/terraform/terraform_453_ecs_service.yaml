@@ -1,0 +1,29 @@
+name: terraform_453_ecs_service
+initial:
+  ecs.tf: |
+    resource "aws_ecs_cluster" "main" {
+      name = "main-cluster"
+    }
+changed:
+  ecs.tf: |
+    resource "aws_ecs_cluster" "main" {
+      name = "main-cluster"
+    }
+
+    resource "aws_ecs_service" "app" {
+      name            = "app-service"
+      cluster         = aws_ecs_cluster.main.id
+      task_definition = aws_ecs_task_definition.app.arn
+      desired_count   = 2
+      launch_type     = "FARGATE"
+
+      network_configuration {
+        subnets         = var.subnet_ids
+        security_groups = [aws_security_group.app.id]
+      }
+    }
+assertions:
+  must_include:
+  - ecs.tf
+options:
+  commit_message: Add ECS service

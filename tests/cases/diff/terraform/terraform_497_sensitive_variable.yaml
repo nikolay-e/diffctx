@@ -1,0 +1,27 @@
+name: terraform_497_sensitive_variable
+initial:
+  variables.tf: |
+    variable "db_password" {
+      type = string
+    }
+changed:
+  variables.tf: |
+    variable "db_password" {
+      type      = string
+      sensitive = true
+    }
+
+    variable "api_key" {
+      type      = string
+      sensitive = true
+    }
+
+    variable "ssl_certificate" {
+      type      = string
+      sensitive = true
+    }
+assertions:
+  must_include:
+  - variables.tf
+options:
+  commit_message: Mark variables as sensitive

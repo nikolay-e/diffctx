@@ -1,0 +1,20 @@
+name: internals_027_hebrew_docstring_function
+initial:
+  hebrew_docs.py: |
+    def placeholder():
+        pass
+changed:
+  hebrew_docs.py: |
+    def foo():
+        """תיעוד בעברית"""
+        return 42
+
+    def bar(x, y):
+        """עוד תיעוד"""
+        return x + y
+assertions:
+  must_include:
+  - foo
+  - bar
+options:
+  add_garbage: true

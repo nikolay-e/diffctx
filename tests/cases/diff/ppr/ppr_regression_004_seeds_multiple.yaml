@@ -1,0 +1,26 @@
+name: ppr_regression_004_seeds_multiple
+initial:
+  module_a.py: |
+    def func_a():
+        return "a"
+  module_b.py: |
+    def func_b():
+        return "b"
+  module_c.py: |
+    def func_c():
+        return "c"
+changed:
+  module_a.py: |
+    def func_a():
+        return "modified a"
+  module_b.py: |
+    def func_b():
+        return "modified b"
+assertions:
+  must_include:
+  - func_a
+  - func_b
+  - "modified a"
+  - "modified b"
+options:
+  commit_message: Modify multiple seed functions

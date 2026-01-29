@@ -1,0 +1,146 @@
+name: fragments_060_generic_chunk_200_lines
+initial:
+  large.tex: |
+    line 1
+    line 2
+    line 3
+    line 4
+    line 5
+    line 6
+    line 7
+    line 8
+    line 9
+    line 10
+    line 11
+    line 12
+    line 13
+    line 14
+    line 15
+    line 16
+    line 17
+    line 18
+    line 19
+    line 20
+    line 21
+    line 22
+    line 23
+    line 24
+    line 25
+    line 26
+    line 27
+    line 28
+    line 29
+    line 30
+    line 31
+    line 32
+    line 33
+    line 34
+    line 35
+    line 36
+    line 37
+    line 38
+    line 39
+    line 40
+    line 41
+    line 42
+    line 43
+    line 44
+    line 45
+    line 46
+    line 47
+    line 48
+    line 49
+    line 50
+  garbage_large_060.tex: |
+    GARBAGE_FRAG_texline1_060
+    GARBAGE_FRAG_texline2_060
+    GARBAGE_FRAG_texline3_060
+    GARBAGE_FRAG_texline4_060
+    GARBAGE_FRAG_texline5_060
+    GARBAGE_FRAG_texline6_060
+    GARBAGE_FRAG_texline7_060
+    GARBAGE_FRAG_texline8_060
+    GARBAGE_FRAG_texline9_060
+    GARBAGE_FRAG_texline10_060
+  garbage_060.txt: |
+    GARBAGE_FRAG_txtline1_060
+    GARBAGE_FRAG_txtline2_060
+    GARBAGE_FRAG_txtline3_060
+    GARBAGE_FRAG_txtline4_060
+    GARBAGE_FRAG_txtline5_060
+changed:
+  large.tex: |
+    line 1
+    line 2
+    line 3
+    line 4
+    line 5
+    line 6
+    line 7
+    line 8
+    line 9
+    line 10
+    line 11
+    line 12
+    line 13
+    line 14
+    line 15
+    line 16
+    line 17
+    line 18
+    line 19
+    line 20
+    line 21
+    line 22
+    line 23
+    line 24
+    MODIFIED line 25
+    line 26
+    line 27
+    line 28
+    line 29
+    line 30
+    line 31
+    line 32
+    line 33
+    line 34
+    line 35
+    line 36
+    line 37
+    line 38
+    line 39
+    line 40
+    line 41
+    line 42
+    line 43
+    line 44
+    line 45
+    line 46
+    line 47
+    line 48
+    line 49
+    line 50
+assertions:
+  must_include:
+    - large.tex
+    - MODIFIED
+  must_not_include:
+    - GARBAGE_FRAG_texline1_060
+    - GARBAGE_FRAG_texline2_060
+    - GARBAGE_FRAG_texline3_060
+    - GARBAGE_FRAG_texline4_060
+    - GARBAGE_FRAG_texline5_060
+    - GARBAGE_FRAG_texline6_060
+    - GARBAGE_FRAG_texline7_060
+    - GARBAGE_FRAG_texline8_060
+    - GARBAGE_FRAG_texline9_060
+    - GARBAGE_FRAG_texline10_060
+    - GARBAGE_FRAG_txtline1_060
+    - GARBAGE_FRAG_txtline2_060
+    - GARBAGE_FRAG_txtline3_060
+    - GARBAGE_FRAG_txtline4_060
+    - GARBAGE_FRAG_txtline5_060
+    - garbage_large_060.tex
+    - garbage_060.txt
+options:
+  commit_message: Modify line 25

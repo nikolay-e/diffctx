@@ -5,22 +5,129 @@ initial:
         let map = std::collections::HashMap::new();
         println!("{:?}", map);
     }
+  src/lib.rs: |
+    pub mod unrelated;
+  src/unrelated/mod.rs: |
+    pub mod validation;
+    pub mod formatting;
+  src/unrelated/validation.rs: |
+    // GARBAGE_RUST_VALIDATION_001
+    use std::collections::HashSet;
+
+    pub const GARBAGE_MAX_LENGTH_002: usize = 255;
+    pub const GARBAGE_MIN_LENGTH_003: usize = 1;
+
+    pub struct GarbageValidator004 {
+        rules: Vec<String>,
+        strict_mode: bool,
+    }
+
+    impl GarbageValidator004 {
+        pub fn garbage_validate_string_005(&self, input: &str) -> Result<(), String> {
+            if input.len() > GARBAGE_MAX_LENGTH_002 {
+                return Err("GARBAGE_TOO_LONG_ERROR_006".to_string());
+            }
+            Ok(())
+        }
+
+        pub fn garbage_validate_email_007(&self, email: &str) -> bool {
+            email.contains('@') && email.contains('.')
+        }
+
+        pub fn garbage_add_rule_008(&mut self, rule: String) {
+            self.rules.push(rule);
+        }
+    }
+
+    pub trait GarbageValidatable009 {
+        fn garbage_is_valid_010(&self) -> bool;
+        fn garbage_validate_011(&self) -> Result<(), Vec<String>>;
+    }
+  src/unrelated/formatting.rs: |
+    // GARBAGE_RUST_FORMAT_012
+    pub const GARBAGE_DATE_FORMAT_013: &str = "%Y-%m-%d";
+    pub const GARBAGE_TIME_FORMAT_014: &str = "%H:%M:%S";
+
+    pub struct GarbageFormatter015 {
+        locale: String,
+        timezone: String,
+    }
+
+    impl GarbageFormatter015 {
+        pub fn garbage_format_date_016(&self, timestamp: u64) -> String {
+            format!("GARBAGE_DATE_{}", timestamp)
+        }
+
+        pub fn garbage_format_currency_017(&self, amount: f64) -> String {
+            format!("GARBAGE_${:.2}", amount)
+        }
+
+        pub fn garbage_format_number_018(&self, num: i64) -> String {
+            format!("GARBAGE_NUM_{}", num)
+        }
+    }
+
+    pub fn garbage_pad_string_019(s: &str, width: usize) -> String {
+        format!("{:>width$}", s, width = width)
+    }
+
+    pub fn garbage_truncate_020(s: &str, max_len: usize) -> String {
+        s.chars().take(max_len).collect()
+    }
 changed:
   src/main.rs: |
     use std::collections::HashMap;
     use std::collections::HashSet;
+    use std::collections::BTreeMap;
 
     fn main() {
-        let map: HashMap<String, i32> = HashMap::new();
-        let set: HashSet<i32> = HashSet::new();
-        println!("{:?} {:?}", map, set);
+        let mut map: HashMap<String, i32> = HashMap::new();
+        map.insert("one".to_string(), 1);
+        map.insert("two".to_string(), 2);
+
+        let mut set: HashSet<i32> = HashSet::new();
+        set.insert(1);
+        set.insert(2);
+        set.insert(3);
+
+        let mut btree: BTreeMap<String, i32> = BTreeMap::new();
+        btree.insert("alpha".to_string(), 100);
+        btree.insert("beta".to_string(), 200);
+
+        println!("HashMap: {:?}", map);
+        println!("HashSet: {:?}", set);
+        println!("BTreeMap: {:?}", btree);
+
+        for (key, value) in &map {
+            println!("{}: {}", key, value);
+        }
     }
 assertions:
   must_include:
-  - HashMap
-  - HashSet
-  - use std::collections
+    - HashMap
+    - HashSet
+    - BTreeMap
+    - use std::collections
   must_not_include:
-  - garbage_import_12345
+    - GARBAGE_RUST_VALIDATION_001
+    - GARBAGE_MAX_LENGTH_002
+    - GARBAGE_MIN_LENGTH_003
+    - GarbageValidator004
+    - garbage_validate_string_005
+    - GARBAGE_TOO_LONG_ERROR_006
+    - garbage_validate_email_007
+    - garbage_add_rule_008
+    - GarbageValidatable009
+    - garbage_is_valid_010
+    - garbage_validate_011
+    - GARBAGE_RUST_FORMAT_012
+    - GARBAGE_DATE_FORMAT_013
+    - GARBAGE_TIME_FORMAT_014
+    - GarbageFormatter015
+    - garbage_format_date_016
+    - garbage_format_currency_017
+    - garbage_format_number_018
+    - garbage_pad_string_019
+    - garbage_truncate_020
 options:
   commit_message: Add explicit use statements

@@ -1,0 +1,42 @@
+name: merging_005_markdown_subsections
+initial:
+  structured.md: |
+    # Main Section
+
+    Introduction text.
+
+    ## Subsection 1
+
+    Content 1.
+
+    ## Subsection 2
+
+    Content 2.
+
+    # Another Section
+
+    Different content.
+changed:
+  structured.md: |
+    # Main Section
+
+    Updated introduction text.
+
+    ## Subsection 1
+
+    Updated content 1.
+
+    ## Subsection 2
+
+    Content 2.
+
+    # Another Section
+
+    Different content.
+assertions:
+  must_include:
+  - Main Section
+  - Updated introduction
+  - Updated content 1
+options:
+  commit_message: Update markdown sections

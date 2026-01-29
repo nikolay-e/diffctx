@@ -1,0 +1,377 @@
+name: fragments_020_module_gap_before_first_def
+initial:
+  src/with_gap.py: |
+    import os
+    import sys
+    import logging
+    from pathlib import Path
+    from typing import Optional, Dict, List, Any
+    from dataclasses import dataclass, field
+    from enum import Enum
+    from functools import lru_cache
+
+    logger = logging.getLogger(__name__)
+
+    CONFIG_PATH = "/etc/app.conf"
+    DEBUG = True
+    LOG_LEVEL = "INFO"
+    MAX_CONNECTIONS = 100
+    TIMEOUT_SECONDS = 30.0
+
+    class Environment(Enum):
+        DEVELOPMENT = "development"
+        STAGING = "staging"
+        PRODUCTION = "production"
+
+    @dataclass
+    class AppConfig:
+        environment: Environment
+        debug: bool = False
+        log_level: str = "INFO"
+
+    def main():
+        config = AppConfig(environment=Environment.DEVELOPMENT, debug=DEBUG)
+        logger.info(f"Starting with config: {config}")
+        pass
+
+    def unrelated_function_alpha():
+        items = [x ** 2 for x in range(20)]
+        filtered = [x for x in items if x > 100]
+        return f"GARBAGE_FRAG_020_alpha: {sum(filtered)}"
+
+    def unrelated_function_beta():
+        mapping = {"key1": 1, "key2": 2, "key3": 3}
+        processed = {k: v * 2 for k, v in mapping.items()}
+        return f"GARBAGE_FRAG_020_beta: {processed}"
+
+    class UnrelatedConfigManager:
+        MARKER = "GARBAGE_FRAG_020_configmanager"
+        DEFAULT_VALUES = {"option": "GARBAGE_FRAG_020_defaultvalues"}
+
+        def __init__(self, config_path: Optional[str] = None):
+            self._config_path = config_path or CONFIG_PATH
+            self._loaded = False
+            self._cache: Dict[str, Any] = {}
+
+        def load(self) -> bool:
+            self._loaded = True
+            return True
+
+        def get_value(self, key: str) -> Optional[Any]:
+            return self._cache.get(key, f"GARBAGE_FRAG_020_getvalue: {key}")
+
+        def set_value(self, key: str, value: Any) -> None:
+            self._cache[key] = value
+
+    def unrelated_helper_gamma():
+        calculations = []
+        for i in range(15):
+            calculations.append(i * i + 2 * i + 1)
+        return f"GARBAGE_FRAG_020_gamma: {calculations}"
+
+    class UnrelatedServiceClass:
+        VALUE = "GARBAGE_FRAG_020_serviceclass"
+        CONSTANTS = ["GARBAGE_FRAG_020_const1", "GARBAGE_FRAG_020_const2"]
+
+        def __init__(self):
+            self._initialized = False
+            self._data: List[str] = []
+
+        def process(self, items: List[str]) -> List[str]:
+            return [f"GARBAGE_FRAG_020_process: {item}" for item in items]
+
+        def validate(self, value: Any) -> bool:
+            return True
+
+    def another_unrelated_function():
+        results = []
+        for i in range(10):
+            results.append({"index": i, "value": i ** 3})
+        return f"GARBAGE_FRAG_020_another: {len(results)}"
+
+    TRAILING_CONSTANT_A = "GARBAGE_FRAG_020_trailinga"
+    TRAILING_CONSTANT_B = "GARBAGE_FRAG_020_trailingb"
+
+  unrelated/config_loader.py: |
+    import json
+    import os
+    from typing import Dict, Any, Optional, List
+    from pathlib import Path
+    from dataclasses import dataclass
+
+    @dataclass
+    class ConfigEntry:
+        key: str
+        value: Any
+        source: str
+
+    class ConfigLoader:
+        GARBAGE_FRAG_020_001 = "config_loader_marker"
+
+        def __init__(self, base_path: Optional[Path] = None):
+            self._base_path = base_path or Path.cwd()
+            self._entries: List[ConfigEntry] = []
+            self._loaded_files: List[str] = []
+
+        def load_json(self, filename: str) -> Dict[str, Any]:
+            path = self._base_path / filename
+            self._loaded_files.append(str(path))
+            return {"GARBAGE_FRAG_020_002": filename}
+
+        def load_env(self, prefix: str = "") -> Dict[str, str]:
+            result = {}
+            for key, value in os.environ.items():
+                if prefix and key.startswith(prefix):
+                    result[key] = value
+            return result
+
+        def get_entries(self) -> List[ConfigEntry]:
+            return self._entries.copy()
+
+        def merge_configs(self, *configs: Dict) -> Dict[str, Any]:
+            result = {}
+            for config in configs:
+                result.update(config)
+            return result
+
+    def load_defaults() -> Dict[str, Any]:
+        return {
+            "GARBAGE_FRAG_020_003": "default_value",
+            "GARBAGE_FRAG_020_004": 42
+        }
+
+    CONFIG_MARKERS = ["GARBAGE_FRAG_020_005", "GARBAGE_FRAG_020_006"]
+
+  unrelated/environment_utils.py: |
+    import os
+    from typing import Dict, Optional, List
+    from enum import Enum
+    from dataclasses import dataclass
+
+    class EnvironmentType(Enum):
+        LOCAL = "local"
+        DEVELOPMENT = "development"
+        STAGING = "staging"
+        PRODUCTION = "production"
+
+    @dataclass
+    class EnvironmentInfo:
+        type: EnvironmentType
+        variables: Dict[str, str]
+        is_debug: bool = False
+
+    class EnvironmentManager:
+        GARBAGE_FRAG_020_007 = "environment_manager_marker"
+
+        def __init__(self):
+            self._current_env: Optional[EnvironmentType] = None
+            self._overrides: Dict[str, str] = {}
+
+        def detect_environment(self) -> EnvironmentType:
+            env_name = os.environ.get("APP_ENV", "local")
+            return EnvironmentType(env_name)
+
+        def get_variable(self, name: str, default: Optional[str] = None) -> Optional[str]:
+            return self._overrides.get(name, os.environ.get(name, default))
+
+        def set_override(self, name: str, value: str) -> None:
+            self._overrides[name] = value
+
+        def get_info(self) -> EnvironmentInfo:
+            return EnvironmentInfo(
+                type=self.detect_environment(),
+                variables={"GARBAGE_FRAG_020_008": "value"},
+                is_debug=self.get_variable("DEBUG") == "true"
+            )
+
+    def get_required_variables() -> List[str]:
+        return ["GARBAGE_FRAG_020_009", "GARBAGE_FRAG_020_010"]
+
+    ENVIRONMENT_MARKERS = ["GARBAGE_FRAG_020_011", "GARBAGE_FRAG_020_012"]
+
+  unrelated/settings_manager.py: |
+    from typing import Dict, Any, Optional, Callable
+    from dataclasses import dataclass, field
+    import json
+
+    @dataclass
+    class Setting:
+        name: str
+        value: Any
+        validator: Optional[Callable[[Any], bool]] = None
+
+    class SettingsManager:
+        GARBAGE_FRAG_020_013 = "settings_manager_marker"
+
+        def __init__(self):
+            self._settings: Dict[str, Setting] = {}
+            self._dirty = False
+
+        def register(self, name: str, default: Any, validator: Optional[Callable] = None) -> None:
+            self._settings[name] = Setting(name=name, value=default, validator=validator)
+
+        def get(self, name: str) -> Any:
+            setting = self._settings.get(name)
+            return setting.value if setting else f"GARBAGE_FRAG_020_014: {name}"
+
+        def set(self, name: str, value: Any) -> bool:
+            setting = self._settings.get(name)
+            if setting:
+                if setting.validator and not setting.validator(value):
+                    return False
+                setting.value = value
+                self._dirty = True
+                return True
+            return False
+
+        def export_json(self) -> str:
+            return json.dumps({
+                "GARBAGE_FRAG_020_015": {s.name: s.value for s in self._settings.values()}
+            })
+
+    SETTINGS_MARKERS = ["GARBAGE_FRAG_020_016", "GARBAGE_FRAG_020_017", "GARBAGE_FRAG_020_018"]
+
+changed:
+  src/with_gap.py: |
+    import os
+    import sys
+    import logging
+    from pathlib import Path
+    from typing import Optional, Dict, List, Any
+    from dataclasses import dataclass, field
+    from enum import Enum
+    from functools import lru_cache
+
+    logger = logging.getLogger(__name__)
+
+    CONFIG_PATH = "/etc/app.conf"
+    DEBUG = False
+    LOG_LEVEL = "INFO"
+    MAX_CONNECTIONS = 100
+    TIMEOUT_SECONDS = 30.0
+
+    class Environment(Enum):
+        DEVELOPMENT = "development"
+        STAGING = "staging"
+        PRODUCTION = "production"
+
+    @dataclass
+    class AppConfig:
+        environment: Environment
+        debug: bool = False
+        log_level: str = "INFO"
+
+    def main():
+        config = AppConfig(environment=Environment.DEVELOPMENT, debug=DEBUG)
+        logger.info(f"Starting with config: {config}")
+        pass
+
+    def unrelated_function_alpha():
+        items = [x ** 2 for x in range(20)]
+        filtered = [x for x in items if x > 100]
+        return f"GARBAGE_FRAG_020_alpha: {sum(filtered)}"
+
+    def unrelated_function_beta():
+        mapping = {"key1": 1, "key2": 2, "key3": 3}
+        processed = {k: v * 2 for k, v in mapping.items()}
+        return f"GARBAGE_FRAG_020_beta: {processed}"
+
+    class UnrelatedConfigManager:
+        MARKER = "GARBAGE_FRAG_020_configmanager"
+        DEFAULT_VALUES = {"option": "GARBAGE_FRAG_020_defaultvalues"}
+
+        def __init__(self, config_path: Optional[str] = None):
+            self._config_path = config_path or CONFIG_PATH
+            self._loaded = False
+            self._cache: Dict[str, Any] = {}
+
+        def load(self) -> bool:
+            self._loaded = True
+            return True
+
+        def get_value(self, key: str) -> Optional[Any]:
+            return self._cache.get(key, f"GARBAGE_FRAG_020_getvalue: {key}")
+
+        def set_value(self, key: str, value: Any) -> None:
+            self._cache[key] = value
+
+    def unrelated_helper_gamma():
+        calculations = []
+        for i in range(15):
+            calculations.append(i * i + 2 * i + 1)
+        return f"GARBAGE_FRAG_020_gamma: {calculations}"
+
+    class UnrelatedServiceClass:
+        VALUE = "GARBAGE_FRAG_020_serviceclass"
+        CONSTANTS = ["GARBAGE_FRAG_020_const1", "GARBAGE_FRAG_020_const2"]
+
+        def __init__(self):
+            self._initialized = False
+            self._data: List[str] = []
+
+        def process(self, items: List[str]) -> List[str]:
+            return [f"GARBAGE_FRAG_020_process: {item}" for item in items]
+
+        def validate(self, value: Any) -> bool:
+            return True
+
+    def another_unrelated_function():
+        results = []
+        for i in range(10):
+            results.append({"index": i, "value": i ** 3})
+        return f"GARBAGE_FRAG_020_another: {len(results)}"
+
+    TRAILING_CONSTANT_A = "GARBAGE_FRAG_020_trailinga"
+    TRAILING_CONSTANT_B = "GARBAGE_FRAG_020_trailingb"
+
+assertions:
+  must_include:
+    - import os
+    - CONFIG_PATH
+    - DEBUG
+  must_not_include:
+    - GARBAGE_FRAG_020_alpha
+    - GARBAGE_FRAG_020_beta
+    - GARBAGE_FRAG_020_configmanager
+    - GARBAGE_FRAG_020_defaultvalues
+    - GARBAGE_FRAG_020_getvalue
+    - GARBAGE_FRAG_020_gamma
+    - GARBAGE_FRAG_020_serviceclass
+    - GARBAGE_FRAG_020_const1
+    - GARBAGE_FRAG_020_const2
+    - GARBAGE_FRAG_020_process
+    - GARBAGE_FRAG_020_another
+    - GARBAGE_FRAG_020_trailinga
+    - GARBAGE_FRAG_020_trailingb
+    - GARBAGE_FRAG_020_001
+    - GARBAGE_FRAG_020_002
+    - GARBAGE_FRAG_020_003
+    - GARBAGE_FRAG_020_004
+    - GARBAGE_FRAG_020_005
+    - GARBAGE_FRAG_020_006
+    - GARBAGE_FRAG_020_007
+    - GARBAGE_FRAG_020_008
+    - GARBAGE_FRAG_020_009
+    - GARBAGE_FRAG_020_010
+    - GARBAGE_FRAG_020_011
+    - GARBAGE_FRAG_020_012
+    - GARBAGE_FRAG_020_013
+    - GARBAGE_FRAG_020_014
+    - GARBAGE_FRAG_020_015
+    - GARBAGE_FRAG_020_016
+    - GARBAGE_FRAG_020_017
+    - GARBAGE_FRAG_020_018
+    - unrelated_function_alpha
+    - unrelated_function_beta
+    - UnrelatedConfigManager
+    - unrelated_helper_gamma
+    - UnrelatedServiceClass
+    - another_unrelated_function
+    - ConfigLoader
+    - EnvironmentManager
+    - SettingsManager
+    - config_loader.py
+    - environment_utils.py
+    - settings_manager.py
+options:
+  commit_message: Change DEBUG constant

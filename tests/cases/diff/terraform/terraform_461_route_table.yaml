@@ -1,0 +1,40 @@
+name: terraform_461_route_table
+initial:
+  network.tf: |
+    resource "aws_vpc" "main" {
+      cidr_block = "10.0.0.0/16"
+    }
+
+    resource "aws_subnet" "private" {
+      vpc_id     = aws_vpc.main.id
+      cidr_block = "10.0.1.0/24"
+    }
+changed:
+  network.tf: |
+    resource "aws_vpc" "main" {
+      cidr_block = "10.0.0.0/16"
+    }
+
+    resource "aws_subnet" "private" {
+      vpc_id     = aws_vpc.main.id
+      cidr_block = "10.0.1.0/24"
+    }
+
+    resource "aws_route_table" "private" {
+      vpc_id = aws_vpc.main.id
+
+      route {
+        cidr_block     = "0.0.0.0/0"
+        nat_gateway_id = aws_nat_gateway.main.id
+      }
+    }
+
+    resource "aws_route_table_association" "private" {
+      subnet_id      = aws_subnet.private.id
+      route_table_id = aws_route_table.private.id
+    }
+assertions:
+  must_include:
+  - network.tf
+options:
+  commit_message: Add route table

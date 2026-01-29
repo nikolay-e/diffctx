@@ -1,0 +1,384 @@
+name: fragments_010_nested_function_separate_fragment
+initial:
+  src/nested.py: |
+    import sys
+    import os
+    from typing import Callable, TypeVar, Generic, Optional, List, Dict
+    from functools import wraps
+    from contextlib import contextmanager
+
+    T = TypeVar('T')
+    R = TypeVar('R')
+
+    class UnrelatedTopLevelClass:
+        GARBAGE_FRAG_010_toplevel = "toplevel_marker"
+
+        def __init__(self):
+            self._data: List[int] = []
+            self._processed = False
+
+        def process_data(self, items: List[int]) -> List[int]:
+            return [x * 2 for x in items]
+
+        def get_summary(self) -> Dict[str, int]:
+            return {"GARBAGE_FRAG_010_summary": len(self._data)}
+
+    def unrelated_top_level_function():
+        results = []
+        for i in range(20):
+            if i % 2 == 0:
+                results.append(i ** 2)
+            else:
+                results.append(i * 3)
+        return f"GARBAGE_FRAG_010_topfunc: {sum(results)}"
+
+    def unrelated_medium_depth():
+        def medium_inner():
+            calculations = [x * x for x in range(10)]
+            return f"GARBAGE_FRAG_010_medium: {calculations}"
+        return medium_inner()
+
+    class UnrelatedContainerClass:
+        MARKER = "GARBAGE_FRAG_010_container"
+
+        def container_method(self):
+            def local_helper():
+                return "GARBAGE_FRAG_010_localhelper"
+            return local_helper()
+
+        def another_container_method(self):
+            return "GARBAGE_FRAG_010_anothercontainer"
+
+    def outer():
+        x = 1
+        y = 2
+
+        def middle():
+            z = x + y
+
+            def inner():
+                return z
+            return inner()
+        return middle()
+
+    def another_deep_structure():
+        config = {"key": "value"}
+
+        def layer_one():
+            data = list(config.keys())
+
+            def layer_two():
+                processed = [d.upper() for d in data]
+
+                def layer_three():
+                    return f"GARBAGE_FRAG_010_layerthree: {processed}"
+                return layer_three()
+            return layer_two()
+        return layer_one()
+
+    class AnotherUnrelatedClass:
+        VALUE = "GARBAGE_FRAG_010_anotherclass"
+
+        def nested_method(self):
+            def m_level1():
+                items = [1, 2, 3, 4, 5]
+
+                def m_level2():
+                    return f"GARBAGE_FRAG_010_mlevel2: {sum(items)}"
+                return m_level2()
+            return m_level1()
+
+        @staticmethod
+        def static_nested():
+            def inner_static():
+                return "GARBAGE_FRAG_010_innerstatic"
+            return inner_static()
+
+    def utility_with_closure():
+        counter = [0]
+
+        def increment():
+            counter[0] += 1
+            return f"GARBAGE_FRAG_010_closure: {counter[0]}"
+        return increment
+
+    TRAILING_CONSTANT = "GARBAGE_FRAG_010_trailing"
+
+  unrelated/closure_utils.py: |
+    from typing import Callable, Any, List
+    from functools import partial
+
+    class ClosureFactory:
+        GARBAGE_FRAG_010_001 = "closure_factory_marker"
+
+        def __init__(self, initial_value: int = 0):
+            self._value = initial_value
+
+        def create_adder(self, amount: int) -> Callable[[], int]:
+            def adder():
+                return self._value + amount
+            return adder
+
+        def create_multiplier(self, factor: int) -> Callable[[int], int]:
+            def multiplier(x: int) -> int:
+                return x * factor * self._value
+            return multiplier
+
+    def create_counter() -> Callable[[], int]:
+        count = [0]
+
+        def counter():
+            count[0] += 1
+            return count[0]
+        return counter
+
+    def create_accumulator(initial: List[int]) -> Callable[[int], List[int]]:
+        data = initial.copy()
+
+        def accumulate(value: int) -> List[int]:
+            data.append(value)
+            return data.copy()
+        return accumulate
+
+    CLOSURE_MARKERS = ["GARBAGE_FRAG_010_002", "GARBAGE_FRAG_010_003"]
+
+  unrelated/decorator_patterns.py: |
+    import functools
+    import time
+    from typing import Callable, TypeVar, Any
+
+    T = TypeVar('T')
+
+    class DecoratorRegistry:
+        GARBAGE_FRAG_010_004 = "decorator_registry_marker"
+
+        def __init__(self):
+            self._decorators: dict = {}
+
+        def register(self, name: str) -> Callable:
+            def decorator(func: Callable[..., T]) -> Callable[..., T]:
+                self._decorators[name] = func
+
+                @functools.wraps(func)
+                def wrapper(*args: Any, **kwargs: Any) -> T:
+                    return func(*args, **kwargs)
+                return wrapper
+            return decorator
+
+    def timing_decorator(func: Callable[..., T]) -> Callable[..., T]:
+        @functools.wraps(func)
+        def wrapper(*args: Any, **kwargs: Any) -> T:
+            start = time.time()
+            result = func(*args, **kwargs)
+            elapsed = time.time() - start
+            return result
+        return wrapper
+
+    def retry_decorator(max_attempts: int = 3) -> Callable:
+        def decorator(func: Callable[..., T]) -> Callable[..., T]:
+            @functools.wraps(func)
+            def wrapper(*args: Any, **kwargs: Any) -> T:
+                for attempt in range(max_attempts):
+                    try:
+                        return func(*args, **kwargs)
+                    except Exception:
+                        if attempt == max_attempts - 1:
+                            raise
+            return wrapper
+        return decorator
+
+    DECORATOR_MARKERS = ["GARBAGE_FRAG_010_005", "GARBAGE_FRAG_010_006", "GARBAGE_FRAG_010_007"]
+
+  unrelated/callback_manager.py: |
+    from typing import Callable, Dict, List, Any, Optional
+    from dataclasses import dataclass
+
+    @dataclass
+    class CallbackResult:
+        success: bool
+        value: Any
+        error: Optional[str] = None
+
+    class CallbackManager:
+        GARBAGE_FRAG_010_008 = "callback_manager_marker"
+
+        def __init__(self):
+            self._callbacks: Dict[str, List[Callable]] = {}
+            self._results: List[CallbackResult] = []
+
+        def register(self, event: str, callback: Callable) -> None:
+            if event not in self._callbacks:
+                self._callbacks[event] = []
+            self._callbacks[event].append(callback)
+
+        def trigger(self, event: str, *args: Any, **kwargs: Any) -> List[CallbackResult]:
+            results = []
+            for callback in self._callbacks.get(event, []):
+                try:
+                    value = callback(*args, **kwargs)
+                    results.append(CallbackResult(success=True, value=value))
+                except Exception as e:
+                    results.append(CallbackResult(success=False, value=None, error=str(e)))
+            self._results.extend(results)
+            return results
+
+        def clear(self, event: Optional[str] = None) -> int:
+            if event:
+                count = len(self._callbacks.get(event, []))
+                self._callbacks.pop(event, None)
+                return count
+            count = sum(len(cbs) for cbs in self._callbacks.values())
+            self._callbacks.clear()
+            return count
+
+    CALLBACK_MARKERS = ["GARBAGE_FRAG_010_009", "GARBAGE_FRAG_010_010"]
+
+changed:
+  src/nested.py: |
+    import sys
+    import os
+    from typing import Callable, TypeVar, Generic, Optional, List, Dict
+    from functools import wraps
+    from contextlib import contextmanager
+
+    T = TypeVar('T')
+    R = TypeVar('R')
+
+    class UnrelatedTopLevelClass:
+        GARBAGE_FRAG_010_toplevel = "toplevel_marker"
+
+        def __init__(self):
+            self._data: List[int] = []
+            self._processed = False
+
+        def process_data(self, items: List[int]) -> List[int]:
+            return [x * 2 for x in items]
+
+        def get_summary(self) -> Dict[str, int]:
+            return {"GARBAGE_FRAG_010_summary": len(self._data)}
+
+    def unrelated_top_level_function():
+        results = []
+        for i in range(20):
+            if i % 2 == 0:
+                results.append(i ** 2)
+            else:
+                results.append(i * 3)
+        return f"GARBAGE_FRAG_010_topfunc: {sum(results)}"
+
+    def unrelated_medium_depth():
+        def medium_inner():
+            calculations = [x * x for x in range(10)]
+            return f"GARBAGE_FRAG_010_medium: {calculations}"
+        return medium_inner()
+
+    class UnrelatedContainerClass:
+        MARKER = "GARBAGE_FRAG_010_container"
+
+        def container_method(self):
+            def local_helper():
+                return "GARBAGE_FRAG_010_localhelper"
+            return local_helper()
+
+        def another_container_method(self):
+            return "GARBAGE_FRAG_010_anothercontainer"
+
+    def outer():
+        x = 1
+        y = 2
+
+        def middle():
+            z = x + y
+
+            def inner():
+                return z + 1
+            return inner()
+        return middle()
+
+    def another_deep_structure():
+        config = {"key": "value"}
+
+        def layer_one():
+            data = list(config.keys())
+
+            def layer_two():
+                processed = [d.upper() for d in data]
+
+                def layer_three():
+                    return f"GARBAGE_FRAG_010_layerthree: {processed}"
+                return layer_three()
+            return layer_two()
+        return layer_one()
+
+    class AnotherUnrelatedClass:
+        VALUE = "GARBAGE_FRAG_010_anotherclass"
+
+        def nested_method(self):
+            def m_level1():
+                items = [1, 2, 3, 4, 5]
+
+                def m_level2():
+                    return f"GARBAGE_FRAG_010_mlevel2: {sum(items)}"
+                return m_level2()
+            return m_level1()
+
+        @staticmethod
+        def static_nested():
+            def inner_static():
+                return "GARBAGE_FRAG_010_innerstatic"
+            return inner_static()
+
+    def utility_with_closure():
+        counter = [0]
+
+        def increment():
+            counter[0] += 1
+            return f"GARBAGE_FRAG_010_closure: {counter[0]}"
+        return increment
+
+    TRAILING_CONSTANT = "GARBAGE_FRAG_010_trailing"
+
+assertions:
+  must_include:
+    - inner
+    - nested.py
+    - return z + 1
+  must_not_include:
+    - GARBAGE_FRAG_010_toplevel
+    - GARBAGE_FRAG_010_summary
+    - GARBAGE_FRAG_010_topfunc
+    - GARBAGE_FRAG_010_medium
+    - GARBAGE_FRAG_010_container
+    - GARBAGE_FRAG_010_localhelper
+    - GARBAGE_FRAG_010_anothercontainer
+    - GARBAGE_FRAG_010_layerthree
+    - GARBAGE_FRAG_010_anotherclass
+    - GARBAGE_FRAG_010_mlevel2
+    - GARBAGE_FRAG_010_innerstatic
+    - GARBAGE_FRAG_010_closure
+    - GARBAGE_FRAG_010_trailing
+    - GARBAGE_FRAG_010_001
+    - GARBAGE_FRAG_010_002
+    - GARBAGE_FRAG_010_003
+    - GARBAGE_FRAG_010_004
+    - GARBAGE_FRAG_010_005
+    - GARBAGE_FRAG_010_006
+    - GARBAGE_FRAG_010_007
+    - GARBAGE_FRAG_010_008
+    - GARBAGE_FRAG_010_009
+    - GARBAGE_FRAG_010_010
+    - UnrelatedTopLevelClass
+    - unrelated_top_level_function
+    - unrelated_medium_depth
+    - UnrelatedContainerClass
+    - another_deep_structure
+    - AnotherUnrelatedClass
+    - utility_with_closure
+    - ClosureFactory
+    - DecoratorRegistry
+    - CallbackManager
+    - closure_utils.py
+    - decorator_patterns.py
+    - callback_manager.py
+options:
+  commit_message: Modify nested function return value

@@ -1,46 +1,156 @@
 name: k8s_416_security_context
 initial:
-  deployment.yaml: |
+  k8s/apps/secure-api/deployment.yaml: |
     apiVersion: apps/v1
     kind: Deployment
     metadata:
-      name: secure-app
+      name: secure-api
+      namespace: production
+      labels:
+        app: secure-api
+        security-tier: high
+    spec:
+      replicas: 3
+      selector:
+        matchLabels:
+          app: secure-api
+      template:
+        metadata:
+          labels:
+            app: secure-api
+            security-tier: high
+        spec:
+          containers:
+          - name: api
+            image: secure-api:v1.0.0
+            ports:
+            - containerPort: 8080
+            resources:
+              requests:
+                memory: "256Mi"
+                cpu: "250m"
+              limits:
+                memory: "512Mi"
+                cpu: "500m"
+
+  k8s/apps/secure-api/service.yaml: |
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: secure-api
+      namespace: production
+    spec:
+      selector:
+        app: secure-api
+      ports:
+      - port: 443
+        targetPort: 8080
+
+  k8s/unrelated/sealed-secrets/controller.yaml: |
+    # GARBAGE_K8S_416_SEALED_SECRETS
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: GARBAGE_K8S_416_SS_CONTROLLER
+    spec:
+      replicas: 1
+      selector:
+        matchLabels:
+          app: GARBAGE_K8S_416_SS_LABEL
+      template:
+        spec:
+          containers:
+          - name: controller
+            image: bitnami/sealed-secrets-controller:GARBAGE_K8S_416_SS_VERSION
+
+  k8s/unrelated/trivy/trivy-operator.yaml: |
+    # GARBAGE_K8S_416_TRIVY_OPERATOR
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: GARBAGE_K8S_416_TRIVY_NAME
     spec:
       template:
         spec:
           containers:
-          - name: app
-            image: myapp:latest
-  unrelated.txt: |
-    garbage_marker_k8s416 = True
-    unused_marker_k8s416 = False
+          - name: operator
+            image: aquasec/trivy-operator:GARBAGE_K8S_416_TRIVY_VERSION
+            env:
+            - name: OPERATOR_NAMESPACE
+              value: GARBAGE_K8S_416_TRIVY_NS
+
 changed:
-  deployment.yaml: |
+  k8s/apps/secure-api/deployment.yaml: |
     apiVersion: apps/v1
     kind: Deployment
     metadata:
-      name: secure-app
+      name: secure-api
+      namespace: production
+      labels:
+        app: secure-api
+        security-tier: high
     spec:
+      replicas: 3
+      selector:
+        matchLabels:
+          app: secure-api
       template:
+        metadata:
+          labels:
+            app: secure-api
+            security-tier: high
         spec:
           securityContext:
             runAsNonRoot: true
             runAsUser: 1000
+            runAsGroup: 3000
             fsGroup: 2000
+            seccompProfile:
+              type: RuntimeDefault
           containers:
-          - name: app
-            image: myapp:latest
+          - name: api
+            image: secure-api:v1.0.0
+            ports:
+            - containerPort: 8080
             securityContext:
               allowPrivilegeEscalation: false
               readOnlyRootFilesystem: true
+              privileged: false
               capabilities:
                 drop:
                 - ALL
+                add:
+                - NET_BIND_SERVICE
+            resources:
+              requests:
+                memory: "256Mi"
+                cpu: "250m"
+              limits:
+                memory: "512Mi"
+                cpu: "500m"
+            volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+          volumes:
+          - name: tmp
+            emptyDir: {}
+
 assertions:
   must_include:
   - securityContext
+  - runAsNonRoot
+  - runAsUser
+  - allowPrivilegeEscalation
+  - readOnlyRootFilesystem
+  - capabilities
   must_not_include:
-  - garbage_marker_k8s416
-  - unused_marker_k8s416
+  - GARBAGE_K8S_416_SEALED_SECRETS
+  - GARBAGE_K8S_416_SS_CONTROLLER
+  - GARBAGE_K8S_416_SS_LABEL
+  - GARBAGE_K8S_416_SS_VERSION
+  - GARBAGE_K8S_416_TRIVY_OPERATOR
+  - GARBAGE_K8S_416_TRIVY_NAME
+  - GARBAGE_K8S_416_TRIVY_VERSION
+  - GARBAGE_K8S_416_TRIVY_NS
 options:
-  commit_message: Add security context
+  commit_message: Add comprehensive security context

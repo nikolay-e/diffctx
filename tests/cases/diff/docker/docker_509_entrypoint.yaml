@@ -1,25 +1,114 @@
 name: docker_509_entrypoint
 initial:
-  app.py: |
+  src/main.py: |
     import sys
-    print(f'Args: {sys.argv[1:]}')
+    import argparse
+    import signal
+
+    def signal_handler(signum, frame):
+        print(f"Received signal {signum}, shutting down gracefully...")
+        sys.exit(0)
+
+    def main():
+        parser = argparse.ArgumentParser()
+        parser.add_argument('--config', default='/etc/app/config.yaml')
+        parser.add_argument('--workers', type=int, default=4)
+        parser.add_argument('command', choices=['serve', 'migrate', 'shell'])
+        args = parser.parse_args()
+
+        signal.signal(signal.SIGTERM, signal_handler)
+        signal.signal(signal.SIGINT, signal_handler)
+
+        print(f"Running {args.command} with config: {args.config}")
+
+    if __name__ == '__main__':
+        main()
+  requirements.txt: |
+    pyyaml==6.0.1
+    click==8.1.7
   Dockerfile: |
     FROM python:3.11-slim
-    COPY app.py .
-    CMD ["python", "app.py"]
-  junk.txt: |
-    garbage_marker_12345 unused_marker_67890
+    WORKDIR /app
+    COPY requirements.txt .
+    RUN pip install -r requirements.txt
+    COPY src/ ./src/
+    CMD ["python", "src/main.py", "serve"]
+  scripts/docker_entrypoint.sh: |
+    #!/bin/bash
+    # GARBAGE_DOCKER_509_ENTRY_MARKER_001
+    GARBAGE_DOCKER_509_ENTRY_VAR_002="entrypoint"
+    exec python main.py "$@"
+  tests/test_cli.py: |
+    # GARBAGE_DOCKER_509_TEST_MARKER_003
+    GARBAGE_DOCKER_509_TEST_CLI_004 = {"args": ["serve"]}
+    def test_cli():
+        pass
+  docs/cli.md: |
+    # CLI Usage
+    GARBAGE_DOCKER_509_CLI_DOC_005
+    GARBAGE_DOCKER_509_COMMANDS_006="serve,migrate,shell"
+  helm/values.yaml: |
+    # GARBAGE_DOCKER_509_HELM_MARKER_007
+    GARBAGE_DOCKER_509_HELM_VAR_008: default
+    command: ["python"]
+  scripts/init.sh: |
+    #!/bin/bash
+    # GARBAGE_DOCKER_509_INIT_MARKER_009
+    GARBAGE_DOCKER_509_INIT_VAR_010="init"
 changed:
   Dockerfile: |
-    FROM python:3.11-slim
-    COPY app.py .
-    ENTRYPOINT ["python", "app.py"]
-    CMD ["--default-arg"]
+    FROM python:3.12-slim-bookworm AS base
+    ENV PYTHONDONTWRITEBYTECODE=1
+    ENV PYTHONUNBUFFERED=1
+
+    FROM base AS dependencies
+    WORKDIR /app
+    COPY requirements.txt .
+    RUN pip install --no-cache-dir -r requirements.txt
+
+    FROM base AS production
+    WORKDIR /app
+
+    COPY --from=dependencies /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
+    COPY --from=dependencies /usr/local/bin /usr/local/bin
+
+    # Copy entrypoint script
+    COPY docker-entrypoint.sh /usr/local/bin/
+    RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
+    COPY src/ ./src/
+
+    RUN useradd --create-home appuser && \
+        mkdir -p /etc/app && \
+        chown -R appuser:appuser /app /etc/app
+
+    USER appuser
+
+    # Use entrypoint for initialization logic
+    ENTRYPOINT ["docker-entrypoint.sh"]
+
+    # Default command - can be overridden
+    CMD ["serve", "--workers", "4"]
+
+    EXPOSE 8000
+    STOPSIGNAL SIGTERM
 assertions:
   must_include:
-  - ENTRYPOINT
+    - ENTRYPOINT ["docker-entrypoint.sh"]
+    - CMD ["serve", "--workers", "4"]
+    - chmod +x /usr/local/bin/docker-entrypoint.sh
+    - STOPSIGNAL SIGTERM
+    - mkdir -p /etc/app
   must_not_include:
-  - garbage_marker_12345
-  - unused_marker_67890
+    - GARBAGE_DOCKER_509_ENTRY_MARKER_001
+    - GARBAGE_DOCKER_509_ENTRY_VAR_002
+    - GARBAGE_DOCKER_509_TEST_MARKER_003
+    - GARBAGE_DOCKER_509_TEST_CLI_004
+    - GARBAGE_DOCKER_509_CLI_DOC_005
+    - GARBAGE_DOCKER_509_COMMANDS_006
+    - GARBAGE_DOCKER_509_HELM_MARKER_007
+    - GARBAGE_DOCKER_509_HELM_VAR_008
+    - GARBAGE_DOCKER_509_INIT_MARKER_009
+    - GARBAGE_DOCKER_509_INIT_VAR_010
 options:
-  commit_message: Add ENTRYPOINT
+  commit_message: Add ENTRYPOINT with initialization script and STOPSIGNAL

@@ -1,0 +1,36 @@
+name: terraform_454_ecs_task_definition
+initial:
+  ecs.tf: |
+    resource "aws_ecs_cluster" "main" {
+      name = "main-cluster"
+    }
+changed:
+  ecs.tf: |
+    resource "aws_ecs_cluster" "main" {
+      name = "main-cluster"
+    }
+
+    resource "aws_ecs_task_definition" "app" {
+      family                   = "app-task"
+      network_mode             = "awsvpc"
+      requires_compatibilities = ["FARGATE"]
+      cpu                      = "256"
+      memory                   = "512"
+
+      container_definitions = jsonencode([{
+        name  = "app"
+        image = "myapp:latest"
+        portMappings = [{
+          containerPort = 8080
+        }]
+        environment = [{
+          name  = "NODE_ENV"
+          value = "production"
+        }]
+      }])
+    }
+assertions:
+  must_include:
+  - ecs.tf
+options:
+  commit_message: Add ECS task definition

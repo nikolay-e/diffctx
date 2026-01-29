@@ -1,0 +1,27 @@
+name: json_030_renovate_config
+initial:
+  renovate.json: |
+    {
+      "extends": ["config:base"],
+      "automerge": false
+    }
+  package.json: |
+    {
+      "dependencies": {
+        "lodash": "^4.17.0"
+      }
+    }
+changed:
+  renovate.json: |
+    {
+      "extends": ["config:base"],
+      "automerge": true,
+      "packageRules": [
+        {"matchPackagePatterns": ["*"], "enabled": true}
+      ]
+    }
+assertions:
+  must_include:
+    - renovate.json
+options:
+  commit_message: enable automerge

@@ -1,0 +1,14 @@
+name: internals_008_emoji_in_string_content
+initial:
+  emoji_string.py: |
+    def placeholder():
+        pass
+changed:
+  emoji_string.py: |
+    def get_status():
+        return "Status: 🔥 Active 🚀"
+assertions:
+  must_include:
+  - get_status
+options:
+  add_garbage: true

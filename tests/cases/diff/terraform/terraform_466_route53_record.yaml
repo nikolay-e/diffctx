@@ -1,0 +1,28 @@
+name: terraform_466_route53_record
+initial:
+  dns.tf: |
+    resource "aws_route53_zone" "main" {
+      name = "example.com"
+    }
+changed:
+  dns.tf: |
+    resource "aws_route53_zone" "main" {
+      name = "example.com"
+    }
+
+    resource "aws_route53_record" "api" {
+      zone_id = aws_route53_zone.main.zone_id
+      name    = "api.example.com"
+      type    = "A"
+
+      alias {
+        name                   = aws_lb.main.dns_name
+        zone_id                = aws_lb.main.zone_id
+        evaluate_target_health = true
+      }
+    }
+assertions:
+  must_include:
+  - dns.tf
+options:
+  commit_message: Add Route53 record

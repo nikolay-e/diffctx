@@ -1,50 +1,275 @@
 name: java_003_extends_base_class
 initial:
-  src/main/java/com/example/BaseEntity.java: |
-    package com.example;
+  src/main/java/com/ecommerce/model/BaseEntity.java: |
+    package com.ecommerce.model;
 
     import java.time.LocalDateTime;
+    import java.util.Objects;
 
     public abstract class BaseEntity {
         private Long id;
         private LocalDateTime createdAt;
+        private String createdBy;
 
-        public Long getId() { return id; }
-        public LocalDateTime getCreatedAt() { return createdAt; }
+        protected BaseEntity() {
+            this.createdAt = LocalDateTime.now();
+        }
+
+        public Long getId() {
+            return id;
+        }
+
+        public void setId(Long id) {
+            this.id = id;
+        }
+
+        public LocalDateTime getCreatedAt() {
+            return createdAt;
+        }
+
+        public String getCreatedBy() {
+            return createdBy;
+        }
+
+        public void setCreatedBy(String createdBy) {
+            this.createdBy = createdBy;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (o == null || getClass() != o.getClass()) return false;
+            BaseEntity that = (BaseEntity) o;
+            return Objects.equals(id, that.id);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(id);
+        }
     }
-  src/main/java/com/example/Product.java: |
-    package com.example;
+  src/main/java/com/ecommerce/model/Product.java: |
+    package com.ecommerce.model;
+
+    import java.math.BigDecimal;
 
     public class Product extends BaseEntity {
         private String name;
-        private Double price;
+        private String description;
+        private BigDecimal price;
+        private String sku;
+        private Integer stockQuantity;
+
+        public Product() {
+            super();
+        }
+
+        public Product(String name, BigDecimal price, String sku) {
+            super();
+            this.name = name;
+            this.price = price;
+            this.sku = sku;
+            this.stockQuantity = 0;
+        }
+
+        public String getName() { return name; }
+        public void setName(String name) { this.name = name; }
+        public String getDescription() { return description; }
+        public void setDescription(String description) { this.description = description; }
+        public BigDecimal getPrice() { return price; }
+        public void setPrice(BigDecimal price) { this.price = price; }
+        public String getSku() { return sku; }
+        public void setSku(String sku) { this.sku = sku; }
+        public Integer getStockQuantity() { return stockQuantity; }
+        public void setStockQuantity(Integer stockQuantity) { this.stockQuantity = stockQuantity; }
+    }
+  src/main/java/com/ecommerce/model/Category.java: |
+    package com.ecommerce.model;
+
+    import java.util.ArrayList;
+    import java.util.List;
+
+    public class Category extends BaseEntity {
+        private String name;
+        private Category parent;
+        private List<Category> children = new ArrayList<>();
+
+        public Category() {
+            super();
+        }
+
+        public String getName() { return name; }
+        public void setName(String name) { this.name = name; }
+        public Category getParent() { return parent; }
+        public void setParent(Category parent) { this.parent = parent; }
+        public List<Category> getChildren() { return children; }
+    }
+  src/main/java/com/ecommerce/unrelated/NotificationSender.java: |
+    package com.ecommerce.unrelated;
+
+    import java.util.concurrent.BlockingQueue;
+    import java.util.concurrent.LinkedBlockingQueue;
+
+    public class NotificationSender {
+        public static final String GARBAGE_JAVA_NOTIFY_201 = "notification_marker_delta";
+        private static final String GARBAGE_JAVA_QUEUE_202 = "queue_marker_epsilon";
+
+        private final BlockingQueue<String> messageQueue = new LinkedBlockingQueue<>();
+
+        public void sendEmail(String recipient, String subject, String body) {
+            String message = String.format("EMAIL:%s:%s:%s", recipient, subject, body);
+            messageQueue.offer(message);
+            logGarbageMarkers();
+        }
+
+        public void sendSms(String phoneNumber, String message) {
+            messageQueue.offer("SMS:" + phoneNumber + ":" + message);
+        }
+
+        private void logGarbageMarkers() {
+            System.out.println(GARBAGE_JAVA_NOTIFY_201);
+            System.out.println(GARBAGE_JAVA_QUEUE_202);
+        }
+    }
+  src/main/java/com/ecommerce/unrelated/AnalyticsTracker.java: |
+    package com.ecommerce.unrelated;
+
+    import java.time.Instant;
+    import java.util.HashMap;
+    import java.util.Map;
+
+    public class AnalyticsTracker {
+        public static final String GARBAGE_JAVA_ANALYTICS_203 = "analytics_marker_zeta";
+
+        private final Map<String, Object> eventData = new HashMap<>();
+
+        public void trackEvent(String eventName, Map<String, Object> properties) {
+            eventData.put("event", eventName);
+            eventData.put("timestamp", Instant.now());
+            eventData.putAll(properties);
+            flushWithMarker();
+        }
+
+        private void flushWithMarker() {
+            String GARBAGE_JAVA_FLUSH_204 = "flush_marker_eta";
+            System.out.println(GARBAGE_JAVA_ANALYTICS_203 + GARBAGE_JAVA_FLUSH_204);
+        }
     }
 changed:
-  src/main/java/com/example/BaseEntity.java: |
-    package com.example;
+  src/main/java/com/ecommerce/model/BaseEntity.java: |
+    package com.ecommerce.model;
 
     import java.time.LocalDateTime;
+    import java.util.Objects;
 
     public abstract class BaseEntity {
         private Long id;
         private LocalDateTime createdAt;
+        private String createdBy;
         private LocalDateTime updatedAt;
+        private String updatedBy;
+        private Integer version;
+        private boolean deleted;
 
-        protected void onUpdate() {
-            updatedAt = LocalDateTime.now();
+        protected BaseEntity() {
+            this.createdAt = LocalDateTime.now();
+            this.version = 0;
+            this.deleted = false;
         }
 
-        public Long getId() { return id; }
-        public LocalDateTime getCreatedAt() { return createdAt; }
-        public LocalDateTime getUpdatedAt() { return updatedAt; }
+        public Long getId() {
+            return id;
+        }
+
+        public void setId(Long id) {
+            this.id = id;
+        }
+
+        public LocalDateTime getCreatedAt() {
+            return createdAt;
+        }
+
+        public String getCreatedBy() {
+            return createdBy;
+        }
+
+        public void setCreatedBy(String createdBy) {
+            this.createdBy = createdBy;
+        }
+
+        public LocalDateTime getUpdatedAt() {
+            return updatedAt;
+        }
+
+        public String getUpdatedBy() {
+            return updatedBy;
+        }
+
+        public Integer getVersion() {
+            return version;
+        }
+
+        public boolean isDeleted() {
+            return deleted;
+        }
+
+        protected void onUpdate(String user) {
+            this.updatedAt = LocalDateTime.now();
+            this.updatedBy = user;
+            this.version++;
+        }
+
+        protected void softDelete(String user) {
+            this.deleted = true;
+            onUpdate(user);
+        }
+
+        protected void restore(String user) {
+            this.deleted = false;
+            onUpdate(user);
+        }
+
+        public boolean isNew() {
+            return id == null;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (o == null || getClass() != o.getClass()) return false;
+            BaseEntity that = (BaseEntity) o;
+            return Objects.equals(id, that.id);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(id);
+        }
+
+        @Override
+        public String toString() {
+            return getClass().getSimpleName() + "{id=" + id + ", version=" + version + "}";
+        }
     }
 assertions:
   must_include:
-  - BaseEntity
-  - updatedAt
-  - onUpdate
+    - BaseEntity
+    - updatedAt
+    - updatedBy
+    - onUpdate
+    - softDelete
+    - restore
+    - version
+    - isDeleted
+    - isNew
   must_not_include:
-  - garbage_marker_12345
-  - unused_marker_67890
+    - GARBAGE_JAVA_NOTIFY_201
+    - GARBAGE_JAVA_QUEUE_202
+    - GARBAGE_JAVA_ANALYTICS_203
+    - GARBAGE_JAVA_FLUSH_204
+    - NotificationSender
+    - AnalyticsTracker
+    - sendEmail
+    - trackEvent
 options:
-  commit_message: Add updatedAt field with onUpdate
+  commit_message: Add audit fields, versioning, and soft delete to BaseEntity

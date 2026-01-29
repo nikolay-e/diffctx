@@ -1,0 +1,23 @@
+name: json_029_vscode_settings
+initial:
+  .vscode/settings.json: |
+    {
+      "editor.formatOnSave": true,
+      "python.linting.enabled": true
+    }
+  src/main.py: |
+    def main():
+        print("Hello from Python")
+changed:
+  .vscode/settings.json: |
+    {
+      "editor.formatOnSave": true,
+      "python.linting.enabled": true,
+      "python.linting.pylintEnabled": true,
+      "python.formatting.provider": "black"
+    }
+assertions:
+  must_include:
+    - def main
+options:
+  commit_message: enable black formatter

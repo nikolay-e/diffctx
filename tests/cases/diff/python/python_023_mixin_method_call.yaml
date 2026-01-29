@@ -2,32 +2,120 @@ name: python_023_mixin_method_call
 initial:
   mixins.py: |
     import logging
+    from typing import Optional, Any, Dict
+    from dataclasses import dataclass, field
+    from datetime import datetime
+    from enum import Enum
+
+    class LogLevel(Enum):
+        INFO = "info"
+        WARNING = "warning"
+        ERROR = "error"
+
+    @dataclass
+    class LogEntry:
+        timestamp: datetime
+        level: LogLevel
+        message: str
+        context: Dict[str, Any] = field(default_factory=dict)
+
+        def to_dict(self) -> dict:
+            return {
+                "timestamp": self.timestamp.isoformat(),
+                "level": self.level.value,
+                "message": self.message,
+                "context": self.context
+            }
 
     class LoggingMixin:
-        logger = logging.getLogger(__name__)
+        _log_history: list[LogEntry] = []
 
-        def log_action(self, action: str):
-            self.logger.info(f"Action: {action}")
+        @property
+        def logger(self) -> logging.Logger:
+            return logging.getLogger(self.__class__.__name__)
 
-        def log_error(self, error: str):
-            self.logger.error(f"Error: {error}")
+        def log_action(self, action: str, **context) -> None:
+            entry = LogEntry(
+                timestamp=datetime.now(),
+                level=LogLevel.INFO,
+                message=f"Action: {action}",
+                context=context
+            )
+            self._log_history.append(entry)
+            self.logger.info(entry.message)
+
+        def log_error(self, error: str, **context) -> None:
+            entry = LogEntry(
+                timestamp=datetime.now(),
+                level=LogLevel.ERROR,
+                message=f"Error: {error}",
+                context=context
+            )
+            self._log_history.append(entry)
+            self.logger.error(entry.message)
+
+        def get_log_history(self) -> list[LogEntry]:
+            return self._log_history.copy()
+
   service.py: |
     class UserService:
         pass
-  garbage.py: |
-    garbage_marker_12345 = "mixin garbage"
-    unused_marker_67890 = "unused mixin"
+
+  garbage_analytics.py: |
+    GARBAGE_PY_ANALYTICS_827364 = "analytics tracking garbage"
+    UNRELATED_ANALYTICS_MARKER_918273 = "unused segment config"
+
+    class GarbageAnalyticsTracker:
+        def garbage_track_event(self, event_name):
+            return f"Garbage event: {event_name}"
+
+  garbage_ab_testing.py: |
+    GARBAGE_PY_ABTEST_918273 = "ab testing garbage"
+    UNRELATED_ABTEST_MARKER_827163 = "unused optimizely config"
+
+    class GarbageABTestManager:
+        def garbage_get_variant(self, user_id):
+            return "garbage_control"
+
 changed:
   service.py: |
-    from mixins import LoggingMixin
+    from mixins import LoggingMixin, LogEntry, LogLevel
+    from typing import Optional, Dict
+    from dataclasses import dataclass
+
+    @dataclass
+    class User:
+        id: str
+        name: str
+        email: str
+        active: bool = True
 
     class UserService(LoggingMixin):
-        def create_user(self, name: str):
-            self.log_action(f"Creating user: {name}")
-            return {"name": name}
+        def __init__(self):
+            self._users: Dict[str, User] = {}
+
+        def create_user(self, name: str, email: str) -> User:
+            self.log_action(f"Creating user: {name}", email=email)
+            user_id = f"user_{len(self._users) + 1}"
+            user = User(id=user_id, name=name, email=email)
+            self._users[user_id] = user
+            return user
+
+        def get_user(self, user_id: str) -> Optional[User]:
+            user = self._users.get(user_id)
+            if user is None:
+                self.log_error(f"User not found: {user_id}")
+            return user
+
 assertions:
   must_include:
-  - def log_action
+    - UserService
+    - LoggingMixin
+    - log_action
   must_not_include:
-  - garbage_marker_12345
-  - unused_marker_67890
+    - GARBAGE_PY_ANALYTICS_827364
+    - UNRELATED_ANALYTICS_MARKER_918273
+    - GARBAGE_PY_ABTEST_918273
+    - UNRELATED_ABTEST_MARKER_827163
+    - GarbageAnalyticsTracker
+    - GarbageABTestManager

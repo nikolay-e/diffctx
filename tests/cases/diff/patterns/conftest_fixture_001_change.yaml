@@ -1,0 +1,63 @@
+name: conftest_fixture_001_change
+initial:
+  src/database.py: |
+    class Database:
+        def __init__(self, connection_string: str):
+            self.connection_string = connection_string
+            self.connected = False
+
+        def connect(self):
+            self.connected = True
+
+        def disconnect(self):
+            self.connected = False
+
+        def query(self, sql: str) -> list:
+            if not self.connected:
+                raise RuntimeError("Not connected")
+            return []
+  tests/conftest.py: |
+    import pytest
+    from src.database import Database
+
+    @pytest.fixture
+    def db():
+        database = Database("test://localhost")
+        database.connect()
+        yield database
+        database.disconnect()
+  tests/test_queries.py: |
+    def test_query_returns_list(db):
+        result = db.query("SELECT * FROM users")
+        assert isinstance(result, list)
+
+    def test_db_is_connected(db):
+        assert db.connected is True
+changed:
+  tests/conftest.py: |
+    import pytest
+    from src.database import Database
+
+    @pytest.fixture
+    def db():
+        database = Database("test://localhost")
+        database.connect()
+        yield database
+        database.disconnect()
+
+    @pytest.fixture
+    def db_with_data(db):
+        db.query("INSERT INTO users VALUES (1, 'test')")
+        return db
+
+    @pytest.fixture
+    def transaction_db(db):
+        db.query("BEGIN TRANSACTION")
+        yield db
+        db.query("ROLLBACK")
+assertions:
+  must_include:
+  - conftest.py
+  - '@pytest.fixture'
+options:
+  commit_message: Add db_with_data and transaction_db fixtures

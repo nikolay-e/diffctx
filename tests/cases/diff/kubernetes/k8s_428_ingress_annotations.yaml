@@ -1,51 +1,207 @@
 name: k8s_428_ingress_annotations
 initial:
-  ingress.yaml: |
+  k8s/base/deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: web-frontend
+      namespace: production
+      labels:
+        app: web-frontend
+        component: frontend
+    spec:
+      replicas: 5
+      selector:
+        matchLabels:
+          app: web-frontend
+      template:
+        metadata:
+          labels:
+            app: web-frontend
+            component: frontend
+        spec:
+          containers:
+          - name: frontend
+            image: registry.example.com/web-frontend:v3.0.0
+            ports:
+            - containerPort: 3000
+              name: http
+            readinessProbe:
+              httpGet:
+                path: /health
+                port: 3000
+              initialDelaySeconds: 5
+              periodSeconds: 10
+            resources:
+              requests:
+                memory: "256Mi"
+                cpu: "200m"
+
+  k8s/base/service.yaml: |
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: web-frontend
+      namespace: production
+    spec:
+      selector:
+        app: web-frontend
+      ports:
+      - name: http
+        port: 80
+        targetPort: 3000
+
+  k8s/base/ingress.yaml: |
     apiVersion: networking.k8s.io/v1
     kind: Ingress
     metadata:
-      name: api-ingress
+      name: web-ingress
+      namespace: production
     spec:
       rules:
-      - host: api.example.com
+      - host: www.example.com
         http:
           paths:
-          - path: /api
+          - path: /
             pathType: Prefix
             backend:
               service:
-                name: api
+                name: web-frontend
                 port:
                   number: 80
-  unrelated.txt: |
-    garbage_marker_k8s428 = True
-    unused_marker_k8s428 = False
+
+  k8s/base/hpa.yaml: |
+    apiVersion: autoscaling/v2
+    kind: HorizontalPodAutoscaler
+    metadata:
+      name: web-frontend-hpa
+      namespace: production
+    spec:
+      scaleTargetRef:
+        apiVersion: apps/v1
+        kind: Deployment
+        name: web-frontend
+      minReplicas: 3
+      maxReplicas: 10
+      metrics:
+      - type: Resource
+        resource:
+          name: cpu
+          target:
+            type: Utilization
+            averageUtilization: 70
+
+  k8s/unrelated/tracing/jaeger-collector.yaml: |
+    # GARBAGE_K8S_428_JAEGER_TRACING
+    apiVersion: jaegertracing.io/v1
+    kind: Jaeger
+    metadata:
+      name: GARBAGE_K8S_428_JAEGER_INSTANCE
+      namespace: tracing
+    spec:
+      strategy: GARBAGE_K8S_428_JAEGER_STRATEGY
+      collector:
+        replicas: GARBAGE_K8S_428_COLLECTOR_REPLICAS
+        options:
+          kafka:
+            brokers: GARBAGE_K8S_428_KAFKA_BROKERS
+
+  k8s/unrelated/gitops/argocd-application.yaml: |
+    # GARBAGE_K8S_428_ARGOCD_APP
+    apiVersion: argoproj.io/v1alpha1
+    kind: Application
+    metadata:
+      name: GARBAGE_K8S_428_ARGO_APP_NAME
+      namespace: argocd
+    spec:
+      project: GARBAGE_K8S_428_ARGO_PROJECT
+      source:
+        repoURL: GARBAGE_K8S_428_REPO_URL
+        targetRevision: GARBAGE_K8S_428_TARGET_REV
+      destination:
+        server: GARBAGE_K8S_428_DEST_SERVER
+
+  k8s/unrelated/policy/kyverno-policy.yaml: |
+    # GARBAGE_K8S_428_KYVERNO_POLICY
+    apiVersion: kyverno.io/v1
+    kind: ClusterPolicy
+    metadata:
+      name: GARBAGE_K8S_428_POLICY_NAME
+    spec:
+      validationFailureAction: GARBAGE_K8S_428_VALIDATION_ACTION
+      rules:
+      - name: GARBAGE_K8S_428_RULE_NAME
+        match:
+          resources:
+            kinds:
+            - GARBAGE_K8S_428_RESOURCE_KIND
+
+  docker-compose.yaml: |
+    # GARBAGE_K8S_428_DOCKER_COMPOSE
+    version: '3.8'
+    services:
+      dev:
+        image: GARBAGE_K8S_428_DEV_IMAGE
+        environment:
+          - GARBAGE_K8S_428_DEV_ENV=true
+
 changed:
-  ingress.yaml: |
+  k8s/base/ingress.yaml: |
     apiVersion: networking.k8s.io/v1
     kind: Ingress
     metadata:
-      name: api-ingress
+      name: web-ingress
+      namespace: production
       annotations:
         nginx.ingress.kubernetes.io/rewrite-target: /
         nginx.ingress.kubernetes.io/ssl-redirect: "true"
+        nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+        nginx.ingress.kubernetes.io/proxy-connect-timeout: "60"
+        nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+        nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+        nginx.ingress.kubernetes.io/enable-cors: "true"
+        nginx.ingress.kubernetes.io/cors-allow-origin: "https://example.com"
+        nginx.ingress.kubernetes.io/rate-limit: "100"
+        nginx.ingress.kubernetes.io/rate-limit-window: "1m"
     spec:
       rules:
-      - host: api.example.com
+      - host: www.example.com
         http:
           paths:
-          - path: /api
+          - path: /
             pathType: Prefix
             backend:
               service:
-                name: api
+                name: web-frontend
                 port:
                   number: 80
+
 assertions:
   must_include:
-  - 'annotations:'
+  - rewrite-target
+  - ssl-redirect
+  - proxy-body-size
+  - enable-cors
+  - rate-limit
   must_not_include:
-  - garbage_marker_k8s428
-  - unused_marker_k8s428
+  - GARBAGE_K8S_428_JAEGER_TRACING
+  - GARBAGE_K8S_428_JAEGER_INSTANCE
+  - GARBAGE_K8S_428_JAEGER_STRATEGY
+  - GARBAGE_K8S_428_COLLECTOR_REPLICAS
+  - GARBAGE_K8S_428_KAFKA_BROKERS
+  - GARBAGE_K8S_428_ARGOCD_APP
+  - GARBAGE_K8S_428_ARGO_APP_NAME
+  - GARBAGE_K8S_428_ARGO_PROJECT
+  - GARBAGE_K8S_428_REPO_URL
+  - GARBAGE_K8S_428_TARGET_REV
+  - GARBAGE_K8S_428_DEST_SERVER
+  - GARBAGE_K8S_428_KYVERNO_POLICY
+  - GARBAGE_K8S_428_POLICY_NAME
+  - GARBAGE_K8S_428_VALIDATION_ACTION
+  - GARBAGE_K8S_428_RULE_NAME
+  - GARBAGE_K8S_428_RESOURCE_KIND
+  - GARBAGE_K8S_428_DOCKER_COMPOSE
+  - GARBAGE_K8S_428_DEV_IMAGE
+  - GARBAGE_K8S_428_DEV_ENV
 options:
-  commit_message: Add ingress annotations
+  commit_message: Add nginx ingress annotations for rate limiting and CORS

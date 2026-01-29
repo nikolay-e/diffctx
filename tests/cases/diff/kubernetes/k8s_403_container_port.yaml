@@ -1,57 +1,169 @@
 name: k8s_403_container_port
 initial:
-  main.py: |
-    from flask import Flask
-    app = Flask(__name__)
+  src/main.py: |
+    from fastapi import FastAPI
+    from prometheus_client import make_asgi_app
 
-    @app.route('/')
-    def hello():
-        return 'Hello'
+    app = FastAPI()
+    metrics_app = make_asgi_app()
 
-    if __name__ == '__main__':
-        app.run(host='0.0.0.0', port=8080)
-  service.yaml: |
+    @app.get("/")
+    def root():
+        return {"status": "ok"}
+
+    @app.get("/health")
+    def health():
+        return {"healthy": True}
+
+    if __name__ == "__main__":
+        import uvicorn
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+
+  k8s/deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: fastapi-app
+      namespace: default
+      labels:
+        app: fastapi-app
+        version: v1
+    spec:
+      replicas: 2
+      selector:
+        matchLabels:
+          app: fastapi-app
+      template:
+        metadata:
+          labels:
+            app: fastapi-app
+            version: v1
+          annotations:
+            prometheus.io/scrape: "true"
+            prometheus.io/port: "9100"
+        spec:
+          containers:
+          - name: app
+            image: fastapi-app:latest
+            ports:
+            - containerPort: 3000
+              name: http
+              protocol: TCP
+            env:
+            - name: ENVIRONMENT
+              value: "production"
+            volumeMounts:
+            - name: config
+              mountPath: /app/config
+          volumes:
+          - name: config
+            configMap:
+              name: app-config
+
+  k8s/service.yaml: |
     apiVersion: v1
     kind: Service
     metadata:
-      name: myapp
+      name: fastapi-app
+      namespace: default
     spec:
+      selector:
+        app: fastapi-app
       ports:
-      - port: 80
+      - name: http
+        port: 80
         targetPort: 8080
-  deployment.yaml: |
+        protocol: TCP
+
+  k8s/unrelated/database/postgres-statefulset.yaml: |
+    # GARBAGE_K8S_403_POSTGRES_SS
     apiVersion: apps/v1
-    kind: Deployment
+    kind: StatefulSet
     metadata:
-      name: myapp
+      name: GARBAGE_K8S_403_POSTGRES_CLUSTER
     spec:
+      serviceName: GARBAGE_K8S_403_POSTGRES_SVC
+      replicas: 3
+      selector:
+        matchLabels:
+          app: GARBAGE_K8S_403_DB_LABEL
       template:
         spec:
           containers:
-          - name: app
-            ports:
-            - containerPort: 3000
-  unrelated.txt: |
-    garbage_marker_k8s403 = True
-    unused_marker_k8s403 = False
+          - name: postgres
+            image: postgres:GARBAGE_K8S_403_PG_VERSION
+
+  k8s/unrelated/cache/redis-deployment.yaml: |
+    # GARBAGE_K8S_403_REDIS_CACHE
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: GARBAGE_K8S_403_REDIS_MASTER
+    spec:
+      replicas: 1
+      template:
+        spec:
+          containers:
+          - name: redis
+            image: redis:GARBAGE_K8S_403_REDIS_TAG
+            args: ["--requirepass", "GARBAGE_K8S_403_REDIS_PASS"]
+
 changed:
-  deployment.yaml: |
+  k8s/deployment.yaml: |
     apiVersion: apps/v1
     kind: Deployment
     metadata:
-      name: myapp
+      name: fastapi-app
+      namespace: default
+      labels:
+        app: fastapi-app
+        version: v1
     spec:
+      replicas: 2
+      selector:
+        matchLabels:
+          app: fastapi-app
       template:
+        metadata:
+          labels:
+            app: fastapi-app
+            version: v1
+          annotations:
+            prometheus.io/scrape: "true"
+            prometheus.io/port: "9100"
         spec:
           containers:
           - name: app
+            image: fastapi-app:latest
             ports:
             - containerPort: 8080
+              name: http
+              protocol: TCP
+            env:
+            - name: ENVIRONMENT
+              value: "production"
+            volumeMounts:
+            - name: config
+              mountPath: /app/config
+          volumes:
+          - name: config
+            configMap:
+              name: app-config
+
 assertions:
   must_include:
   - 'containerPort: 8080'
+  - fastapi-app
+  - Deployment
   must_not_include:
-  - garbage_marker_k8s403
-  - unused_marker_k8s403
+  - GARBAGE_K8S_403_POSTGRES_SS
+  - GARBAGE_K8S_403_POSTGRES_CLUSTER
+  - GARBAGE_K8S_403_POSTGRES_SVC
+  - GARBAGE_K8S_403_DB_LABEL
+  - GARBAGE_K8S_403_PG_VERSION
+  - GARBAGE_K8S_403_REDIS_CACHE
+  - GARBAGE_K8S_403_REDIS_MASTER
+  - GARBAGE_K8S_403_REDIS_TAG
+  - GARBAGE_K8S_403_REDIS_PASS
 options:
-  commit_message: Update container port
+  commit_message: Fix container port to match application

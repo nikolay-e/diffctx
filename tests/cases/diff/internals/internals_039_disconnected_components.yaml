@@ -1,0 +1,33 @@
+name: internals_039_disconnected_components
+initial:
+  component_a.py: |
+    def placeholder():
+        pass
+  component_b.py: |
+    def placeholder_b():
+        pass
+changed:
+  component_a.py: |
+    def alpha_one():
+        alpha_two()
+
+    def alpha_two():
+        alpha_three()
+
+    def alpha_three():
+        pass
+  component_b.py: |
+    def beta_one():
+        beta_two()
+
+    def beta_two():
+        beta_three()
+
+    def beta_three():
+        pass
+assertions:
+  must_include:
+  - alpha_one
+  - alpha_two
+options:
+  add_garbage: true

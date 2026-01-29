@@ -1,30 +1,168 @@
 name: python_051_flask_extension_init
 initial:
-  extensions.py: |
+  database.py: |
     from flask_sqlalchemy import SQLAlchemy
     from flask_migrate import Migrate
+    from typing import Optional, List, Dict, Any
+    from datetime import datetime
 
     db = SQLAlchemy()
     migrate = Migrate()
 
-    def init_extensions(app):
+    class BaseModel(db.Model):
+        __abstract__ = True
+
+        id = db.Column(db.Integer, primary_key=True)
+        created_at = db.Column(db.DateTime, default=datetime.utcnow)
+        updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+        def save(self) -> None:
+            db.session.add(self)
+            db.session.commit()
+
+        def delete(self) -> None:
+            db.session.delete(self)
+            db.session.commit()
+
+        @classmethod
+        def get_by_id(cls, id: int) -> Optional["BaseModel"]:
+            return cls.query.get(id)
+
+        @classmethod
+        def get_all(cls) -> List["BaseModel"]:
+            return cls.query.all()
+
+    def init_extensions(app) -> None:
         db.init_app(app)
         migrate.init_app(app, db)
-  app.py: |
-    from flask import Flask
-  garbage.py: |
-    garbage_marker_12345 = "extension garbage"
-    unused_marker_67890 = "unused extension"
-changed:
-  app.py: |
-    from flask import Flask
-    from extensions import init_extensions, db
 
-    app = Flask(__name__)
-    init_extensions(app)
+        with app.app_context():
+            db.create_all()
+
+  factory.py: |
+    from flask import Flask
+    from database import init_extensions
+
+    def create_app() -> Flask:
+        app = Flask(__name__)
+        init_extensions(app)
+        return app
+
+  unrelated/cache_extension.py: |
+    GARBAGE_PYTHON_051_001 = "cache extension marker"
+    GARBAGE_PYTHON_051_002 = "cache backend constant"
+
+    class CacheExtension:
+        GARBAGE_PYTHON_051_003 = "cache class marker"
+
+        def __init__(self, app=None):
+            self.app = app
+
+  unrelated/mail_extension.py: |
+    GARBAGE_PYTHON_051_004 = "mail extension marker"
+    GARBAGE_PYTHON_051_005 = "mail server constant"
+
+    class MailExtension:
+        GARBAGE_PYTHON_051_006 = "mail class marker"
+
+        def __init__(self, app=None):
+            self.app = app
+
+  unrelated/session_extension.py: |
+    GARBAGE_PYTHON_051_007 = "session extension marker"
+    GARBAGE_PYTHON_051_008 = "session timeout constant"
+
+    class SessionManager:
+        GARBAGE_PYTHON_051_009 = "session manager marker"
+
+        def __init__(self, app=None):
+            self.app = app
+
+changed:
+  database.py: |
+    from flask_sqlalchemy import SQLAlchemy
+    from flask_migrate import Migrate
+    from typing import Optional, List, Dict, Any
+    from datetime import datetime
+
+    db = SQLAlchemy()
+    migrate = Migrate()
+
+    class BaseModel(db.Model):
+        __abstract__ = True
+
+        id = db.Column(db.Integer, primary_key=True)
+        created_at = db.Column(db.DateTime, default=datetime.utcnow)
+        updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+        def save(self) -> None:
+            db.session.add(self)
+            db.session.commit()
+
+        def delete(self) -> None:
+            db.session.delete(self)
+            db.session.commit()
+
+        @classmethod
+        def get_by_id(cls, id: int) -> Optional["BaseModel"]:
+            return cls.query.get(id)
+
+        @classmethod
+        def get_all(cls) -> List["BaseModel"]:
+            return cls.query.all()
+
+        def to_dict(self) -> Dict[str, Any]:
+            return {c.name: getattr(self, c.name) for c in self.__table__.columns}
+
+    class TimestampMixin:
+        created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+        updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    class SoftDeleteMixin:
+        deleted_at = db.Column(db.DateTime, nullable=True)
+        is_deleted = db.Column(db.Boolean, default=False, nullable=False)
+
+        def soft_delete(self) -> None:
+            self.is_deleted = True
+            self.deleted_at = datetime.utcnow()
+            db.session.commit()
+
+        def restore(self) -> None:
+            self.is_deleted = False
+            self.deleted_at = None
+            db.session.commit()
+
+    def init_extensions(app) -> None:
+        db.init_app(app)
+        migrate.init_app(app, db)
+
+        with app.app_context():
+            db.create_all()
+
+    def get_db_session():
+        return db.session
+
 assertions:
   must_include:
-  - def init_extensions
+    - class TimestampMixin
+    - class SoftDeleteMixin
+    - to_dict
+    - def get_db_session
+    - soft_delete
+    - restore
   must_not_include:
-  - garbage_marker_12345
-  - unused_marker_67890
+    - GARBAGE_PYTHON_051_001
+    - GARBAGE_PYTHON_051_002
+    - GARBAGE_PYTHON_051_003
+    - GARBAGE_PYTHON_051_004
+    - GARBAGE_PYTHON_051_005
+    - GARBAGE_PYTHON_051_006
+    - GARBAGE_PYTHON_051_007
+    - GARBAGE_PYTHON_051_008
+    - GARBAGE_PYTHON_051_009
+    - CacheExtension
+    - MailExtension
+    - SessionManager
+    - cache_extension.py
+    - mail_extension.py
+    - session_extension.py

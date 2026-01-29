@@ -1,0 +1,183 @@
+name: ppr_002_hub_node_dominance
+initial:
+  hub/central_utils.py: |
+    def utils_helper():
+        return internal_hub_processor()
+
+    def internal_hub_processor():
+        return "hub_processed"
+
+    def secondary_hub_util():
+        return utils_helper() + "_secondary"
+  hub/callers.py: |
+    from hub.central_utils import utils_helper, secondary_hub_util
+
+    def caller0():
+        return utils_helper()
+
+    def caller1():
+        return utils_helper()
+
+    def caller2():
+        return utils_helper()
+
+    def caller3():
+        return utils_helper()
+
+    def caller4():
+        return utils_helper()
+
+    def caller5():
+        return utils_helper()
+
+    def caller6():
+        return utils_helper()
+
+    def caller7():
+        return utils_helper()
+
+    def caller8():
+        return utils_helper()
+
+    def caller9():
+        return utils_helper()
+
+    def caller10():
+        return utils_helper()
+
+    def caller11():
+        return utils_helper()
+
+    def caller12():
+        return secondary_hub_util()
+
+    def orchestrator_caller():
+        results = []
+        results.append(caller0())
+        results.append(caller1())
+        results.append(caller2())
+        return results
+  garbage/GARBAGE_PPR_j1k2l3_hub_noise.py: |
+    GARBAGE_HUB_MARKER_PPR002 = "hub_garbage"
+
+    def garbage_hub_func_ppr002_alpha():
+        return GARBAGE_HUB_MARKER_PPR002
+
+    def garbage_hub_func_ppr002_beta():
+        return garbage_hub_func_ppr002_alpha() + "_beta"
+
+    def garbage_hub_func_ppr002_gamma():
+        return garbage_hub_func_ppr002_beta() + "_gamma"
+
+    class GarbageHubClassPPR002:
+        def __init__(self):
+            self.value = GARBAGE_HUB_MARKER_PPR002
+
+        def garbage_hub_method(self):
+            return self.value
+  garbage/GARBAGE_PPR_m4n5o6_fake_callers.py: |
+    FAKE_CALLER_CONSTANT_PPR002 = 999
+
+    def fake_caller_ppr002_one():
+        return FAKE_CALLER_CONSTANT_PPR002
+
+    def fake_caller_ppr002_two():
+        return fake_caller_ppr002_one() * 2
+
+    def fake_caller_ppr002_three():
+        return fake_caller_ppr002_two() + fake_caller_ppr002_one()
+
+    def fake_caller_chain_ppr002():
+        return fake_caller_ppr002_three() + 100
+  garbage/GARBAGE_PPR_p7q8r9_isolated_hub.py: |
+    ISOLATED_HUB_FLAG_PPR002 = False
+
+    def isolated_hub_helper_ppr002():
+        return "isolated_helper"
+
+    def isolated_hub_caller_ppr002_a():
+        return isolated_hub_helper_ppr002()
+
+    def isolated_hub_caller_ppr002_b():
+        return isolated_hub_helper_ppr002()
+
+    def isolated_hub_caller_ppr002_c():
+        return isolated_hub_helper_ppr002()
+  unrelated/separate_module.py: |
+    def completely_separate_func():
+        return "separate"
+
+    def another_separate_func():
+        return completely_separate_func() + "_another"
+changed:
+  hub/callers.py: |
+    from hub.central_utils import utils_helper, secondary_hub_util
+
+    def caller0():
+        result = utils_helper()
+        return result + "_modified_hub_output"
+
+    def caller1():
+        return utils_helper()
+
+    def caller2():
+        return utils_helper()
+
+    def caller3():
+        return utils_helper()
+
+    def caller4():
+        return utils_helper()
+
+    def caller5():
+        return utils_helper()
+
+    def caller6():
+        return utils_helper()
+
+    def caller7():
+        return utils_helper()
+
+    def caller8():
+        return utils_helper()
+
+    def caller9():
+        return utils_helper()
+
+    def caller10():
+        return utils_helper()
+
+    def caller11():
+        return utils_helper()
+
+    def caller12():
+        return secondary_hub_util()
+
+    def orchestrator_caller():
+        results = []
+        results.append(caller0())
+        results.append(caller1())
+        results.append(caller2())
+        return results
+assertions:
+  must_include:
+  - caller0
+  - utils_helper
+  must_not_include:
+  - GARBAGE_HUB_MARKER_PPR002
+  - garbage_hub_func_ppr002_alpha
+  - garbage_hub_func_ppr002_beta
+  - garbage_hub_func_ppr002_gamma
+  - GarbageHubClassPPR002
+  - FAKE_CALLER_CONSTANT_PPR002
+  - fake_caller_ppr002_one
+  - fake_caller_ppr002_two
+  - fake_caller_ppr002_three
+  - fake_caller_chain_ppr002
+  - ISOLATED_HUB_FLAG_PPR002
+  - isolated_hub_helper_ppr002
+  - isolated_hub_caller_ppr002_a
+  - isolated_hub_caller_ppr002_b
+  - isolated_hub_caller_ppr002_c
+  - completely_separate_func
+  - another_separate_func

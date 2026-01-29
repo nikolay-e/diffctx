@@ -1,0 +1,14 @@
+name: internals_036_binary_escape_preserved
+initial:
+  binary_escape.py: |
+    x = 0
+changed:
+  binary_escape.py: |
+    binary = b"\x00\x01\x02"
+    valid_name = "test"
+assertions:
+  must_include:
+  - binary
+  - valid_name
+options:
+  add_garbage: true

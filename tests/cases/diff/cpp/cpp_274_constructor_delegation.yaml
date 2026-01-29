@@ -1,44 +1,380 @@
 name: cpp_274_constructor_delegation
 initial:
-  user.h: |
+  include/config/settings.hpp: |
     #pragma once
     #include <string>
+    #include <map>
+    #include <vector>
+    #include <stdexcept>
 
-    class User {
-        std::string name_;
-        int age_;
-        bool active_;
+    namespace app::config {
 
-    public:
-        User(std::string name, int age, bool active)
-            : name_(std::move(name)), age_(age), active_(active) {}
+    enum class LogLevel { Debug, Info, Warning, Error };
 
-        User(std::string name, int age) : User(name, age, true) {}
+    struct DatabaseConfig {
+        std::string host;
+        int port;
+        std::string database;
+        std::string username;
+        int maxConnections;
+        int timeoutSeconds;
 
-        User(std::string name) : User(name, 0, true) {}
+        DatabaseConfig(std::string h, int p, std::string db,
+                       std::string user, int maxConn, int timeout)
+            : host(std::move(h)), port(p), database(std::move(db))
+            , username(std::move(user)), maxConnections(maxConn)
+            , timeoutSeconds(timeout) {}
+
+        DatabaseConfig(std::string h, int p, std::string db, std::string user)
+            : DatabaseConfig(h, p, db, user, 10, 30) {}
+
+        DatabaseConfig(std::string h, std::string db)
+            : DatabaseConfig(h, 5432, db, "app", 10, 30) {}
+
+        DatabaseConfig()
+            : DatabaseConfig("localhost", "default_db") {}
     };
-    // garbage_marker_12345
-  factory.cpp: |
+
+    struct CacheConfig {
+        std::string host;
+        int port;
+        int ttlSeconds;
+        bool enabled;
+
+        CacheConfig(std::string h, int p, int ttl, bool en)
+            : host(std::move(h)), port(p), ttlSeconds(ttl), enabled(en) {}
+
+        CacheConfig(std::string h, int p)
+            : CacheConfig(h, p, 3600, true) {}
+
+        CacheConfig()
+            : CacheConfig("localhost", 6379) {}
+    };
+
+    struct ServerConfig {
+        std::string bindAddress;
+        int port;
+        int workerThreads;
+        bool sslEnabled;
+        std::string sslCertPath;
+
+        ServerConfig(std::string addr, int p, int workers, bool ssl, std::string cert)
+            : bindAddress(std::move(addr)), port(p), workerThreads(workers)
+            , sslEnabled(ssl), sslCertPath(std::move(cert)) {}
+
+        ServerConfig(std::string addr, int p, int workers)
+            : ServerConfig(addr, p, workers, false, "") {}
+
+        ServerConfig(int p)
+            : ServerConfig("0.0.0.0", p, 4) {}
+
+        ServerConfig()
+            : ServerConfig(8080) {}
+    };
+
+    }
+
+  include/unrelated/http_client.hpp: |
+    #pragma once
+    // GARBAGE_CPP_HTTP_274_001
+    #define GARBAGE_CPP_HTTP_TIMEOUT_274_002 30000
+
+    namespace app::unrelated::http {
+
+    // GARBAGE_CPP_HTTP_METHOD_274_003
+    enum class HttpMethod {
+        GET, POST, PUT, DELETE, PATCH
+    };
+
+    // GARBAGE_CPP_HTTP_REQUEST_274_004
+    struct HttpRequest {
+        HttpMethod method;
+        const char* url;
+        const char* body;
+        // GARBAGE_CPP_HTTP_HEADERS_274_005
+    };
+
+    // GARBAGE_CPP_HTTP_RESPONSE_274_006
+    struct HttpResponse {
+        int statusCode;
+        const char* body;
+        // GARBAGE_CPP_HTTP_RESP_HEADERS_274_007
+    };
+
+    // GARBAGE_CPP_HTTP_CLIENT_274_008
+    class HttpClient {
+    public:
+        // GARBAGE_CPP_HTTP_SEND_274_009
+        HttpResponse send(const HttpRequest& request) {
+            // GARBAGE_CPP_HTTP_SEND_IMPL_274_010
+            return HttpResponse{};
+        }
+
+        // GARBAGE_CPP_HTTP_GET_274_011
+        HttpResponse get(const char* url) {
+            // GARBAGE_CPP_HTTP_GET_IMPL_274_012
+            return HttpResponse{};
+        }
+
+        // GARBAGE_CPP_HTTP_POST_274_013
+        HttpResponse post(const char* url, const char* body) {
+            // GARBAGE_CPP_HTTP_POST_IMPL_274_014
+            return HttpResponse{};
+        }
+    };
+
+    }
+
+  src/unrelated/uuid_generator.cpp: |
+    // GARBAGE_CPP_UUID_274_015
+    #include <random>
+    #include <sstream>
+
+    namespace app::unrelated::util {
+
+    // GARBAGE_CPP_UUID_STRUCT_274_016
+    struct UUID {
+        unsigned char bytes[16];
+        // GARBAGE_CPP_UUID_DATA_274_017
+    };
+
+    // GARBAGE_CPP_UUID_GENERATOR_274_018
+    class UUIDGenerator {
+    public:
+        // GARBAGE_CPP_UUID_V4_274_019
+        static UUID generateV4() {
+            // GARBAGE_CPP_UUID_V4_IMPL_274_020
+            return UUID{};
+        }
+
+        // GARBAGE_CPP_UUID_TO_STRING_274_021
+        static std::string toString(const UUID& uuid) {
+            // GARBAGE_CPP_UUID_STR_IMPL_274_022
+            return "";
+        }
+
+        // GARBAGE_CPP_UUID_PARSE_274_023
+        static UUID parse(const std::string& str) {
+            // GARBAGE_CPP_UUID_PARSE_IMPL_274_024
+            return UUID{};
+        }
+    };
+
+    }
+
+  src/application.cpp: |
     #include <iostream>
     int main() { return 0; }
+
 changed:
-  factory.cpp: |
-    #include "user.h"
+  src/application.cpp: |
+    #include "config/settings.hpp"
+    #include <iostream>
+    #include <memory>
+    #include <functional>
 
-    User createDefaultUser() {
-        return User("Guest");
+    namespace app {
+
+    class Logger {
+    public:
+        Logger(const std::string& name, config::LogLevel level,
+               const std::string& outputPath, bool timestamps, bool colors)
+            : name_(name), level_(level), outputPath_(outputPath)
+            , timestamps_(timestamps), colors_(colors) {}
+
+        Logger(const std::string& name, config::LogLevel level, const std::string& outputPath)
+            : Logger(name, level, outputPath, true, false) {}
+
+        Logger(const std::string& name, config::LogLevel level)
+            : Logger(name, level, "") {}
+
+        Logger(const std::string& name)
+            : Logger(name, config::LogLevel::Info) {}
+
+        Logger()
+            : Logger("default") {}
+
+        void log(config::LogLevel level, const std::string& message) const {
+            if (static_cast<int>(level) >= static_cast<int>(level_)) {
+                std::cout << "[" << name_ << "] " << message << "\n";
+            }
+        }
+
+        void debug(const std::string& msg) const { log(config::LogLevel::Debug, msg); }
+        void info(const std::string& msg) const { log(config::LogLevel::Info, msg); }
+        void warning(const std::string& msg) const { log(config::LogLevel::Warning, msg); }
+        void error(const std::string& msg) const { log(config::LogLevel::Error, msg); }
+
+        const std::string& getName() const { return name_; }
+
+    private:
+        std::string name_;
+        config::LogLevel level_;
+        std::string outputPath_;
+        bool timestamps_;
+        bool colors_;
+    };
+
+    class Application {
+    public:
+        Application(const std::string& name, config::ServerConfig server,
+                    config::DatabaseConfig db, config::CacheConfig cache,
+                    Logger logger)
+            : name_(name), serverConfig_(std::move(server))
+            , dbConfig_(std::move(db)), cacheConfig_(std::move(cache))
+            , logger_(std::move(logger)), running_(false) {}
+
+        Application(const std::string& name, config::ServerConfig server,
+                    config::DatabaseConfig db, config::CacheConfig cache)
+            : Application(name, server, db, cache, Logger(name)) {}
+
+        Application(const std::string& name, config::ServerConfig server,
+                    config::DatabaseConfig db)
+            : Application(name, server, db, config::CacheConfig()) {}
+
+        Application(const std::string& name, config::ServerConfig server)
+            : Application(name, server, config::DatabaseConfig()) {}
+
+        Application(const std::string& name, int port)
+            : Application(name, config::ServerConfig(port)) {}
+
+        Application(const std::string& name)
+            : Application(name, config::ServerConfig()) {}
+
+        Application()
+            : Application("unnamed_app") {}
+
+        void start() {
+            running_ = true;
+            logger_.info("Starting application: " + name_);
+            logger_.info("Server: " + serverConfig_.bindAddress +
+                        ":" + std::to_string(serverConfig_.port));
+            logger_.info("Database: " + dbConfig_.host +
+                        ":" + std::to_string(dbConfig_.port) +
+                        "/" + dbConfig_.database);
+            if (cacheConfig_.enabled) {
+                logger_.info("Cache: " + cacheConfig_.host +
+                            ":" + std::to_string(cacheConfig_.port));
+            }
+        }
+
+        void stop() {
+            running_ = false;
+            logger_.info("Stopping application: " + name_);
+        }
+
+        bool isRunning() const { return running_; }
+        const std::string& getName() const { return name_; }
+        const config::ServerConfig& getServerConfig() const { return serverConfig_; }
+        const config::DatabaseConfig& getDatabaseConfig() const { return dbConfig_; }
+
+    private:
+        std::string name_;
+        config::ServerConfig serverConfig_;
+        config::DatabaseConfig dbConfig_;
+        config::CacheConfig cacheConfig_;
+        Logger logger_;
+        bool running_;
+    };
+
+    class ServiceBuilder {
+    public:
+        ServiceBuilder& withName(const std::string& name) {
+            name_ = name;
+            return *this;
+        }
+
+        ServiceBuilder& withServer(int port) {
+            serverConfig_ = config::ServerConfig(port);
+            return *this;
+        }
+
+        ServiceBuilder& withDatabase(const std::string& host, const std::string& db) {
+            dbConfig_ = config::DatabaseConfig(host, db);
+            return *this;
+        }
+
+        ServiceBuilder& withCache(const std::string& host, int port) {
+            cacheConfig_ = config::CacheConfig(host, port);
+            return *this;
+        }
+
+        Application build() const {
+            return Application(name_, serverConfig_, dbConfig_, cacheConfig_);
+        }
+
+    private:
+        std::string name_ = "service";
+        config::ServerConfig serverConfig_;
+        config::DatabaseConfig dbConfig_;
+        config::CacheConfig cacheConfig_;
+    };
+
     }
 
-    User createUser(const std::string& name) {
-        return User(name, 18);
+    int main() {
+        std::cout << "=== Default Application ===\n";
+        app::Application defaultApp;
+        defaultApp.start();
+        defaultApp.stop();
+
+        std::cout << "\n=== Simple Application ===\n";
+        app::Application simpleApp("my_service", 3000);
+        simpleApp.start();
+
+        std::cout << "\n=== Custom Application ===\n";
+        app::config::ServerConfig server("127.0.0.1", 8080, 8, true, "/etc/ssl/cert.pem");
+        app::config::DatabaseConfig db("db.example.com", 5432, "production", "admin", 20, 60);
+        app::config::CacheConfig cache("redis.example.com", 6379, 7200, true);
+        app::Logger logger("prod_app", app::config::LogLevel::Warning, "/var/log/app.log");
+
+        app::Application prodApp("production_service", server, db, cache, logger);
+        prodApp.start();
+
+        std::cout << "\n=== Builder Pattern ===\n";
+        auto builtApp = app::ServiceBuilder()
+            .withName("api_gateway")
+            .withServer(9000)
+            .withDatabase("localhost", "gateway_db")
+            .withCache("localhost", 6380)
+            .build();
+        builtApp.start();
+
+        return 0;
     }
+
 assertions:
   must_include:
-  - createDefaultUser
-  - createUser
-  - User
+    - Application
+    - Logger
+    - DatabaseConfig
+    - CacheConfig
+    - ServerConfig
+    - ServiceBuilder
+    - LogLevel
+    - start
+    - stop
   must_not_include:
-  - garbage_marker_12345
-  - unused_marker_67890
+    - GARBAGE_CPP_HTTP_274_001
+    - GARBAGE_CPP_HTTP_TIMEOUT_274_002
+    - GARBAGE_CPP_HTTP_METHOD_274_003
+    - GARBAGE_CPP_HTTP_REQUEST_274_004
+    - GARBAGE_CPP_HTTP_HEADERS_274_005
+    - GARBAGE_CPP_HTTP_RESPONSE_274_006
+    - GARBAGE_CPP_HTTP_CLIENT_274_008
+    - GARBAGE_CPP_HTTP_SEND_274_009
+    - GARBAGE_CPP_HTTP_GET_274_011
+    - GARBAGE_CPP_HTTP_POST_274_013
+    - GARBAGE_CPP_UUID_274_015
+    - GARBAGE_CPP_UUID_STRUCT_274_016
+    - GARBAGE_CPP_UUID_GENERATOR_274_018
+    - GARBAGE_CPP_UUID_V4_274_019
+    - GARBAGE_CPP_UUID_TO_STRING_274_021
+    - GARBAGE_CPP_UUID_PARSE_274_023
+    - HttpClient
+    - UUIDGenerator
+    - HttpRequest
+    - HttpResponse
+    - UUID
 options:
-  commit_message: Add constructor delegation usage
+  commit_message: Add application configuration with constructor delegation chains

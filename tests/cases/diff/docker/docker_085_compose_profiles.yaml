@@ -1,0 +1,41 @@
+name: docker_085_compose_profiles
+initial:
+  docker-compose.yml: |
+    version: '3.8'
+    services:
+      app:
+        build: .
+      debug:
+        build: .
+        profiles:
+          - debug
+        command: python -m debugpy --listen 0.0.0.0:5678 app.py
+  app.py: |
+    def main():
+        print("Running app")
+
+    if __name__ == "__main__":
+        main()
+changed:
+  docker-compose.yml: |
+    version: '3.8'
+    services:
+      app:
+        build: .
+      debug:
+        build: .
+        profiles:
+          - debug
+        command: python -m debugpy --wait-for-client --listen 0.0.0.0:5678 app.py
+        ports:
+          - "5678:5678"
+      test:
+        build: .
+        profiles:
+          - test
+        command: pytest
+assertions:
+  must_include:
+    - def main
+options:
+  commit_message: add test profile

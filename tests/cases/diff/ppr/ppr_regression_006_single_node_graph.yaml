@@ -1,0 +1,15 @@
+name: ppr_regression_006_single_node_graph
+initial:
+  single.py: |
+    def single_func():
+        return 1
+changed:
+  single.py: |
+    def single_func():
+        return 2
+assertions:
+  must_include:
+  - single_func
+  - "return 2"
+options:
+  commit_message: Modify single function

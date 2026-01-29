@@ -1,0 +1,75 @@
+name: ppr_011_dense_small_graph
+initial:
+  dense.py: |
+    def shared0():
+        pass
+
+    def shared1():
+        pass
+
+    def shared2():
+        pass
+
+    def func0():
+        shared0()
+        shared1()
+        shared2()
+
+    def func1():
+        shared0()
+        shared1()
+        shared2()
+
+    def func2():
+        shared0()
+        shared1()
+        shared2()
+
+    def func3():
+        shared0()
+        shared1()
+        shared2()
+
+    def func4():
+        shared0()
+        shared1()
+        shared2()
+changed:
+  dense.py: |
+    def shared0():
+        pass
+
+    def shared1():
+        pass
+
+    def shared2():
+        pass
+
+    def func0():
+        shared0()
+        shared1()
+        shared2()
+        return 1
+
+    def func1():
+        shared0()
+        shared1()
+        shared2()
+
+    def func2():
+        shared0()
+        shared1()
+        shared2()
+
+    def func3():
+        shared0()
+        shared1()
+        shared2()
+
+    def func4():
+        shared0()
+        shared1()
+        shared2()
+assertions:
+  must_include:
+  - func0

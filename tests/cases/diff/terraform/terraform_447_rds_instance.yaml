@@ -1,0 +1,175 @@
+name: terraform_447_rds_instance
+initial:
+  app.py: |
+    import psycopg2
+    conn = psycopg2.connect(os.environ['DATABASE_URL'])
+  database.tf: |
+    # RDS resources placeholder
+  variables.tf: |
+    variable "environment" {
+      type    = string
+      default = "dev"
+    }
+  unrelated/monitoring_GARBAGE_TF_rds447a.tf: |
+    # GARBAGE_TF_rds447a - Unrelated CloudWatch dashboard
+    resource "aws_cloudwatch_dashboard" "legacy_dashboard" {
+      dashboard_name = "legacy-metrics-GARBAGE_TF_rds447a"
+      dashboard_body = jsonencode({
+        widgets = [{
+          type   = "metric"
+          width  = 6
+          height = 6
+          properties = {
+            metrics = [["AWS/EC2", "CPUUtilization"]]
+            title   = "Legacy CPU GARBAGE_TF_rds447a"
+          }
+        }]
+      })
+    }
+  scripts/backup_GARBAGE_TF_rds447b.sh: |
+    #!/bin/bash
+    # GARBAGE_TF_rds447b - Old backup script
+    echo "Running legacy backup GARBAGE_TF_rds447b"
+    pg_dump -h localhost -U admin olddb > /tmp/backup.sql
+changed:
+  database.tf: |
+    resource "aws_db_subnet_group" "main" {
+      name       = "${var.environment}-db-subnet-group"
+      subnet_ids = var.private_subnet_ids
+
+      tags = {
+        Name        = "${var.environment}-db-subnet-group"
+        Environment = var.environment
+      }
+    }
+
+    resource "aws_db_parameter_group" "postgres" {
+      family = "postgres15"
+      name   = "${var.environment}-postgres-params"
+
+      parameter {
+        name  = "log_connections"
+        value = "1"
+      }
+
+      parameter {
+        name  = "log_disconnections"
+        value = "1"
+      }
+
+      parameter {
+        name  = "log_statement"
+        value = "ddl"
+      }
+    }
+
+    resource "aws_db_instance" "main" {
+      identifier                  = "${var.environment}-main-db"
+      engine                      = "postgres"
+      engine_version              = "15.4"
+      instance_class              = var.db_instance_class
+      allocated_storage           = 100
+      max_allocated_storage       = 500
+      storage_type                = "gp3"
+      storage_encrypted           = true
+      kms_key_id                  = var.kms_key_arn
+      db_subnet_group_name        = aws_db_subnet_group.main.name
+      vpc_security_group_ids      = [aws_security_group.rds.id]
+      parameter_group_name        = aws_db_parameter_group.postgres.name
+      username                    = var.db_username
+      password                    = var.db_password
+      multi_az                    = var.environment == "prod"
+      backup_retention_period     = 30
+      backup_window               = "03:00-04:00"
+      maintenance_window          = "Mon:04:00-Mon:05:00"
+      deletion_protection         = var.environment == "prod"
+      skip_final_snapshot         = var.environment != "prod"
+      final_snapshot_identifier   = var.environment == "prod" ? "${var.environment}-final-snapshot" : null
+      performance_insights_enabled = true
+      enabled_cloudwatch_logs_exports = ["postgresql", "upgrade"]
+
+      tags = {
+        Name        = "${var.environment}-main-db"
+        Environment = var.environment
+      }
+    }
+
+    resource "aws_security_group" "rds" {
+      name        = "${var.environment}-rds-sg"
+      description = "Security group for RDS PostgreSQL"
+      vpc_id      = var.vpc_id
+
+      ingress {
+        from_port       = 5432
+        to_port         = 5432
+        protocol        = "tcp"
+        security_groups = [var.app_security_group_id]
+        description     = "PostgreSQL access from application"
+      }
+
+      egress {
+        from_port   = 0
+        to_port     = 0
+        protocol    = "-1"
+        cidr_blocks = ["0.0.0.0/0"]
+      }
+
+      tags = {
+        Name        = "${var.environment}-rds-sg"
+        Environment = var.environment
+      }
+    }
+  variables.tf: |
+    variable "environment" {
+      type        = string
+      description = "Deployment environment"
+    }
+
+    variable "vpc_id" {
+      type        = string
+      description = "VPC ID for RDS deployment"
+    }
+
+    variable "private_subnet_ids" {
+      type        = list(string)
+      description = "Private subnet IDs for DB subnet group"
+    }
+
+    variable "db_instance_class" {
+      type    = string
+      default = "db.t3.medium"
+    }
+
+    variable "db_username" {
+      type      = string
+      sensitive = true
+    }
+
+    variable "db_password" {
+      type      = string
+      sensitive = true
+    }
+
+    variable "kms_key_arn" {
+      type        = string
+      description = "KMS key ARN for storage encryption"
+    }
+
+    variable "app_security_group_id" {
+      type        = string
+      description = "Application security group for DB access"
+    }
+assertions:
+  must_include:
+    - database.tf
+    - aws_db_instance
+    - aws_db_subnet_group
+    - aws_security_group
+    - performance_insights_enabled
+  must_not_include:
+    - GARBAGE_TF_rds447a
+    - GARBAGE_TF_rds447b
+    - legacy_dashboard
+    - legacy-metrics
+options:
+  commit_message: Add RDS instance with subnet group, parameter group, and security

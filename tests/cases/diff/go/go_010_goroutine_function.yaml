@@ -1,53 +1,242 @@
 name: go_010_goroutine_function
 initial:
-  worker.go: |
-    package main
+  internal/worker/pool.go: |
+    package worker
 
-    func worker(id int, jobs <-chan int) {
-        for j := range jobs {
-            println("Worker", id, "processing job", j)
+    import (
+        "context"
+        "sync"
+    )
+
+    type Job struct {
+        ID      int
+        Payload interface{}
+    }
+
+    type Result struct {
+        JobID int
+        Data  interface{}
+        Error error
+    }
+
+    type Worker struct {
+        id   int
+        jobs <-chan Job
+    }
+
+    func NewWorker(id int, jobs <-chan Job) *Worker {
+        return &Worker{id: id, jobs: jobs}
+    }
+
+    func (w *Worker) Start(ctx context.Context, wg *sync.WaitGroup) {
+        defer wg.Done()
+        for {
+            select {
+            case job, ok := <-w.jobs:
+                if !ok {
+                    return
+                }
+                w.process(job)
+            case <-ctx.Done():
+                return
+            }
         }
     }
-  main.go: |
+
+    func (w *Worker) process(job Job) {
+        println("Processing job", job.ID)
+    }
+
+  internal/worker/dispatcher.go: |
+    package worker
+
+    type Dispatcher struct {
+        workerCount int
+        jobQueue    chan Job
+    }
+
+    func NewDispatcher(workerCount int) *Dispatcher {
+        return &Dispatcher{
+            workerCount: workerCount,
+            jobQueue:    make(chan Job, 100),
+        }
+    }
+
+    func (d *Dispatcher) Submit(job Job) {
+        d.jobQueue <- job
+    }
+
+  cmd/main.go: |
     package main
+
+    import (
+        "context"
+        "myproject/internal/worker"
+        "sync"
+    )
 
     func main() {
-        jobs := make(chan int, 100)
-        go worker(1, jobs)
-        go worker(2, jobs)
+        jobs := make(chan worker.Job, 100)
+        var wg sync.WaitGroup
+
+        for i := 0; i < 3; i++ {
+            w := worker.NewWorker(i, jobs)
+            wg.Add(1)
+            go w.Start(context.Background(), &wg)
+        }
+
         for j := 0; j < 10; j++ {
-            jobs <- j
+            jobs <- worker.Job{ID: j}
         }
         close(jobs)
-    }
-  unrelated/garbage.go: |
-    package unrelated
-
-    func UnusedWorker_12345() {
-        println("garbage_marker_12345")
+        wg.Wait()
     }
 
-    func UnusedMain_67890() {
-        println("unused_marker_67890")
+  internal/unrelated/scheduler/cron.go: |
+    package scheduler
+
+    const GARBAGE_GO_SCHEDULER_CRON_001 = "scheduler_garbage"
+
+    type GARBAGE_GO_TYPE_CRON_002 struct {
+        expression string
     }
+
+    func GARBAGE_GO_FUNC_CRON_003() string {
+        return "GARBAGE_GO_CRON_UNUSED_004"
+    }
+
+  internal/unrelated/taskqueue/rabbitmq.go: |
+    package taskqueue
+
+    const GARBAGE_GO_TASKQUEUE_RABBIT_005 = "taskqueue_garbage"
+
+    type GARBAGE_GO_TYPE_RABBIT_006 struct {
+        url string
+    }
+
+    func GARBAGE_GO_FUNC_RABBIT_007() {
+        println("GARBAGE_GO_RABBIT_OUTPUT_008")
+    }
+
 changed:
-  worker.go: |
-    package main
+  internal/worker/pool.go: |
+    package worker
 
-    import "time"
+    import (
+        "context"
+        "log"
+        "sync"
+        "time"
+    )
 
-    func worker(id int, jobs <-chan int, results chan<- int) {
-        for j := range jobs {
-            time.Sleep(time.Millisecond * 100)
-            results <- j * 2
+    type Job struct {
+        ID       int
+        Payload  interface{}
+        Priority int
+        Timeout  time.Duration
+    }
+
+    type Result struct {
+        JobID    int
+        Data     interface{}
+        Error    error
+        Duration time.Duration
+    }
+
+    type Worker struct {
+        id      int
+        jobs    <-chan Job
+        results chan<- Result
+        logger  *log.Logger
+    }
+
+    func NewWorker(id int, jobs <-chan Job, results chan<- Result, logger *log.Logger) *Worker {
+        return &Worker{id: id, jobs: jobs, results: results, logger: logger}
+    }
+
+    func (w *Worker) Start(ctx context.Context, wg *sync.WaitGroup) {
+        defer wg.Done()
+        w.logger.Printf("Worker %d started", w.id)
+
+        for {
+            select {
+            case job, ok := <-w.jobs:
+                if !ok {
+                    w.logger.Printf("Worker %d: job channel closed", w.id)
+                    return
+                }
+                result := w.processWithTimeout(ctx, job)
+                w.results <- result
+            case <-ctx.Done():
+                w.logger.Printf("Worker %d: context cancelled", w.id)
+                return
+            }
         }
     }
+
+    func (w *Worker) processWithTimeout(ctx context.Context, job Job) Result {
+        start := time.Now()
+        timeout := job.Timeout
+        if timeout == 0 {
+            timeout = 30 * time.Second
+        }
+
+        jobCtx, cancel := context.WithTimeout(ctx, timeout)
+        defer cancel()
+
+        resultCh := make(chan Result, 1)
+
+        go func() {
+            data, err := w.process(jobCtx, job)
+            resultCh <- Result{
+                JobID:    job.ID,
+                Data:     data,
+                Error:    err,
+                Duration: time.Since(start),
+            }
+        }()
+
+        select {
+        case result := <-resultCh:
+            return result
+        case <-jobCtx.Done():
+            return Result{
+                JobID:    job.ID,
+                Error:    jobCtx.Err(),
+                Duration: time.Since(start),
+            }
+        }
+    }
+
+    func (w *Worker) process(ctx context.Context, job Job) (interface{}, error) {
+        w.logger.Printf("Worker %d processing job %d", w.id, job.ID)
+        select {
+        case <-time.After(100 * time.Millisecond):
+            return job.Payload, nil
+        case <-ctx.Done():
+            return nil, ctx.Err()
+        }
+    }
+
 assertions:
   must_include:
-  - worker
-  - results
+    - Worker
+    - Start
+    - processWithTimeout
+    - Result
+    - results
+    - Duration
+    - Priority
   must_not_include:
-  - garbage_marker_12345
-  - unused_marker_67890
+    - GARBAGE_GO_SCHEDULER_CRON_001
+    - GARBAGE_GO_TYPE_CRON_002
+    - GARBAGE_GO_FUNC_CRON_003
+    - GARBAGE_GO_CRON_UNUSED_004
+    - GARBAGE_GO_TASKQUEUE_RABBIT_005
+    - GARBAGE_GO_TYPE_RABBIT_006
+    - GARBAGE_GO_FUNC_RABBIT_007
+    - GARBAGE_GO_RABBIT_OUTPUT_008
+    - scheduler
+    - rabbitmq
 options:
-  commit_message: Add results channel to worker
+  commit_message: Add results channel and timeout handling to worker

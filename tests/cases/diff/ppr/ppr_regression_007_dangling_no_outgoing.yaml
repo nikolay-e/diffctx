@@ -1,0 +1,30 @@
+name: ppr_regression_007_dangling_no_outgoing
+initial:
+  hub.py: |
+    from leaf1 import leaf1_func
+    from leaf2 import leaf2_func
+
+    def hub_func():
+        leaf1_func()
+        leaf2_func()
+  leaf1.py: |
+    def leaf1_func():
+        return "leaf1"
+  leaf2.py: |
+    def leaf2_func():
+        return "leaf2"
+changed:
+  hub.py: |
+    from leaf1 import leaf1_func
+    from leaf2 import leaf2_func
+
+    def hub_func():
+        leaf1_func()
+        leaf2_func()
+        return "modified"
+assertions:
+  must_include:
+  - hub_func
+  - "modified"
+options:
+  commit_message: Modify hub function

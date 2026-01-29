@@ -1,0 +1,100 @@
+name: graph_001_function_call_creates_edge
+initial:
+  caller.py: |
+    def main():
+        result = helper()
+        processed = transform(result)
+        return finalize(processed)
+
+    def orchestrate():
+        return main()
+  callee.py: |
+    def helper():
+        data = fetch_data()
+        return validate(data)
+
+    def fetch_data():
+        return {"raw": "content"}
+
+    def validate(data):
+        return data.get("raw") is not None
+  transformer.py: |
+    def transform(value):
+        normalized = normalize(value)
+        return enrich(normalized)
+
+    def normalize(v):
+        return str(v).lower()
+
+    def enrich(v):
+        return f"enriched_{v}"
+  finalizer.py: |
+    def finalize(data):
+        cleaned = cleanup(data)
+        return format_output(cleaned)
+
+    def cleanup(d):
+        return d.strip()
+
+    def format_output(d):
+        return f"[FINAL] {d}"
+  garbage/unrelated_math_GARBAGE_GRAPH_abc001.py: |
+    def compute_fibonacci_GARBAGE_GRAPH_abc001(n):
+        if n <= 1:
+            return n
+        return compute_fibonacci_GARBAGE_GRAPH_abc001(n-1) + compute_fibonacci_GARBAGE_GRAPH_abc001(n-2)
+
+    def factorial_GARBAGE_GRAPH_abc001(n):
+        if n <= 1:
+            return 1
+        return n * factorial_GARBAGE_GRAPH_abc001(n-1)
+
+    class MathHelper_GARBAGE_GRAPH_abc001:
+        def prime_check(self, n):
+            if n < 2:
+                return False
+            for i in range(2, int(n**0.5) + 1):
+                if n % i == 0:
+                    return False
+            return True
+  garbage/random_utils_GARBAGE_GRAPH_abc002.py: |
+    import random
+    def shuffle_list_GARBAGE_GRAPH_abc002(items):
+        return random.sample(items, len(items))
+
+    def random_choice_GARBAGE_GRAPH_abc002(items):
+        return random.choice(items)
+  garbage/string_ops_GARBAGE_GRAPH_abc003.py: |
+    def reverse_string_GARBAGE_GRAPH_abc003(s):
+        return s[::-1]
+
+    def count_vowels_GARBAGE_GRAPH_abc003(s):
+        return sum(1 for c in s.lower() if c in 'aeiou')
+changed:
+  caller.py: |
+    def main():
+        result = helper()
+        processed = transform(result)
+        validated = double_check(processed)
+        return finalize(validated)
+
+    def orchestrate():
+        return main()
+
+    def double_check(value):
+        return value if value else "default"
+assertions:
+  must_include:
+  - main
+  - helper
+  - transform
+  - finalize
+  must_not_include:
+  - GARBAGE_GRAPH_abc001
+  - GARBAGE_GRAPH_abc002
+  - GARBAGE_GRAPH_abc003
+  - compute_fibonacci
+  - factorial
+  - shuffle_list
+  - reverse_string
+  - MathHelper

@@ -2,27 +2,220 @@ name: python_052_django_model_query
 initial:
   models.py: |
     from django.db import models
+    from django.contrib.auth.models import AbstractUser
+    from django.utils import timezone
+    from typing import List, Optional
 
-    class User(models.Model):
+    class TimestampMixin(models.Model):
+        created_at = models.DateTimeField(auto_now_add=True)
+        updated_at = models.DateTimeField(auto_now=True)
+
+        class Meta:
+            abstract = True
+
+    class SoftDeleteManager(models.Manager):
+        def get_queryset(self):
+            return super().get_queryset().filter(is_deleted=False)
+
+    class SoftDeleteMixin(models.Model):
+        is_deleted = models.BooleanField(default=False)
+        deleted_at = models.DateTimeField(null=True, blank=True)
+
+        objects = SoftDeleteManager()
+        all_objects = models.Manager()
+
+        def soft_delete(self):
+            self.is_deleted = True
+            self.deleted_at = timezone.now()
+            self.save()
+
+        class Meta:
+            abstract = True
+
+    class User(AbstractUser, TimestampMixin):
         name = models.CharField(max_length=100)
         email = models.EmailField(unique=True)
-        created_at = models.DateTimeField(auto_now_add=True)
+        bio = models.TextField(blank=True, default="")
+        is_verified = models.BooleanField(default=False)
+
+        USERNAME_FIELD = "email"
+        REQUIRED_FIELDS = ["name"]
+
+        class Meta:
+            db_table = "users"
+
+    class Profile(TimestampMixin):
+        user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="profile")
+        phone = models.CharField(max_length=20, blank=True, default="")
+        address = models.TextField(blank=True, default="")
+
+        class Meta:
+            db_table = "profiles"
+
+    class Post(TimestampMixin, SoftDeleteMixin):
+        author = models.ForeignKey(User, on_delete=models.CASCADE, related_name="posts")
+        title = models.CharField(max_length=200)
+        content = models.TextField()
+        is_published = models.BooleanField(default=False)
+
+        class Meta:
+            db_table = "posts"
+
   views.py: |
-    def index():
-        pass
-  garbage.py: |
-    garbage_marker_12345 = "django garbage"
-    unused_marker_67890 = "unused django"
-changed:
-  views.py: |
-    from models import User
+    from models import User, Post
+
+    class UserListView:
+        def get(self):
+            return User.objects.all()
 
     def index():
-        users = User.objects.filter(name__icontains="john")
-        return list(users)
+        pass
+
+  unrelated/search_service.py: |
+    GARBAGE_PYTHON_052_001 = "search service marker"
+    GARBAGE_PYTHON_052_002 = "elasticsearch constant"
+
+    class SearchIndex:
+        GARBAGE_PYTHON_052_003 = "index class marker"
+
+        def __init__(self, name: str):
+            self.name = name
+
+  unrelated/notification_manager.py: |
+    GARBAGE_PYTHON_052_004 = "notification manager marker"
+    GARBAGE_PYTHON_052_005 = "notification channel constant"
+
+    class NotificationManager:
+        GARBAGE_PYTHON_052_006 = "manager class marker"
+
+        def __init__(self):
+            pass
+
+  unrelated/background_tasks.py: |
+    GARBAGE_PYTHON_052_007 = "background tasks marker"
+    GARBAGE_PYTHON_052_008 = "task queue constant"
+
+    class TaskQueue:
+        GARBAGE_PYTHON_052_009 = "queue class marker"
+
+        def __init__(self):
+            pass
+
+changed:
+  models.py: |
+    from django.db import models
+    from django.contrib.auth.models import AbstractUser
+    from django.utils import timezone
+    from typing import List, Optional
+
+    class TimestampMixin(models.Model):
+        created_at = models.DateTimeField(auto_now_add=True)
+        updated_at = models.DateTimeField(auto_now=True)
+
+        class Meta:
+            abstract = True
+
+    class SoftDeleteManager(models.Manager):
+        def get_queryset(self):
+            return super().get_queryset().filter(is_deleted=False)
+
+    class SoftDeleteMixin(models.Model):
+        is_deleted = models.BooleanField(default=False)
+        deleted_at = models.DateTimeField(null=True, blank=True)
+
+        objects = SoftDeleteManager()
+        all_objects = models.Manager()
+
+        def soft_delete(self):
+            self.is_deleted = True
+            self.deleted_at = timezone.now()
+            self.save()
+
+        def restore(self):
+            self.is_deleted = False
+            self.deleted_at = None
+            self.save()
+
+        class Meta:
+            abstract = True
+
+    class User(AbstractUser, TimestampMixin):
+        name = models.CharField(max_length=100)
+        email = models.EmailField(unique=True)
+        bio = models.TextField(blank=True, default="")
+        avatar_url = models.URLField(blank=True, default="")
+        is_verified = models.BooleanField(default=False)
+
+        USERNAME_FIELD = "email"
+        REQUIRED_FIELDS = ["name"]
+
+        class Meta:
+            db_table = "users"
+            ordering = ["-created_at"]
+
+        def get_full_name(self) -> str:
+            return self.name
+
+        @classmethod
+        def find_by_email(cls, email: str) -> Optional["User"]:
+            try:
+                return cls.objects.get(email=email)
+            except cls.DoesNotExist:
+                return None
+
+    class Profile(TimestampMixin):
+        user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="profile")
+        phone = models.CharField(max_length=20, blank=True, default="")
+        address = models.TextField(blank=True, default="")
+        preferences = models.JSONField(default=dict)
+
+        class Meta:
+            db_table = "profiles"
+
+        def update_preferences(self, key: str, value) -> None:
+            self.preferences[key] = value
+            self.save()
+
+    class Post(TimestampMixin, SoftDeleteMixin):
+        author = models.ForeignKey(User, on_delete=models.CASCADE, related_name="posts")
+        title = models.CharField(max_length=200)
+        content = models.TextField()
+        is_published = models.BooleanField(default=False)
+        published_at = models.DateTimeField(null=True, blank=True)
+
+        class Meta:
+            db_table = "posts"
+            ordering = ["-created_at"]
+
+        def publish(self) -> None:
+            self.is_published = True
+            self.published_at = timezone.now()
+            self.save()
+
 assertions:
   must_include:
-  - class User
+    - class User
+    - class Post
+    - class Profile
+    - TimestampMixin
+    - SoftDeleteMixin
+    - models.CharField
+    - models.EmailField
+    - find_by_email
+    - publish
   must_not_include:
-  - garbage_marker_12345
-  - unused_marker_67890
+    - GARBAGE_PYTHON_052_001
+    - GARBAGE_PYTHON_052_002
+    - GARBAGE_PYTHON_052_003
+    - GARBAGE_PYTHON_052_004
+    - GARBAGE_PYTHON_052_005
+    - GARBAGE_PYTHON_052_006
+    - GARBAGE_PYTHON_052_007
+    - GARBAGE_PYTHON_052_008
+    - GARBAGE_PYTHON_052_009
+    - SearchIndex
+    - NotificationManager
+    - TaskQueue
+    - search_service.py
+    - notification_manager.py
+    - background_tasks.py

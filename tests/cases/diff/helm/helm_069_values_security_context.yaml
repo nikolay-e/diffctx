@@ -1,0 +1,25 @@
+name: helm_069_values_security_context
+initial:
+  chart/values.yaml: |
+    securityContext:
+      runAsNonRoot: true
+  chart/templates/deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    spec:
+      template:
+        spec:
+          securityContext:
+            runAsNonRoot: {{ .Values.securityContext.runAsNonRoot }}
+changed:
+  chart/values.yaml: |
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 1000
+      fsGroup: 1000
+      readOnlyRootFilesystem: true
+assertions:
+  must_include:
+    - securityContext
+options:
+  commit_message: add security context

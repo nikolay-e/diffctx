@@ -1,0 +1,202 @@
+name: docker_079_compose_networks
+initial:
+  src/proxy.py: |
+    import requests
+    import os
+    from flask import Flask, jsonify
+
+    app = Flask(__name__)
+
+    BACKEND_URL = os.getenv("BACKEND_URL", "http://backend:8080")
+    API_URL = os.getenv("API_URL", "http://api:8080")
+
+    def call_backend(endpoint: str):
+        response = requests.get(f"{BACKEND_URL}{endpoint}")
+        return response.json()
+
+    def call_api(endpoint: str):
+        response = requests.get(f"{API_URL}{endpoint}")
+        return response.json()
+
+    @app.route('/health')
+    def health():
+        return jsonify(status='ok', service='proxy')
+
+    @app.route('/proxy/backend/<path:path>')
+    def proxy_backend(path):
+        return call_backend(f'/{path}')
+
+    @app.route('/proxy/api/<path:path>')
+    def proxy_api(path):
+        return call_api(f'/{path}')
+  src/api.py: |
+    from flask import Flask, jsonify
+
+    app = Flask(__name__)
+
+    @app.route('/health')
+    def health():
+        return jsonify(status='ok', service='api')
+
+    @app.route('/users')
+    def users():
+        return jsonify(users=['alice', 'bob'])
+  requirements.txt: |
+    flask==2.3.0
+    requests==2.31.0
+    gunicorn==21.2.0
+  Dockerfile: |
+    FROM python:3.12-slim
+    WORKDIR /app
+    COPY requirements.txt .
+    RUN pip install -r requirements.txt
+    COPY src/ ./src/
+    CMD ["gunicorn", "-b", "0.0.0.0:8080", "src.proxy:app"]
+  docker-compose.yml: |
+    version: '3.8'
+    services:
+      web:
+        build: .
+        networks:
+          - frontend
+    networks:
+      frontend:
+  scripts/network_setup.sh: |
+    #!/bin/bash
+    # GARBAGE_DOCKER_079_NET_MARKER_z1x2c3
+    GARBAGE_DOCKER_079_SUBNET_v4b5n6="172.28.0.0/16"
+    docker network create frontend
+  tests/test_network.py: |
+    # GARBAGE_DOCKER_079_TEST_MARKER_m7k8j9
+    GARBAGE_DOCKER_079_TEST_CIDR_h0g1f2 = "10.0.0.0/8"
+    def test_network_connectivity():
+        pass
+  docs/networking.md: |
+    # Network Architecture
+    GARBAGE_DOCKER_079_NET_DOC_d3s4a5
+    GARBAGE_DOCKER_079_TOPOLOGY_q6w7e8="frontend,backend,data"
+  terraform/vpc.tf: |
+    # GARBAGE_DOCKER_079_TF_MARKER_r9t0y1
+    resource "aws_vpc" "main" {
+      GARBAGE_DOCKER_079_CIDR_BLOCK_u2i3o4 = "10.0.0.0/16"
+    }
+  k8s/network-policy.yaml: |
+    # GARBAGE_DOCKER_079_K8S_MARKER_p5a6s7
+    apiVersion: networking.k8s.io/v1
+    GARBAGE_DOCKER_079_POLICY_TYPE_d8f9g0: NetworkPolicy
+changed:
+  docker-compose.yml: |
+    version: '3.8'
+
+    services:
+      web:
+        build:
+          context: .
+          dockerfile: Dockerfile
+        ports:
+          - "80:8080"
+        environment:
+          - BACKEND_URL=http://api:8080
+          - API_URL=http://api:8080
+        networks:
+          frontend:
+            aliases:
+              - proxy
+              - gateway
+          backend:
+        depends_on:
+          api:
+            condition: service_healthy
+        healthcheck:
+          test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+          interval: 30s
+          timeout: 10s
+          retries: 3
+
+      api:
+        build:
+          context: .
+          dockerfile: Dockerfile
+        command: ["gunicorn", "-b", "0.0.0.0:8080", "src.api:app"]
+        networks:
+          backend:
+            ipv4_address: 172.20.0.10
+          data:
+        healthcheck:
+          test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+          interval: 30s
+          timeout: 10s
+          retries: 3
+
+      db:
+        image: postgres:16-alpine
+        environment:
+          POSTGRES_PASSWORD: secret
+        networks:
+          data:
+            ipv4_address: 172.21.0.10
+        volumes:
+          - postgres_data:/var/lib/postgresql/data
+
+      redis:
+        image: redis:7-alpine
+        networks:
+          data:
+            aliases:
+              - cache
+              - session-store
+
+      monitoring:
+        image: prom/prometheus:latest
+        networks:
+          - frontend
+          - backend
+          - data
+        ports:
+          - "9090:9090"
+
+    networks:
+      frontend:
+        driver: bridge
+        driver_opts:
+          com.docker.network.bridge.name: br-frontend
+        ipam:
+          driver: default
+          config:
+            - subnet: 172.19.0.0/24
+              gateway: 172.19.0.1
+
+      backend:
+        driver: bridge
+        internal: true
+        ipam:
+          config:
+            - subnet: 172.20.0.0/24
+
+      data:
+        driver: bridge
+        internal: true
+        ipam:
+          config:
+            - subnet: 172.21.0.0/24
+        labels:
+          - "com.example.description=Data tier network"
+
+    volumes:
+      postgres_data:
+assertions:
+  must_include:
+    - 'networks:'
+  must_not_include:
+    - GARBAGE_DOCKER_079_NET_MARKER_z1x2c3
+    - GARBAGE_DOCKER_079_SUBNET_v4b5n6
+    - GARBAGE_DOCKER_079_TEST_MARKER_m7k8j9
+    - GARBAGE_DOCKER_079_TEST_CIDR_h0g1f2
+    - GARBAGE_DOCKER_079_NET_DOC_d3s4a5
+    - GARBAGE_DOCKER_079_TOPOLOGY_q6w7e8
+    - GARBAGE_DOCKER_079_TF_MARKER_r9t0y1
+    - GARBAGE_DOCKER_079_CIDR_BLOCK_u2i3o4
+    - GARBAGE_DOCKER_079_K8S_MARKER_p5a6s7
+    - GARBAGE_DOCKER_079_POLICY_TYPE_d8f9g0
+options:
+  commit_message: Add comprehensive network configuration with internal networks and IPAM

@@ -1,40 +1,206 @@
 name: rust_004_struct_with_methods
 initial:
+  src/lib.rs: |
+    pub mod counter;
+    pub mod unrelated;
   src/counter.rs: |
+    use std::fmt;
+
+    #[derive(Debug)]
     pub struct Counter {
         value: i32,
+        name: String,
     }
 
     impl Counter {
         pub fn new() -> Self {
-            Self { value: 0 }
+            Self {
+                value: 0,
+                name: String::from("default"),
+            }
         }
+
+        pub fn with_name(name: &str) -> Self {
+            Self {
+                value: 0,
+                name: name.to_string(),
+            }
+        }
+
+        pub fn name(&self) -> &str {
+            &self.name
+        }
+    }
+
+    impl Default for Counter {
+        fn default() -> Self {
+            Self::new()
+        }
+    }
+
+    impl fmt::Display for Counter {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(f, "Counter({}): {}", self.name, self.value)
+        }
+    }
+  src/unrelated/mod.rs: |
+    pub mod database;
+    pub mod authentication;
+  src/unrelated/database.rs: |
+    // GARBAGE_RUST_DATABASE_001
+    use std::collections::HashMap;
+
+    pub const GARBAGE_MAX_CONNECTIONS_002: u32 = 100;
+    pub const GARBAGE_QUERY_TIMEOUT_003: u64 = 5000;
+
+    pub struct GarbageDbConnection004 {
+        host: String,
+        port: u16,
+        database: String,
+    }
+
+    impl GarbageDbConnection004 {
+        pub fn garbage_execute_query_005(&self, _query: &str) -> Result<Vec<HashMap<String, String>>, String> {
+            Err("GARBAGE_QUERY_ERROR_006".to_string())
+        }
+
+        pub fn garbage_begin_transaction_007(&mut self) -> bool {
+            false
+        }
+
+        pub fn garbage_commit_008(&mut self) -> Result<(), String> {
+            Err("GARBAGE_COMMIT_ERROR_009".to_string())
+        }
+    }
+
+    pub trait GarbageQueryBuilder010 {
+        fn garbage_build_select_011(&self) -> String;
+        fn garbage_build_insert_012(&self) -> String;
+    }
+  src/unrelated/authentication.rs: |
+    // GARBAGE_RUST_AUTH_013
+    pub const GARBAGE_TOKEN_EXPIRY_014: u64 = 3600;
+    pub const GARBAGE_HASH_ROUNDS_015: u32 = 12;
+
+    pub struct GarbageAuthToken016 {
+        token: String,
+        user_id: u64,
+        expires_at: u64,
+    }
+
+    impl GarbageAuthToken016 {
+        pub fn garbage_validate_017(&self) -> bool {
+            false
+        }
+
+        pub fn garbage_refresh_018(&mut self) -> Result<(), String> {
+            Err("GARBAGE_REFRESH_ERROR_019".to_string())
+        }
+    }
+
+    pub fn garbage_hash_password_020(password: &str) -> String {
+        format!("GARBAGE_HASHED_{}", password)
     }
 changed:
   src/counter.rs: |
+    use std::fmt;
+
+    #[derive(Debug)]
     pub struct Counter {
         value: i32,
+        name: String,
+        step: i32,
     }
 
     impl Counter {
         pub fn new() -> Self {
-            Self { value: 0 }
+            Self {
+                value: 0,
+                name: String::from("default"),
+                step: 1,
+            }
+        }
+
+        pub fn with_name(name: &str) -> Self {
+            Self {
+                value: 0,
+                name: name.to_string(),
+                step: 1,
+            }
+        }
+
+        pub fn with_step(name: &str, step: i32) -> Self {
+            Self {
+                value: 0,
+                name: name.to_string(),
+                step,
+            }
+        }
+
+        pub fn name(&self) -> &str {
+            &self.name
         }
 
         pub fn increment(&mut self) {
-            self.value += 1;
+            self.value += self.step;
+        }
+
+        pub fn decrement(&mut self) {
+            self.value -= self.step;
         }
 
         pub fn get(&self) -> i32 {
             self.value
         }
+
+        pub fn reset(&mut self) {
+            self.value = 0;
+        }
+
+        pub fn set_step(&mut self, step: i32) {
+            self.step = step;
+        }
+    }
+
+    impl Default for Counter {
+        fn default() -> Self {
+            Self::new()
+        }
+    }
+
+    impl fmt::Display for Counter {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(f, "Counter({}): {} (step: {})", self.name, self.value, self.step)
+        }
     }
 assertions:
   must_include:
-  - Counter
-  - increment
-  - get
+    - Counter
+    - increment
+    - decrement
+    - get
+    - reset
+    - set_step
   must_not_include:
-  - garbage_method_name
+    - GARBAGE_RUST_DATABASE_001
+    - GARBAGE_MAX_CONNECTIONS_002
+    - GARBAGE_QUERY_TIMEOUT_003
+    - GarbageDbConnection004
+    - garbage_execute_query_005
+    - GARBAGE_QUERY_ERROR_006
+    - garbage_begin_transaction_007
+    - garbage_commit_008
+    - GARBAGE_COMMIT_ERROR_009
+    - GarbageQueryBuilder010
+    - garbage_build_select_011
+    - garbage_build_insert_012
+    - GARBAGE_RUST_AUTH_013
+    - GARBAGE_TOKEN_EXPIRY_014
+    - GARBAGE_HASH_ROUNDS_015
+    - GarbageAuthToken016
+    - garbage_validate_017
+    - garbage_refresh_018
+    - GARBAGE_REFRESH_ERROR_019
+    - garbage_hash_password_020
 options:
   commit_message: Add increment and get methods

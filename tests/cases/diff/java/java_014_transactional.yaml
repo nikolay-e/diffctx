@@ -1,52 +1,360 @@
 name: java_014_transactional
 initial:
-  src/main/java/com/example/OrderService.java: |
-    package com.example;
+  src/main/java/com/banking/service/AccountService.java: |
+    package com.banking.service;
 
+    import com.banking.model.Account;
+    import com.banking.repository.AccountRepository;
     import org.springframework.stereotype.Service;
     import org.springframework.transaction.annotation.Transactional;
+    import org.slf4j.Logger;
+    import org.slf4j.LoggerFactory;
+
+    import java.math.BigDecimal;
 
     @Service
-    public class OrderService {
+    public class AccountService {
+        private static final Logger log = LoggerFactory.getLogger(AccountService.class);
+        private final AccountRepository accountRepository;
+
+        public AccountService(AccountRepository accountRepository) {
+            this.accountRepository = accountRepository;
+        }
+
         @Transactional
-        public Order createOrder(Order order) {
-            return orderRepository.save(order);
+        public Account createAccount(String accountNumber, String ownerName) {
+            log.info("Creating account: {}", accountNumber);
+            Account account = new Account();
+            account.setAccountNumber(accountNumber);
+            account.setOwnerName(ownerName);
+            account.setBalance(BigDecimal.ZERO);
+            return accountRepository.save(account);
+        }
+
+        @Transactional(readOnly = true)
+        public Account getAccount(String accountNumber) {
+            return accountRepository.findByAccountNumber(accountNumber)
+                .orElseThrow(() -> new AccountNotFoundException("Account not found: " + accountNumber));
+        }
+    }
+  src/main/java/com/banking/model/Account.java: |
+    package com.banking.model;
+
+    import javax.persistence.*;
+    import java.math.BigDecimal;
+    import java.time.LocalDateTime;
+
+    @Entity
+    @Table(name = "accounts")
+    public class Account {
+        @Id
+        @GeneratedValue(strategy = GenerationType.IDENTITY)
+        private Long id;
+
+        @Column(name = "account_number", unique = true, nullable = false)
+        private String accountNumber;
+
+        @Column(name = "owner_name", nullable = false)
+        private String ownerName;
+
+        @Column(precision = 15, scale = 2)
+        private BigDecimal balance;
+
+        @Column(name = "created_at")
+        private LocalDateTime createdAt;
+
+        @PrePersist
+        protected void onCreate() {
+            createdAt = LocalDateTime.now();
+        }
+
+        public Long getId() { return id; }
+        public void setId(Long id) { this.id = id; }
+        public String getAccountNumber() { return accountNumber; }
+        public void setAccountNumber(String accountNumber) { this.accountNumber = accountNumber; }
+        public String getOwnerName() { return ownerName; }
+        public void setOwnerName(String ownerName) { this.ownerName = ownerName; }
+        public BigDecimal getBalance() { return balance; }
+        public void setBalance(BigDecimal balance) { this.balance = balance; }
+        public LocalDateTime getCreatedAt() { return createdAt; }
+    }
+  src/main/java/com/banking/service/AccountNotFoundException.java: |
+    package com.banking.service;
+
+    public class AccountNotFoundException extends RuntimeException {
+        public AccountNotFoundException(String message) {
+            super(message);
+        }
+    }
+  src/main/java/com/banking/unrelated/FraudDetectionService.java: |
+    package com.banking.unrelated;
+
+    import java.math.BigDecimal;
+    import java.util.ArrayList;
+    import java.util.List;
+
+    public class FraudDetectionService {
+        public static final String GARBAGE_JAVA_FRAUD_701 = "fraud_marker_omega";
+        private static final String GARBAGE_JAVA_ALERT_702 = "alert_marker_alpha2";
+
+        private final List<SuspiciousActivity> flaggedActivities = new ArrayList<>();
+
+        public boolean checkTransaction(String accountNumber, BigDecimal amount) {
+            if (amount.compareTo(new BigDecimal("10000")) > 0) {
+                flaggedActivities.add(new SuspiciousActivity(accountNumber, amount, "Large transaction"));
+                logGarbageMarkers();
+                return true;
+            }
+            return false;
+        }
+
+        private void logGarbageMarkers() {
+            System.out.println(GARBAGE_JAVA_FRAUD_701 + GARBAGE_JAVA_ALERT_702);
+        }
+
+        private record SuspiciousActivity(String accountNumber, BigDecimal amount, String reason) {}
+    }
+  src/main/java/com/banking/unrelated/ComplianceReporter.java: |
+    package com.banking.unrelated;
+
+    import java.time.LocalDate;
+    import java.util.HashMap;
+    import java.util.Map;
+
+    public class ComplianceReporter {
+        public static final String GARBAGE_JAVA_COMPLIANCE_703 = "compliance_marker_beta2";
+
+        private final Map<String, Object> reportData = new HashMap<>();
+
+        public void generateReport(LocalDate reportDate) {
+            reportData.put("date", reportDate);
+            reportData.put("type", "DAILY_COMPLIANCE");
+            String GARBAGE_JAVA_REPORT_704 = "report_marker_gamma2";
+            System.out.println(GARBAGE_JAVA_COMPLIANCE_703 + GARBAGE_JAVA_REPORT_704);
+        }
+
+        public Map<String, Object> getReportData() {
+            return new HashMap<>(reportData);
         }
     }
 changed:
-  src/main/java/com/example/OrderService.java: |
-    package com.example;
+  src/main/java/com/banking/service/AccountService.java: |
+    package com.banking.service;
 
+    import com.banking.model.Account;
+    import com.banking.model.Transaction;
+    import com.banking.model.TransactionType;
+    import com.banking.repository.AccountRepository;
+    import com.banking.repository.TransactionRepository;
+    import com.banking.event.TransactionEvent;
+    import org.springframework.context.ApplicationEventPublisher;
     import org.springframework.stereotype.Service;
     import org.springframework.transaction.annotation.Transactional;
     import org.springframework.transaction.annotation.Propagation;
     import org.springframework.transaction.annotation.Isolation;
+    import org.springframework.retry.annotation.Retryable;
+    import org.springframework.retry.annotation.Backoff;
+    import org.slf4j.Logger;
+    import org.slf4j.LoggerFactory;
+
+    import java.math.BigDecimal;
+    import java.time.LocalDateTime;
+    import java.util.UUID;
 
     @Service
-    public class OrderService {
+    public class AccountService {
+        private static final Logger log = LoggerFactory.getLogger(AccountService.class);
+        private final AccountRepository accountRepository;
+        private final TransactionRepository transactionRepository;
+        private final ApplicationEventPublisher eventPublisher;
+
+        public AccountService(AccountRepository accountRepository,
+                              TransactionRepository transactionRepository,
+                              ApplicationEventPublisher eventPublisher) {
+            this.accountRepository = accountRepository;
+            this.transactionRepository = transactionRepository;
+            this.eventPublisher = eventPublisher;
+        }
+
+        @Transactional
+        public Account createAccount(String accountNumber, String ownerName) {
+            log.info("Creating account: {}", accountNumber);
+            Account account = new Account();
+            account.setAccountNumber(accountNumber);
+            account.setOwnerName(ownerName);
+            account.setBalance(BigDecimal.ZERO);
+            return accountRepository.save(account);
+        }
+
+        @Transactional(readOnly = true)
+        public Account getAccount(String accountNumber) {
+            return accountRepository.findByAccountNumber(accountNumber)
+                .orElseThrow(() -> new AccountNotFoundException("Account not found: " + accountNumber));
+        }
+
+        @Transactional(
+            propagation = Propagation.REQUIRED,
+            isolation = Isolation.REPEATABLE_READ,
+            rollbackFor = {InsufficientFundsException.class, TransactionFailedException.class},
+            timeout = 30
+        )
+        @Retryable(
+            value = {OptimisticLockingException.class},
+            maxAttempts = 3,
+            backoff = @Backoff(delay = 100, multiplier = 2)
+        )
+        public Transaction transfer(String fromAccountNumber, String toAccountNumber, BigDecimal amount) {
+            log.info("Initiating transfer of {} from {} to {}", amount, fromAccountNumber, toAccountNumber);
+
+            if (amount.compareTo(BigDecimal.ZERO) <= 0) {
+                throw new IllegalArgumentException("Transfer amount must be positive");
+            }
+
+            Account fromAccount = getAccountForUpdate(fromAccountNumber);
+            Account toAccount = getAccountForUpdate(toAccountNumber);
+
+            if (fromAccount.getBalance().compareTo(amount) < 0) {
+                throw new InsufficientFundsException("Insufficient funds in account: " + fromAccountNumber);
+            }
+
+            fromAccount.setBalance(fromAccount.getBalance().subtract(amount));
+            toAccount.setBalance(toAccount.getBalance().add(amount));
+
+            accountRepository.save(fromAccount);
+            accountRepository.save(toAccount);
+
+            Transaction transaction = createTransaction(fromAccount, toAccount, amount);
+            transactionRepository.save(transaction);
+
+            eventPublisher.publishEvent(new TransactionEvent(this, transaction));
+
+            log.info("Transfer completed: {}", transaction.getTransactionId());
+            return transaction;
+        }
+
         @Transactional(
             propagation = Propagation.REQUIRED,
             isolation = Isolation.READ_COMMITTED,
             rollbackFor = Exception.class
         )
-        public Order createOrder(Order order) {
-            Order saved = orderRepository.save(order);
-            inventoryService.updateStock(order.getItems());
-            return saved;
+        public Transaction deposit(String accountNumber, BigDecimal amount) {
+            log.info("Depositing {} to account {}", amount, accountNumber);
+
+            if (amount.compareTo(BigDecimal.ZERO) <= 0) {
+                throw new IllegalArgumentException("Deposit amount must be positive");
+            }
+
+            Account account = getAccountForUpdate(accountNumber);
+            account.setBalance(account.getBalance().add(amount));
+            accountRepository.save(account);
+
+            Transaction transaction = createTransaction(null, account, amount);
+            transaction.setType(TransactionType.DEPOSIT);
+            transactionRepository.save(transaction);
+
+            eventPublisher.publishEvent(new TransactionEvent(this, transaction));
+
+            return transaction;
         }
 
-        @Transactional(readOnly = true)
-        public Order getOrder(Long id) {
-            return orderRepository.findById(id).orElse(null);
+        @Transactional(
+            propagation = Propagation.REQUIRED,
+            isolation = Isolation.SERIALIZABLE,
+            rollbackFor = {InsufficientFundsException.class}
+        )
+        public Transaction withdraw(String accountNumber, BigDecimal amount) {
+            log.info("Withdrawing {} from account {}", amount, accountNumber);
+
+            if (amount.compareTo(BigDecimal.ZERO) <= 0) {
+                throw new IllegalArgumentException("Withdrawal amount must be positive");
+            }
+
+            Account account = getAccountForUpdate(accountNumber);
+
+            if (account.getBalance().compareTo(amount) < 0) {
+                throw new InsufficientFundsException("Insufficient funds in account: " + accountNumber);
+            }
+
+            account.setBalance(account.getBalance().subtract(amount));
+            accountRepository.save(account);
+
+            Transaction transaction = createTransaction(account, null, amount);
+            transaction.setType(TransactionType.WITHDRAWAL);
+            transactionRepository.save(transaction);
+
+            eventPublisher.publishEvent(new TransactionEvent(this, transaction));
+
+            return transaction;
+        }
+
+        @Transactional(propagation = Propagation.REQUIRES_NEW)
+        public void logTransactionAttempt(String fromAccount, String toAccount, BigDecimal amount, String status) {
+            log.info("Transaction attempt: {} -> {} amount={} status={}", fromAccount, toAccount, amount, status);
+        }
+
+        private Account getAccountForUpdate(String accountNumber) {
+            return accountRepository.findByAccountNumberForUpdate(accountNumber)
+                .orElseThrow(() -> new AccountNotFoundException("Account not found: " + accountNumber));
+        }
+
+        private Transaction createTransaction(Account from, Account to, BigDecimal amount) {
+            Transaction transaction = new Transaction();
+            transaction.setTransactionId(UUID.randomUUID().toString());
+            transaction.setFromAccount(from);
+            transaction.setToAccount(to);
+            transaction.setAmount(amount);
+            transaction.setType(TransactionType.TRANSFER);
+            transaction.setTimestamp(LocalDateTime.now());
+            return transaction;
+        }
+    }
+  src/main/java/com/banking/service/InsufficientFundsException.java: |
+    package com.banking.service;
+
+    public class InsufficientFundsException extends RuntimeException {
+        public InsufficientFundsException(String message) {
+            super(message);
+        }
+    }
+  src/main/java/com/banking/service/TransactionFailedException.java: |
+    package com.banking.service;
+
+    public class TransactionFailedException extends RuntimeException {
+        public TransactionFailedException(String message) {
+            super(message);
+        }
+    }
+  src/main/java/com/banking/service/OptimisticLockingException.java: |
+    package com.banking.service;
+
+    public class OptimisticLockingException extends RuntimeException {
+        public OptimisticLockingException(String message) {
+            super(message);
         }
     }
 assertions:
   must_include:
-  - '@Transactional'
-  - OrderService
-  - getOrder
+    - '@Transactional'
+    - AccountService
+    - transfer
+    - deposit
+    - withdraw
+    - Propagation.REQUIRED
+    - Propagation.REQUIRES_NEW
+    - Isolation.REPEATABLE_READ
+    - Isolation.SERIALIZABLE
+    - '@Retryable'
+    - '@Backoff'
+    - rollbackFor
+    - InsufficientFundsException
   must_not_include:
-  - garbage_marker_12345
-  - unused_marker_67890
+    - GARBAGE_JAVA_FRAUD_701
+    - GARBAGE_JAVA_ALERT_702
+    - GARBAGE_JAVA_COMPLIANCE_703
+    - GARBAGE_JAVA_REPORT_704
+    - FraudDetectionService
+    - ComplianceReporter
+    - checkTransaction
+    - generateReport
 options:
-  commit_message: Add transaction configuration and getOrder
+  commit_message: Add complete transaction management with retry and events

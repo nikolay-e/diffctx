@@ -1,0 +1,51 @@
+name: terraform_467_cloudfront
+initial:
+  cdn.tf: |
+    # CDN resources
+changed:
+  cdn.tf: |
+    resource "aws_cloudfront_distribution" "main" {
+      enabled             = true
+      is_ipv6_enabled     = true
+      default_root_object = "index.html"
+
+      origin {
+        domain_name = aws_s3_bucket.website.bucket_regional_domain_name
+        origin_id   = "S3-Website"
+
+        s3_origin_config {
+          origin_access_identity = aws_cloudfront_origin_access_identity.main.cloudfront_access_identity_path
+        }
+      }
+
+      default_cache_behavior {
+        allowed_methods  = ["GET", "HEAD"]
+        cached_methods   = ["GET", "HEAD"]
+        target_origin_id = "S3-Website"
+
+        forwarded_values {
+          query_string = false
+          cookies {
+            forward = "none"
+          }
+        }
+
+        viewer_protocol_policy = "redirect-to-https"
+      }
+
+      restrictions {
+        geo_restriction {
+          restriction_type = "none"
+        }
+      }
+
+      viewer_certificate {
+        acm_certificate_arn = aws_acm_certificate.main.arn
+        ssl_support_method  = "sni-only"
+      }
+    }
+assertions:
+  must_include:
+  - cdn.tf
+options:
+  commit_message: Add CloudFront distribution

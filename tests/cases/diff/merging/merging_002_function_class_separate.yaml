@@ -1,0 +1,23 @@
+name: merging_002_function_class_separate
+initial:
+  mixed.py: |
+    def standalone_function():
+        return 1
+
+    class MyClass:
+        def method(self):
+            pass
+changed:
+  mixed.py: |
+    def standalone_function():
+        return 10
+
+    class MyClass:
+        def method(self):
+            return True
+assertions:
+  must_include:
+  - standalone_function
+  - method
+options:
+  commit_message: Change function and class

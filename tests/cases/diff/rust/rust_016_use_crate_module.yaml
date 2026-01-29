@@ -4,6 +4,38 @@ initial:
     pub fn format_string(s: &str) -> String {
         format!("[{}]", s)
     }
+
+    pub fn to_uppercase(s: &str) -> String {
+        s.to_uppercase()
+    }
+
+    pub fn to_lowercase(s: &str) -> String {
+        s.to_lowercase()
+    }
+
+    pub struct StringFormatter {
+        prefix: String,
+        suffix: String,
+    }
+
+    impl StringFormatter {
+        pub fn new(prefix: &str, suffix: &str) -> Self {
+            Self {
+                prefix: prefix.to_string(),
+                suffix: suffix.to_string(),
+            }
+        }
+
+        pub fn format(&self, s: &str) -> String {
+            format!("{}{}{}", self.prefix, s, self.suffix)
+        }
+    }
+
+    impl Default for StringFormatter {
+        fn default() -> Self {
+            Self::new("[", "]")
+        }
+    }
   src/main.rs: |
     mod utils;
 
@@ -12,6 +44,66 @@ initial:
     fn main() {
         let result = format_string("hello");
         println!("{}", result);
+    }
+  src/lib.rs: |
+    pub mod utils;
+    pub mod unrelated;
+  src/unrelated/mod.rs: |
+    pub mod regex;
+    pub mod template;
+  src/unrelated/regex.rs: |
+    // GARBAGE_RUST_REGEX_001
+    pub const GARBAGE_MAX_CAPTURES_002: usize = 100;
+
+    pub struct GarbageRegex003 {
+        pattern: String,
+        flags: u32,
+    }
+
+    impl GarbageRegex003 {
+        pub fn garbage_compile_004(pattern: &str) -> Result<Self, String> {
+            Err("GARBAGE_REGEX_ERROR_005".to_string())
+        }
+
+        pub fn garbage_match_006(&self, text: &str) -> bool {
+            false
+        }
+
+        pub fn garbage_find_all_007(&self, text: &str) -> Vec<&str> {
+            Vec::new()
+        }
+
+        pub fn garbage_replace_008(&self, text: &str, replacement: &str) -> String {
+            text.to_string()
+        }
+    }
+
+    pub trait GarbagePattern009 {
+        fn garbage_matches_010(&self, text: &str) -> bool;
+    }
+  src/unrelated/template.rs: |
+    // GARBAGE_RUST_TEMPLATE_011
+    use std::collections::HashMap;
+
+    pub const GARBAGE_TEMPLATE_DELIM_012: &str = "{{}}";
+
+    pub struct GarbageTemplate013 {
+        source: String,
+        variables: HashMap<String, String>,
+    }
+
+    impl GarbageTemplate013 {
+        pub fn garbage_render_014(&self) -> String {
+            "GARBAGE_RENDERED_015".to_string()
+        }
+
+        pub fn garbage_set_var_016(&mut self, name: &str, value: &str) {
+            self.variables.insert(name.to_string(), value.to_string());
+        }
+
+        pub fn garbage_parse_017(source: &str) -> Result<Self, String> {
+            Err("GARBAGE_TEMPLATE_ERROR_018".to_string())
+        }
     }
 changed:
   src/utils.rs: |
@@ -22,11 +114,105 @@ changed:
     pub fn trim_string(s: &str) -> &str {
         s.trim()
     }
+
+    pub fn to_uppercase(s: &str) -> String {
+        s.to_uppercase()
+    }
+
+    pub fn to_lowercase(s: &str) -> String {
+        s.to_lowercase()
+    }
+
+    pub fn capitalize(s: &str) -> String {
+        let mut chars = s.chars();
+        match chars.next() {
+            None => String::new(),
+            Some(first) => first.to_uppercase().chain(chars).collect(),
+        }
+    }
+
+    pub fn reverse(s: &str) -> String {
+        s.chars().rev().collect()
+    }
+
+    pub fn truncate(s: &str, max_len: usize) -> &str {
+        if s.len() <= max_len {
+            s
+        } else {
+            &s[..max_len]
+        }
+    }
+
+    pub fn pad_left(s: &str, width: usize, pad_char: char) -> String {
+        if s.len() >= width {
+            s.to_string()
+        } else {
+            format!("{}{}", pad_char.to_string().repeat(width - s.len()), s)
+        }
+    }
+
+    pub fn pad_right(s: &str, width: usize, pad_char: char) -> String {
+        if s.len() >= width {
+            s.to_string()
+        } else {
+            format!("{}{}", s, pad_char.to_string().repeat(width - s.len()))
+        }
+    }
+
+    pub struct StringFormatter {
+        prefix: String,
+        suffix: String,
+    }
+
+    impl StringFormatter {
+        pub fn new(prefix: &str, suffix: &str) -> Self {
+            Self {
+                prefix: prefix.to_string(),
+                suffix: suffix.to_string(),
+            }
+        }
+
+        pub fn format(&self, s: &str) -> String {
+            format!("{}{}{}", self.prefix, s, self.suffix)
+        }
+
+        pub fn format_trimmed(&self, s: &str) -> String {
+            self.format(s.trim())
+        }
+    }
+
+    impl Default for StringFormatter {
+        fn default() -> Self {
+            Self::new("[[", "]]")
+        }
+    }
 assertions:
   must_include:
-  - format_string
-  - trim_string
+    - format_string
+    - trim_string
+    - capitalize
+    - reverse
+    - truncate
+    - pad_left
+    - pad_right
   must_not_include:
-  - garbage_unused_symbol
+    - GARBAGE_RUST_REGEX_001
+    - GARBAGE_MAX_CAPTURES_002
+    - GarbageRegex003
+    - garbage_compile_004
+    - GARBAGE_REGEX_ERROR_005
+    - garbage_match_006
+    - garbage_find_all_007
+    - garbage_replace_008
+    - GarbagePattern009
+    - garbage_matches_010
+    - GARBAGE_RUST_TEMPLATE_011
+    - GARBAGE_TEMPLATE_DELIM_012
+    - GarbageTemplate013
+    - garbage_render_014
+    - GARBAGE_RENDERED_015
+    - garbage_set_var_016
+    - garbage_parse_017
+    - GARBAGE_TEMPLATE_ERROR_018
 options:
   commit_message: Update format_string and add trim_string

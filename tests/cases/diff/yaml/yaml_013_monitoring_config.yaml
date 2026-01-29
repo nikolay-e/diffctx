@@ -1,0 +1,24 @@
+name: yaml_013_monitoring_config
+initial:
+  config/monitoring.yaml: |
+    metrics:
+      enabled: true
+      port: 9090
+  src/metrics.py: |
+    from prometheus_client import start_http_server, Counter
+
+    REQUEST_COUNT = Counter("requests_total", "Total requests")
+
+    def start_metrics_server(port: int = 9090):
+        start_http_server(port)
+changed:
+  config/monitoring.yaml: |
+    metrics:
+      enabled: true
+      port: 8080
+      path: /metrics
+assertions:
+  must_include:
+    - start_metrics_server
+options:
+  commit_message: change metrics port

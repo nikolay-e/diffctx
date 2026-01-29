@@ -1,0 +1,23 @@
+name: relations_005_integration_test_covers_endpoint
+initial:
+  api/users.py: |
+    def list_users():
+        return [{"id": 1, "name": "Alice"}]
+  tests/integration/test_api.py: |
+    from api.users import list_users
+
+    def test_list_users_endpoint():
+        users = list_users()
+        assert len(users) == 1
+        assert users[0]["name"] == "Alice"
+changed:
+  api/users.py: |
+    def list_users(page=1, limit=10):
+        users = [{"id": 1, "name": "Alice"}]
+        return users[(page-1)*limit:page*limit]
+assertions:
+  must_include:
+  - users.py
+  - test_api.py
+options:
+  commit_message: Add pagination

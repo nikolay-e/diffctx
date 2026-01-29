@@ -1,0 +1,65 @@
+name: conftest_fixture_002_modification
+initial:
+  src/user_service.py: |
+    class User:
+        def __init__(self, id: int, name: str, email: str):
+            self.id = id
+            self.name = name
+            self.email = email
+
+    class UserService:
+        def __init__(self):
+            self.users = {}
+
+        def create_user(self, name: str, email: str) -> User:
+            user_id = len(self.users) + 1
+            user = User(user_id, name, email)
+            self.users[user_id] = user
+            return user
+
+        def get_user(self, user_id: int) -> User:
+            return self.users.get(user_id)
+  tests/conftest.py: |
+    import pytest
+    from src.user_service import UserService
+
+    @pytest.fixture
+    def user_service():
+        return UserService()
+
+    @pytest.fixture
+    def sample_user(user_service):
+        return user_service.create_user("Test", "test@example.com")
+  tests/test_user_service.py: |
+    def test_create_user(user_service):
+        user = user_service.create_user("John", "john@example.com")
+        assert user.name == "John"
+
+    def test_get_user(user_service, sample_user):
+        retrieved = user_service.get_user(sample_user.id)
+        assert retrieved.name == "Test"
+changed:
+  tests/conftest.py: |
+    import pytest
+    from src.user_service import UserService
+
+    @pytest.fixture
+    def user_service():
+        service = UserService()
+        yield service
+        service.users.clear()
+
+    @pytest.fixture
+    def sample_user(user_service):
+        return user_service.create_user("Test", "test@example.com")
+
+    @pytest.fixture
+    def admin_user(user_service):
+        user = user_service.create_user("Admin", "admin@example.com")
+        user.is_admin = True
+        return user
+assertions:
+  must_include:
+  - conftest
+options:
+  commit_message: Add cleanup to user_service fixture and admin_user fixture

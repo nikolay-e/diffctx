@@ -1,0 +1,17 @@
+name: internals_034_nested_comments_rust_style
+initial:
+  nested.rs: |
+    fn placeholder() {}
+changed:
+  nested.rs: |
+    /* /* nested comment */ */
+    fn process_data() {
+        let result = calculate_value();
+        result
+    }
+assertions:
+  must_include:
+  - process_data
+  - calculate_value
+options:
+  add_garbage: true

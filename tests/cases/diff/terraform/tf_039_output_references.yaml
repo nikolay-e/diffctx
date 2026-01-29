@@ -1,0 +1,24 @@
+name: tf_039_output_references
+initial:
+  outputs.tf: |
+    output "vpc_id" {
+      value = aws_vpc.main.id
+    }
+  main.tf: |
+    resource "aws_vpc" "main" {
+      cidr_block = "10.0.0.0/16"
+    }
+changed:
+  outputs.tf: |
+    output "vpc_id" {
+      value = aws_vpc.main.id
+    }
+
+    output "vpc_cidr" {
+      value = aws_vpc.main.cidr_block
+    }
+assertions:
+  must_include:
+    - aws_vpc
+options:
+  commit_message: add output

@@ -1,82 +1,399 @@
 name: go_034_json_marshaler
 initial:
-  types.go: |
-    package main
+  internal/api/types.go: |
+    package api
 
     import "time"
 
     type Event struct {
+        ID        string
         Name      string
         Timestamp time.Time
-    }
-  api.go: |
-    package main
-
-    import "encoding/json"
-
-    func SerializeEvent(e *Event) ([]byte, error) {
-        return json.Marshal(e)
-    }
-  unrelated/garbage.go: |
-    package unrelated
-
-    func UnusedTypes_12345() {
-        println("garbage_marker_12345")
+        Data      map[string]interface{}
     }
 
-    func UnusedApi_67890() {
-        println("unused_marker_67890")
+    type User struct {
+        ID        int64
+        Email     string
+        Name      string
+        CreatedAt time.Time
+        UpdatedAt time.Time
     }
-changed:
-  types.go: |
-    package main
+
+    type Response struct {
+        Status  int
+        Message string
+        Data    interface{}
+    }
+
+  internal/api/handlers.go: |
+    package api
 
     import (
         "encoding/json"
+        "net/http"
+    )
+
+    func SerializeEvent(w http.ResponseWriter, e *Event) error {
+        return json.NewEncoder(w).Encode(e)
+    }
+
+    func SerializeUser(w http.ResponseWriter, u *User) error {
+        return json.NewEncoder(w).Encode(u)
+    }
+
+    func SerializeResponse(w http.ResponseWriter, r *Response) error {
+        return json.NewEncoder(w).Encode(r)
+    }
+
+  internal/unrelated/auth/oauth.go: |
+    package auth
+
+    import "context"
+
+    const GARBAGE_GO_OAUTH_CLIENT_A1B2C3 = "oauth_garbage_marker"
+
+    type GARBAGE_GO_TYPE_TOKEN_D4E5F6 struct {
+        accessToken  string
+        refreshToken string
+        expiresAt    int64
+    }
+
+    func GARBAGE_GO_FUNC_OAUTH_G7H8I9() string {
+        return "GARBAGE_GO_OAUTH_UNUSED_J0K1L2"
+    }
+
+    type OAuthConfig struct {
+        ClientID     string
+        ClientSecret string
+        RedirectURL  string
+        Scopes       []string
+    }
+
+    func GARBAGE_GO_FUNC_EXCHANGE_TOKEN_M3N4O5(ctx context.Context, code string) (string, error) {
+        println("GARBAGE_GO_OAUTH_OUTPUT_P6Q7R8")
+        return "", nil
+    }
+
+  internal/unrelated/auth/jwt.go: |
+    package auth
+
+    const GARBAGE_GO_JWT_SERVICE_S9T0U1 = "jwt_garbage"
+
+    type GARBAGE_GO_TYPE_JWT_V2W3X4 struct {
+        secret    string
+        algorithm string
+    }
+
+    func GARBAGE_GO_FUNC_JWT_Y5Z6A7() {
+        println("GARBAGE_GO_JWT_OUTPUT_B8C9D0")
+    }
+
+    type JWTConfig struct {
+        Secret          string
+        Algorithm       string
+        ExpirationHours int
+    }
+
+    func GARBAGE_GO_FUNC_JWT_VERIFY_E1F2G3(token string) (bool, error) {
+        return false, nil
+    }
+
+  internal/unrelated/auth/saml.go: |
+    package auth
+
+    const GARBAGE_GO_SAML_SERVICE_H4I5J6 = "saml_garbage"
+
+    type GARBAGE_GO_TYPE_SAML_K7L8M9 struct {
+        idpURL      string
+        certificate string
+    }
+
+    func GARBAGE_GO_FUNC_SAML_N0O1P2() {
+        println("GARBAGE_GO_SAML_OUTPUT_Q3R4S5")
+    }
+
+changed:
+  internal/api/types.go: |
+    package api
+
+    import (
+        "encoding/json"
+        "fmt"
+        "strconv"
+        "strings"
         "time"
     )
 
+    const (
+        TimeFormatRFC3339     = time.RFC3339
+        TimeFormatUnix        = "unix"
+        TimeFormatUnixMilli   = "unix_milli"
+        TimeFormatCustom      = "2006-01-02 15:04:05"
+    )
+
+    type Timestamp struct {
+        time.Time
+        Format string
+    }
+
+    func NewTimestamp(t time.Time) Timestamp {
+        return Timestamp{Time: t, Format: TimeFormatRFC3339}
+    }
+
+    func (t Timestamp) MarshalJSON() ([]byte, error) {
+        switch t.Format {
+        case TimeFormatUnix:
+            return json.Marshal(t.Unix())
+        case TimeFormatUnixMilli:
+            return json.Marshal(t.UnixMilli())
+        case TimeFormatCustom:
+            return json.Marshal(t.Time.Format(TimeFormatCustom))
+        default:
+            return json.Marshal(t.Time.Format(time.RFC3339))
+        }
+    }
+
+    func (t *Timestamp) UnmarshalJSON(data []byte) error {
+        str := strings.Trim(string(data), "\"")
+
+        if unix, err := strconv.ParseInt(str, 10, 64); err == nil {
+            if unix > 1e12 {
+                t.Time = time.UnixMilli(unix)
+            } else {
+                t.Time = time.Unix(unix, 0)
+            }
+            return nil
+        }
+
+        for _, format := range []string{time.RFC3339, time.RFC3339Nano, TimeFormatCustom} {
+            if parsed, err := time.Parse(format, str); err == nil {
+                t.Time = parsed
+                return nil
+            }
+        }
+
+        return fmt.Errorf("cannot parse timestamp: %s", str)
+    }
+
+    type Duration struct {
+        time.Duration
+    }
+
+    func (d Duration) MarshalJSON() ([]byte, error) {
+        return json.Marshal(d.String())
+    }
+
+    func (d *Duration) UnmarshalJSON(data []byte) error {
+        str := strings.Trim(string(data), "\"")
+
+        if ms, err := strconv.ParseInt(str, 10, 64); err == nil {
+            d.Duration = time.Duration(ms) * time.Millisecond
+            return nil
+        }
+
+        parsed, err := time.ParseDuration(str)
+        if err != nil {
+            return err
+        }
+        d.Duration = parsed
+        return nil
+    }
+
     type Event struct {
-        Name      string
-        Timestamp time.Time
+        ID        string                 `json:"id"`
+        Name      string                 `json:"name"`
+        Type      string                 `json:"type,omitempty"`
+        Source    string                 `json:"source,omitempty"`
+        Timestamp Timestamp              `json:"timestamp"`
+        Data      map[string]interface{} `json:"data,omitempty"`
+        Metadata  map[string]string      `json:"metadata,omitempty"`
     }
 
     func (e Event) MarshalJSON() ([]byte, error) {
         type Alias Event
         return json.Marshal(&struct {
             Alias
-            Timestamp string `json:"timestamp"`
+            TimestampISO string `json:"timestamp_iso"`
+            TimestampMS  int64  `json:"timestamp_ms"`
         }{
-            Alias:     Alias(e),
-            Timestamp: e.Timestamp.Format(time.RFC3339),
+            Alias:        Alias(e),
+            TimestampISO: e.Timestamp.Format(time.RFC3339),
+            TimestampMS:  e.Timestamp.UnixMilli(),
         })
     }
 
-    func (e *Event) UnmarshalJSON(data []byte) error {
-        type Alias Event
-        aux := &struct {
-            *Alias
-            Timestamp string `json:"timestamp"`
-        }{
-            Alias: (*Alias)(e),
+    type SensitiveString string
+
+    func (s SensitiveString) MarshalJSON() ([]byte, error) {
+        if len(s) <= 4 {
+            return json.Marshal("****")
         }
-        if err := json.Unmarshal(data, &aux); err != nil {
-            return err
-        }
-        t, err := time.Parse(time.RFC3339, aux.Timestamp)
-        if err != nil {
-            return err
-        }
-        e.Timestamp = t
-        return nil
+        masked := string(s[:2]) + strings.Repeat("*", len(s)-4) + string(s[len(s)-2:])
+        return json.Marshal(masked)
     }
+
+    func (s SensitiveString) String() string {
+        if len(s) <= 4 {
+            return "****"
+        }
+        return string(s[:2]) + strings.Repeat("*", len(s)-4) + string(s[len(s)-2:])
+    }
+
+    type User struct {
+        ID           int64           `json:"id"`
+        Email        SensitiveString `json:"email"`
+        Name         string          `json:"name"`
+        PasswordHash string          `json:"-"`
+        APIKey       SensitiveString `json:"api_key,omitempty"`
+        CreatedAt    Timestamp       `json:"created_at"`
+        UpdatedAt    Timestamp       `json:"updated_at"`
+        LastLoginAt  *Timestamp      `json:"last_login_at,omitempty"`
+    }
+
+    func (u User) MarshalJSON() ([]byte, error) {
+        type Alias User
+        return json.Marshal(&struct {
+            Alias
+            CreatedAtUnix  int64 `json:"created_at_unix"`
+            UpdatedAtUnix  int64 `json:"updated_at_unix"`
+        }{
+            Alias:          Alias(u),
+            CreatedAtUnix:  u.CreatedAt.Unix(),
+            UpdatedAtUnix:  u.UpdatedAt.Unix(),
+        })
+    }
+
+    type NullableInt struct {
+        Value int64
+        Valid bool
+    }
+
+    func (n NullableInt) MarshalJSON() ([]byte, error) {
+        if !n.Valid {
+            return []byte("null"), nil
+        }
+        return json.Marshal(n.Value)
+    }
+
+    func (n *NullableInt) UnmarshalJSON(data []byte) error {
+        if string(data) == "null" {
+            n.Valid = false
+            return nil
+        }
+        n.Valid = true
+        return json.Unmarshal(data, &n.Value)
+    }
+
+    type ResponseStatus string
+
+    const (
+        StatusSuccess ResponseStatus = "success"
+        StatusError   ResponseStatus = "error"
+        StatusPartial ResponseStatus = "partial"
+    )
+
+    type Response struct {
+        Status     ResponseStatus `json:"status"`
+        StatusCode int            `json:"status_code"`
+        Message    string         `json:"message,omitempty"`
+        Data       interface{}    `json:"data,omitempty"`
+        Errors     []ErrorDetail  `json:"errors,omitempty"`
+        Meta       *ResponseMeta  `json:"meta,omitempty"`
+        Timestamp  Timestamp      `json:"timestamp"`
+    }
+
+    type ErrorDetail struct {
+        Field   string `json:"field,omitempty"`
+        Code    string `json:"code"`
+        Message string `json:"message"`
+    }
+
+    type ResponseMeta struct {
+        RequestID  string   `json:"request_id,omitempty"`
+        Page       int      `json:"page,omitempty"`
+        PerPage    int      `json:"per_page,omitempty"`
+        Total      int      `json:"total,omitempty"`
+        TotalPages int      `json:"total_pages,omitempty"`
+        Duration   Duration `json:"duration,omitempty"`
+    }
+
+    func NewSuccessResponse(data interface{}) Response {
+        return Response{
+            Status:     StatusSuccess,
+            StatusCode: 200,
+            Data:       data,
+            Timestamp:  NewTimestamp(time.Now()),
+        }
+    }
+
+    func NewErrorResponse(code int, message string, errors ...ErrorDetail) Response {
+        return Response{
+            Status:     StatusError,
+            StatusCode: code,
+            Message:    message,
+            Errors:     errors,
+            Timestamp:  NewTimestamp(time.Now()),
+        }
+    }
+
+    func NewPaginatedResponse(data interface{}, page, perPage, total int) Response {
+        totalPages := (total + perPage - 1) / perPage
+        return Response{
+            Status:     StatusSuccess,
+            StatusCode: 200,
+            Data:       data,
+            Meta: &ResponseMeta{
+                Page:       page,
+                PerPage:    perPage,
+                Total:      total,
+                TotalPages: totalPages,
+            },
+            Timestamp: NewTimestamp(time.Now()),
+        }
+    }
+
 assertions:
   must_include:
-  - MarshalJSON
-  - UnmarshalJSON
-  - Event
+    - Timestamp
+    - Duration
+    - Event
+    - User
+    - Response
+    - SensitiveString
+    - NullableInt
+    - ResponseMeta
+    - ErrorDetail
+    - "func (t Timestamp) MarshalJSON()"
+    - "func (t *Timestamp) UnmarshalJSON(data []byte)"
+    - "func (d Duration) MarshalJSON()"
+    - "func (d *Duration) UnmarshalJSON(data []byte)"
+    - "func (e Event) MarshalJSON()"
+    - "func (u User) MarshalJSON()"
+    - "func (s SensitiveString) MarshalJSON()"
+    - "func (n NullableInt) MarshalJSON()"
+    - NewSuccessResponse
+    - NewErrorResponse
+    - NewPaginatedResponse
   must_not_include:
-  - garbage_marker_12345
-  - unused_marker_67890
+    - GARBAGE_GO_OAUTH_CLIENT_A1B2C3
+    - GARBAGE_GO_TYPE_TOKEN_D4E5F6
+    - GARBAGE_GO_FUNC_OAUTH_G7H8I9
+    - GARBAGE_GO_OAUTH_UNUSED_J0K1L2
+    - GARBAGE_GO_FUNC_EXCHANGE_TOKEN_M3N4O5
+    - GARBAGE_GO_OAUTH_OUTPUT_P6Q7R8
+    - GARBAGE_GO_JWT_SERVICE_S9T0U1
+    - GARBAGE_GO_TYPE_JWT_V2W3X4
+    - GARBAGE_GO_FUNC_JWT_Y5Z6A7
+    - GARBAGE_GO_JWT_OUTPUT_B8C9D0
+    - GARBAGE_GO_FUNC_JWT_VERIFY_E1F2G3
+    - GARBAGE_GO_SAML_SERVICE_H4I5J6
+    - GARBAGE_GO_TYPE_SAML_K7L8M9
+    - GARBAGE_GO_FUNC_SAML_N0O1P2
+    - GARBAGE_GO_SAML_OUTPUT_Q3R4S5
+    - oauth
+    - jwt
+    - saml
+
 options:
-  commit_message: Add custom JSON marshaling
+  commit_message: Add comprehensive JSON marshaling for Timestamp, Duration, SensitiveString, and Response types

@@ -1,0 +1,151 @@
+name: ts_003_generic_repository_pattern
+initial:
+  src/database/connection.ts: |
+    export interface DatabaseConfig {
+      host: string;
+      port: number;
+      database: string;
+      poolSize: number;
+    }
+
+    export interface QueryResult<T> {
+      rows: T[];
+      rowCount: number;
+    }
+
+    export interface DatabaseConnection {
+      query<T>(sql: string, params?: unknown[]): Promise<QueryResult<T>>;
+      close(): Promise<void>;
+    }
+
+    export class PostgresConnection implements DatabaseConnection {
+      constructor(private config: DatabaseConfig) {}
+
+      async query<T>(sql: string, params?: unknown[]): Promise<QueryResult<T>> {
+        console.log('Executing:', sql, params);
+        return { rows: [], rowCount: 0 };
+      }
+
+      async close(): Promise<void> {
+        console.log('Connection closed');
+      }
+    }
+
+  src/types/entity.ts: |
+    export interface BaseEntity {
+      id: string;
+      createdAt: Date;
+      updatedAt: Date;
+    }
+
+    export interface User extends BaseEntity {
+      email: string;
+      name: string;
+      role: 'admin' | 'user';
+    }
+
+    export interface Post extends BaseEntity {
+      title: string;
+      content: string;
+      authorId: string;
+      published: boolean;
+    }
+
+  src/repositories/userRepository.ts: |
+    console.log('placeholder');
+
+  vendor/cache-lib/index.ts: |
+    // GARBAGE_TS_003_CACHE_001 - third party caching library
+    export const GARBAGE_TS_003_VERSION_002 = "2.0.0";
+
+    export function GARBAGE_TS_003_createCache_003(): void {
+      console.log('GARBAGE_TS_003_CREATING_004');
+    }
+
+  docs/api/metrics.md: |
+    # Metrics API
+    GARBAGE_TS_003_METRICS_005 documentation
+    Use GARBAGE_TS_003_COLLECTOR_006 for monitoring.
+
+changed:
+  src/repositories/userRepository.ts: |
+    import { DatabaseConnection, QueryResult } from '../database/connection';
+    import { User, BaseEntity } from '../types/entity';
+
+    export interface Repository<T extends BaseEntity> {
+      findById(id: string): Promise<T | null>;
+      findAll(): Promise<T[]>;
+      create(data: Omit<T, keyof BaseEntity>): Promise<T>;
+      update(id: string, data: Partial<Omit<T, keyof BaseEntity>>): Promise<T | null>;
+      delete(id: string): Promise<boolean>;
+    }
+
+    export class UserRepository implements Repository<User> {
+      constructor(private connection: DatabaseConnection) {}
+
+      async findById(id: string): Promise<User | null> {
+        const result = await this.connection.query<User>(
+          'SELECT * FROM users WHERE id = $1',
+          [id]
+        );
+        return result.rows[0] || null;
+      }
+
+      async findAll(): Promise<User[]> {
+        const result = await this.connection.query<User>('SELECT * FROM users');
+        return result.rows;
+      }
+
+      async create(data: Omit<User, keyof BaseEntity>): Promise<User> {
+        const result = await this.connection.query<User>(
+          'INSERT INTO users (email, name, role) VALUES ($1, $2, $3) RETURNING *',
+          [data.email, data.name, data.role]
+        );
+        return result.rows[0];
+      }
+
+      async update(id: string, data: Partial<Omit<User, keyof BaseEntity>>): Promise<User | null> {
+        const result = await this.connection.query<User>(
+          'UPDATE users SET email = COALESCE($2, email), name = COALESCE($3, name) WHERE id = $1 RETURNING *',
+          [id, data.email, data.name]
+        );
+        return result.rows[0] || null;
+      }
+
+      async delete(id: string): Promise<boolean> {
+        const result = await this.connection.query(
+          'DELETE FROM users WHERE id = $1',
+          [id]
+        );
+        return result.rowCount > 0;
+      }
+
+      async findByEmail(email: string): Promise<User | null> {
+        const result = await this.connection.query<User>(
+          'SELECT * FROM users WHERE email = $1',
+          [email]
+        );
+        return result.rows[0] || null;
+      }
+    }
+
+assertions:
+  must_include:
+    - UserRepository
+    - Repository
+    - DatabaseConnection
+    - User
+    - BaseEntity
+    - findById
+    - findAll
+    - src/repositories/userRepository.ts
+  must_not_include:
+    - GARBAGE_TS_003_CACHE_001
+    - GARBAGE_TS_003_VERSION_002
+    - GARBAGE_TS_003_createCache_003
+    - GARBAGE_TS_003_CREATING_004
+    - GARBAGE_TS_003_METRICS_005
+    - GARBAGE_TS_003_COLLECTOR_006
+
+options:
+  commit_message: Add generic repository pattern with UserRepository

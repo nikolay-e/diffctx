@@ -1,40 +1,195 @@
 name: python_002_property_changed
 initial:
   user.py: |
+    from typing import Optional, List
+    from datetime import datetime, date
+    from enum import Enum
+
+    class UserRole(Enum):
+        ADMIN = "admin"
+        MODERATOR = "moderator"
+        USER = "user"
+        GUEST = "guest"
+
     class User:
-        def __init__(self, first, last):
+        def __init__(self, first: str, last: str, email: str = "", role: UserRole = UserRole.USER):
             self.first = first
             self.last = last
+            self.email = email
+            self.role = role
+            self.created_at = datetime.now()
+            self._last_login: Optional[datetime] = None
+            self._failed_attempts = 0
 
         @property
-        def full_name(self):
+        def full_name(self) -> str:
             return f"{self.first} {self.last}"
-  views.py: |
-    from user import User
 
-    def render_user(user):
-        return f"Name: {user.full_name}"
-  garbage_file.py: |
-    garbage_marker_12345 = True
-    unused_marker_67890 = False
+        @property
+        def is_admin(self) -> bool:
+            return self.role == UserRole.ADMIN
+
+        @property
+        def last_login(self) -> Optional[datetime]:
+            return self._last_login
+
+        @last_login.setter
+        def last_login(self, value: datetime) -> None:
+            self._last_login = value
+            self._failed_attempts = 0
+
+        def record_failed_login(self) -> None:
+            self._failed_attempts += 1
+
+        def is_locked(self) -> bool:
+            return self._failed_attempts >= 5
+
+        def has_permission(self, permission: str) -> bool:
+            admin_permissions = ["delete", "ban", "edit_all"]
+            if permission in admin_permissions:
+                return self.is_admin
+            return True
+
+  views.py: |
+    from user import User, UserRole
+
+    class UserView:
+        def __init__(self, template_engine):
+            self.template_engine = template_engine
+
+        def render_user(self, user: User) -> str:
+            return f"Name: {user.full_name}"
+
+        def render_user_card(self, user: User) -> str:
+            role_badge = self._get_role_badge(user.role)
+            return f"<div class='user-card'><h2>{user.full_name}</h2>{role_badge}</div>"
+
+        def render_user_list(self, users: List[User]) -> str:
+            items = [f"<li>{u.full_name}</li>" for u in users]
+            return f"<ul>{''.join(items)}</ul>"
+
+        def _get_role_badge(self, role: UserRole) -> str:
+            badges = {
+                UserRole.ADMIN: "<span class='badge admin'>Admin</span>",
+                UserRole.MODERATOR: "<span class='badge mod'>Mod</span>",
+                UserRole.USER: "",
+                UserRole.GUEST: "<span class='badge guest'>Guest</span>",
+            }
+            return badges.get(role, "")
+
+  garbage_payment.py: |
+    GARBAGE_MARKER_PAYMENT_001 = "payment garbage marker"
+    UNRELATED_PAYMENT_CONST_002 = 99.99
+
+    class PaymentProcessor:
+        GARBAGE_PROCESSOR_MARKER_003 = "processor marker"
+
+        def __init__(self, api_key: str):
+            self.api_key = api_key
+
+        def charge(self, amount: float, card_token: str) -> dict:
+            return {"success": True, "transaction_id": "tx_123"}
+
+        def refund(self, transaction_id: str) -> bool:
+            return True
+
+    class StripeGateway:
+        GARBAGE_STRIPE_MARKER_004 = "stripe marker"
+
+        def create_customer(self, email: str) -> str:
+            return "cus_abc123"
+
+  garbage_inventory.py: |
+    GARBAGE_MARKER_INVENTORY_005 = "inventory garbage"
+    UNRELATED_STOCK_CONSTANT_006 = 1000
+
+    class InventoryManager:
+        GARBAGE_INVENTORY_CLASS_007 = True
+
+        def check_stock(self, product_id: int) -> int:
+            return 50
+
+        def reserve_stock(self, product_id: int, quantity: int) -> bool:
+            return True
+
+        def release_stock(self, product_id: int, quantity: int) -> None:
+            pass
+
+    def calculate_reorder_point(daily_sales: float, lead_time: int) -> float:
+        GARBAGE_REORDER_MARKER_008 = "local garbage"
+        return daily_sales * lead_time * 1.5
+
 changed:
   user.py: |
+    from typing import Optional, List
+    from datetime import datetime, date
+    from enum import Enum
+
+    class UserRole(Enum):
+        ADMIN = "admin"
+        MODERATOR = "moderator"
+        USER = "user"
+        GUEST = "guest"
+
     class User:
-        def __init__(self, first, last, title=None):
+        def __init__(self, first: str, last: str, email: str = "", role: UserRole = UserRole.USER, title: Optional[str] = None):
             self.first = first
             self.last = last
+            self.email = email
+            self.role = role
             self.title = title
+            self.created_at = datetime.now()
+            self._last_login: Optional[datetime] = None
+            self._failed_attempts = 0
 
         @property
-        def full_name(self):
+        def full_name(self) -> str:
             if self.title:
                 return f"{self.title} {self.first} {self.last}"
             return f"{self.first} {self.last}"
+
+        @property
+        def is_admin(self) -> bool:
+            return self.role == UserRole.ADMIN
+
+        @property
+        def last_login(self) -> Optional[datetime]:
+            return self._last_login
+
+        @last_login.setter
+        def last_login(self, value: datetime) -> None:
+            self._last_login = value
+            self._failed_attempts = 0
+
+        def record_failed_login(self) -> None:
+            self._failed_attempts += 1
+
+        def is_locked(self) -> bool:
+            return self._failed_attempts >= 5
+
+        def has_permission(self, permission: str) -> bool:
+            admin_permissions = ["delete", "ban", "edit_all"]
+            if permission in admin_permissions:
+                return self.is_admin
+            return True
+
 assertions:
   must_include:
-  - '@property'
-  - full_name
-  - title
+    - "@property"
+    - full_name
+    - title
   must_not_include:
-  - garbage_marker_12345
-  - unused_marker_67890
+    - GARBAGE_MARKER_PAYMENT_001
+    - UNRELATED_PAYMENT_CONST_002
+    - GARBAGE_PROCESSOR_MARKER_003
+    - GARBAGE_STRIPE_MARKER_004
+    - GARBAGE_MARKER_INVENTORY_005
+    - UNRELATED_STOCK_CONSTANT_006
+    - GARBAGE_INVENTORY_CLASS_007
+    - GARBAGE_REORDER_MARKER_008
+    - PaymentProcessor
+    - StripeGateway
+    - InventoryManager
+    - calculate_reorder_point
+    - garbage_payment.py
+    - garbage_inventory.py

@@ -1,0 +1,16 @@
+name: internals_011_mixed_script_in_comments
+initial:
+  mixed_script.py: |
+    def placeholder():
+        pass
+changed:
+  mixed_script.py: |
+    # This function handles データ処理
+    def process_data():
+        # Возвращает результат
+        return {"status": "ok"}
+assertions:
+  must_include:
+  - process_data
+options:
+  add_garbage: true

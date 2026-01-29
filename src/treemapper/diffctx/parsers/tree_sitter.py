@@ -13,7 +13,18 @@ _TREE_SITTER_LANGS = TREE_SITTER_LANGUAGES
 _DEFINITION_NODE_TYPES = {
     "python": {"function_definition", "class_definition", "decorated_definition"},
     "javascript": {"function_declaration", "class_declaration", "method_definition", "arrow_function", "variable_declarator"},
+    "jsx": {"function_declaration", "class_declaration", "method_definition", "arrow_function", "variable_declarator"},
     "typescript": {
+        "function_declaration",
+        "class_declaration",
+        "method_definition",
+        "arrow_function",
+        "interface_declaration",
+        "type_alias_declaration",
+        "enum_declaration",
+        "variable_declarator",
+    },
+    "tsx": {
         "function_declaration",
         "class_declaration",
         "method_definition",
@@ -69,7 +80,9 @@ _MAX_RECURSION_DEPTH = 500
 _LANG_MODULES = {
     "python": "tree_sitter_python",
     "javascript": "tree_sitter_javascript",
+    "jsx": "tree_sitter_javascript",
     "typescript": "tree_sitter_typescript",
+    "tsx": "tree_sitter_typescript",
     "go": "tree_sitter_go",
     "rust": "tree_sitter_rust",
     "java": "tree_sitter_java",
@@ -98,15 +111,20 @@ class TreeSitterStrategy:
         module_name = _LANG_MODULES[lang]
         ts_lang_module = importlib.import_module(module_name)
 
-        if lang == "typescript":
+        if lang == "tsx":
             ts_lang = ts_lang_module.language_tsx()
+        elif lang == "typescript":
+            ts_lang = ts_lang_module.language_typescript()
         elif hasattr(ts_lang_module, "language"):
             ts_lang = ts_lang_module.language()
         else:
             ts_lang = ts_lang_module
 
         parser = Parser()
-        parser.language = Language(ts_lang)
+        if isinstance(ts_lang, Language):
+            parser.language = ts_lang
+        else:
+            parser.language = Language(ts_lang)
         self._parsers[lang] = parser
         return parser
 

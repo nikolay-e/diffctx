@@ -1,0 +1,32 @@
+name: cicd_086_github_workflow_script
+initial:
+  .github/workflows/ci.yml: |
+    name: CI
+    on: [push]
+    jobs:
+      build:
+        runs-on: ubuntu-latest
+        steps:
+          - uses: actions/checkout@v4
+          - run: npm run build
+  src/build.ts: |
+    export function build() {
+      console.log("Building application");
+    }
+changed:
+  .github/workflows/ci.yml: |
+    name: CI
+    on: [push, pull_request]
+    jobs:
+      build:
+        runs-on: ubuntu-latest
+        steps:
+          - uses: actions/checkout@v4
+          - run: npm ci
+          - run: npm run build
+          - run: npm test
+assertions:
+  must_include:
+    - build
+options:
+  commit_message: add test step

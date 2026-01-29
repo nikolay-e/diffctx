@@ -1,9 +1,33 @@
 name: cpp_267_variadic_template
 initial:
-  logger.h: |
+  include/logging/logger.hpp: |
     #pragma once
     #include <iostream>
     #include <sstream>
+    #include <string>
+    #include <chrono>
+    #include <iomanip>
+
+    namespace app::logging {
+
+    enum class LogLevel {
+        Debug,
+        Info,
+        Warning,
+        Error,
+        Fatal
+    };
+
+    inline const char* levelToString(LogLevel level) {
+        switch (level) {
+            case LogLevel::Debug: return "DEBUG";
+            case LogLevel::Info: return "INFO";
+            case LogLevel::Warning: return "WARN";
+            case LogLevel::Error: return "ERROR";
+            case LogLevel::Fatal: return "FATAL";
+        }
+        return "UNKNOWN";
+    }
 
     template<typename... Args>
     void log(Args... args) {
@@ -11,24 +35,333 @@ initial:
         ((oss << args << " "), ...);
         std::cout << oss.str() << std::endl;
     }
-    // unused_marker_67890
-  app.cpp: |
+
+    template<typename... Args>
+    void logWithLevel(LogLevel level, Args... args) {
+        auto now = std::chrono::system_clock::now();
+        auto time = std::chrono::system_clock::to_time_t(now);
+
+        std::ostringstream oss;
+        oss << "[" << std::put_time(std::localtime(&time), "%H:%M:%S") << "] ";
+        oss << "[" << levelToString(level) << "] ";
+        ((oss << args << " "), ...);
+        std::cout << oss.str() << std::endl;
+    }
+
+    template<typename... Args>
+    std::string format(const char* fmt, Args... args) {
+        std::ostringstream oss;
+        formatImpl(oss, fmt, args...);
+        return oss.str();
+    }
+
+    inline void formatImpl(std::ostringstream& oss, const char* fmt) {
+        oss << fmt;
+    }
+
+    template<typename T, typename... Args>
+    void formatImpl(std::ostringstream& oss, const char* fmt, T value, Args... args) {
+        while (*fmt) {
+            if (*fmt == '{' && *(fmt + 1) == '}') {
+                oss << value;
+                formatImpl(oss, fmt + 2, args...);
+                return;
+            }
+            oss << *fmt++;
+        }
+    }
+
+    template<typename... Args>
+    size_t countArgs(Args...) {
+        return sizeof...(Args);
+    }
+
+    }
+
+  include/unrelated/video_encoder.hpp: |
+    #pragma once
+    // GARBAGE_CPP_VIDEO_267_001
+    #define GARBAGE_CPP_VIDEO_CODEC_267_002 "h264"
+
+    namespace app::unrelated::video {
+
+    // GARBAGE_CPP_VIDEO_FRAME_267_003
+    struct VideoFrame {
+        unsigned char* data;
+        int width;
+        int height;
+        // GARBAGE_CPP_VIDEO_TIMESTAMP_267_004
+        long timestamp;
+    };
+
+    // GARBAGE_CPP_VIDEO_ENCODER_267_005
+    class VideoEncoder {
+    public:
+        // GARBAGE_CPP_VIDEO_INIT_267_006
+        bool initialize(int width, int height, int bitrate) {
+            // GARBAGE_CPP_VIDEO_INIT_IMPL_267_007
+            return false;
+        }
+
+        // GARBAGE_CPP_VIDEO_ENCODE_267_008
+        size_t encode(const VideoFrame& frame, unsigned char* output) {
+            // GARBAGE_CPP_VIDEO_ENCODE_IMPL_267_009
+            return 0;
+        }
+
+        // GARBAGE_CPP_VIDEO_FLUSH_267_010
+        void flush() {
+            // GARBAGE_CPP_VIDEO_FLUSH_IMPL_267_011
+        }
+    };
+
+    }
+
+  src/unrelated/midi_controller.cpp: |
+    // GARBAGE_CPP_MIDI_267_012
+    #include <cstdint>
+
+    namespace app::unrelated::midi {
+
+    // GARBAGE_CPP_MIDI_MSG_267_013
+    struct MidiMessage {
+        uint8_t status;
+        uint8_t data1;
+        uint8_t data2;
+        // GARBAGE_CPP_MIDI_TIME_267_014
+    };
+
+    // GARBAGE_CPP_MIDI_CONTROLLER_267_015
+    class MidiController {
+    public:
+        // GARBAGE_CPP_MIDI_SEND_267_016
+        void sendMessage(const MidiMessage& msg) {
+            // GARBAGE_CPP_MIDI_SEND_IMPL_267_017
+        }
+
+        // GARBAGE_CPP_MIDI_RECEIVE_267_018
+        MidiMessage receiveMessage() {
+            // GARBAGE_CPP_MIDI_RECV_IMPL_267_019
+            return MidiMessage{};
+        }
+
+        // GARBAGE_CPP_MIDI_CONNECT_267_020
+        bool connect(const char* device) {
+            // GARBAGE_CPP_MIDI_CONN_IMPL_267_021
+            return false;
+        }
+    };
+
+    }
+
+  src/app.cpp: |
     #include <iostream>
     int main() { return 0; }
-changed:
-  app.cpp: |
-    #include "logger.h"
 
-    void process() {
-        log("Starting", "process", 42, 3.14);
-        log("Done");
+changed:
+  src/app.cpp: |
+    #include "logging/logger.hpp"
+    #include <vector>
+    #include <string>
+    #include <functional>
+    #include <tuple>
+
+    namespace app::application {
+
+    class Logger {
+    public:
+        template<typename... Args>
+        void debug(Args... args) {
+            logging::logWithLevel(logging::LogLevel::Debug, args...);
+        }
+
+        template<typename... Args>
+        void info(Args... args) {
+            logging::logWithLevel(logging::LogLevel::Info, args...);
+        }
+
+        template<typename... Args>
+        void warning(Args... args) {
+            logging::logWithLevel(logging::LogLevel::Warning, args...);
+        }
+
+        template<typename... Args>
+        void error(Args... args) {
+            logging::logWithLevel(logging::LogLevel::Error, args...);
+        }
+
+        template<typename... Args>
+        std::string formatMessage(const char* fmt, Args... args) {
+            return logging::format(fmt, args...);
+        }
+    };
+
+    template<typename... Args>
+    class EventEmitter {
+    public:
+        using Callback = std::function<void(Args...)>;
+
+        void subscribe(Callback callback) {
+            callbacks_.push_back(callback);
+        }
+
+        void emit(Args... args) {
+            for (auto& callback : callbacks_) {
+                callback(args...);
+            }
+        }
+
+        size_t subscriberCount() const {
+            return callbacks_.size();
+        }
+
+    private:
+        std::vector<Callback> callbacks_;
+    };
+
+    template<typename... Types>
+    class TypePrinter {
+    public:
+        static void printTypes() {
+            std::cout << "Number of types: " << sizeof...(Types) << "\n";
+            printTypesImpl<Types...>();
+        }
+
+    private:
+        template<typename First, typename... Rest>
+        static void printTypesImpl() {
+            std::cout << "  Type: " << typeid(First).name() << "\n";
+            if constexpr (sizeof...(Rest) > 0) {
+                printTypesImpl<Rest...>();
+            }
+        }
+    };
+
+    template<typename... Args>
+    auto makeTuple(Args... args) {
+        return std::make_tuple(args...);
     }
+
+    template<typename Func, typename... Args>
+    auto invoke(Func func, Args... args) {
+        return func(args...);
+    }
+
+    class MessageBuilder {
+    public:
+        template<typename... Args>
+        std::string build(Args... args) {
+            std::ostringstream oss;
+            appendAll(oss, args...);
+            return oss.str();
+        }
+
+    private:
+        void appendAll(std::ostringstream& oss) {}
+
+        template<typename T, typename... Rest>
+        void appendAll(std::ostringstream& oss, const T& first, Rest... rest) {
+            oss << first;
+            if constexpr (sizeof...(rest) > 0) {
+                oss << ", ";
+                appendAll(oss, rest...);
+            }
+        }
+    };
+
+    class CommandExecutor {
+    public:
+        template<typename Func, typename... Args>
+        void execute(const std::string& name, Func func, Args... args) {
+            std::cout << "Executing command: " << name << "\n";
+            std::cout << "Argument count: " << logging::countArgs(args...) << "\n";
+            func(args...);
+        }
+    };
+
+    }
+
+    int main() {
+        app::application::Logger logger;
+
+        logger.info("Application", "started", "successfully");
+        logger.debug("Processing", 42, "items");
+        logger.warning("Memory usage:", 85, "%");
+        logger.error("Failed to connect to", "database");
+
+        std::cout << "\n";
+        std::string formatted = logger.formatMessage("User {} logged in from {}", "Alice", "192.168.1.1");
+        std::cout << "Formatted: " << formatted << "\n";
+
+        std::cout << "\n=== Event Emitter ===\n";
+        app::application::EventEmitter<std::string, int> emitter;
+
+        emitter.subscribe([&logger](const std::string& msg, int code) {
+            logger.info("Event received:", msg, "code:", code);
+        });
+
+        emitter.subscribe([](const std::string& msg, int code) {
+            std::cout << "Handler 2: " << msg << " (" << code << ")\n";
+        });
+
+        emitter.emit("UserLogin", 200);
+        emitter.emit("DataUpdate", 100);
+
+        std::cout << "Subscriber count: " << emitter.subscriberCount() << "\n";
+
+        std::cout << "\n=== Type Printer ===\n";
+        app::application::TypePrinter<int, double, std::string, bool>::printTypes();
+
+        std::cout << "\n=== Tuple ===\n";
+        auto tuple = app::application::makeTuple(1, 2.5, "hello", true);
+        std::cout << "Tuple element 0: " << std::get<0>(tuple) << "\n";
+        std::cout << "Tuple element 2: " << std::get<2>(tuple) << "\n";
+
+        std::cout << "\n=== Message Builder ===\n";
+        app::application::MessageBuilder builder;
+        std::cout << "Message: " << builder.build("Name", 42, 3.14, "end") << "\n";
+
+        std::cout << "\n=== Command Executor ===\n";
+        app::application::CommandExecutor executor;
+        executor.execute("PrintSum", [](int a, int b, int c) {
+            std::cout << "Sum: " << (a + b + c) << "\n";
+        }, 10, 20, 30);
+
+        logging::log("Direct", "variadic", "log", 123, 45.6);
+
+        return 0;
+    }
+
 assertions:
   must_include:
-  - process
-  - log
+    - variadic
+    - log
+    - Logger
+    - EventEmitter
+    - TypePrinter
+    - MessageBuilder
+    - CommandExecutor
+    - logWithLevel
+    - formatMessage
   must_not_include:
-  - garbage_marker_12345
-  - unused_marker_67890
+    - GARBAGE_CPP_VIDEO_267_001
+    - GARBAGE_CPP_VIDEO_CODEC_267_002
+    - GARBAGE_CPP_VIDEO_FRAME_267_003
+    - GARBAGE_CPP_VIDEO_TIMESTAMP_267_004
+    - GARBAGE_CPP_VIDEO_ENCODER_267_005
+    - GARBAGE_CPP_VIDEO_INIT_267_006
+    - GARBAGE_CPP_VIDEO_ENCODE_267_008
+    - GARBAGE_CPP_VIDEO_FLUSH_267_010
+    - GARBAGE_CPP_MIDI_267_012
+    - GARBAGE_CPP_MIDI_MSG_267_013
+    - GARBAGE_CPP_MIDI_TIME_267_014
+    - GARBAGE_CPP_MIDI_CONTROLLER_267_015
+    - GARBAGE_CPP_MIDI_SEND_267_016
+    - GARBAGE_CPP_MIDI_RECEIVE_267_018
+    - GARBAGE_CPP_MIDI_CONNECT_267_020
+    - VideoEncoder
+    - MidiController
+    - VideoFrame
+    - MidiMessage
 options:
-  commit_message: Add variadic template usage
+  commit_message: Add logging framework and event system using variadic templates

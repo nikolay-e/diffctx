@@ -1,66 +1,386 @@
 name: java_024_observer_pattern
 initial:
-  src/main/java/com/example/Event.java: |
-    package com.example;
+  src/main/java/com/stocktrading/model/StockPrice.java: |
+    package com.stocktrading.model;
 
-    public class Event {
-        private final String type;
-        private final Object data;
+    import java.math.BigDecimal;
+    import java.time.Instant;
 
-        public Event(String type, Object data) {
-            this.type = type;
-            this.data = data;
+    public class StockPrice {
+        private final String symbol;
+        private final BigDecimal price;
+        private final BigDecimal previousClose;
+        private final long volume;
+        private final Instant timestamp;
+
+        public StockPrice(String symbol, BigDecimal price, BigDecimal previousClose, long volume) {
+            this.symbol = symbol;
+            this.price = price;
+            this.previousClose = previousClose;
+            this.volume = volume;
+            this.timestamp = Instant.now();
         }
 
-        public String getType() { return type; }
-        public Object getData() { return data; }
-    }
-changed:
-  src/main/java/com/example/EventListener.java: |
-    package com.example;
+        public String getSymbol() { return symbol; }
+        public BigDecimal getPrice() { return price; }
+        public BigDecimal getPreviousClose() { return previousClose; }
+        public long getVolume() { return volume; }
+        public Instant getTimestamp() { return timestamp; }
 
-    @FunctionalInterface
-    public interface EventListener {
-        void onEvent(Event event);
-    }
-  src/main/java/com/example/EventBus.java: |
-    package com.example;
+        public BigDecimal getChange() {
+            return price.subtract(previousClose);
+        }
 
-    import java.util.ArrayList;
+        public BigDecimal getChangePercent() {
+            if (previousClose.compareTo(BigDecimal.ZERO) == 0) {
+                return BigDecimal.ZERO;
+            }
+            return getChange().divide(previousClose, 4, java.math.RoundingMode.HALF_UP)
+                .multiply(new BigDecimal("100"));
+        }
+    }
+  src/main/java/com/stocktrading/service/PriceUpdateService.java: |
+    package com.stocktrading.service;
+
+    import com.stocktrading.model.StockPrice;
+    import org.springframework.stereotype.Service;
+    import java.math.BigDecimal;
     import java.util.HashMap;
-    import java.util.List;
     import java.util.Map;
 
-    public class EventBus {
-        private final Map<String, List<EventListener>> listeners = new HashMap<>();
+    @Service
+    public class PriceUpdateService {
+        private final Map<String, StockPrice> currentPrices = new HashMap<>();
 
-        public void subscribe(String eventType, EventListener listener) {
-            listeners.computeIfAbsent(eventType, k -> new ArrayList<>()).add(listener);
+        public void updatePrice(String symbol, BigDecimal price, BigDecimal previousClose, long volume) {
+            StockPrice stockPrice = new StockPrice(symbol, price, previousClose, volume);
+            currentPrices.put(symbol, stockPrice);
+            System.out.println("Price updated for " + symbol + ": " + price);
         }
 
-        public void unsubscribe(String eventType, EventListener listener) {
-            List<EventListener> list = listeners.get(eventType);
-            if (list != null) {
-                list.remove(listener);
+        public StockPrice getPrice(String symbol) {
+            return currentPrices.get(symbol);
+        }
+
+        public Map<String, StockPrice> getAllPrices() {
+            return new HashMap<>(currentPrices);
+        }
+    }
+  src/test/java/com/demo/math/TemperatureConverter.java: |
+    package com.demo.math;
+
+    public class TemperatureConverter {
+        public static final String GARBAGE_JAVA_REBAL_O024A = "temp_marker";
+        private static final String GARBAGE_JAVA_ALLOC_O024B = "celsius_marker";
+
+        public double celsiusToFahrenheit(double c) {
+            String GARBAGE_JAVA_CALC_O024C = "kelvin_marker";
+            return c * 1.8 + 32;
+        }
+
+        public double fahrenheitToCelsius(double f) {
+            return (f - 32) / 1.8;
+        }
+    }
+  src/test/java/com/demo/shapes/CircleCalculator.java: |
+    package com.demo.shapes;
+
+    public class CircleCalculator {
+        public static final String GARBAGE_JAVA_HOURS_O024D = "circle_marker";
+        private static final String GARBAGE_JAVA_MARKET_O024E = "radius_marker";
+
+        public double calculateArea(double r) {
+            String GARBAGE_JAVA_DURATION_O024F = "area_marker";
+            return 3.14159 * r * r;
+        }
+    }
+  src/test/java/com/demo/text/WordCounter.java: |
+    package com.demo.text;
+
+    public class WordCounter {
+        public static final String GARBAGE_JAVA_DIV_O024G = "word_marker";
+
+        public int countWords(String t) {
+            String GARBAGE_JAVA_RECORD_O024H = "count_marker";
+            return t == null ? 0 : t.split(" ").length;
+        }
+
+        public int countCharacters(String t) {
+            return t == null ? 0 : t.length();
+        }
+    }
+changed:
+  src/main/java/com/stocktrading/observer/PriceObserver.java: |
+    package com.stocktrading.observer;
+
+    import com.stocktrading.model.StockPrice;
+
+    @FunctionalInterface
+    public interface PriceObserver {
+        void onPriceUpdate(StockPrice price);
+
+        default void onError(String symbol, Exception error) {
+        }
+
+        default boolean interestedIn(String symbol) {
+            return true;
+        }
+    }
+  src/main/java/com/stocktrading/observer/PriceChangeEvent.java: |
+    package com.stocktrading.observer;
+
+    import com.stocktrading.model.StockPrice;
+    import java.math.BigDecimal;
+    import java.time.Instant;
+
+    public record PriceChangeEvent(
+        String symbol,
+        StockPrice newPrice,
+        StockPrice previousPrice,
+        BigDecimal absoluteChange,
+        BigDecimal percentChange,
+        Instant eventTime
+    ) {
+        public static PriceChangeEvent from(StockPrice newPrice, StockPrice previousPrice) {
+            BigDecimal absoluteChange = newPrice.getPrice().subtract(
+                previousPrice != null ? previousPrice.getPrice() : newPrice.getPreviousClose()
+            );
+            BigDecimal base = previousPrice != null ? previousPrice.getPrice() : newPrice.getPreviousClose();
+            BigDecimal percentChange = BigDecimal.ZERO;
+            if (base.compareTo(BigDecimal.ZERO) != 0) {
+                percentChange = absoluteChange.divide(base, 4, java.math.RoundingMode.HALF_UP)
+                    .multiply(new BigDecimal("100"));
+            }
+            return new PriceChangeEvent(
+                newPrice.getSymbol(),
+                newPrice,
+                previousPrice,
+                absoluteChange,
+                percentChange,
+                Instant.now()
+            );
+        }
+
+        public boolean isSignificantChange(BigDecimal threshold) {
+            return percentChange.abs().compareTo(threshold) >= 0;
+        }
+    }
+  src/main/java/com/stocktrading/observer/PriceAlertObserver.java: |
+    package com.stocktrading.observer;
+
+    import com.stocktrading.model.StockPrice;
+    import org.slf4j.Logger;
+    import org.slf4j.LoggerFactory;
+
+    import java.math.BigDecimal;
+    import java.util.Map;
+    import java.util.concurrent.ConcurrentHashMap;
+
+    public class PriceAlertObserver implements PriceObserver {
+        private static final Logger log = LoggerFactory.getLogger(PriceAlertObserver.class);
+
+        private final Map<String, BigDecimal> upperThresholds = new ConcurrentHashMap<>();
+        private final Map<String, BigDecimal> lowerThresholds = new ConcurrentHashMap<>();
+        private final AlertCallback callback;
+
+        public PriceAlertObserver(AlertCallback callback) {
+            this.callback = callback;
+        }
+
+        public void setUpperThreshold(String symbol, BigDecimal price) {
+            upperThresholds.put(symbol, price);
+        }
+
+        public void setLowerThreshold(String symbol, BigDecimal price) {
+            lowerThresholds.put(symbol, price);
+        }
+
+        public void removeThresholds(String symbol) {
+            upperThresholds.remove(symbol);
+            lowerThresholds.remove(symbol);
+        }
+
+        @Override
+        public void onPriceUpdate(StockPrice price) {
+            String symbol = price.getSymbol();
+            BigDecimal currentPrice = price.getPrice();
+
+            BigDecimal upper = upperThresholds.get(symbol);
+            if (upper != null && currentPrice.compareTo(upper) >= 0) {
+                log.info("Upper threshold triggered for {}: {} >= {}", symbol, currentPrice, upper);
+                callback.onAlert(symbol, AlertType.UPPER_THRESHOLD, currentPrice, upper);
+            }
+
+            BigDecimal lower = lowerThresholds.get(symbol);
+            if (lower != null && currentPrice.compareTo(lower) <= 0) {
+                log.info("Lower threshold triggered for {}: {} <= {}", symbol, currentPrice, lower);
+                callback.onAlert(symbol, AlertType.LOWER_THRESHOLD, currentPrice, lower);
             }
         }
 
-        public void publish(Event event) {
-            List<EventListener> list = listeners.get(event.getType());
-            if (list != null) {
-                for (EventListener listener : list) {
-                    listener.onEvent(event);
+        @Override
+        public boolean interestedIn(String symbol) {
+            return upperThresholds.containsKey(symbol) || lowerThresholds.containsKey(symbol);
+        }
+
+        public enum AlertType {
+            UPPER_THRESHOLD, LOWER_THRESHOLD
+        }
+
+        @FunctionalInterface
+        public interface AlertCallback {
+            void onAlert(String symbol, AlertType type, BigDecimal currentPrice, BigDecimal threshold);
+        }
+    }
+  src/main/java/com/stocktrading/observer/PriceSubject.java: |
+    package com.stocktrading.observer;
+
+    import com.stocktrading.model.StockPrice;
+    import org.slf4j.Logger;
+    import org.slf4j.LoggerFactory;
+    import org.springframework.stereotype.Component;
+
+    import java.util.List;
+    import java.util.Map;
+    import java.util.concurrent.ConcurrentHashMap;
+    import java.util.concurrent.CopyOnWriteArrayList;
+    import java.util.concurrent.ExecutorService;
+    import java.util.concurrent.Executors;
+
+    @Component
+    public class PriceSubject {
+        private static final Logger log = LoggerFactory.getLogger(PriceSubject.class);
+
+        private final List<PriceObserver> observers = new CopyOnWriteArrayList<>();
+        private final Map<String, StockPrice> lastPrices = new ConcurrentHashMap<>();
+        private final ExecutorService notificationExecutor;
+        private volatile boolean asyncNotifications;
+
+        public PriceSubject() {
+            this.notificationExecutor = Executors.newFixedThreadPool(4);
+            this.asyncNotifications = true;
+        }
+
+        public void attach(PriceObserver observer) {
+            if (!observers.contains(observer)) {
+                observers.add(observer);
+                log.debug("Observer attached: {}", observer.getClass().getSimpleName());
+            }
+        }
+
+        public void detach(PriceObserver observer) {
+            observers.remove(observer);
+            log.debug("Observer detached: {}", observer.getClass().getSimpleName());
+        }
+
+        public void notifyObservers(StockPrice price) {
+            StockPrice previous = lastPrices.put(price.getSymbol(), price);
+            PriceChangeEvent event = PriceChangeEvent.from(price, previous);
+
+            for (PriceObserver observer : observers) {
+                if (observer.interestedIn(price.getSymbol())) {
+                    if (asyncNotifications) {
+                        notificationExecutor.submit(() -> safeNotify(observer, price, event));
+                    } else {
+                        safeNotify(observer, price, event);
+                    }
                 }
             }
+        }
+
+        private void safeNotify(PriceObserver observer, StockPrice price, PriceChangeEvent event) {
+            try {
+                observer.onPriceUpdate(price);
+            } catch (Exception e) {
+                log.error("Error notifying observer {} for symbol {}",
+                    observer.getClass().getSimpleName(), price.getSymbol(), e);
+                observer.onError(price.getSymbol(), e);
+            }
+        }
+
+        public int getObserverCount() {
+            return observers.size();
+        }
+
+        public StockPrice getLastPrice(String symbol) {
+            return lastPrices.get(symbol);
+        }
+
+        public void setAsyncNotifications(boolean async) {
+            this.asyncNotifications = async;
+        }
+
+        public void shutdown() {
+            notificationExecutor.shutdown();
+        }
+    }
+  src/main/java/com/stocktrading/service/PriceUpdateService.java: |
+    package com.stocktrading.service;
+
+    import com.stocktrading.model.StockPrice;
+    import com.stocktrading.observer.PriceSubject;
+    import org.springframework.stereotype.Service;
+    import java.math.BigDecimal;
+    import java.util.HashMap;
+    import java.util.Map;
+
+    @Service
+    public class PriceUpdateService {
+        private final Map<String, StockPrice> currentPrices = new HashMap<>();
+        private final PriceSubject priceSubject;
+
+        public PriceUpdateService(PriceSubject priceSubject) {
+            this.priceSubject = priceSubject;
+        }
+
+        public void updatePrice(String symbol, BigDecimal price, BigDecimal previousClose, long volume) {
+            StockPrice stockPrice = new StockPrice(symbol, price, previousClose, volume);
+            currentPrices.put(symbol, stockPrice);
+            priceSubject.notifyObservers(stockPrice);
+        }
+
+        public StockPrice getPrice(String symbol) {
+            return currentPrices.get(symbol);
+        }
+
+        public Map<String, StockPrice> getAllPrices() {
+            return new HashMap<>(currentPrices);
+        }
+
+        public PriceSubject getPriceSubject() {
+            return priceSubject;
         }
     }
 assertions:
   must_include:
-  - EventBus
-  - subscribe
-  - publish
+    - PriceSubject
+    - PriceObserver
+    - PriceChangeEvent
+    - PriceAlertObserver
+    - attach
+    - detach
+    - notifyObservers
+    - onPriceUpdate
+    - interestedIn
+    - AlertCallback
+    - CopyOnWriteArrayList
+    - ExecutorService
   must_not_include:
-  - garbage_marker_12345
-  - unused_marker_67890
+    - GARBAGE_JAVA_REBAL_O024A
+    - GARBAGE_JAVA_ALLOC_O024B
+    - GARBAGE_JAVA_CALC_O024C
+    - GARBAGE_JAVA_HOURS_O024D
+    - GARBAGE_JAVA_MARKET_O024E
+    - GARBAGE_JAVA_DURATION_O024F
+    - GARBAGE_JAVA_DIV_O024G
+    - GARBAGE_JAVA_RECORD_O024H
+    - TemperatureConverter
+    - CircleCalculator
+    - WordCounter
+    - celsiusToFahrenheit
+    - fahrenheitToCelsius
+    - calculateArea
+    - countWords
+    - countCharacters
 options:
-  commit_message: Add observer pattern with EventBus
+  commit_message: Add observer pattern with async notifications and price alerts

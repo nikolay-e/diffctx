@@ -1,43 +1,302 @@
 name: cpp_246_shared_ptr
 initial:
-  data.h: |
+  include/data/data.hpp: |
     #pragma once
-
-    struct Data {
-        int value;
-        Data(int v) : value(v) {}
-    };
-    // unused_marker_67890
-  cache.cpp: |
-    #include <iostream>
-    int main() { return 0; }
-changed:
-  cache.cpp: |
-    #include "data.h"
+    #include <string>
+    #include <vector>
     #include <memory>
-    #include <unordered_map>
+    #include <chrono>
+
+    namespace app::data {
+
+    struct DataRecord {
+        int64_t id;
+        std::string key;
+        std::vector<char> payload;
+        std::chrono::system_clock::time_point timestamp;
+        bool dirty;
+
+        DataRecord(int64_t id, const std::string& key)
+            : id(id)
+            , key(key)
+            , timestamp(std::chrono::system_clock::now())
+            , dirty(false) {}
+
+        size_t payloadSize() const { return payload.size(); }
+
+        void setPayload(const std::vector<char>& data) {
+            payload = data;
+            dirty = true;
+        }
+
+        void markClean() { dirty = false; }
+    };
+
+    class DataSource {
+    public:
+        virtual ~DataSource() = default;
+        virtual std::shared_ptr<DataRecord> load(int64_t id) = 0;
+        virtual bool save(std::shared_ptr<DataRecord> record) = 0;
+        virtual bool remove(int64_t id) = 0;
+    };
+
+    class InMemoryDataSource : public DataSource {
+    public:
+        std::shared_ptr<DataRecord> load(int64_t id) override {
+            auto it = records_.find(id);
+            return it != records_.end() ? it->second : nullptr;
+        }
+
+        bool save(std::shared_ptr<DataRecord> record) override {
+            records_[record->id] = record;
+            record->markClean();
+            return true;
+        }
+
+        bool remove(int64_t id) override {
+            return records_.erase(id) > 0;
+        }
+
+    private:
+        std::unordered_map<int64_t, std::shared_ptr<DataRecord>> records_;
+    };
+
+    }
+
+  include/unrelated/json_parser.hpp: |
+    #pragma once
+    // GARBAGE_CPP_JSON_246_001
+    #define GARBAGE_CPP_JSON_DEPTH_246_002 64
+
+    namespace app::unrelated::json {
+
+    // GARBAGE_CPP_JSON_TYPE_246_003
+    enum class JsonType {
+        Null,
+        Boolean,
+        Number,
+        String,
+        Array,
+        Object
+    };
+
+    // GARBAGE_CPP_JSON_VALUE_246_004
+    struct JsonValue {
+        JsonType type;
+        // GARBAGE_CPP_JSON_DATA_246_005
+    };
+
+    // GARBAGE_CPP_JSON_PARSER_246_006
+    class JsonParser {
+    public:
+        // GARBAGE_CPP_JSON_PARSE_246_007
+        JsonValue parse(const char* json) {
+            // GARBAGE_CPP_JSON_PARSE_IMPL_246_008
+            return JsonValue{JsonType::Null};
+        }
+
+        // GARBAGE_CPP_JSON_STRINGIFY_246_009
+        std::string stringify(const JsonValue& value) {
+            // GARBAGE_CPP_JSON_STRINGIFY_IMPL_246_010
+            return "";
+        }
+
+    private:
+        int depth_ = 0;
+    };
+
+    }
+
+  src/unrelated/xml_serializer.cpp: |
+    // GARBAGE_CPP_XML_246_011
     #include <string>
 
-    class Cache {
-        std::unordered_map<std::string, std::shared_ptr<Data>> store;
+    namespace app::unrelated::xml {
 
+    // GARBAGE_CPP_XML_NODE_246_012
+    struct XmlNode {
+        std::string name;
+        std::string value;
+        // GARBAGE_CPP_XML_ATTR_246_013
+    };
+
+    // GARBAGE_CPP_XML_SERIALIZER_246_014
+    class XmlSerializer {
     public:
-        std::shared_ptr<Data> get(const std::string& key) {
-            if (store.count(key)) {
-                return store[key];
-            }
-            auto data = std::make_shared<Data>(0);
-            store[key] = data;
-            return data;
+        // GARBAGE_CPP_XML_SERIALIZE_246_015
+        std::string serialize(const XmlNode& root) {
+            // GARBAGE_CPP_XML_SER_IMPL_246_016
+            return "";
+        }
+
+        // GARBAGE_CPP_XML_DESERIALIZE_246_017
+        XmlNode deserialize(const std::string& xml) {
+            // GARBAGE_CPP_XML_DESER_IMPL_246_018
+            return XmlNode{};
         }
     };
+
+    }
+
+  src/cache.cpp: |
+    #include <iostream>
+    int main() { return 0; }
+
+changed:
+  src/cache.cpp: |
+    #include "data/data.hpp"
+    #include <memory>
+    #include <unordered_map>
+    #include <list>
+    #include <iostream>
+
+    namespace app::cache {
+
+    template<typename K, typename V>
+    class LRUCache {
+    public:
+        explicit LRUCache(size_t capacity)
+            : capacity_(capacity) {}
+
+        std::shared_ptr<V> get(const K& key) {
+            auto it = cache_.find(key);
+            if (it == cache_.end()) {
+                return nullptr;
+            }
+            lruList_.splice(lruList_.begin(), lruList_, it->second.second);
+            return it->second.first;
+        }
+
+        void put(const K& key, std::shared_ptr<V> value) {
+            auto it = cache_.find(key);
+            if (it != cache_.end()) {
+                it->second.first = value;
+                lruList_.splice(lruList_.begin(), lruList_, it->second.second);
+                return;
+            }
+
+            if (cache_.size() >= capacity_) {
+                auto lastKey = lruList_.back();
+                lruList_.pop_back();
+                cache_.erase(lastKey);
+            }
+
+            lruList_.push_front(key);
+            cache_[key] = {value, lruList_.begin()};
+        }
+
+        bool contains(const K& key) const {
+            return cache_.find(key) != cache_.end();
+        }
+
+        void remove(const K& key) {
+            auto it = cache_.find(key);
+            if (it != cache_.end()) {
+                lruList_.erase(it->second.second);
+                cache_.erase(it);
+            }
+        }
+
+        size_t size() const { return cache_.size(); }
+        size_t capacity() const { return capacity_; }
+        void clear() { cache_.clear(); lruList_.clear(); }
+
+    private:
+        size_t capacity_;
+        std::list<K> lruList_;
+        std::unordered_map<K, std::pair<std::shared_ptr<V>, typename std::list<K>::iterator>> cache_;
+    };
+
+    class DataCache {
+    public:
+        DataCache(size_t cacheSize, std::shared_ptr<data::DataSource> source)
+            : cache_(cacheSize)
+            , dataSource_(source) {}
+
+        std::shared_ptr<data::DataRecord> get(int64_t id) {
+            auto cached = cache_.get(id);
+            if (cached) {
+                ++cacheHits_;
+                return cached;
+            }
+
+            ++cacheMisses_;
+            auto record = dataSource_->load(id);
+            if (record) {
+                cache_.put(id, record);
+            }
+            return record;
+        }
+
+        void put(std::shared_ptr<data::DataRecord> record) {
+            cache_.put(record->id, record);
+            dataSource_->save(record);
+        }
+
+        void invalidate(int64_t id) {
+            cache_.remove(id);
+        }
+
+        double hitRate() const {
+            size_t total = cacheHits_ + cacheMisses_;
+            return total > 0 ? static_cast<double>(cacheHits_) / total : 0.0;
+        }
+
+        size_t cacheSize() const { return cache_.size(); }
+
+    private:
+        LRUCache<int64_t, data::DataRecord> cache_;
+        std::shared_ptr<data::DataSource> dataSource_;
+        size_t cacheHits_ = 0;
+        size_t cacheMisses_ = 0;
+    };
+
+    }
+
+    int main() {
+        auto dataSource = std::make_shared<app::data::InMemoryDataSource>();
+
+        auto record1 = std::make_shared<app::data::DataRecord>(1, "user:1");
+        record1->setPayload({'d', 'a', 't', 'a'});
+        dataSource->save(record1);
+
+        auto record2 = std::make_shared<app::data::DataRecord>(2, "user:2");
+        dataSource->save(record2);
+
+        app::cache::DataCache cache(100, dataSource);
+
+        auto r1 = cache.get(1);
+        auto r1_again = cache.get(1);
+
+        std::cout << "Cache hit rate: " << cache.hitRate() << "\n";
+        std::cout << "Cache size: " << cache.cacheSize() << "\n";
+
+        return 0;
+    }
+
 assertions:
   must_include:
-  - Cache
-  - shared_ptr
-  - Data
+    - LRUCache
+    - DataCache
+    - shared_ptr
+    - make_shared
+    - DataRecord
+    - DataSource
+    - hitRate
   must_not_include:
-  - garbage_marker_12345
-  - unused_marker_67890
+    - GARBAGE_CPP_JSON_246_001
+    - GARBAGE_CPP_JSON_DEPTH_246_002
+    - GARBAGE_CPP_JSON_TYPE_246_003
+    - GARBAGE_CPP_JSON_VALUE_246_004
+    - GARBAGE_CPP_JSON_PARSER_246_006
+    - GARBAGE_CPP_JSON_PARSE_246_007
+    - GARBAGE_CPP_XML_246_011
+    - GARBAGE_CPP_XML_NODE_246_012
+    - GARBAGE_CPP_XML_SERIALIZER_246_014
+    - GARBAGE_CPP_XML_SERIALIZE_246_015
+    - JsonParser
+    - XmlSerializer
+    - JsonType
+    - XmlNode
 options:
-  commit_message: Add shared_ptr usage
+  commit_message: Add LRU cache with shared_ptr for data management

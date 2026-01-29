@@ -1,0 +1,117 @@
+name: graph_010_same_directory_siblings
+initial:
+  utils/helper1.py: |
+    from utils.helper2 import helper2
+    from utils.helper3 import helper3
+
+    def helper1():
+        return helper2() + helper3()
+
+    def process_data(data):
+        validated = validate_data(data)
+        return transform_data(validated)
+
+    def validate_data(data):
+        return data is not None
+
+    def transform_data(data):
+        return {"transformed": data}
+  utils/helper2.py: |
+    from utils.helper3 import helper3
+
+    def helper2():
+        base = helper3()
+        return base * 2
+
+    def format_output(value):
+        return f"[{value}]"
+
+    def clean_input(text):
+        return text.strip().lower()
+  utils/helper3.py: |
+    def helper3():
+        return 10
+
+    def compute_hash(value):
+        return hash(str(value))
+
+    def generate_id():
+        import uuid
+        return str(uuid.uuid4())
+  utils/helper4.py: |
+    from utils.helper1 import helper1
+    from utils.helper2 import format_output
+
+    def helper4():
+        result = helper1()
+        return format_output(result)
+
+    def aggregate_results(*results):
+        return sum(results)
+  utils/__init__.py: |
+    from utils.helper1 import helper1, process_data
+    from utils.helper2 import helper2, format_output
+    from utils.helper3 import helper3, generate_id
+    from utils.helper4 import helper4, aggregate_results
+  garbage/unrelated_utils_GARBAGE_GRAPH_bcd001/string_utils_GARBAGE_GRAPH_bcd001.py: |
+    def capitalize_words_GARBAGE_GRAPH_bcd001(text):
+        return " ".join(word.capitalize() for word in text.split())
+
+    def count_words_GARBAGE_GRAPH_bcd001(text):
+        return len(text.split())
+
+    def truncate_GARBAGE_GRAPH_bcd001(text, max_len):
+        return text[:max_len] + "..." if len(text) > max_len else text
+  garbage/unrelated_utils_GARBAGE_GRAPH_bcd001/number_utils_GARBAGE_GRAPH_bcd001.py: |
+    def clamp_GARBAGE_GRAPH_bcd001(value, min_val, max_val):
+        return max(min_val, min(value, max_val))
+
+    def round_to_GARBAGE_GRAPH_bcd001(value, decimals):
+        return round(value, decimals)
+
+    def percentage_GARBAGE_GRAPH_bcd001(part, whole):
+        return (part / whole) * 100 if whole else 0
+  garbage/unrelated_utils_GARBAGE_GRAPH_bcd001/date_utils_GARBAGE_GRAPH_bcd001.py: |
+    from datetime import datetime, timedelta
+
+    def days_between_GARBAGE_GRAPH_bcd001(date1, date2):
+        return abs((date2 - date1).days)
+
+    def add_days_GARBAGE_GRAPH_bcd001(date, days):
+        return date + timedelta(days=days)
+
+    def format_date_GARBAGE_GRAPH_bcd001(date, fmt="%Y-%m-%d"):
+        return date.strftime(fmt)
+changed:
+  utils/helper1.py: |
+    from utils.helper2 import helper2
+    from utils.helper3 import helper3
+
+    def helper1():
+        return helper2() + helper3()
+
+    def process_data(data):
+        validated = validate_data(data)
+        transformed = transform_data(validated)
+        return enrich_data(transformed)
+
+    def validate_data(data):
+        return data is not None
+
+    def transform_data(data):
+        return {"transformed": data}
+
+    def enrich_data(data):
+        data["enriched"] = True
+        return data
+assertions:
+  must_include:
+  - helper1
+  must_not_include:
+  - GARBAGE_GRAPH_bcd001
+  - capitalize_words
+  - count_words
+  - clamp_GARBAGE
+  - round_to_GARBAGE
+  - days_between
+  - add_days

@@ -1,34 +1,125 @@
 name: k8s_424_loadbalancer
 initial:
-  service.yaml: |
+  k8s/apps/api-gateway/deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: api-gateway
+      namespace: production
+      labels:
+        app: api-gateway
+    spec:
+      replicas: 3
+      selector:
+        matchLabels:
+          app: api-gateway
+      template:
+        metadata:
+          labels:
+            app: api-gateway
+        spec:
+          containers:
+          - name: gateway
+            image: api-gateway:v2.0.0
+            ports:
+            - containerPort: 8080
+            - containerPort: 8443
+            resources:
+              requests:
+                memory: "128Mi"
+                cpu: "100m"
+
+  k8s/apps/api-gateway/service.yaml: |
     apiVersion: v1
     kind: Service
     metadata:
-      name: myapp
+      name: api-gateway
+      namespace: production
     spec:
       type: ClusterIP
+      selector:
+        app: api-gateway
       ports:
-      - port: 80
-  unrelated.txt: |
-    garbage_marker_k8s424 = True
-    unused_marker_k8s424 = False
+      - name: http
+        port: 80
+        targetPort: 8080
+      - name: https
+        port: 443
+        targetPort: 8443
+
+  k8s/unrelated/aws-lb-controller/deployment.yaml: |
+    # GARBAGE_K8S_424_AWS_LB_CONTROLLER
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: GARBAGE_K8S_424_AWS_CONTROLLER
+    spec:
+      replicas: 1
+      selector:
+        matchLabels:
+          app: GARBAGE_K8S_424_AWS_LABEL
+      template:
+        spec:
+          containers:
+          - name: controller
+            image: amazon/aws-load-balancer-controller:GARBAGE_K8S_424_AWS_VERSION
+
+  k8s/unrelated/gke-ingress/backendconfig.yaml: |
+    # GARBAGE_K8S_424_GKE_BACKEND
+    apiVersion: cloud.google.com/v1
+    kind: BackendConfig
+    metadata:
+      name: GARBAGE_K8S_424_BACKEND_NAME
+    spec:
+      healthCheck:
+        checkIntervalSec: GARBAGE_K8S_424_CHECK_INTERVAL
+        port: GARBAGE_K8S_424_HEALTH_PORT
+
 changed:
-  service.yaml: |
+  k8s/apps/api-gateway/service.yaml: |
     apiVersion: v1
     kind: Service
     metadata:
-      name: myapp
+      name: api-gateway
+      namespace: production
+      labels:
+        app: api-gateway
       annotations:
         service.beta.kubernetes.io/aws-load-balancer-type: nlb
+        service.beta.kubernetes.io/aws-load-balancer-scheme: internet-facing
+        service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled: "true"
     spec:
       type: LoadBalancer
+      selector:
+        app: api-gateway
       ports:
-      - port: 80
+      - name: http
+        port: 80
+        targetPort: 8080
+      - name: https
+        port: 443
+        targetPort: 8443
+      externalTrafficPolicy: Cluster
+      loadBalancerSourceRanges:
+      - 10.0.0.0/8
+      - 192.168.0.0/16
+
 assertions:
   must_include:
   - LoadBalancer
+  - aws-load-balancer-type
+  - nlb
+  - internet-facing
+  - loadBalancerSourceRanges
+  - externalTrafficPolicy
   must_not_include:
-  - garbage_marker_k8s424
-  - unused_marker_k8s424
+  - GARBAGE_K8S_424_AWS_LB_CONTROLLER
+  - GARBAGE_K8S_424_AWS_CONTROLLER
+  - GARBAGE_K8S_424_AWS_LABEL
+  - GARBAGE_K8S_424_AWS_VERSION
+  - GARBAGE_K8S_424_GKE_BACKEND
+  - GARBAGE_K8S_424_BACKEND_NAME
+  - GARBAGE_K8S_424_CHECK_INTERVAL
+  - GARBAGE_K8S_424_HEALTH_PORT
 options:
-  commit_message: Add LoadBalancer
+  commit_message: Change to AWS NLB LoadBalancer service

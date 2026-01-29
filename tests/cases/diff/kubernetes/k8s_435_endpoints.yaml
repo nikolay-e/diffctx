@@ -1,39 +1,186 @@
 name: k8s_435_endpoints
 initial:
-  service.yaml: |
+  k8s/base/deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: legacy-adapter
+      namespace: production
+      labels:
+        app: legacy-adapter
+        tier: integration
+    spec:
+      replicas: 2
+      selector:
+        matchLabels:
+          app: legacy-adapter
+      template:
+        metadata:
+          labels:
+            app: legacy-adapter
+            tier: integration
+        spec:
+          containers:
+          - name: adapter
+            image: registry.example.com/legacy-adapter:v1.0.0
+            ports:
+            - containerPort: 8080
+              name: http
+            env:
+            - name: EXTERNAL_API_HOST
+              value: external-api
+            - name: EXTERNAL_API_PORT
+              value: "443"
+            resources:
+              requests:
+                memory: "128Mi"
+                cpu: "100m"
+              limits:
+                memory: "256Mi"
+                cpu: "200m"
+
+  k8s/base/service.yaml: |
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: legacy-adapter
+      namespace: production
+    spec:
+      selector:
+        app: legacy-adapter
+      ports:
+      - name: http
+        port: 80
+        targetPort: 8080
+
+  k8s/base/service-external.yaml: |
     apiVersion: v1
     kind: Service
     metadata:
       name: external-api
+      namespace: production
+      labels:
+        app: external-api
+        type: external
     spec:
       ports:
-      - port: 443
-  endpoints.yaml: |
+      - name: https
+        port: 443
+        targetPort: 443
+
+  k8s/base/endpoints.yaml: |
     apiVersion: v1
     kind: Endpoints
     metadata:
       name: external-api
+      namespace: production
     subsets: []
-  unrelated.txt: |
-    garbage_marker_k8s435 = True
-    unused_marker_k8s435 = False
+
+  k8s/base/configmap.yaml: |
+    apiVersion: v1
+    kind: ConfigMap
+    metadata:
+      name: adapter-config
+      namespace: production
+    data:
+      RETRY_ATTEMPTS: "3"
+      TIMEOUT_MS: "5000"
+      CIRCUIT_BREAKER: "enabled"
+
+  k8s/unrelated/servicemesh/envoy-filter.yaml: |
+    # GARBAGE_K8S_435_ENVOY_FILTER
+    apiVersion: networking.istio.io/v1alpha3
+    kind: EnvoyFilter
+    metadata:
+      name: GARBAGE_K8S_435_FILTER_NAME
+      namespace: istio-system
+    spec:
+      workloadSelector:
+        labels:
+          app: GARBAGE_K8S_435_WORKLOAD_LABEL
+      configPatches:
+      - applyTo: GARBAGE_K8S_435_APPLY_TO
+        match:
+          context: GARBAGE_K8S_435_CONTEXT
+
+  k8s/unrelated/dns/coredns-config.yaml: |
+    # GARBAGE_K8S_435_COREDNS
+    apiVersion: v1
+    kind: ConfigMap
+    metadata:
+      name: GARBAGE_K8S_435_COREDNS_CM
+      namespace: kube-system
+    data:
+      Corefile: |
+        GARBAGE_K8S_435_COREFILE_CONTENT
+        forward . GARBAGE_K8S_435_FORWARD_DNS
+
+  k8s/unrelated/loadbalancer/metallb-config.yaml: |
+    # GARBAGE_K8S_435_METALLB
+    apiVersion: metallb.io/v1beta1
+    kind: IPAddressPool
+    metadata:
+      name: GARBAGE_K8S_435_IP_POOL
+      namespace: metallb-system
+    spec:
+      addresses:
+      - GARBAGE_K8S_435_IP_RANGE
+
+  ansible/playbook.yaml: |
+    # GARBAGE_K8S_435_ANSIBLE
+    - name: GARBAGE_K8S_435_PLAYBOOK_NAME
+      hosts: GARBAGE_K8S_435_HOST_GROUP
+      tasks:
+      - name: GARBAGE_K8S_435_TASK_NAME
+        kubernetes.core.k8s:
+          state: GARBAGE_K8S_435_STATE
+
 changed:
-  endpoints.yaml: |
+  k8s/base/endpoints.yaml: |
     apiVersion: v1
     kind: Endpoints
     metadata:
       name: external-api
+      namespace: production
+      labels:
+        app: external-api
+        type: external
     subsets:
     - addresses:
-      - ip: 10.0.0.1
-      - ip: 10.0.0.2
+      - ip: 203.0.113.10
+        hostname: api-node-1
+      - ip: 203.0.113.11
+        hostname: api-node-2
+      - ip: 203.0.113.12
+        hostname: api-node-3
       ports:
-      - port: 443
+      - name: https
+        port: 443
+        protocol: TCP
+
 assertions:
   must_include:
-  - Endpoints
+  - external-api
+  - 203.0.113.10
+  - 203.0.113.11
+  - api-node-1
   must_not_include:
-  - garbage_marker_k8s435
-  - unused_marker_k8s435
+  - GARBAGE_K8S_435_ENVOY_FILTER
+  - GARBAGE_K8S_435_FILTER_NAME
+  - GARBAGE_K8S_435_WORKLOAD_LABEL
+  - GARBAGE_K8S_435_APPLY_TO
+  - GARBAGE_K8S_435_CONTEXT
+  - GARBAGE_K8S_435_COREDNS
+  - GARBAGE_K8S_435_COREDNS_CM
+  - GARBAGE_K8S_435_COREFILE_CONTENT
+  - GARBAGE_K8S_435_FORWARD_DNS
+  - GARBAGE_K8S_435_METALLB
+  - GARBAGE_K8S_435_IP_POOL
+  - GARBAGE_K8S_435_IP_RANGE
+  - GARBAGE_K8S_435_ANSIBLE
+  - GARBAGE_K8S_435_PLAYBOOK_NAME
+  - GARBAGE_K8S_435_HOST_GROUP
+  - GARBAGE_K8S_435_TASK_NAME
+  - GARBAGE_K8S_435_STATE
 options:
-  commit_message: Add Endpoints
+  commit_message: Add endpoints for external API with multiple addresses

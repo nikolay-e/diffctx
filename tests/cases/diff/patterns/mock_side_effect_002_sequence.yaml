@@ -1,0 +1,63 @@
+name: mock_side_effect_002_sequence
+initial:
+  src/rate_limiter.py: |
+    import time
+
+    class RateLimiter:
+        def __init__(self, max_calls: int, period: float):
+            self.max_calls = max_calls
+            self.period = period
+            self.calls = []
+
+        def is_allowed(self) -> bool:
+            now = time.time()
+            self.calls = [c for c in self.calls if now - c < self.period]
+            if len(self.calls) < self.max_calls:
+                self.calls.append(now)
+                return True
+            return False
+
+        def wait_time(self) -> float:
+            if not self.calls:
+                return 0
+            oldest = min(self.calls)
+            return max(0, self.period - (time.time() - oldest))
+  tests/test_rate_limiter.py: |
+    from src.rate_limiter import RateLimiter
+
+    def test_allows_within_limit():
+        limiter = RateLimiter(max_calls=3, period=1.0)
+        assert limiter.is_allowed() is True
+changed:
+  tests/test_rate_limiter.py: |
+    from unittest.mock import patch
+    from src.rate_limiter import RateLimiter
+
+    def test_allows_within_limit():
+        limiter = RateLimiter(max_calls=3, period=1.0)
+        assert limiter.is_allowed() is True
+
+    @patch('src.rate_limiter.time.time')
+    def test_rate_limit_sequence(mock_time):
+        mock_time.side_effect = [
+            0.0,    # First call check
+            0.0,    # First call append
+            0.1,    # Second call check
+            0.1,    # Second call append
+            0.2,    # Third call check
+            0.2,    # Third call append
+            0.3,    # Fourth call check (should be blocked)
+            1.5,    # Fifth call check (period passed)
+            1.5,    # Fifth call append
+        ]
+        limiter = RateLimiter(max_calls=3, period=1.0)
+        assert limiter.is_allowed() is True
+        assert limiter.is_allowed() is True
+        assert limiter.is_allowed() is True
+        assert limiter.is_allowed() is False
+        assert limiter.is_allowed() is True
+assertions:
+  must_include:
+  - rate_limiter
+options:
+  commit_message: Add time-mocked rate limit test with side_effect sequence

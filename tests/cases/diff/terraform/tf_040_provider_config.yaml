@@ -1,0 +1,25 @@
+name: tf_040_provider_config
+initial:
+  provider.tf: |
+    provider "aws" {
+      region = "us-east-1"
+    }
+  main.tf: |
+    resource "aws_s3_bucket" "data" {
+      bucket = "my-data-bucket"
+    }
+changed:
+  provider.tf: |
+    provider "aws" {
+      region = "eu-west-1"
+    }
+
+    provider "aws" {
+      alias  = "us"
+      region = "us-east-1"
+    }
+assertions:
+  must_include:
+    - aws_s3_bucket
+options:
+  commit_message: add provider alias

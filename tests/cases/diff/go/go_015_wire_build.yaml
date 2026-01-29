@@ -1,100 +1,216 @@
 name: go_015_wire_build
 initial:
-  wire.go: |
+  internal/wire/wire.go: |
     //go:build wireinject
     // +build wireinject
 
-    package main
+    package wire
 
-    import "github.com/google/wire"
+    import (
+        "github.com/google/wire"
+        "myproject/internal/config"
+        "myproject/internal/repository"
+        "myproject/internal/service"
+    )
 
-    func InitializeApp() *App {
-        wire.Build(NewApp, NewDB, NewConfig)
-        return nil
+    func InitializeApp(cfg *config.Config) (*App, error) {
+        wire.Build(
+            NewApp,
+            repository.NewUserRepository,
+            service.NewUserService,
+        )
+        return nil, nil
     }
-  providers.go: |
-    package main
+
+  internal/wire/providers.go: |
+    package wire
+
+    import (
+        "myproject/internal/repository"
+        "myproject/internal/service"
+    )
 
     type App struct {
-        db *DB
+        userService *service.UserService
     }
 
-    type DB struct {
-        config *Config
+    func NewApp(userService *service.UserService) *App {
+        return &App{userService: userService}
     }
 
-    type Config struct {
-        DSN string
+  internal/repository/user_repository.go: |
+    package repository
+
+    import "database/sql"
+
+    type UserRepository struct {
+        db *sql.DB
     }
 
-    func NewApp(db *DB) *App {
-        return &App{db: db}
+    func NewUserRepository(db *sql.DB) *UserRepository {
+        return &UserRepository{db: db}
     }
 
-    func NewDB(config *Config) *DB {
-        return &DB{config: config}
+  internal/service/user_service.go: |
+    package service
+
+    import "myproject/internal/repository"
+
+    type UserService struct {
+        repo *repository.UserRepository
     }
 
-    func NewConfig() *Config {
-        return &Config{DSN: "postgres://localhost/db"}
-    }
-  unrelated/garbage.go: |
-    package unrelated
-
-    func UnusedWire_12345() {
-        println("garbage_marker_12345")
+    func NewUserService(repo *repository.UserRepository) *UserService {
+        return &UserService{repo: repo}
     }
 
-    func UnusedProvider_67890() {
-        println("unused_marker_67890")
+  internal/unrelated/di/container.go: |
+    package di
+
+    const GARBAGE_GO_DI_CONTAINER_001 = "di_garbage"
+
+    type GARBAGE_GO_TYPE_CONTAINER_002 struct {
+        services map[string]interface{}
     }
+
+    func GARBAGE_GO_FUNC_CONTAINER_003() string {
+        return "GARBAGE_GO_CONTAINER_UNUSED_004"
+    }
+
+  internal/unrelated/di/injector.go: |
+    package di
+
+    const GARBAGE_GO_DI_INJECTOR_005 = "injector_garbage"
+
+    type GARBAGE_GO_TYPE_INJECTOR_006 struct {
+        bindings map[string]func() interface{}
+    }
+
+    func GARBAGE_GO_FUNC_INJECTOR_007() {
+        println("GARBAGE_GO_INJECTOR_OUTPUT_008")
+    }
+
 changed:
-  providers.go: |
-    package main
+  internal/wire/providers.go: |
+    package wire
+
+    import (
+        "log"
+        "myproject/internal/cache"
+        "myproject/internal/config"
+        "myproject/internal/repository"
+        "myproject/internal/service"
+    )
 
     type App struct {
-        db     *DB
-        cache  *Cache
+        config       *config.Config
+        userService  *service.UserService
+        orderService *service.OrderService
+        cache        *cache.RedisCache
+        logger       *log.Logger
     }
 
-    type DB struct {
-        config *Config
-    }
-
-    type Config struct {
-        DSN      string
-        CacheURL string
-    }
-
-    type Cache struct {
-        url string
-    }
-
-    func NewApp(db *DB, cache *Cache) *App {
-        return &App{db: db, cache: cache}
-    }
-
-    func NewDB(config *Config) *DB {
-        return &DB{config: config}
-    }
-
-    func NewConfig() *Config {
-        return &Config{
-            DSN:      "postgres://localhost/db",
-            CacheURL: "redis://localhost:6379",
+    func NewApp(
+        cfg *config.Config,
+        userService *service.UserService,
+        orderService *service.OrderService,
+        cache *cache.RedisCache,
+        logger *log.Logger,
+    ) *App {
+        return &App{
+            config:       cfg,
+            userService:  userService,
+            orderService: orderService,
+            cache:        cache,
+            logger:       logger,
         }
     }
 
-    func NewCache(config *Config) *Cache {
-        return &Cache{url: config.CacheURL}
+    func (a *App) Start() error {
+        a.logger.Println("Starting application...")
+        return nil
     }
+
+    func (a *App) Shutdown() error {
+        a.logger.Println("Shutting down application...")
+        return a.cache.Close()
+    }
+
+  internal/wire/wire.go: |
+    //go:build wireinject
+    // +build wireinject
+
+    package wire
+
+    import (
+        "github.com/google/wire"
+        "myproject/internal/cache"
+        "myproject/internal/config"
+        "myproject/internal/database"
+        "myproject/internal/repository"
+        "myproject/internal/service"
+    )
+
+    var RepositorySet = wire.NewSet(
+        repository.NewUserRepository,
+        repository.NewOrderRepository,
+        repository.NewProductRepository,
+    )
+
+    var ServiceSet = wire.NewSet(
+        service.NewUserService,
+        service.NewOrderService,
+        service.NewProductService,
+    )
+
+    var InfrastructureSet = wire.NewSet(
+        database.NewConnection,
+        cache.NewRedisCache,
+        ProvideLogger,
+    )
+
+    func InitializeApp(cfg *config.Config) (*App, error) {
+        wire.Build(
+            NewApp,
+            InfrastructureSet,
+            RepositorySet,
+            ServiceSet,
+        )
+        return nil, nil
+    }
+
+    func InitializeTestApp(cfg *config.Config) (*App, error) {
+        wire.Build(
+            NewApp,
+            database.NewTestConnection,
+            cache.NewMemoryCache,
+            ProvideTestLogger,
+            RepositorySet,
+            ServiceSet,
+        )
+        return nil, nil
+    }
+
 assertions:
   must_include:
-  - Cache
-  - NewCache
-  - CacheURL
+    - App
+    - RepositorySet
+    - ServiceSet
+    - InfrastructureSet
+    - InitializeTestApp
+    - orderService
+    - cache
+    - Shutdown
   must_not_include:
-  - garbage_marker_12345
-  - unused_marker_67890
+    - GARBAGE_GO_DI_CONTAINER_001
+    - GARBAGE_GO_TYPE_CONTAINER_002
+    - GARBAGE_GO_FUNC_CONTAINER_003
+    - GARBAGE_GO_CONTAINER_UNUSED_004
+    - GARBAGE_GO_DI_INJECTOR_005
+    - GARBAGE_GO_TYPE_INJECTOR_006
+    - GARBAGE_GO_FUNC_INJECTOR_007
+    - GARBAGE_GO_INJECTOR_OUTPUT_008
+    - container.go
+    - injector.go
 options:
-  commit_message: Add Cache provider
+  commit_message: Add provider sets and test app initialization

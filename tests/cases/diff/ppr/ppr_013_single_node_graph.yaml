@@ -1,0 +1,12 @@
+name: ppr_013_single_node_graph
+initial:
+  single.py: |
+    def only():
+        pass
+changed:
+  single.py: |
+    def only():
+        return 1
+assertions:
+  must_include:
+  - only

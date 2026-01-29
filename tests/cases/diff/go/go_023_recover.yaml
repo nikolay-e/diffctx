@@ -1,47 +1,296 @@
 name: go_023_recover
 initial:
-  handler.go: |
-    package main
+  internal/server/middleware.go: |
+    package server
 
-    func HandleRequest() {
-        println("handling request")
-    }
-  unrelated/garbage.go: |
-    package unrelated
+    import (
+        "log"
+        "net/http"
+    )
 
-    func UnusedHandler_12345() {
-        println("garbage_marker_12345")
+    type Middleware func(http.Handler) http.Handler
+
+    type MiddlewareChain struct {
+        middlewares []Middleware
     }
 
-    func AnotherUnused_67890() {
-        println("unused_marker_67890")
+    func NewMiddlewareChain() *MiddlewareChain {
+        return &MiddlewareChain{}
     }
+
+    func (c *MiddlewareChain) Use(m Middleware) *MiddlewareChain {
+        c.middlewares = append(c.middlewares, m)
+        return c
+    }
+
+    func (c *MiddlewareChain) Apply(handler http.Handler) http.Handler {
+        for i := len(c.middlewares) - 1; i >= 0; i-- {
+            handler = c.middlewares[i](handler)
+        }
+        return handler
+    }
+
+    func LoggingMiddleware(logger *log.Logger) Middleware {
+        return func(next http.Handler) http.Handler {
+            return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+                logger.Printf("Request: %s %s", r.Method, r.URL.Path)
+                next.ServeHTTP(w, r)
+            })
+        }
+    }
+
+  internal/server/handler.go: |
+    package server
+
+    import "net/http"
+
+    func HandleRequest(w http.ResponseWriter, r *http.Request) {
+        w.Write([]byte("OK"))
+    }
+
+  internal/unrelated/database/postgres.go: |
+    package database
+
+    import "time"
+
+    const GARBAGE_GO_POSTGRES_CONN_A1B2C3 = "postgres_garbage_marker"
+
+    type GARBAGE_GO_TYPE_PGPOOL_D4E5F6 struct {
+        host     string
+        port     int
+        database string
+        maxConns int
+    }
+
+    func GARBAGE_GO_FUNC_POSTGRES_G7H8I9() string {
+        return "GARBAGE_GO_POSTGRES_UNUSED_J0K1L2"
+    }
+
+    type PostgresConfig struct {
+        Host            string
+        Port            int
+        Database        string
+        Username        string
+        Password        string
+        SSLMode         string
+        MaxOpenConns    int
+        MaxIdleConns    int
+        ConnMaxLifetime time.Duration
+    }
+
+    func GARBAGE_GO_FUNC_PG_CONNECT_M3N4O5() error {
+        println("GARBAGE_GO_PG_OUTPUT_P6Q7R8")
+        return nil
+    }
+
+  internal/unrelated/database/mysql.go: |
+    package database
+
+    const GARBAGE_GO_MYSQL_DRIVER_S9T0U1 = "mysql_garbage"
+
+    type GARBAGE_GO_TYPE_MYSQL_V2W3X4 struct {
+        dsn      string
+        poolSize int
+    }
+
+    func GARBAGE_GO_FUNC_MYSQL_Y5Z6A7() {
+        println("GARBAGE_GO_MYSQL_OUTPUT_B8C9D0")
+    }
+
+    type MySQLConfig struct {
+        DSN          string
+        MaxOpenConns int
+        MaxIdleConns int
+    }
+
+    func GARBAGE_GO_FUNC_MYSQL_QUERY_E1F2G3(query string) error {
+        return nil
+    }
+
+  internal/unrelated/database/mongodb.go: |
+    package database
+
+    const GARBAGE_GO_MONGO_CLIENT_H4I5J6 = "mongodb_garbage"
+
+    type GARBAGE_GO_TYPE_MONGOCOLL_K7L8M9 struct {
+        database   string
+        collection string
+    }
+
+    func GARBAGE_GO_FUNC_MONGO_N0O1P2() {
+        println("GARBAGE_GO_MONGO_OUTPUT_Q3R4S5")
+    }
+
 changed:
-  handler.go: |
-    package main
+  internal/server/middleware.go: |
+    package server
 
-    import "log"
+    import (
+        "encoding/json"
+        "fmt"
+        "log"
+        "net/http"
+        "runtime/debug"
+        "time"
+    )
 
-    func HandleRequest() {
-        defer func() {
-            if r := recover(); r != nil {
-                log.Printf("Recovered from panic: %v", r)
-            }
+    type Middleware func(http.Handler) http.Handler
+
+    type MiddlewareChain struct {
+        middlewares []Middleware
+    }
+
+    func NewMiddlewareChain() *MiddlewareChain {
+        return &MiddlewareChain{}
+    }
+
+    func (c *MiddlewareChain) Use(m Middleware) *MiddlewareChain {
+        c.middlewares = append(c.middlewares, m)
+        return c
+    }
+
+    func (c *MiddlewareChain) Apply(handler http.Handler) http.Handler {
+        for i := len(c.middlewares) - 1; i >= 0; i-- {
+            handler = c.middlewares[i](handler)
+        }
+        return handler
+    }
+
+    func LoggingMiddleware(logger *log.Logger) Middleware {
+        return func(next http.Handler) http.Handler {
+            return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+                start := time.Now()
+                logger.Printf("Started %s %s", r.Method, r.URL.Path)
+                next.ServeHTTP(w, r)
+                logger.Printf("Completed %s %s in %v", r.Method, r.URL.Path, time.Since(start))
+            })
+        }
+    }
+
+    type PanicError struct {
+        Value      interface{}
+        StackTrace string
+        Timestamp  time.Time
+        RequestID  string
+    }
+
+    func (e *PanicError) Error() string {
+        return fmt.Sprintf("panic: %v", e.Value)
+    }
+
+    type ErrorResponse struct {
+        Error     string `json:"error"`
+        RequestID string `json:"request_id,omitempty"`
+        Timestamp string `json:"timestamp"`
+    }
+
+    type PanicHandler func(*PanicError, http.ResponseWriter, *http.Request)
+
+    func RecoveryMiddleware(logger *log.Logger, onPanic PanicHandler) Middleware {
+        return func(next http.Handler) http.Handler {
+            return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+                defer func() {
+                    if rec := recover(); rec != nil {
+                        panicErr := &PanicError{
+                            Value:      rec,
+                            StackTrace: string(debug.Stack()),
+                            Timestamp:  time.Now(),
+                            RequestID:  r.Header.Get("X-Request-ID"),
+                        }
+
+                        logger.Printf("PANIC RECOVERED: %v\n%s", rec, panicErr.StackTrace)
+
+                        if onPanic != nil {
+                            onPanic(panicErr, w, r)
+                        } else {
+                            w.Header().Set("Content-Type", "application/json")
+                            w.WriteHeader(http.StatusInternalServerError)
+                            json.NewEncoder(w).Encode(ErrorResponse{
+                                Error:     "Internal Server Error",
+                                RequestID: panicErr.RequestID,
+                                Timestamp: panicErr.Timestamp.Format(time.RFC3339),
+                            })
+                        }
+                    }
+                }()
+
+                next.ServeHTTP(w, r)
+            })
+        }
+    }
+
+    func RecoveryMiddlewareSimple(logger *log.Logger) Middleware {
+        return RecoveryMiddleware(logger, nil)
+    }
+
+    func SafeHandler(handler http.HandlerFunc, logger *log.Logger) http.HandlerFunc {
+        return func(w http.ResponseWriter, r *http.Request) {
+            defer func() {
+                if rec := recover(); rec != nil {
+                    logger.Printf("Handler panic: %v\n%s", rec, debug.Stack())
+                    http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+                }
+            }()
+            handler(w, r)
+        }
+    }
+
+    func SafeGo(logger *log.Logger, fn func()) {
+        go func() {
+            defer func() {
+                if rec := recover(); rec != nil {
+                    logger.Printf("Goroutine panic: %v\n%s", rec, debug.Stack())
+                }
+            }()
+            fn()
         }()
-
-        processRequest()
     }
 
-    func processRequest() {
-        panic("something went wrong")
+    func SafeGoWithCallback(logger *log.Logger, fn func(), onPanic func(interface{})) {
+        go func() {
+            defer func() {
+                if rec := recover(); rec != nil {
+                    logger.Printf("Goroutine panic: %v\n%s", rec, debug.Stack())
+                    if onPanic != nil {
+                        onPanic(rec)
+                    }
+                }
+            }()
+            fn()
+        }()
     }
+
 assertions:
   must_include:
-  - HandleRequest
-  - recover
-  - processRequest
+    - RecoveryMiddleware
+    - RecoveryMiddlewareSimple
+    - SafeHandler
+    - SafeGo
+    - SafeGoWithCallback
+    - PanicError
+    - PanicHandler
+    - ErrorResponse
+    - "recover()"
+    - "debug.Stack()"
   must_not_include:
-  - garbage_marker_12345
-  - unused_marker_67890
+    - GARBAGE_GO_POSTGRES_CONN_A1B2C3
+    - GARBAGE_GO_TYPE_PGPOOL_D4E5F6
+    - GARBAGE_GO_FUNC_POSTGRES_G7H8I9
+    - GARBAGE_GO_POSTGRES_UNUSED_J0K1L2
+    - GARBAGE_GO_FUNC_PG_CONNECT_M3N4O5
+    - GARBAGE_GO_PG_OUTPUT_P6Q7R8
+    - GARBAGE_GO_MYSQL_DRIVER_S9T0U1
+    - GARBAGE_GO_TYPE_MYSQL_V2W3X4
+    - GARBAGE_GO_FUNC_MYSQL_Y5Z6A7
+    - GARBAGE_GO_MYSQL_OUTPUT_B8C9D0
+    - GARBAGE_GO_FUNC_MYSQL_QUERY_E1F2G3
+    - GARBAGE_GO_MONGO_CLIENT_H4I5J6
+    - GARBAGE_GO_TYPE_MONGOCOLL_K7L8M9
+    - GARBAGE_GO_FUNC_MONGO_N0O1P2
+    - GARBAGE_GO_MONGO_OUTPUT_Q3R4S5
+    - postgres
+    - mysql
+    - mongodb
+
 options:
-  commit_message: Add panic recovery
+  commit_message: Add comprehensive panic recovery middleware

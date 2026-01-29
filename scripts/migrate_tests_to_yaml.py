@@ -86,7 +86,9 @@ def find_diff_test_cases(tree: ast.Module) -> list[dict]:
 
     class Visitor(ast.NodeVisitor):
         def visit_Call(self, node: ast.Call):
-            if isinstance(node.func, ast.Name) and node.func.id == "DiffTestCase":
+            is_direct = isinstance(node.func, ast.Name) and node.func.id == "DiffTestCase"
+            is_attr = isinstance(node.func, ast.Attribute) and node.func.attr == "DiffTestCase"
+            if is_direct or is_attr:
                 case = extract_diff_test_case(node)
                 if case:
                     cases.append(case)

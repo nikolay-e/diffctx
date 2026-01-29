@@ -1,0 +1,159 @@
+name: docker_076_compose_environment
+initial:
+  src/db.py: |
+    import os
+    from contextlib import contextmanager
+    from typing import Generator
+
+    DATABASE_URL = os.getenv("DATABASE_URL")
+    REDIS_URL = os.getenv("REDIS_URL")
+    SECRET_KEY = os.getenv("SECRET_KEY")
+
+    def validate_config() -> bool:
+        required = [DATABASE_URL, SECRET_KEY]
+        return all(v is not None for v in required)
+
+    @contextmanager
+    def get_connection() -> Generator:
+        if not DATABASE_URL:
+            raise ValueError("DATABASE_URL not configured")
+        # Simulated connection
+        conn = {"url": DATABASE_URL, "connected": True}
+        try:
+            yield conn
+        finally:
+            conn["connected"] = False
+
+    def get_redis_client():
+        if not REDIS_URL:
+            return None
+        return {"url": REDIS_URL, "type": "redis"}
+  src/app.py: |
+    from db import validate_config, get_connection, get_redis_client
+
+    def initialize():
+        if not validate_config():
+            raise RuntimeError("Configuration validation failed")
+        redis = get_redis_client()
+        return {"redis": redis is not None}
+  requirements.txt: |
+    psycopg2-binary==2.9.9
+    redis==5.0.0
+    python-dotenv==1.0.0
+  Dockerfile: |
+    FROM python:3.12-slim
+    WORKDIR /app
+    COPY requirements.txt .
+    RUN pip install -r requirements.txt
+    COPY src/ ./src/
+    CMD ["python", "-c", "from src.app import initialize; initialize()"]
+  docker-compose.yml: |
+    version: '3.8'
+    services:
+      api:
+        build: .
+        environment:
+          - DATABASE_URL=postgres://localhost:5432/db
+  scripts/unrelated_script.sh: |
+    #!/bin/bash
+    # GARBAGE_DOCKER_076_SCRIPT_MARKER_c1v2b3
+    GARBAGE_DOCKER_076_UNRELATED_VAR_n4m5q6="nothing"
+    echo "This script has no connection to anything"
+  tests/test_db.py: |
+    # GARBAGE_DOCKER_076_TEST_MARKER_w7e8r9
+    GARBAGE_DOCKER_076_TEST_DB_t0y1u2 = "sqlite:///test.db"
+    def test_connection():
+        pass
+  docs/environment.md: |
+    # Environment Variables
+    GARBAGE_DOCKER_076_ENV_DOC_i3o4p5
+    GARBAGE_DOCKER_076_VAR_LIST_a6s7d8="DATABASE_URL,REDIS_URL"
+  secrets/template.env: |
+    # GARBAGE_DOCKER_076_SECRET_MARKER_f9g0h1
+    GARBAGE_DOCKER_076_SECRET_KEY_j2k3l4=placeholder
+  terraform/ssm.tf: |
+    # GARBAGE_DOCKER_076_TF_MARKER_z5x6c7
+    resource "aws_ssm_parameter" "db_url" {
+      GARBAGE_DOCKER_076_PARAM_TYPE_v8b9n0 = "SecureString"
+    }
+changed:
+  docker-compose.yml: |
+    version: '3.8'
+
+    services:
+      api:
+        build:
+          context: .
+          dockerfile: Dockerfile
+        environment:
+          # Database configuration
+          - DATABASE_URL=postgres://db:5432/prod
+          - DATABASE_POOL_SIZE=10
+          - DATABASE_MAX_OVERFLOW=20
+
+          # Redis configuration
+          - REDIS_URL=redis://redis:6379/0
+          - REDIS_MAX_CONNECTIONS=50
+
+          # Application secrets (interpolated from .env or shell)
+          - SECRET_KEY=${SECRET_KEY:?SECRET_KEY is required}
+          - JWT_SECRET=${JWT_SECRET:-default-jwt-secret}
+
+          # Feature flags
+          - FEATURE_NEW_UI=${FEATURE_NEW_UI:-false}
+          - FEATURE_BETA_API=true
+
+          # Logging and monitoring
+          - LOG_LEVEL=${LOG_LEVEL:-info}
+          - SENTRY_DSN=${SENTRY_DSN:-}
+
+        env_file:
+          - .env
+          - .env.${APP_ENV:-development}
+
+        depends_on:
+          db:
+            condition: service_healthy
+          redis:
+            condition: service_started
+
+      db:
+        image: postgres:16-alpine
+        environment:
+          POSTGRES_USER: ${POSTGRES_USER:-app}
+          POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD required}
+          POSTGRES_DB: ${POSTGRES_DB:-prod}
+          PGDATA: /var/lib/postgresql/data/pgdata
+        volumes:
+          - postgres_data:/var/lib/postgresql/data
+        healthcheck:
+          test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-app}"]
+          interval: 10s
+          timeout: 5s
+          retries: 5
+
+      redis:
+        image: redis:7-alpine
+        command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+        volumes:
+          - redis_data:/data
+
+    volumes:
+      postgres_data:
+      redis_data:
+assertions:
+  must_include:
+    - 'environment:'
+  must_not_include:
+    - GARBAGE_DOCKER_076_SCRIPT_MARKER_c1v2b3
+    - GARBAGE_DOCKER_076_UNRELATED_VAR_n4m5q6
+    - GARBAGE_DOCKER_076_TEST_MARKER_w7e8r9
+    - GARBAGE_DOCKER_076_TEST_DB_t0y1u2
+    - GARBAGE_DOCKER_076_ENV_DOC_i3o4p5
+    - GARBAGE_DOCKER_076_VAR_LIST_a6s7d8
+    - GARBAGE_DOCKER_076_SECRET_MARKER_f9g0h1
+    - GARBAGE_DOCKER_076_SECRET_KEY_j2k3l4
+    - GARBAGE_DOCKER_076_TF_MARKER_z5x6c7
+    - GARBAGE_DOCKER_076_PARAM_TYPE_v8b9n0
+options:
+  commit_message: Add comprehensive environment configuration with secrets and feature flags

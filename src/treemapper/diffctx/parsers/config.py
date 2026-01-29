@@ -82,15 +82,16 @@ class ConfigStrategy:
         elif suffix == ".toml":
             key_re = re.compile(r"^\[([a-zA-Z_][a-zA-Z0-9_.-]*)\]")
         else:
-            key_re = re.compile(r'^\s{0,2}"([^"]+)":\s*')
+            key_re = re.compile(r'^\s{0,4}"([^"]+)":\s*')
 
         boundaries: list[int] = []
         for i, line in enumerate(lines):
             if key_re.match(line):
                 boundaries.append(i)
 
-        if len(boundaries) < 2:
-            return []
+        if not boundaries:
+            frag = create_fragment_from_lines(path, lines, 1, len(lines), "config", "data")
+            return [frag] if frag else []
 
         fragments: list[Fragment] = []
         boundaries.append(len(lines))

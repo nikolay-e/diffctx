@@ -1,0 +1,40 @@
+name: cicd_095_azure_pipelines
+initial:
+  azure-pipelines.yml: |
+    trigger:
+      - main
+
+    pool:
+      vmImage: 'ubuntu-latest'
+
+    steps:
+      - script: npm install
+      - script: npm test
+  src/utils.ts: |
+    export function formatDate(date: Date): string {
+      return date.toISOString();
+    }
+changed:
+  azure-pipelines.yml: |
+    trigger:
+      - main
+      - develop
+
+    pool:
+      vmImage: 'ubuntu-latest'
+
+    variables:
+      NODE_VERSION: '20.x'
+
+    steps:
+      - task: NodeTool@0
+        inputs:
+          versionSpec: $(NODE_VERSION)
+      - script: npm ci
+      - script: npm run build
+      - script: npm test
+assertions:
+  must_include:
+    - formatDate
+options:
+  commit_message: add build step

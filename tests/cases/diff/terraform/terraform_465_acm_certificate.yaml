@@ -1,0 +1,24 @@
+name: terraform_465_acm_certificate
+initial:
+  dns.tf: |
+    # DNS resources
+changed:
+  dns.tf: |
+    resource "aws_acm_certificate" "main" {
+      domain_name       = "api.example.com"
+      validation_method = "DNS"
+
+      lifecycle {
+        create_before_destroy = true
+      }
+    }
+
+    resource "aws_acm_certificate_validation" "main" {
+      certificate_arn         = aws_acm_certificate.main.arn
+      validation_record_fqdns = [aws_route53_record.cert_validation.fqdn]
+    }
+assertions:
+  must_include:
+  - dns.tf
+options:
+  commit_message: Add ACM certificate

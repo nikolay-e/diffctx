@@ -1,35 +1,122 @@
 name: python_026_getattr_dynamic_call
 initial:
   actions.py: |
+    from typing import Dict, Any, Optional, List
+    from dataclasses import dataclass, field
+    from datetime import datetime
+    from enum import Enum
+
+    class ActionPriority(Enum):
+        LOW = 1
+        NORMAL = 2
+        HIGH = 3
+
+    @dataclass
+    class ActionResult:
+        action: str
+        data: Any
+        success: bool
+        timestamp: datetime = field(default_factory=datetime.now)
+        error_message: str = ""
+
+        def to_dict(self) -> dict:
+            return {
+                "action": self.action,
+                "data": self.data,
+                "success": self.success,
+                "error_message": self.error_message
+            }
+
     class ActionHandler:
-        def process(self, data):
-            return {"action": "process", "data": data}
+        def __init__(self):
+            self._history: List[ActionResult] = []
 
-        def validate(self, data):
-            return {"action": "validate", "data": data}
+        def process(self, data: Any) -> ActionResult:
+            result = {"action": "process", "data": data, "processed": True}
+            return ActionResult(action="process", data=result, success=True)
 
-        def transform(self, data):
-            return {"action": "transform", "data": data}
+        def validate(self, data: Any) -> ActionResult:
+            is_valid = data is not None and bool(data)
+            return ActionResult(
+                action="validate",
+                data={"valid": is_valid},
+                success=is_valid
+            )
+
+        def transform(self, data: Any) -> ActionResult:
+            if isinstance(data, str):
+                transformed = data.upper()
+            else:
+                transformed = str(data)
+            return ActionResult(action="transform", data=transformed, success=True)
+
+        def get_history(self, limit: int = 10) -> List[ActionResult]:
+            return self._history[-limit:]
+
   dispatcher.py: |
     def dispatch():
         pass
-  garbage.py: |
-    garbage_marker_12345 = "action garbage"
-    unused_marker_67890 = "unused action"
+
+  garbage_file_processor.py: |
+    GARBAGE_PY_FILE_827364 = "file processor garbage"
+    UNRELATED_FILE_MARKER_918273 = "unused multipart config"
+
+    class GarbageFileProcessor:
+        def garbage_process_upload(self, file_data):
+            return f"Garbage processed: {len(file_data)} bytes"
+
+  garbage_image_handler.py: |
+    GARBAGE_PY_IMG_918273 = "image handler garbage"
+    UNRELATED_IMG_MARKER_827163 = "unused pillow config"
+
+    class GarbageImageHandler:
+        def garbage_resize_image(self, image, size):
+            return f"Garbage resized to: {size}"
+
 changed:
   dispatcher.py: |
-    from actions import ActionHandler
+    from actions import ActionHandler, ActionResult, ActionPriority
+    from typing import Any, Optional, List
 
     handler = ActionHandler()
 
-    def dispatch(action: str, data: dict):
+    class DynamicDispatcher:
+        def __init__(self, action_handler: ActionHandler = None):
+            self.handler = action_handler or ActionHandler()
+            self._dispatch_count = 0
+
+        def dispatch(self, action: str, data: Any) -> Optional[ActionResult]:
+            method = getattr(self.handler, action, None)
+            if method is None:
+                return ActionResult(
+                    action=action, data=None, success=False,
+                    error_message=f"Unknown action: {action}"
+                )
+            self._dispatch_count += 1
+            return method(data)
+
+        def batch_dispatch(self, actions: List[dict]) -> List[ActionResult]:
+            results = []
+            for spec in actions:
+                result = self.dispatch(spec.get("action"), spec.get("data"))
+                results.append(result)
+            return results
+
+    def dispatch(action: str, data: Any) -> Optional[ActionResult]:
         method = getattr(handler, action, None)
         if method:
             return method(data)
         return None
+
 assertions:
   must_include:
-  - def process
+    - DynamicDispatcher
+    - ActionHandler
+    - getattr
   must_not_include:
-  - garbage_marker_12345
-  - unused_marker_67890
+    - GARBAGE_PY_FILE_827364
+    - UNRELATED_FILE_MARKER_918273
+    - GARBAGE_PY_IMG_918273
+    - UNRELATED_IMG_MARKER_827163
+    - GarbageFileProcessor
+    - GarbageImageHandler

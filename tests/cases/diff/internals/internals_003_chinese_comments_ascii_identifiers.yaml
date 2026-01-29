@@ -1,0 +1,16 @@
+name: internals_003_chinese_comments_ascii_identifiers
+initial:
+  chinese.py: |
+    def placeholder():
+        pass
+changed:
+  chinese.py: |
+    # 这是一个函数
+    def foo():
+        # 返回值
+        return 42
+assertions:
+  must_include:
+  - foo
+options:
+  add_garbage: true

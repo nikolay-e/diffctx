@@ -1,39 +1,210 @@
 name: k8s_430_network_policy_egress
 initial:
-  networkpolicy.yaml: |
+  k8s/base/deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: order-processor
+      namespace: production
+      labels:
+        app: order-processor
+        tier: backend
+    spec:
+      replicas: 5
+      selector:
+        matchLabels:
+          app: order-processor
+      template:
+        metadata:
+          labels:
+            app: order-processor
+            tier: backend
+        spec:
+          containers:
+          - name: processor
+            image: registry.example.com/order-processor:v2.3.0
+            ports:
+            - containerPort: 8080
+              name: http
+            env:
+            - name: DATABASE_HOST
+              value: postgres.database.svc.cluster.local
+            - name: REDIS_HOST
+              value: redis.cache.svc.cluster.local
+            - name: KAFKA_BROKERS
+              value: kafka-bootstrap.kafka.svc.cluster.local:9092
+            resources:
+              requests:
+                memory: "256Mi"
+                cpu: "250m"
+              limits:
+                memory: "512Mi"
+                cpu: "500m"
+
+  k8s/base/service.yaml: |
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: order-processor
+      namespace: production
+    spec:
+      selector:
+        app: order-processor
+      ports:
+      - name: http
+        port: 80
+        targetPort: 8080
+
+  k8s/base/configmap.yaml: |
+    apiVersion: v1
+    kind: ConfigMap
+    metadata:
+      name: order-processor-config
+      namespace: production
+    data:
+      LOG_LEVEL: info
+      BATCH_SIZE: "100"
+      RETRY_COUNT: "3"
+
+  k8s/base/networkpolicy.yaml: |
     apiVersion: networking.k8s.io/v1
     kind: NetworkPolicy
     metadata:
-      name: default-deny
+      name: default-deny-egress
+      namespace: production
     spec:
       podSelector: {}
       policyTypes:
       - Egress
-  unrelated.txt: |
-    garbage_marker_k8s430 = True
-    unused_marker_k8s430 = False
+
+  k8s/unrelated/observability/grafana-dashboard.yaml: |
+    # GARBAGE_K8S_430_GRAFANA_DASHBOARD
+    apiVersion: integreatly.org/v1alpha1
+    kind: GrafanaDashboard
+    metadata:
+      name: GARBAGE_K8S_430_DASHBOARD_NAME
+      namespace: monitoring
+    spec:
+      json: GARBAGE_K8S_430_DASHBOARD_JSON
+      datasources:
+      - inputName: GARBAGE_K8S_430_DS_INPUT
+        datasourceName: GARBAGE_K8S_430_DS_NAME
+
+  k8s/unrelated/alerting/alertmanager-config.yaml: |
+    # GARBAGE_K8S_430_ALERTMANAGER
+    apiVersion: monitoring.coreos.com/v1alpha1
+    kind: AlertmanagerConfig
+    metadata:
+      name: GARBAGE_K8S_430_AM_CONFIG
+      namespace: monitoring
+    spec:
+      route:
+        receiver: GARBAGE_K8S_430_AM_RECEIVER
+        groupBy:
+        - GARBAGE_K8S_430_GROUP_BY
+      receivers:
+      - name: GARBAGE_K8S_430_RECEIVER_NAME
+        slackConfigs:
+        - channel: GARBAGE_K8S_430_SLACK_CHANNEL
+
+  k8s/unrelated/scheduler/keda-scaledobject.yaml: |
+    # GARBAGE_K8S_430_KEDA_SCALED
+    apiVersion: keda.sh/v1alpha1
+    kind: ScaledObject
+    metadata:
+      name: GARBAGE_K8S_430_SCALED_OBJ
+      namespace: keda
+    spec:
+      scaleTargetRef:
+        name: GARBAGE_K8S_430_TARGET_NAME
+      triggers:
+      - type: GARBAGE_K8S_430_TRIGGER_TYPE
+        metadata:
+          queueName: GARBAGE_K8S_430_QUEUE_NAME
+
+  helm/values.yaml: |
+    # GARBAGE_K8S_430_HELM_VALUES
+    replicaCount: GARBAGE_K8S_430_REPLICAS
+    image:
+      repository: GARBAGE_K8S_430_IMAGE_REPO
+      tag: GARBAGE_K8S_430_IMAGE_TAG
+
 changed:
-  networkpolicy.yaml: |
+  k8s/base/networkpolicy.yaml: |
     apiVersion: networking.k8s.io/v1
     kind: NetworkPolicy
     metadata:
-      name: api-policy
+      name: order-processor-egress
+      namespace: production
+      labels:
+        app: order-processor
     spec:
       podSelector:
         matchLabels:
-          app: api
+          app: order-processor
+      policyTypes:
+      - Egress
       egress:
       - to:
         - namespaceSelector:
             matchLabels:
               name: database
+          podSelector:
+            matchLabels:
+              app: postgres
         ports:
-        - port: 5432
+        - protocol: TCP
+          port: 5432
+      - to:
+        - namespaceSelector:
+            matchLabels:
+              name: cache
+          podSelector:
+            matchLabels:
+              app: redis
+        ports:
+        - protocol: TCP
+          port: 6379
+      - to:
+        - namespaceSelector:
+            matchLabels:
+              name: kafka
+        ports:
+        - protocol: TCP
+          port: 9092
+      - to:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+        ports:
+        - protocol: UDP
+          port: 53
+
 assertions:
   must_include:
-  - 'egress:'
+  - order-processor-egress
+  - kube-dns
   must_not_include:
-  - garbage_marker_k8s430
-  - unused_marker_k8s430
+  - GARBAGE_K8S_430_GRAFANA_DASHBOARD
+  - GARBAGE_K8S_430_DASHBOARD_NAME
+  - GARBAGE_K8S_430_DASHBOARD_JSON
+  - GARBAGE_K8S_430_DS_INPUT
+  - GARBAGE_K8S_430_DS_NAME
+  - GARBAGE_K8S_430_ALERTMANAGER
+  - GARBAGE_K8S_430_AM_CONFIG
+  - GARBAGE_K8S_430_AM_RECEIVER
+  - GARBAGE_K8S_430_GROUP_BY
+  - GARBAGE_K8S_430_RECEIVER_NAME
+  - GARBAGE_K8S_430_SLACK_CHANNEL
+  - GARBAGE_K8S_430_KEDA_SCALED
+  - GARBAGE_K8S_430_SCALED_OBJ
+  - GARBAGE_K8S_430_TARGET_NAME
+  - GARBAGE_K8S_430_TRIGGER_TYPE
+  - GARBAGE_K8S_430_QUEUE_NAME
+  - GARBAGE_K8S_430_HELM_VALUES
+  - GARBAGE_K8S_430_REPLICAS
+  - GARBAGE_K8S_430_IMAGE_REPO
+  - GARBAGE_K8S_430_IMAGE_TAG
 options:
-  commit_message: Add network policy egress
+  commit_message: Add network policy egress rules for order processor

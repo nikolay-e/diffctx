@@ -1,0 +1,64 @@
+name: fragments_080_single_line_env_change
+initial:
+  app.py: |
+    import os
+    from pathlib import Path
+
+    DEBUG = os.getenv("DEBUG", False)
+    LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
+
+    def main():
+        if DEBUG:
+            print("Debug mode")
+
+    def unrelated_function_080():
+        return "GARBAGE_FRAG_unrelatedfunc080"
+
+    class UnrelatedClass080:
+        MARKER = "GARBAGE_FRAG_unrelatedclass080"
+
+        def method_a(self):
+            return "GARBAGE_FRAG_methoda080"
+
+    def another_unrelated_080():
+        return "GARBAGE_FRAG_anotherunrelated080"
+  .env: |
+    DEBUG=false
+    LOG_LEVEL=INFO
+    GARBAGE_ENV_KEY1=GARBAGE_FRAG_envkey1_080
+    GARBAGE_ENV_KEY2=GARBAGE_FRAG_envkey2_080
+    GARBAGE_ENV_KEY3=GARBAGE_FRAG_envkey3_080
+  garbage_080.py: |
+    import os
+
+    GARBAGE_VAR = os.getenv("GARBAGE_FRAG_garbvar080")
+
+    def garbage_function_080():
+        return "GARBAGE_FRAG_garbfunc080"
+
+    class Garbage080:
+        VALUE = "GARBAGE_FRAG_garbclass080"
+  garbage_080.env: |
+    GARBAGE_ONLY_KEY=GARBAGE_FRAG_garbonlykey080
+    ANOTHER_GARBAGE=GARBAGE_FRAG_anothergarbenv080
+changed:
+  .env: |
+    DEBUG=true
+    LOG_LEVEL=INFO
+    GARBAGE_ENV_KEY1=GARBAGE_FRAG_envkey1_080
+    GARBAGE_ENV_KEY2=GARBAGE_FRAG_envkey2_080
+    GARBAGE_ENV_KEY3=GARBAGE_FRAG_envkey3_080
+assertions:
+  must_include:
+    - .env
+  must_not_include:
+    - GARBAGE_FRAG_garbvar080
+    - GARBAGE_FRAG_garbfunc080
+    - GARBAGE_FRAG_garbclass080
+    - GARBAGE_FRAG_garbonlykey080
+    - GARBAGE_FRAG_anothergarbenv080
+    - garbage_080.py
+    - garbage_080.env
+    - Garbage080
+options:
+  commit_message: Enable debug

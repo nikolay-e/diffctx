@@ -1,0 +1,24 @@
+name: yaml_008_cache_ttl
+initial:
+  config/cache.yaml: |
+    cache:
+      default_ttl: 300
+      max_size: 1000
+  src/caching.py: |
+    from functools import lru_cache
+
+    def cached(ttl: int = 300):
+        def decorator(func):
+            return lru_cache(maxsize=1000)(func)
+        return decorator
+changed:
+  config/cache.yaml: |
+    cache:
+      default_ttl: 600
+      max_size: 5000
+      eviction_policy: lru
+assertions:
+  must_include:
+    - cached
+options:
+  commit_message: update cache ttl

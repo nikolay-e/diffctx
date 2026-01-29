@@ -1,71 +1,334 @@
 name: java_016_kafka_listener
 initial:
-  src/main/java/com/example/KafkaConsumer.java: |
-    package com.example;
+  src/main/java/com/eventbus/consumer/OrderEventConsumer.java: |
+    package com.eventbus.consumer;
 
     import org.springframework.kafka.annotation.KafkaListener;
-    import org.springframework.stereotype.Component;
-
-    @Component
-    public class KafkaConsumer {
-        @KafkaListener(topics = "orders")
-        public void listen(String message) {
-            System.out.println("Received: " + message);
-        }
-    }
-  src/main/java/com/example/KafkaProducer.java: |
-    package com.example;
-
-    import org.springframework.kafka.core.KafkaTemplate;
-    import org.springframework.stereotype.Component;
-
-    @Component
-    public class KafkaProducer {
-        private final KafkaTemplate<String, String> kafkaTemplate;
-
-        public KafkaProducer(KafkaTemplate<String, String> kafkaTemplate) {
-            this.kafkaTemplate = kafkaTemplate;
-        }
-
-        public void send(String message) {
-            kafkaTemplate.send("orders", message);
-        }
-    }
-changed:
-  src/main/java/com/example/KafkaConsumer.java: |
-    package com.example;
-
-    import org.springframework.kafka.annotation.KafkaListener;
-    import org.springframework.kafka.support.Acknowledgment;
     import org.springframework.stereotype.Component;
     import org.slf4j.Logger;
     import org.slf4j.LoggerFactory;
 
     @Component
-    public class KafkaConsumer {
-        private static final Logger logger = LoggerFactory.getLogger(KafkaConsumer.class);
+    public class OrderEventConsumer {
+        private static final Logger log = LoggerFactory.getLogger(OrderEventConsumer.class);
 
-        @KafkaListener(topics = "orders", groupId = "order-processor")
-        public void listen(String message, Acknowledgment ack) {
+        @KafkaListener(topics = "orders")
+        public void handleOrderEvent(String message) {
+            log.info("Received order event: {}", message);
+        }
+    }
+  src/main/java/com/eventbus/producer/EventProducer.java: |
+    package com.eventbus.producer;
+
+    import org.springframework.kafka.core.KafkaTemplate;
+    import org.springframework.stereotype.Component;
+    import org.slf4j.Logger;
+    import org.slf4j.LoggerFactory;
+
+    @Component
+    public class EventProducer {
+        private static final Logger log = LoggerFactory.getLogger(EventProducer.class);
+        private final KafkaTemplate<String, String> kafkaTemplate;
+
+        public EventProducer(KafkaTemplate<String, String> kafkaTemplate) {
+            this.kafkaTemplate = kafkaTemplate;
+        }
+
+        public void sendEvent(String topic, String message) {
+            log.info("Sending event to {}: {}", topic, message);
+            kafkaTemplate.send(topic, message);
+        }
+    }
+  src/main/java/com/eventbus/model/OrderEvent.java: |
+    package com.eventbus.model;
+
+    import java.math.BigDecimal;
+    import java.time.Instant;
+
+    public record OrderEvent(
+        String orderId,
+        String customerId,
+        BigDecimal totalAmount,
+        String status,
+        Instant timestamp
+    ) {}
+  src/main/java/com/eventbus/unrelated/WebSocketHandler.java: |
+    package com.eventbus.unrelated;
+
+    import java.util.concurrent.ConcurrentHashMap;
+    import java.util.Set;
+
+    public class WebSocketHandler {
+        public static final String GARBAGE_JAVA_WEBSOCKET_901 = "websocket_marker_theta2";
+        private static final String GARBAGE_JAVA_SESSION_902 = "session_marker_iota2";
+
+        private final Set<String> activeSessions = ConcurrentHashMap.newKeySet();
+
+        public void addSession(String sessionId) {
+            activeSessions.add(sessionId);
+            logGarbageMarkers();
+        }
+
+        public void removeSession(String sessionId) {
+            activeSessions.remove(sessionId);
+        }
+
+        public int getActiveSessionCount() {
+            return activeSessions.size();
+        }
+
+        private void logGarbageMarkers() {
+            System.out.println(GARBAGE_JAVA_WEBSOCKET_901 + GARBAGE_JAVA_SESSION_902);
+        }
+    }
+  src/main/java/com/eventbus/unrelated/CacheManager.java: |
+    package com.eventbus.unrelated;
+
+    import java.time.Duration;
+    import java.util.Map;
+    import java.util.concurrent.ConcurrentHashMap;
+
+    public class CacheManager {
+        public static final String GARBAGE_JAVA_CACHE_903 = "cache_marker_kappa2";
+
+        private final Map<String, CacheEntry> cache = new ConcurrentHashMap<>();
+
+        public void put(String key, Object value, Duration ttl) {
+            cache.put(key, new CacheEntry(value, System.currentTimeMillis() + ttl.toMillis()));
+            String GARBAGE_JAVA_TTL_904 = "ttl_marker_lambda2";
+            System.out.println(GARBAGE_JAVA_CACHE_903 + GARBAGE_JAVA_TTL_904);
+        }
+
+        public Object get(String key) {
+            CacheEntry entry = cache.get(key);
+            if (entry != null && entry.expiresAt > System.currentTimeMillis()) {
+                return entry.value;
+            }
+            return null;
+        }
+
+        private record CacheEntry(Object value, long expiresAt) {}
+    }
+changed:
+  src/main/java/com/eventbus/consumer/OrderEventConsumer.java: |
+    package com.eventbus.consumer;
+
+    import com.eventbus.model.OrderEvent;
+    import com.eventbus.model.PaymentEvent;
+    import com.eventbus.model.InventoryEvent;
+    import com.eventbus.service.OrderProcessingService;
+    import com.eventbus.exception.EventProcessingException;
+    import com.fasterxml.jackson.databind.ObjectMapper;
+    import org.apache.kafka.clients.consumer.ConsumerRecord;
+    import org.springframework.kafka.annotation.KafkaListener;
+    import org.springframework.kafka.annotation.KafkaHandler;
+    import org.springframework.kafka.annotation.TopicPartition;
+    import org.springframework.kafka.annotation.PartitionOffset;
+    import org.springframework.kafka.support.Acknowledgment;
+    import org.springframework.kafka.support.KafkaHeaders;
+    import org.springframework.kafka.listener.adapter.ConsumerRecordMetadata;
+    import org.springframework.messaging.handler.annotation.Header;
+    import org.springframework.messaging.handler.annotation.Payload;
+    import org.springframework.stereotype.Component;
+    import org.springframework.retry.annotation.Retryable;
+    import org.springframework.retry.annotation.Backoff;
+    import org.slf4j.Logger;
+    import org.slf4j.LoggerFactory;
+    import org.slf4j.MDC;
+
+    import java.util.List;
+
+    @Component
+    public class OrderEventConsumer {
+        private static final Logger log = LoggerFactory.getLogger(OrderEventConsumer.class);
+
+        private final OrderProcessingService orderProcessingService;
+        private final ObjectMapper objectMapper;
+
+        public OrderEventConsumer(OrderProcessingService orderProcessingService, ObjectMapper objectMapper) {
+            this.orderProcessingService = orderProcessingService;
+            this.objectMapper = objectMapper;
+        }
+
+        @KafkaListener(
+            topics = "${kafka.topics.orders:orders}",
+            groupId = "${kafka.consumer.group-id:order-processor}",
+            containerFactory = "kafkaListenerContainerFactory",
+            concurrency = "${kafka.consumer.concurrency:3}"
+        )
+        @Retryable(
+            value = {EventProcessingException.class},
+            maxAttempts = 3,
+            backoff = @Backoff(delay = 1000, multiplier = 2)
+        )
+        public void handleOrderEvent(
+                @Payload OrderEvent event,
+                @Header(KafkaHeaders.RECEIVED_KEY) String key,
+                @Header(KafkaHeaders.RECEIVED_PARTITION) int partition,
+                @Header(KafkaHeaders.OFFSET) long offset,
+                @Header(KafkaHeaders.RECEIVED_TIMESTAMP) long timestamp,
+                Acknowledgment acknowledgment,
+                ConsumerRecordMetadata metadata) {
+
+            MDC.put("orderId", event.orderId());
+            MDC.put("partition", String.valueOf(partition));
+            MDC.put("offset", String.valueOf(offset));
+
             try {
-                processMessage(message);
-                ack.acknowledge();
+                log.info("Processing order event: orderId={}, status={}, partition={}, offset={}",
+                    event.orderId(), event.status(), partition, offset);
+
+                validateEvent(event);
+                orderProcessingService.processOrderEvent(event);
+
+                acknowledgment.acknowledge();
+                log.info("Order event processed successfully: {}", event.orderId());
+
+            } catch (EventProcessingException e) {
+                log.error("Failed to process order event: {}", event.orderId(), e);
+                throw e;
             } catch (Exception e) {
-                logger.error("Failed to process message", e);
+                log.error("Unexpected error processing order event: {}", event.orderId(), e);
+                orderProcessingService.sendToDeadLetterQueue(event, e);
+                acknowledgment.acknowledge();
+            } finally {
+                MDC.clear();
             }
         }
 
-        private void processMessage(String message) {
-            logger.info("Processing: {}", message);
+        @KafkaListener(
+            topicPartitions = @TopicPartition(
+                topic = "${kafka.topics.payments:payments}",
+                partitionOffsets = @PartitionOffset(partition = "0", initialOffset = "0")
+            ),
+            groupId = "payment-processor"
+        )
+        public void handlePaymentEvent(
+                @Payload PaymentEvent event,
+                Acknowledgment acknowledgment) {
+
+            log.info("Processing payment event: transactionId={}", event.transactionId());
+            try {
+                orderProcessingService.processPaymentEvent(event);
+                acknowledgment.acknowledge();
+            } catch (Exception e) {
+                log.error("Failed to process payment event", e);
+                orderProcessingService.sendPaymentToDeadLetterQueue(event, e);
+                acknowledgment.acknowledge();
+            }
+        }
+
+        @KafkaListener(
+            topics = "${kafka.topics.inventory:inventory}",
+            groupId = "inventory-processor",
+            batch = "true"
+        )
+        public void handleInventoryEventsBatch(
+                List<ConsumerRecord<String, InventoryEvent>> records,
+                Acknowledgment acknowledgment) {
+
+            log.info("Processing batch of {} inventory events", records.size());
+            try {
+                for (ConsumerRecord<String, InventoryEvent> record : records) {
+                    orderProcessingService.processInventoryEvent(record.value());
+                }
+                acknowledgment.acknowledge();
+                log.info("Batch processing completed for {} records", records.size());
+            } catch (Exception e) {
+                log.error("Failed to process inventory batch", e);
+                throw new EventProcessingException("Batch processing failed", e);
+            }
+        }
+
+        @KafkaListener(
+            id = "priorityOrderListener",
+            topics = "priority-orders",
+            groupId = "priority-order-processor",
+            autoStartup = "${kafka.consumer.priority.enabled:true}"
+        )
+        public void handlePriorityOrderEvent(
+                @Payload OrderEvent event,
+                Acknowledgment acknowledgment) {
+
+            log.info("Processing priority order: {}", event.orderId());
+            orderProcessingService.processPriorityOrder(event);
+            acknowledgment.acknowledge();
+        }
+
+        private void validateEvent(OrderEvent event) {
+            if (event.orderId() == null || event.orderId().isBlank()) {
+                throw new EventProcessingException("Order ID is required");
+            }
+            if (event.totalAmount() == null) {
+                throw new EventProcessingException("Total amount is required");
+            }
+        }
+    }
+  src/main/java/com/eventbus/model/PaymentEvent.java: |
+    package com.eventbus.model;
+
+    import java.math.BigDecimal;
+    import java.time.Instant;
+
+    public record PaymentEvent(
+        String transactionId,
+        String orderId,
+        BigDecimal amount,
+        String paymentMethod,
+        String status,
+        Instant timestamp
+    ) {}
+  src/main/java/com/eventbus/model/InventoryEvent.java: |
+    package com.eventbus.model;
+
+    import java.time.Instant;
+
+    public record InventoryEvent(
+        String productId,
+        String warehouseId,
+        int quantityChange,
+        String eventType,
+        Instant timestamp
+    ) {}
+  src/main/java/com/eventbus/exception/EventProcessingException.java: |
+    package com.eventbus.exception;
+
+    public class EventProcessingException extends RuntimeException {
+        public EventProcessingException(String message) {
+            super(message);
+        }
+
+        public EventProcessingException(String message, Throwable cause) {
+            super(message, cause);
         }
     }
 assertions:
   must_include:
-  - '@KafkaListener'
-  - KafkaConsumer
-  - Acknowledgment
+    - '@KafkaListener'
+    - OrderEventConsumer
+    - handleOrderEvent
+    - handlePaymentEvent
+    - handleInventoryEventsBatch
+    - handlePriorityOrderEvent
+    - Acknowledgment
+    - acknowledge
+    - '@Payload'
+    - '@Header'
+    - KafkaHeaders.RECEIVED_PARTITION
+    - KafkaHeaders.OFFSET
+    - '@TopicPartition'
+    - '@PartitionOffset'
+    - batch
+    - ConsumerRecordMetadata
+    - MDC
   must_not_include:
-  - garbage_marker_12345
-  - unused_marker_67890
+    - GARBAGE_JAVA_WEBSOCKET_901
+    - GARBAGE_JAVA_SESSION_902
+    - GARBAGE_JAVA_CACHE_903
+    - GARBAGE_JAVA_TTL_904
+    - WebSocketHandler
+    - CacheManager
+    - addSession
+    - put
 options:
-  commit_message: Add acknowledgment and error handling
+  commit_message: Add comprehensive Kafka consumers with batching, headers, and DLQ

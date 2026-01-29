@@ -1,85 +1,517 @@
 name: rust_040_drop_trait
 initial:
+  src/lib.rs: |
+    pub mod connection;
+    pub mod unrelated;
   src/connection.rs: |
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    static CONNECTION_COUNT: AtomicUsize = AtomicUsize::new(0);
+
     pub struct Connection {
         host: String,
+        port: u16,
         connected: bool,
+        id: usize,
     }
 
     impl Connection {
-        pub fn new(host: String) -> Self {
-            println!("Connecting to {}", host);
-            Self { host, connected: true }
+        pub fn new(host: &str, port: u16) -> Self {
+            let id = CONNECTION_COUNT.fetch_add(1, Ordering::SeqCst);
+            println!("Creating connection {} to {}:{}", id, host, port);
+            Self {
+                host: host.to_string(),
+                port,
+                connected: true,
+                id,
+            }
         }
 
         pub fn disconnect(&mut self) {
-            self.connected = false;
-        }
-    }
-changed:
-  src/connection.rs: |
-    pub struct Connection {
-        host: String,
-        connected: bool,
-    }
-
-    impl Connection {
-        pub fn new(host: String) -> Self {
-            println!("Connecting to {}", host);
-            Self { host, connected: true }
+            if self.connected {
+                println!("Disconnecting connection {} from {}:{}", self.id, self.host, self.port);
+                self.connected = false;
+            }
         }
 
         pub fn is_connected(&self) -> bool {
             self.connected
+        }
+
+        pub fn host(&self) -> &str {
+            &self.host
+        }
+
+        pub fn port(&self) -> u16 {
+            self.port
+        }
+
+        pub fn id(&self) -> usize {
+            self.id
+        }
+    }
+
+    pub fn active_connections() -> usize {
+        CONNECTION_COUNT.load(Ordering::SeqCst)
+    }
+  src/unrelated/mod.rs: |
+    pub mod threading;
+    pub mod memory;
+    pub mod protocol;
+  src/unrelated/threading.rs: |
+    // GARBAGE_RUST_THREAD_drop001
+    use std::thread;
+    use std::time::Duration;
+
+    pub const GARBAGE_MAX_THREADS_drop002: usize = 64;
+    pub const GARBAGE_STACK_SIZE_drop003: usize = 2 * 1024 * 1024;
+
+    pub trait GarbageRunnable_drop004 {
+        fn garbage_run_drop005(&self);
+        fn garbage_name_drop006(&self) -> &str;
+    }
+
+    pub struct GarbageThread_drop007 {
+        name: String,
+        stack_size: usize,
+        priority: i32,
+    }
+
+    impl GarbageThread_drop007 {
+        pub fn garbage_new_drop008(name: &str) -> Self {
+            Self {
+                name: name.to_string(),
+                stack_size: GARBAGE_STACK_SIZE_drop003,
+                priority: 0,
+            }
+        }
+
+        pub fn garbage_set_stack_size_drop009(&mut self, size: usize) {
+            self.stack_size = size;
+        }
+
+        pub fn garbage_set_priority_drop010(&mut self, priority: i32) {
+            self.priority = priority;
+        }
+
+        pub fn garbage_spawn_drop011<F>(&self, f: F) -> Result<(), String>
+        where
+            F: FnOnce() + Send + 'static,
+        {
+            Err("GARBAGE_SPAWN_ERROR_drop012".to_string())
+        }
+    }
+
+    pub struct GarbageThreadPool_drop013 {
+        threads: Vec<GarbageThread_drop007>,
+        max_threads: usize,
+    }
+
+    impl GarbageThreadPool_drop013 {
+        pub fn garbage_new_drop014(max_threads: usize) -> Self {
+            Self {
+                threads: Vec::new(),
+                max_threads,
+            }
+        }
+
+        pub fn garbage_execute_drop015<F>(&mut self, f: F) -> Result<(), String>
+        where
+            F: FnOnce() + Send + 'static,
+        {
+            Err("GARBAGE_POOL_ERROR_drop016".to_string())
+        }
+
+        pub fn garbage_shutdown_drop017(&mut self) {
+            self.threads.clear();
+        }
+    }
+  src/unrelated/memory.rs: |
+    // GARBAGE_RUST_MEM_drop018
+    use std::alloc::{alloc, dealloc, Layout};
+
+    pub const GARBAGE_PAGE_SIZE_drop019: usize = 4096;
+    pub const GARBAGE_ALIGNMENT_drop020: usize = 16;
+
+    pub trait GarbageAllocator_drop021 {
+        fn garbage_allocate_drop022(&mut self, size: usize) -> *mut u8;
+        fn garbage_deallocate_drop023(&mut self, ptr: *mut u8, size: usize);
+        fn garbage_allocated_drop024(&self) -> usize;
+    }
+
+    pub struct GarbageBumpAllocator_drop025 {
+        start: *mut u8,
+        current: usize,
+        capacity: usize,
+    }
+
+    impl GarbageBumpAllocator_drop025 {
+        pub fn garbage_new_drop026(capacity: usize) -> Self {
+            Self {
+                start: std::ptr::null_mut(),
+                current: 0,
+                capacity,
+            }
+        }
+
+        pub fn garbage_reset_drop027(&mut self) {
+            self.current = 0;
+        }
+
+        pub fn garbage_remaining_drop028(&self) -> usize {
+            self.capacity - self.current
+        }
+    }
+
+    impl GarbageAllocator_drop021 for GarbageBumpAllocator_drop025 {
+        fn garbage_allocate_drop022(&mut self, size: usize) -> *mut u8 {
+            if self.current + size > self.capacity {
+                return std::ptr::null_mut();
+            }
+            let ptr = unsafe { self.start.add(self.current) };
+            self.current += size;
+            ptr
+        }
+
+        fn garbage_deallocate_drop023(&mut self, _ptr: *mut u8, _size: usize) {
+            // GARBAGE_BUMP_NO_DEALLOC_drop029
+        }
+
+        fn garbage_allocated_drop024(&self) -> usize {
+            self.current
+        }
+    }
+
+    pub struct GarbagePoolAllocator_drop030 {
+        block_size: usize,
+        blocks: Vec<*mut u8>,
+    }
+
+    impl GarbagePoolAllocator_drop030 {
+        pub fn garbage_new_drop031(block_size: usize) -> Self {
+            Self {
+                block_size,
+                blocks: Vec::new(),
+            }
+        }
+    }
+  src/unrelated/protocol.rs: |
+    // GARBAGE_RUST_PROTO_drop032
+    use std::collections::HashMap;
+
+    pub const GARBAGE_VERSION_drop033: u32 = 1;
+    pub const GARBAGE_MAX_MESSAGE_SIZE_drop034: usize = 65536;
+
+    #[derive(Debug, Clone)]
+    pub enum GarbageMessageType_drop035 {
+        Request,
+        Response,
+        Notification,
+        Error,
+    }
+
+    pub trait GarbageCodec_drop036 {
+        fn garbage_encode_drop037(&self, data: &[u8]) -> Result<Vec<u8>, String>;
+        fn garbage_decode_drop038(&self, data: &[u8]) -> Result<Vec<u8>, String>;
+    }
+
+    pub struct GarbageJsonCodec_drop039;
+
+    impl GarbageJsonCodec_drop039 {
+        pub fn garbage_new_drop040() -> Self {
+            Self
+        }
+    }
+
+    impl GarbageCodec_drop036 for GarbageJsonCodec_drop039 {
+        fn garbage_encode_drop037(&self, data: &[u8]) -> Result<Vec<u8>, String> {
+            Ok(data.to_vec())
+        }
+
+        fn garbage_decode_drop038(&self, data: &[u8]) -> Result<Vec<u8>, String> {
+            Ok(data.to_vec())
+        }
+    }
+
+    pub struct GarbageProtocol_drop041<C: GarbageCodec_drop036> {
+        codec: C,
+        version: u32,
+    }
+
+    impl<C: GarbageCodec_drop036> GarbageProtocol_drop041<C> {
+        pub fn garbage_new_drop042(codec: C) -> Self {
+            Self {
+                codec,
+                version: GARBAGE_VERSION_drop033,
+            }
+        }
+
+        pub fn garbage_send_drop043(&self, msg_type: GarbageMessageType_drop035, data: &[u8]) -> Result<Vec<u8>, String> {
+            self.codec.garbage_encode_drop037(data)
+        }
+
+        pub fn garbage_receive_drop044(&self, data: &[u8]) -> Result<(GarbageMessageType_drop035, Vec<u8>), String> {
+            let decoded = self.codec.garbage_decode_drop038(data)?;
+            Ok((GarbageMessageType_drop035::Response, decoded))
+        }
+    }
+changed:
+  src/connection.rs: |
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::time::{Duration, Instant};
+
+    static CONNECTION_COUNT: AtomicUsize = AtomicUsize::new(0);
+    static ACTIVE_CONNECTIONS: AtomicUsize = AtomicUsize::new(0);
+
+    pub struct Connection {
+        host: String,
+        port: u16,
+        connected: bool,
+        id: usize,
+        created_at: Instant,
+    }
+
+    impl Connection {
+        pub fn new(host: &str, port: u16) -> Self {
+            let id = CONNECTION_COUNT.fetch_add(1, Ordering::SeqCst);
+            ACTIVE_CONNECTIONS.fetch_add(1, Ordering::SeqCst);
+            println!("Creating connection {} to {}:{}", id, host, port);
+            Self {
+                host: host.to_string(),
+                port,
+                connected: true,
+                id,
+                created_at: Instant::now(),
+            }
+        }
+
+        pub fn is_connected(&self) -> bool {
+            self.connected
+        }
+
+        pub fn host(&self) -> &str {
+            &self.host
+        }
+
+        pub fn port(&self) -> u16 {
+            self.port
+        }
+
+        pub fn id(&self) -> usize {
+            self.id
+        }
+
+        pub fn uptime(&self) -> Duration {
+            self.created_at.elapsed()
         }
     }
 
     impl Drop for Connection {
         fn drop(&mut self) {
             if self.connected {
-                println!("Disconnecting from {}", self.host);
+                println!("Auto-disconnecting connection {} from {}:{}", self.id, self.host, self.port);
                 self.connected = false;
             }
+            ACTIVE_CONNECTIONS.fetch_sub(1, Ordering::SeqCst);
+            println!("Connection {} dropped after {:?}", self.id, self.uptime());
         }
     }
-  src/pool.rs: |
-    use crate::connection::Connection;
+
+    pub fn total_connections() -> usize {
+        CONNECTION_COUNT.load(Ordering::SeqCst)
+    }
+
+    pub fn active_connections() -> usize {
+        ACTIVE_CONNECTIONS.load(Ordering::SeqCst)
+    }
 
     pub struct ConnectionPool {
         connections: Vec<Connection>,
         max_size: usize,
+        host: String,
+        port: u16,
     }
 
     impl ConnectionPool {
-        pub fn new(max_size: usize) -> Self {
+        pub fn new(host: &str, port: u16, max_size: usize) -> Self {
             Self {
                 connections: Vec::new(),
                 max_size,
+                host: host.to_string(),
+                port,
             }
         }
 
-        pub fn acquire(&mut self, host: &str) -> Option<&Connection> {
+        pub fn acquire(&mut self) -> Option<&Connection> {
             if self.connections.len() < self.max_size {
-                self.connections.push(Connection::new(host.to_string()));
+                self.connections.push(Connection::new(&self.host, self.port));
                 self.connections.last()
             } else {
-                None
+                self.connections.iter().find(|c| c.is_connected())
             }
+        }
+
+        pub fn size(&self) -> usize {
+            self.connections.len()
+        }
+
+        pub fn active(&self) -> usize {
+            self.connections.iter().filter(|c| c.is_connected()).count()
+        }
+
+        pub fn host(&self) -> &str {
+            &self.host
+        }
+
+        pub fn port(&self) -> u16 {
+            self.port
         }
     }
 
     impl Drop for ConnectionPool {
         fn drop(&mut self) {
-            println!("Dropping pool with {} connections", self.connections.len());
+            println!(
+                "Dropping ConnectionPool for {}:{} with {} connections",
+                self.host,
+                self.port,
+                self.connections.len()
+            );
+        }
+    }
+
+    pub struct ScopedConnection<'a> {
+        pool: &'a mut ConnectionPool,
+        connection_index: usize,
+    }
+
+    impl<'a> ScopedConnection<'a> {
+        pub fn new(pool: &'a mut ConnectionPool) -> Option<Self> {
+            let idx = pool.connections.len();
+            if idx < pool.max_size {
+                pool.connections.push(Connection::new(&pool.host, pool.port));
+                Some(Self {
+                    pool,
+                    connection_index: idx,
+                })
+            } else {
+                None
+            }
+        }
+
+        pub fn connection(&self) -> &Connection {
+            &self.pool.connections[self.connection_index]
+        }
+    }
+
+    impl<'a> Drop for ScopedConnection<'a> {
+        fn drop(&mut self) {
+            println!(
+                "ScopedConnection releasing connection {}",
+                self.connection_index
+            );
+        }
+    }
+
+    pub trait Resource {
+        fn cleanup(&mut self);
+        fn is_valid(&self) -> bool;
+    }
+
+    impl Resource for Connection {
+        fn cleanup(&mut self) {
+            if self.connected {
+                println!("Cleaning up connection {}", self.id);
+                self.connected = false;
+            }
+        }
+
+        fn is_valid(&self) -> bool {
+            self.connected
+        }
+    }
+
+    pub struct ResourceGuard<T: Resource> {
+        resource: T,
+    }
+
+    impl<T: Resource> ResourceGuard<T> {
+        pub fn new(resource: T) -> Self {
+            Self { resource }
+        }
+
+        pub fn get(&self) -> &T {
+            &self.resource
+        }
+
+        pub fn get_mut(&mut self) -> &mut T {
+            &mut self.resource
+        }
+    }
+
+    impl<T: Resource> Drop for ResourceGuard<T> {
+        fn drop(&mut self) {
+            self.resource.cleanup();
         }
     }
 assertions:
   must_include:
-  - Drop
-  - is_connected
-  - ConnectionPool
-  - acquire
+    - impl Drop for Connection
+    - impl Drop for ConnectionPool
+    - Drop for ScopedConnection
+    - Drop for ResourceGuard
+    - ACTIVE_CONNECTIONS
+    - active_connections
+    - total_connections
+    - uptime
+    - ScopedConnection
+    - ResourceGuard
+    - Resource
+    - cleanup
+    - is_valid
   must_not_include:
-  - garbage_drop_fn
+    - GARBAGE_RUST_THREAD_drop001
+    - GARBAGE_MAX_THREADS_drop002
+    - GARBAGE_STACK_SIZE_drop003
+    - GarbageRunnable_drop004
+    - garbage_run_drop005
+    - garbage_name_drop006
+    - GarbageThread_drop007
+    - garbage_new_drop008
+    - garbage_set_stack_size_drop009
+    - garbage_set_priority_drop010
+    - garbage_spawn_drop011
+    - GARBAGE_SPAWN_ERROR_drop012
+    - GarbageThreadPool_drop013
+    - garbage_new_drop014
+    - garbage_execute_drop015
+    - GARBAGE_POOL_ERROR_drop016
+    - garbage_shutdown_drop017
+    - GARBAGE_RUST_MEM_drop018
+    - GARBAGE_PAGE_SIZE_drop019
+    - GARBAGE_ALIGNMENT_drop020
+    - GarbageAllocator_drop021
+    - garbage_allocate_drop022
+    - garbage_deallocate_drop023
+    - garbage_allocated_drop024
+    - GarbageBumpAllocator_drop025
+    - garbage_new_drop026
+    - garbage_reset_drop027
+    - garbage_remaining_drop028
+    - GARBAGE_BUMP_NO_DEALLOC_drop029
+    - GarbagePoolAllocator_drop030
+    - garbage_new_drop031
+    - GARBAGE_RUST_PROTO_drop032
+    - GARBAGE_VERSION_drop033
+    - GARBAGE_MAX_MESSAGE_SIZE_drop034
+    - GarbageMessageType_drop035
+    - GarbageCodec_drop036
+    - garbage_encode_drop037
+    - garbage_decode_drop038
+    - GarbageJsonCodec_drop039
+    - garbage_new_drop040
+    - GarbageProtocol_drop041
+    - garbage_new_drop042
+    - garbage_send_drop043
+    - garbage_receive_drop044
 options:
-  commit_message: Implement Drop trait for cleanup
+  commit_message: Implement Drop trait for resource cleanup with guards

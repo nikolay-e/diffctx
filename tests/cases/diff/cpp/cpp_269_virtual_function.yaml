@@ -1,40 +1,387 @@
 name: cpp_269_virtual_function
 initial:
-  drawable.h: |
+  include/ui/drawable.hpp: |
     #pragma once
+    #include <string>
+    #include <iostream>
+
+    namespace app::ui {
+
+    struct Rect {
+        int x, y, width, height;
+    };
+
+    struct Color {
+        unsigned char r, g, b, a;
+
+        static Color red() { return {255, 0, 0, 255}; }
+        static Color green() { return {0, 255, 0, 255}; }
+        static Color blue() { return {0, 0, 255, 255}; }
+        static Color white() { return {255, 255, 255, 255}; }
+        static Color black() { return {0, 0, 0, 255}; }
+    };
 
     class Drawable {
     public:
         virtual ~Drawable() = default;
+
         virtual void draw() = 0;
         virtual void resize(int w, int h) = 0;
+        virtual Rect getBounds() const = 0;
+
+        virtual std::string getName() const {
+            return "Drawable";
+        }
+
+        virtual void setVisible(bool visible) {
+            visible_ = visible;
+        }
+
+        virtual bool isVisible() const {
+            return visible_;
+        }
+
+        virtual void setColor(const Color& color) {
+            color_ = color;
+        }
+
+        virtual Color getColor() const {
+            return color_;
+        }
+
+    protected:
+        bool visible_ = true;
+        Color color_ = Color::white();
     };
-    // unused_marker_67890
-  widget.cpp: |
+
+    class Transformable {
+    public:
+        virtual ~Transformable() = default;
+
+        virtual void setPosition(int x, int y) = 0;
+        virtual void setScale(float sx, float sy) = 0;
+        virtual void setRotation(float degrees) = 0;
+    };
+
+    }
+
+  include/unrelated/audio_mixer.hpp: |
+    #pragma once
+    // GARBAGE_CPP_AUDIO_269_001
+    #define GARBAGE_CPP_AUDIO_CHANNELS_269_002 8
+
+    namespace app::unrelated::audio {
+
+    // GARBAGE_CPP_AUDIO_SAMPLE_269_003
+    struct AudioSample {
+        float* data;
+        size_t length;
+        int sampleRate;
+        // GARBAGE_CPP_AUDIO_FORMAT_269_004
+    };
+
+    // GARBAGE_CPP_AUDIO_MIXER_269_005
+    class AudioMixer {
+    public:
+        // GARBAGE_CPP_AUDIO_MIX_269_006
+        void mixSamples(const AudioSample& a, const AudioSample& b, AudioSample& out) {
+            // GARBAGE_CPP_AUDIO_MIX_IMPL_269_007
+        }
+
+        // GARBAGE_CPP_AUDIO_VOLUME_269_008
+        void setVolume(int channel, float volume) {
+            // GARBAGE_CPP_AUDIO_VOL_IMPL_269_009
+        }
+
+        // GARBAGE_CPP_AUDIO_PAN_269_010
+        void setPan(int channel, float pan) {
+            // GARBAGE_CPP_AUDIO_PAN_IMPL_269_011
+        }
+    };
+
+    }
+
+  src/unrelated/shader_compiler.cpp: |
+    // GARBAGE_CPP_SHADER_269_012
+    #include <string>
+
+    namespace app::unrelated::shader {
+
+    // GARBAGE_CPP_SHADER_TYPE_269_013
+    enum class ShaderType {
+        Vertex,
+        Fragment,
+        Geometry,
+        Compute
+    };
+
+    // GARBAGE_CPP_SHADER_COMPILER_269_014
+    class ShaderCompiler {
+    public:
+        // GARBAGE_CPP_SHADER_COMPILE_269_015
+        bool compile(ShaderType type, const std::string& source) {
+            // GARBAGE_CPP_SHADER_COMP_IMPL_269_016
+            return false;
+        }
+
+        // GARBAGE_CPP_SHADER_LINK_269_017
+        bool link() {
+            // GARBAGE_CPP_SHADER_LINK_IMPL_269_018
+            return false;
+        }
+
+        // GARBAGE_CPP_SHADER_ERROR_269_019
+        std::string getError() {
+            // GARBAGE_CPP_SHADER_ERR_IMPL_269_020
+            return "";
+        }
+    };
+
+    }
+
+  src/widget.cpp: |
     #include <iostream>
     int main() { return 0; }
-changed:
-  widget.cpp: |
-    #include "drawable.h"
-    #include <iostream>
 
-    class Button : public Drawable {
+changed:
+  src/widget.cpp: |
+    #include "ui/drawable.hpp"
+    #include <iostream>
+    #include <vector>
+    #include <memory>
+    #include <algorithm>
+
+    namespace app::widgets {
+
+    class Button : public ui::Drawable, public ui::Transformable {
     public:
+        Button(const std::string& label, int x, int y, int w, int h)
+            : label_(label), bounds_{x, y, w, h}, scale_{1.0f, 1.0f}, rotation_(0.0f) {}
+
         void draw() override {
-            std::cout << "Drawing button" << std::endl;
+            if (!isVisible()) return;
+            std::cout << "Drawing button '" << label_ << "' at ("
+                      << bounds_.x << "," << bounds_.y << ") size "
+                      << bounds_.width << "x" << bounds_.height << "\n";
         }
 
         void resize(int w, int h) override {
-            std::cout << "Resizing to " << w << "x" << h << std::endl;
+            bounds_.width = w;
+            bounds_.height = h;
+            std::cout << "Button resized to " << w << "x" << h << "\n";
         }
+
+        ui::Rect getBounds() const override {
+            return bounds_;
+        }
+
+        std::string getName() const override {
+            return "Button: " + label_;
+        }
+
+        void setPosition(int x, int y) override {
+            bounds_.x = x;
+            bounds_.y = y;
+        }
+
+        void setScale(float sx, float sy) override {
+            scale_ = {sx, sy};
+        }
+
+        void setRotation(float degrees) override {
+            rotation_ = degrees;
+        }
+
+        void setLabel(const std::string& label) {
+            label_ = label;
+        }
+
+    private:
+        std::string label_;
+        ui::Rect bounds_;
+        std::pair<float, float> scale_;
+        float rotation_;
     };
+
+    class Panel : public ui::Drawable {
+    public:
+        Panel(int x, int y, int w, int h)
+            : bounds_{x, y, w, h} {}
+
+        void draw() override {
+            if (!isVisible()) return;
+            std::cout << "Drawing panel at (" << bounds_.x << "," << bounds_.y
+                      << ") size " << bounds_.width << "x" << bounds_.height << "\n";
+
+            for (auto& child : children_) {
+                child->draw();
+            }
+        }
+
+        void resize(int w, int h) override {
+            bounds_.width = w;
+            bounds_.height = h;
+        }
+
+        ui::Rect getBounds() const override {
+            return bounds_;
+        }
+
+        std::string getName() const override {
+            return "Panel";
+        }
+
+        void addChild(std::shared_ptr<ui::Drawable> child) {
+            children_.push_back(child);
+        }
+
+        size_t childCount() const {
+            return children_.size();
+        }
+
+    private:
+        ui::Rect bounds_;
+        std::vector<std::shared_ptr<ui::Drawable>> children_;
+    };
+
+    class Label : public ui::Drawable {
+    public:
+        Label(const std::string& text, int x, int y)
+            : text_(text), bounds_{x, y, static_cast<int>(text.length() * 8), 16} {}
+
+        void draw() override {
+            if (!isVisible()) return;
+            std::cout << "Drawing label '" << text_ << "' at ("
+                      << bounds_.x << "," << bounds_.y << ")\n";
+        }
+
+        void resize(int w, int h) override {
+            bounds_.width = w;
+            bounds_.height = h;
+        }
+
+        ui::Rect getBounds() const override {
+            return bounds_;
+        }
+
+        std::string getName() const override {
+            return "Label: " + text_;
+        }
+
+        void setText(const std::string& text) {
+            text_ = text;
+            bounds_.width = static_cast<int>(text.length() * 8);
+        }
+
+    private:
+        std::string text_;
+        ui::Rect bounds_;
+    };
+
+    class Canvas : public ui::Drawable {
+    public:
+        Canvas(int w, int h)
+            : bounds_{0, 0, w, h} {}
+
+        void draw() override {
+            std::cout << "Drawing canvas " << bounds_.width << "x" << bounds_.height << "\n";
+            for (auto& drawable : drawables_) {
+                drawable->draw();
+            }
+        }
+
+        void resize(int w, int h) override {
+            bounds_.width = w;
+            bounds_.height = h;
+        }
+
+        ui::Rect getBounds() const override {
+            return bounds_;
+        }
+
+        void add(std::shared_ptr<ui::Drawable> drawable) {
+            drawables_.push_back(drawable);
+        }
+
+        void clear() {
+            drawables_.clear();
+        }
+
+    private:
+        ui::Rect bounds_;
+        std::vector<std::shared_ptr<ui::Drawable>> drawables_;
+    };
+
+    }
+
+    int main() {
+        auto button1 = std::make_shared<app::widgets::Button>("OK", 10, 10, 80, 30);
+        auto button2 = std::make_shared<app::widgets::Button>("Cancel", 100, 10, 80, 30);
+        auto label = std::make_shared<app::widgets::Label>("Hello World", 10, 50);
+        auto panel = std::make_shared<app::widgets::Panel>(0, 0, 200, 150);
+
+        panel->addChild(button1);
+        panel->addChild(button2);
+        panel->addChild(label);
+
+        std::cout << "=== Drawing Panel ===\n";
+        panel->draw();
+
+        std::cout << "\n=== Modifying Widgets ===\n";
+        button1->setColor(app::ui::Color::green());
+        button1->resize(100, 40);
+        button2->setVisible(false);
+
+        std::cout << "\n=== Drawing Panel Again ===\n";
+        panel->draw();
+
+        std::cout << "\n=== Widget Info ===\n";
+        std::vector<std::shared_ptr<app::ui::Drawable>> widgets = {button1, button2, label, panel};
+        for (const auto& widget : widgets) {
+            auto bounds = widget->getBounds();
+            std::cout << widget->getName() << " - visible: " << widget->isVisible()
+                      << " bounds: " << bounds.x << "," << bounds.y
+                      << " " << bounds.width << "x" << bounds.height << "\n";
+        }
+
+        std::cout << "\n=== Canvas ===\n";
+        app::widgets::Canvas canvas(800, 600);
+        canvas.add(std::make_shared<app::widgets::Button>("Start", 300, 250, 100, 40));
+        canvas.add(std::make_shared<app::widgets::Label>("Game Title", 350, 200));
+        canvas.draw();
+
+        return 0;
+    }
+
 assertions:
   must_include:
-  - Button
-  - draw
-  - Drawable
+    - Button
+    - draw
+    - Drawable
+    - Panel
+    - Label
+    - Canvas
+    - getBounds
+    - setVisible
+    - addChild
   must_not_include:
-  - garbage_marker_12345
-  - unused_marker_67890
+    - GARBAGE_CPP_AUDIO_269_001
+    - GARBAGE_CPP_AUDIO_CHANNELS_269_002
+    - GARBAGE_CPP_AUDIO_SAMPLE_269_003
+    - GARBAGE_CPP_AUDIO_FORMAT_269_004
+    - GARBAGE_CPP_AUDIO_MIXER_269_005
+    - GARBAGE_CPP_AUDIO_MIX_269_006
+    - GARBAGE_CPP_AUDIO_VOLUME_269_008
+    - GARBAGE_CPP_AUDIO_PAN_269_010
+    - GARBAGE_CPP_SHADER_269_012
+    - GARBAGE_CPP_SHADER_TYPE_269_013
+    - GARBAGE_CPP_SHADER_COMPILER_269_014
+    - GARBAGE_CPP_SHADER_COMPILE_269_015
+    - GARBAGE_CPP_SHADER_LINK_269_017
+    - GARBAGE_CPP_SHADER_ERROR_269_019
+    - AudioMixer
+    - ShaderCompiler
+    - AudioSample
+    - ShaderType
 options:
-  commit_message: Add virtual function implementation
+  commit_message: Add UI widget system with virtual function polymorphism

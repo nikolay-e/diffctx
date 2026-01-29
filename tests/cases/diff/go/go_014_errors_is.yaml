@@ -1,52 +1,181 @@
 name: go_014_errors_is
 initial:
-  errors.go: |
-    package main
+  internal/errors/domain_errors.go: |
+    package errors
 
     import "errors"
 
-    var ErrNotFound = errors.New("not found")
-    var ErrUnauthorized = errors.New("unauthorized")
-  handler.go: |
-    package main
+    var (
+        ErrNotFound     = errors.New("resource not found")
+        ErrUnauthorized = errors.New("unauthorized access")
+        ErrForbidden    = errors.New("access forbidden")
+    )
 
-    import "errors"
+  internal/errors/http_errors.go: |
+    package errors
 
-    func handleError(err error) string {
+    import "net/http"
+
+    func HTTPStatusCode(err error) int {
         if errors.Is(err, ErrNotFound) {
-            return "404"
+            return http.StatusNotFound
         }
         if errors.Is(err, ErrUnauthorized) {
-            return "401"
+            return http.StatusUnauthorized
         }
-        return "500"
-    }
-  unrelated/garbage.go: |
-    package unrelated
-
-    func UnusedErrors_12345() {
-        println("garbage_marker_12345")
+        if errors.Is(err, ErrForbidden) {
+            return http.StatusForbidden
+        }
+        return http.StatusInternalServerError
     }
 
-    func UnusedHandler_67890() {
-        println("unused_marker_67890")
+  internal/handler/error_handler.go: |
+    package handler
+
+    import (
+        "encoding/json"
+        "myproject/internal/errors"
+        "net/http"
+    )
+
+    type ErrorResponse struct {
+        Code    int    `json:"code"`
+        Message string `json:"message"`
     }
+
+    func HandleError(w http.ResponseWriter, err error) {
+        code := errors.HTTPStatusCode(err)
+        w.WriteHeader(code)
+        json.NewEncoder(w).Encode(ErrorResponse{
+            Code:    code,
+            Message: err.Error(),
+        })
+    }
+
+  internal/unrelated/validation/rules.go: |
+    package validation
+
+    const GARBAGE_GO_VALIDATION_RULES_001 = "validation_garbage"
+
+    type GARBAGE_GO_TYPE_RULES_002 struct {
+        patterns []string
+    }
+
+    func GARBAGE_GO_FUNC_RULES_003() string {
+        return "GARBAGE_GO_RULES_UNUSED_004"
+    }
+
+  internal/unrelated/validation/sanitizer.go: |
+    package validation
+
+    const GARBAGE_GO_VALIDATION_SANITIZE_005 = "sanitizer_garbage"
+
+    type GARBAGE_GO_TYPE_SANITIZE_006 struct {
+        allowedTags []string
+    }
+
+    func GARBAGE_GO_FUNC_SANITIZE_007() {
+        println("GARBAGE_GO_SANITIZE_OUTPUT_008")
+    }
+
 changed:
-  errors.go: |
-    package main
+  internal/errors/domain_errors.go: |
+    package errors
 
-    import "errors"
+    import (
+        "errors"
+        "fmt"
+    )
 
-    var ErrNotFound = errors.New("not found")
-    var ErrUnauthorized = errors.New("unauthorized")
-    var ErrForbidden = errors.New("forbidden")
-    var ErrConflict = errors.New("conflict")
+    var (
+        ErrNotFound       = errors.New("resource not found")
+        ErrUnauthorized   = errors.New("unauthorized access")
+        ErrForbidden      = errors.New("access forbidden")
+        ErrConflict       = errors.New("resource conflict")
+        ErrValidation     = errors.New("validation failed")
+        ErrRateLimit      = errors.New("rate limit exceeded")
+        ErrServiceUnavail = errors.New("service unavailable")
+    )
+
+    type DomainError struct {
+        Code       string
+        Message    string
+        Field      string
+        Underlying error
+    }
+
+    func (e *DomainError) Error() string {
+        if e.Field != "" {
+            return fmt.Sprintf("%s: %s (%s)", e.Code, e.Message, e.Field)
+        }
+        return fmt.Sprintf("%s: %s", e.Code, e.Message)
+    }
+
+    func (e *DomainError) Unwrap() error {
+        return e.Underlying
+    }
+
+    func (e *DomainError) Is(target error) bool {
+        if e.Underlying != nil {
+            return errors.Is(e.Underlying, target)
+        }
+        return false
+    }
+
+    func NewNotFoundError(resource string) *DomainError {
+        return &DomainError{
+            Code:       "NOT_FOUND",
+            Message:    resource + " not found",
+            Underlying: ErrNotFound,
+        }
+    }
+
+    func NewValidationError(field, message string) *DomainError {
+        return &DomainError{
+            Code:       "VALIDATION_ERROR",
+            Message:    message,
+            Field:      field,
+            Underlying: ErrValidation,
+        }
+    }
+
+    func NewConflictError(resource string) *DomainError {
+        return &DomainError{
+            Code:       "CONFLICT",
+            Message:    resource + " already exists",
+            Underlying: ErrConflict,
+        }
+    }
+
+    func NewRateLimitError(limit int) *DomainError {
+        return &DomainError{
+            Code:       "RATE_LIMITED",
+            Message:    fmt.Sprintf("rate limit of %d requests exceeded", limit),
+            Underlying: ErrRateLimit,
+        }
+    }
+
 assertions:
   must_include:
-  - ErrForbidden
-  - ErrConflict
+    - DomainError
+    - ErrConflict
+    - ErrValidation
+    - ErrRateLimit
+    - ErrServiceUnavail
+    - NewNotFoundError
+    - NewValidationError
+    - NewConflictError
+    - Unwrap
   must_not_include:
-  - garbage_marker_12345
-  - unused_marker_67890
+    - GARBAGE_GO_VALIDATION_RULES_001
+    - GARBAGE_GO_TYPE_RULES_002
+    - GARBAGE_GO_FUNC_RULES_003
+    - GARBAGE_GO_RULES_UNUSED_004
+    - GARBAGE_GO_VALIDATION_SANITIZE_005
+    - GARBAGE_GO_TYPE_SANITIZE_006
+    - GARBAGE_GO_FUNC_SANITIZE_007
+    - GARBAGE_GO_SANITIZE_OUTPUT_008
+    - validation
+    - sanitizer
 options:
-  commit_message: Add more error types
+  commit_message: Add domain error types with wrapping support

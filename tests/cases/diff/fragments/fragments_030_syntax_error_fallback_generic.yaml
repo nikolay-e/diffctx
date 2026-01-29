@@ -1,0 +1,63 @@
+name: fragments_030_syntax_error_fallback_generic
+initial:
+  broken.py: |
+    import os
+    from pathlib import Path
+
+    GARBAGE_CONST_BEFORE_030 = "GARBAGE_FRAG_constbefore030"
+
+    def valid_before_broken():
+        return "GARBAGE_FRAG_validbefore030"
+
+    def broken(:
+        x = [1, 2
+        return x
+
+    def valid_after_broken():
+        return "GARBAGE_FRAG_validafter030"
+
+    class GarbageAfterClass:
+        MARKER = "GARBAGE_FRAG_afterclass030"
+
+    GARBAGE_CONST_AFTER_030 = "GARBAGE_FRAG_constafter030"
+  garbage_broken_030.py: |
+    def garbage_function_030():
+        return "GARBAGE_FRAG_garbagefunc030"
+
+    class GarbageBroken030:
+        VALUE = "GARBAGE_FRAG_garbagevalue030"
+
+    GARBAGE_MODULE_CONST = "GARBAGE_FRAG_moduleconst030"
+changed:
+  broken.py: |
+    import os
+    from pathlib import Path
+
+    GARBAGE_CONST_BEFORE_030 = "GARBAGE_FRAG_constbefore030"
+
+    def valid_before_broken():
+        return "GARBAGE_FRAG_validbefore030"
+
+    def broken(:
+        x = [1, 2, 3
+        return x
+
+    def valid_after_broken():
+        return "GARBAGE_FRAG_validafter030"
+
+    class GarbageAfterClass:
+        MARKER = "GARBAGE_FRAG_afterclass030"
+
+    GARBAGE_CONST_AFTER_030 = "GARBAGE_FRAG_constafter030"
+assertions:
+  must_include:
+    - broken
+    - 'x = '
+  must_not_include:
+    - GARBAGE_FRAG_garbagefunc030
+    - GARBAGE_FRAG_garbagevalue030
+    - GARBAGE_FRAG_moduleconst030
+    - garbage_broken_030.py
+    - GarbageBroken030
+options:
+  commit_message: Modify broken file

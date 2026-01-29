@@ -1,41 +1,272 @@
 name: cpp_251_reinterpret_cast
 initial:
-  packet.h: |
+  include/protocol/packet.hpp: |
     #pragma once
     #include <cstdint>
+    #include <cstring>
+    #include <vector>
 
-    struct Packet {
-        uint32_t type;
-        uint32_t length;
+    namespace app::protocol {
+
+    #pragma pack(push, 1)
+    struct PacketHeader {
+        uint32_t magic;
+        uint16_t version;
+        uint16_t type;
+        uint32_t payloadLength;
+        uint32_t checksum;
+
+        static constexpr uint32_t MAGIC = 0xDEADBEEF;
+        static constexpr uint16_t VERSION = 1;
+    };
+
+    struct DataPacket {
+        PacketHeader header;
+        uint8_t flags;
+        uint8_t priority;
+        uint16_t sequenceNumber;
         char data[256];
     };
-    // garbage_marker_12345
-  serializer.cpp: |
+
+    struct ControlPacket {
+        PacketHeader header;
+        uint32_t command;
+        uint32_t param1;
+        uint32_t param2;
+    };
+    #pragma pack(pop)
+
+    inline uint32_t calculateChecksum(const void* data, size_t length) {
+        uint32_t sum = 0;
+        auto bytes = static_cast<const uint8_t*>(data);
+        for (size_t i = 0; i < length; ++i) {
+            sum += bytes[i];
+        }
+        return sum;
+    }
+
+    }
+
+  include/unrelated/matrix_math.hpp: |
+    #pragma once
+    // GARBAGE_CPP_MATRIX_251_001
+    #define GARBAGE_CPP_MATRIX_SIZE_251_002 4
+
+    namespace app::unrelated::math {
+
+    // GARBAGE_CPP_MATRIX_STRUCT_251_003
+    struct Matrix4x4 {
+        float data[16];
+        // GARBAGE_CPP_MATRIX_DATA_251_004
+    };
+
+    // GARBAGE_CPP_MATRIX_CLASS_251_005
+    class MatrixMath {
+    public:
+        // GARBAGE_CPP_MATRIX_MULT_251_006
+        static Matrix4x4 multiply(const Matrix4x4& a, const Matrix4x4& b) {
+            // GARBAGE_CPP_MATRIX_MULT_IMPL_251_007
+            return Matrix4x4{};
+        }
+
+        // GARBAGE_CPP_MATRIX_INVERSE_251_008
+        static Matrix4x4 inverse(const Matrix4x4& m) {
+            // GARBAGE_CPP_MATRIX_INVERSE_IMPL_251_009
+            return Matrix4x4{};
+        }
+
+        // GARBAGE_CPP_MATRIX_TRANSPOSE_251_010
+        static Matrix4x4 transpose(const Matrix4x4& m) {
+            return Matrix4x4{};
+        }
+    };
+
+    }
+
+  src/unrelated/scene_graph.cpp: |
+    // GARBAGE_CPP_SCENE_251_011
+    #include <string>
+    #include <vector>
+
+    namespace app::unrelated::scene {
+
+    // GARBAGE_CPP_SCENE_NODE_251_012
+    struct SceneNode {
+        std::string name;
+        // GARBAGE_CPP_SCENE_TRANSFORM_251_013
+    };
+
+    // GARBAGE_CPP_SCENE_GRAPH_251_014
+    class SceneGraph {
+    public:
+        // GARBAGE_CPP_SCENE_ADD_251_015
+        void addNode(const SceneNode& node) {
+            // GARBAGE_CPP_SCENE_ADD_IMPL_251_016
+        }
+
+        // GARBAGE_CPP_SCENE_REMOVE_251_017
+        void removeNode(const std::string& name) {
+            // GARBAGE_CPP_SCENE_REMOVE_IMPL_251_018
+        }
+
+        // GARBAGE_CPP_SCENE_UPDATE_251_019
+        void update(float deltaTime) {
+            // GARBAGE_CPP_SCENE_UPDATE_IMPL_251_020
+        }
+    };
+
+    }
+
+  src/serializer.cpp: |
     #include <iostream>
     int main() { return 0; }
+
 changed:
-  serializer.cpp: |
-    #include "packet.h"
+  src/serializer.cpp: |
+    #include "protocol/packet.hpp"
+    #include <iostream>
+    #include <vector>
     #include <cstring>
 
-    void serialize(const Packet& pkt, char* buffer) {
-        auto* bytes = reinterpret_cast<const char*>(&pkt);
-        std::memcpy(buffer, bytes, sizeof(Packet));
+    namespace app::serializer {
+
+    class PacketSerializer {
+    public:
+        std::vector<uint8_t> serializeDataPacket(const protocol::DataPacket& packet) {
+            std::vector<uint8_t> buffer(sizeof(protocol::DataPacket));
+
+            auto* bytes = reinterpret_cast<const uint8_t*>(&packet);
+            std::copy(bytes, bytes + sizeof(protocol::DataPacket), buffer.begin());
+
+            return buffer;
+        }
+
+        protocol::DataPacket deserializeDataPacket(const std::vector<uint8_t>& buffer) {
+            protocol::DataPacket packet{};
+
+            if (buffer.size() >= sizeof(protocol::DataPacket)) {
+                auto* dest = reinterpret_cast<uint8_t*>(&packet);
+                std::copy(buffer.begin(), buffer.begin() + sizeof(protocol::DataPacket), dest);
+            }
+
+            return packet;
+        }
+
+        std::vector<uint8_t> serializeControlPacket(const protocol::ControlPacket& packet) {
+            std::vector<uint8_t> buffer(sizeof(protocol::ControlPacket));
+
+            auto* bytes = reinterpret_cast<const uint8_t*>(&packet);
+            std::copy(bytes, bytes + sizeof(protocol::ControlPacket), buffer.begin());
+
+            return buffer;
+        }
+
+        protocol::ControlPacket deserializeControlPacket(const std::vector<uint8_t>& buffer) {
+            protocol::ControlPacket packet{};
+
+            if (buffer.size() >= sizeof(protocol::ControlPacket)) {
+                std::memcpy(&packet, buffer.data(), sizeof(protocol::ControlPacket));
+            }
+
+            return packet;
+        }
+
+        bool validatePacket(const std::vector<uint8_t>& buffer) {
+            if (buffer.size() < sizeof(protocol::PacketHeader)) {
+                return false;
+            }
+
+            auto* header = reinterpret_cast<const protocol::PacketHeader*>(buffer.data());
+
+            if (header->magic != protocol::PacketHeader::MAGIC) {
+                return false;
+            }
+
+            if (header->version != protocol::PacketHeader::VERSION) {
+                return false;
+            }
+
+            uint32_t calculatedChecksum = protocol::calculateChecksum(
+                buffer.data() + offsetof(protocol::PacketHeader, checksum) + sizeof(uint32_t),
+                buffer.size() - offsetof(protocol::PacketHeader, checksum) - sizeof(uint32_t)
+            );
+
+            return header->checksum == calculatedChecksum;
+        }
+
+        void* getPayloadPointer(std::vector<uint8_t>& buffer) {
+            if (buffer.size() <= sizeof(protocol::PacketHeader)) {
+                return nullptr;
+            }
+            return reinterpret_cast<void*>(buffer.data() + sizeof(protocol::PacketHeader));
+        }
+    };
+
+    protocol::DataPacket createDataPacket(const char* data, size_t length, uint8_t priority) {
+        protocol::DataPacket packet{};
+        packet.header.magic = protocol::PacketHeader::MAGIC;
+        packet.header.version = protocol::PacketHeader::VERSION;
+        packet.header.type = 1;
+        packet.header.payloadLength = static_cast<uint32_t>(length);
+        packet.flags = 0;
+        packet.priority = priority;
+        packet.sequenceNumber = 0;
+
+        size_t copyLen = std::min(length, sizeof(packet.data));
+        std::memcpy(packet.data, data, copyLen);
+
+        return packet;
     }
 
-    Packet deserialize(const char* buffer) {
-        Packet pkt;
-        auto* bytes = reinterpret_cast<char*>(&pkt);
-        std::memcpy(bytes, buffer, sizeof(Packet));
-        return pkt;
     }
+
+    int main() {
+        app::serializer::PacketSerializer serializer;
+
+        auto dataPacket = app::serializer::createDataPacket("Hello, World!", 13, 5);
+        std::cout << "Created data packet with priority: "
+                  << static_cast<int>(dataPacket.priority) << "\n";
+
+        auto serialized = serializer.serializeDataPacket(dataPacket);
+        std::cout << "Serialized size: " << serialized.size() << " bytes\n";
+
+        auto deserialized = serializer.deserializeDataPacket(serialized);
+        std::cout << "Deserialized data: " << deserialized.data << "\n";
+
+        app::protocol::ControlPacket ctrlPacket{};
+        ctrlPacket.header.magic = app::protocol::PacketHeader::MAGIC;
+        ctrlPacket.header.version = app::protocol::PacketHeader::VERSION;
+        ctrlPacket.command = 42;
+
+        auto ctrlSerialized = serializer.serializeControlPacket(ctrlPacket);
+        auto ctrlDeserialized = serializer.deserializeControlPacket(ctrlSerialized);
+        std::cout << "Control command: " << ctrlDeserialized.command << "\n";
+
+        return 0;
+    }
+
 assertions:
   must_include:
-  - serialize
-  - deserialize
-  - reinterpret_cast
+    - PacketSerializer
+    - serializeDataPacket
+    - deserializeDataPacket
+    - reinterpret_cast
+    - PacketHeader
+    - DataPacket
+    - validatePacket
   must_not_include:
-  - garbage_marker_12345
-  - unused_marker_67890
+    - GARBAGE_CPP_MATRIX_251_001
+    - GARBAGE_CPP_MATRIX_SIZE_251_002
+    - GARBAGE_CPP_MATRIX_STRUCT_251_003
+    - GARBAGE_CPP_MATRIX_CLASS_251_005
+    - GARBAGE_CPP_MATRIX_MULT_251_006
+    - GARBAGE_CPP_SCENE_251_011
+    - GARBAGE_CPP_SCENE_NODE_251_012
+    - GARBAGE_CPP_SCENE_GRAPH_251_014
+    - GARBAGE_CPP_SCENE_ADD_251_015
+    - MatrixMath
+    - SceneGraph
+    - Matrix4x4
+    - SceneNode
 options:
-  commit_message: Add reinterpret_cast
+  commit_message: Add packet serializer with reinterpret_cast for binary protocols

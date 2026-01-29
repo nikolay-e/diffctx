@@ -1,0 +1,272 @@
+name: terraform_451_ec2_instance
+initial:
+  user_data.sh: |
+    #!/bin/bash
+    yum update -y
+    yum install -y docker
+    systemctl start docker
+  compute.tf: |
+    # Compute resources placeholder
+  ami_lookup.tf: |
+    # AMI data source placeholder
+  legacy/old_instances_GARBAGE_TF_ec2451a.tf: |
+    # GARBAGE_TF_ec2451a - Legacy EC2 instances
+    resource "aws_instance" "legacy_web_GARBAGE_TF_ec2451a" {
+      ami           = "ami-0123456789legacy"
+      instance_type = "t2.micro"
+      tags = {
+        Name = "legacy-web-GARBAGE_TF_ec2451a"
+      }
+    }
+  monitoring/old_metrics_GARBAGE_TF_ec2451b.py: |
+    # GARBAGE_TF_ec2451b - Old monitoring script
+    def collect_legacy_metrics_GARBAGE_TF_ec2451b():
+        print("Collecting legacy EC2 metrics GARBAGE_TF_ec2451b")
+changed:
+  ami_lookup.tf: |
+    data "aws_ami" "amazon_linux_2023" {
+      most_recent = true
+      owners      = ["amazon"]
+
+      filter {
+        name   = "name"
+        values = ["al2023-ami-*-x86_64"]
+      }
+
+      filter {
+        name   = "virtualization-type"
+        values = ["hvm"]
+      }
+
+      filter {
+        name   = "root-device-type"
+        values = ["ebs"]
+      }
+    }
+
+    data "aws_ami" "amazon_linux_2023_arm" {
+      most_recent = true
+      owners      = ["amazon"]
+
+      filter {
+        name   = "name"
+        values = ["al2023-ami-*-arm64"]
+      }
+
+      filter {
+        name   = "virtualization-type"
+        values = ["hvm"]
+      }
+    }
+  compute.tf: |
+    locals {
+      ami_id = var.architecture == "arm64" ? data.aws_ami.amazon_linux_2023_arm.id : data.aws_ami.amazon_linux_2023.id
+      instance_types = {
+        "x86_64" = "t3.medium"
+        "arm64"  = "t4g.medium"
+      }
+    }
+
+    resource "aws_launch_template" "web" {
+      name_prefix   = "${var.environment}-web-"
+      image_id      = local.ami_id
+      instance_type = local.instance_types[var.architecture]
+
+      iam_instance_profile {
+        name = aws_iam_instance_profile.web.name
+      }
+
+      network_interfaces {
+        associate_public_ip_address = false
+        security_groups             = [aws_security_group.web.id]
+        delete_on_termination       = true
+      }
+
+      block_device_mappings {
+        device_name = "/dev/xvda"
+        ebs {
+          volume_size           = var.root_volume_size
+          volume_type           = "gp3"
+          encrypted             = true
+          kms_key_id            = var.kms_key_arn
+          delete_on_termination = true
+        }
+      }
+
+      metadata_options {
+        http_endpoint               = "enabled"
+        http_tokens                 = "required"
+        http_put_response_hop_limit = 1
+        instance_metadata_tags      = "enabled"
+      }
+
+      monitoring {
+        enabled = true
+      }
+
+      user_data = base64encode(templatefile("${path.module}/user_data.sh", {
+        environment   = var.environment
+        cluster_name  = var.ecs_cluster_name
+        log_group     = var.cloudwatch_log_group
+      }))
+
+      tag_specifications {
+        resource_type = "instance"
+        tags = merge(var.common_tags, {
+          Name        = "${var.environment}-web-instance"
+          Environment = var.environment
+        })
+      }
+
+      tag_specifications {
+        resource_type = "volume"
+        tags = merge(var.common_tags, {
+          Name        = "${var.environment}-web-volume"
+          Environment = var.environment
+        })
+      }
+
+      lifecycle {
+        create_before_destroy = true
+      }
+    }
+
+    resource "aws_instance" "web" {
+      count = var.use_asg ? 0 : var.instance_count
+
+      launch_template {
+        id      = aws_launch_template.web.id
+        version = "$Latest"
+      }
+
+      subnet_id = element(var.private_subnet_ids, count.index % length(var.private_subnet_ids))
+
+      tags = merge(var.common_tags, {
+        Name = "${var.environment}-web-${count.index + 1}"
+      })
+    }
+
+    resource "aws_security_group" "web" {
+      name        = "${var.environment}-web-sg"
+      description = "Security group for web instances"
+      vpc_id      = var.vpc_id
+
+      ingress {
+        from_port       = 80
+        to_port         = 80
+        protocol        = "tcp"
+        security_groups = [var.alb_security_group_id]
+        description     = "HTTP from ALB"
+      }
+
+      ingress {
+        from_port       = 443
+        to_port         = 443
+        protocol        = "tcp"
+        security_groups = [var.alb_security_group_id]
+        description     = "HTTPS from ALB"
+      }
+
+      egress {
+        from_port   = 0
+        to_port     = 0
+        protocol    = "-1"
+        cidr_blocks = ["0.0.0.0/0"]
+        description = "Allow all outbound"
+      }
+
+      tags = merge(var.common_tags, {
+        Name = "${var.environment}-web-sg"
+      })
+
+      lifecycle {
+        create_before_destroy = true
+      }
+    }
+
+    resource "aws_iam_instance_profile" "web" {
+      name = "${var.environment}-web-instance-profile"
+      role = aws_iam_role.web_instance.name
+    }
+
+    resource "aws_iam_role" "web_instance" {
+      name = "${var.environment}-web-instance-role"
+
+      assume_role_policy = jsonencode({
+        Version = "2012-10-17"
+        Statement = [{
+          Effect    = "Allow"
+          Principal = { Service = "ec2.amazonaws.com" }
+          Action    = "sts:AssumeRole"
+        }]
+      })
+
+      tags = var.common_tags
+    }
+
+    resource "aws_iam_role_policy_attachment" "web_ssm" {
+      role       = aws_iam_role.web_instance.name
+      policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
+    }
+
+    resource "aws_iam_role_policy_attachment" "web_cloudwatch" {
+      role       = aws_iam_role.web_instance.name
+      policy_arn = "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy"
+    }
+  user_data.sh: |
+    #!/bin/bash
+    set -euxo pipefail
+
+    # Configure CloudWatch agent
+    cat > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json <<'EOF'
+    {
+      "logs": {
+        "logs_collected": {
+          "files": {
+            "collect_list": [
+              {
+                "file_path": "/var/log/messages",
+                "log_group_name": "${log_group}",
+                "log_stream_name": "{instance_id}/messages"
+              },
+              {
+                "file_path": "/var/log/docker",
+                "log_group_name": "${log_group}",
+                "log_stream_name": "{instance_id}/docker"
+              }
+            ]
+          }
+        }
+      }
+    }
+    EOF
+
+    # Install and start services
+    yum update -y
+    yum install -y docker amazon-cloudwatch-agent
+
+    systemctl enable docker
+    systemctl start docker
+
+    systemctl enable amazon-cloudwatch-agent
+    systemctl start amazon-cloudwatch-agent
+
+    # Join ECS cluster
+    echo "ECS_CLUSTER=${cluster_name}" >> /etc/ecs/ecs.config
+    echo "ECS_ENABLE_CONTAINER_METADATA=true" >> /etc/ecs/ecs.config
+assertions:
+  must_include:
+    - compute.tf
+    - aws_launch_template
+    - aws_instance
+    - aws_security_group
+    - metadata_options
+    - http_tokens
+    - ECS_CLUSTER
+  must_not_include:
+    - GARBAGE_TF_ec2451a
+    - GARBAGE_TF_ec2451b
+    - legacy_web
+    - collect_legacy_metrics
+options:
+  commit_message: Add EC2 launch template with IMDSv2 and security hardening

@@ -1,0 +1,23 @@
+name: yaml_006_cors_settings
+initial:
+  config/api.yaml: |
+    cors:
+      allowed_origins:
+        - http://localhost:3000
+      allow_credentials: true
+  src/middleware.py: |
+    def setup_cors(app, origins: list[str], credentials: bool = True):
+        for origin in origins:
+            app.allow_origin(origin, credentials=credentials)
+changed:
+  config/api.yaml: |
+    cors:
+      allowed_origins:
+        - https://example.com
+        - https://api.example.com
+      allow_credentials: true
+assertions:
+  must_include:
+    - setup_cors
+options:
+  commit_message: update cors

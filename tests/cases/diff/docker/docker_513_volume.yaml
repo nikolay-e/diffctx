@@ -1,28 +1,108 @@
 name: docker_513_volume
 initial:
-  app.py: |
+  src/app.py: |
     import os
-    data_dir = '/data'
-    os.makedirs(data_dir, exist_ok=True)
-    with open(os.path.join(data_dir, 'test.txt'), 'w') as f:
-        f.write('test')
+    import json
+    from pathlib import Path
+
+    DATA_DIR = Path('/data')
+    CACHE_DIR = Path('/cache')
+    LOGS_DIR = Path('/var/log/app')
+
+    def ensure_directories():
+        for directory in [DATA_DIR, CACHE_DIR, LOGS_DIR]:
+            directory.mkdir(parents=True, exist_ok=True)
+
+    def save_data(key: str, value: dict):
+        filepath = DATA_DIR / f"{key}.json"
+        with open(filepath, 'w') as f:
+            json.dump(value, f)
+
+    def load_data(key: str) -> dict:
+        filepath = DATA_DIR / f"{key}.json"
+        with open(filepath, 'r') as f:
+            return json.load(f)
+  requirements.txt: |
+    flask==2.3.0
+    gunicorn==21.2.0
   Dockerfile: |
     FROM python:3.11-slim
-    COPY app.py .
-    CMD ["python", "app.py"]
-  junk.txt: |
-    garbage_marker_12345 unused_marker_67890
+    WORKDIR /app
+    COPY requirements.txt .
+    RUN pip install -r requirements.txt
+    COPY src/ ./src/
+    CMD ["python", "src/app.py"]
+  scripts/backup_data.sh: |
+    #!/bin/bash
+    # GARBAGE_DOCKER_513_BACKUP_MARKER_001
+    GARBAGE_DOCKER_513_BACKUP_VAR_002="daily"
+    tar -czf backup.tar.gz /data
+  tests/test_storage.py: |
+    # GARBAGE_DOCKER_513_TEST_MARKER_003
+    GARBAGE_DOCKER_513_TEST_STORAGE_004 = {"path": "/data"}
+    def test_storage():
+        pass
+  docs/volumes.md: |
+    # Volume Configuration
+    GARBAGE_DOCKER_513_VOL_DOC_005
+    GARBAGE_DOCKER_513_MOUNT_006="/data,/cache"
+  k8s/persistent-volume.yaml: |
+    # GARBAGE_DOCKER_513_K8S_MARKER_007
+    apiVersion: v1
+    GARBAGE_DOCKER_513_PV_008: 10Gi
+  ops/retention.yaml: |
+    # GARBAGE_DOCKER_513_OPS_MARKER_009
+    GARBAGE_DOCKER_513_RETENTION_010: 30d
 changed:
   Dockerfile: |
-    FROM python:3.11-slim
-    VOLUME /data
-    COPY app.py .
-    CMD ["python", "app.py"]
+    FROM python:3.12-slim-bookworm AS base
+    ENV PYTHONDONTWRITEBYTECODE=1
+    ENV PYTHONUNBUFFERED=1
+
+    FROM base AS dependencies
+    WORKDIR /app
+    COPY requirements.txt .
+    RUN pip install --no-cache-dir -r requirements.txt
+
+    FROM base AS production
+    WORKDIR /app
+
+    # Create user and volume directories with proper permissions
+    RUN groupadd --gid 1000 appgroup && \
+        useradd --uid 1000 --gid appgroup --create-home appuser && \
+        mkdir -p /data /cache /var/log/app && \
+        chown -R appuser:appgroup /data /cache /var/log/app /app
+
+    # Declare volumes for persistent data
+    VOLUME ["/data"]
+    VOLUME ["/cache"]
+    VOLUME ["/var/log/app"]
+
+    COPY --from=dependencies /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
+    COPY --from=dependencies /usr/local/bin /usr/local/bin
+    COPY --chown=appuser:appgroup src/ ./src/
+
+    USER appuser:appgroup
+    EXPOSE 8080
+
+    CMD ["gunicorn", "-w", "4", "-b", "0.0.0.0:8080", "src.app:app"]
 assertions:
   must_include:
-  - VOLUME /data
+    - VOLUME ["/data"]
+    - VOLUME ["/cache"]
+    - VOLUME ["/var/log/app"]
+    - mkdir -p /data /cache /var/log/app
+    - chown -R appuser:appgroup /data /cache
   must_not_include:
-  - garbage_marker_12345
-  - unused_marker_67890
+    - GARBAGE_DOCKER_513_BACKUP_MARKER_001
+    - GARBAGE_DOCKER_513_BACKUP_VAR_002
+    - GARBAGE_DOCKER_513_TEST_MARKER_003
+    - GARBAGE_DOCKER_513_TEST_STORAGE_004
+    - GARBAGE_DOCKER_513_VOL_DOC_005
+    - GARBAGE_DOCKER_513_MOUNT_006
+    - GARBAGE_DOCKER_513_K8S_MARKER_007
+    - GARBAGE_DOCKER_513_PV_008
+    - GARBAGE_DOCKER_513_OPS_MARKER_009
+    - GARBAGE_DOCKER_513_RETENTION_010
 options:
-  commit_message: Add VOLUME
+  commit_message: Add multiple VOLUME declarations with proper permissions

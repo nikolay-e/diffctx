@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import subprocess
 from collections import defaultdict
 from pathlib import Path
 from typing import Any
@@ -9,6 +10,8 @@ import pathspec
 
 from ..ignore import get_ignore_specs, should_ignore
 from ..tokens import count_tokens
+from .config import LIMITS
+from .config.extensions import CODE_EXTENSIONS, CONFIG_EXTENSIONS, DOC_EXTENSIONS
 from .edges import discover_all_related_files
 from .fragments import enclosing_fragment, fragment_file  # type: ignore[attr-defined]
 from .git import (
@@ -21,6 +24,7 @@ from .git import (
     split_diff_range,
 )
 from .graph import build_graph
+from .languages import FILENAME_TO_LANGUAGE
 from .ppr import personalized_pagerank
 from .render import build_partial_tree
 from .select import lazy_greedy_select
@@ -29,9 +33,32 @@ from .utility import concepts_from_diff_text
 
 __all__ = ["GitError", "build_diff_context"]
 
-_RARE_THRESHOLD = 3
-_MAX_EXPANSION_FILES = 20
-_OVERHEAD_PER_FRAGMENT = 18  # JSON metadata tokens (path, lines, kind, symbol) - validated range: 12-25
+_RARE_THRESHOLD = LIMITS.rare_identifier_threshold
+_MAX_EXPANSION_FILES = LIMITS.max_expansion_files
+_OVERHEAD_PER_FRAGMENT = LIMITS.overhead_per_fragment
+
+_SEMANTIC_KINDS = frozenset(
+    {
+        "function",
+        "class",
+        "struct",
+        "impl",
+        "interface",
+        "enum",
+        "module",
+        "type",
+        "variable",
+        "record",
+        "property",
+        "declaration",
+        "definition",
+        "section",
+    }
+)
+
+
+def _kind_priority(kind: str) -> int:
+    return 0 if kind in _SEMANTIC_KINDS else 1
 
 
 def _read_file_content(
@@ -39,30 +66,29 @@ def _read_file_content(
     root_dir: Path,
     preferred_revs: list[str],
 ) -> str | None:
+    abs_path = _normalize_path(file_path, root_dir)
     try:
-        rel = file_path.relative_to(root_dir)
+        rel = abs_path.relative_to(root_dir.resolve())
     except ValueError:
-        rel = Path(file_path.name)
+        logging.debug("diffctx: path %s not under root %s", abs_path, root_dir)
+        return None
 
-    # Try git revisions first for consistency with diff range
     for rev in preferred_revs:
         try:
             return show_file_at_revision(root_dir, rev, rel)
         except GitError:
             continue
 
-    # Fallback to filesystem for working tree diffs
-    if file_path.exists() and file_path.is_file():
+    if abs_path.exists() and abs_path.is_file():
         try:
-            return file_path.read_text(encoding="utf-8")
+            return abs_path.read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError):
             pass
 
     return None
 
 
-_DEFAULT_BUDGET_TOKENS = 50_000
-_MAX_FRAGMENTS = 200
+_UNLIMITED_BUDGET = 10_000_000  # Large budget to let tau-based stopping work
 
 
 def _build_preferred_revs(base_rev: str | None, head_rev: str | None) -> list[str]:
@@ -101,7 +127,7 @@ def _find_core_for_hunk(
 
     covering = [f for f in frags if f.start_line <= h_start and h_end <= f.end_line]
     if covering:
-        best = min(covering, key=lambda f: f.line_count)
+        best = min(covering, key=lambda f: (_kind_priority(f.kind), f.line_count))
         core.add(best.id)
         return core
 
@@ -147,7 +173,7 @@ def _select_with_ppr(
 ) -> tuple[list[Fragment], Any]:
     graph = build_graph(all_fragments, repo_root=repo_root)
     rel_scores = personalized_pagerank(graph, core_ids, alpha=alpha)
-    effective_budget = budget_tokens if budget_tokens is not None else _DEFAULT_BUDGET_TOKENS
+    effective_budget = budget_tokens if budget_tokens is not None else _UNLIMITED_BUDGET
 
     result = lazy_greedy_select(
         fragments=all_fragments,
@@ -182,6 +208,7 @@ def build_diff_context(
     concepts = concepts_from_diff_text(diff_text)
 
     changed_files = get_changed_files(root_dir, diff_range)
+    changed_files = [_normalize_path(p, root_dir) for p in changed_files]
     changed_files = _filter_ignored(changed_files, root_dir, combined_spec)
 
     base_rev, head_rev = split_diff_range(diff_range)
@@ -193,9 +220,11 @@ def build_diff_context(
     all_candidate_files = _collect_candidate_files(root_dir, set(changed_files), combined_spec)
 
     edge_discovered = discover_all_related_files(changed_files, all_candidate_files, root_dir)
+    edge_discovered = [_normalize_path(p, root_dir) for p in edge_discovered]
     all_fragments.extend(_process_files_for_fragments(edge_discovered, root_dir, preferred_revs, seen_frag_ids))
 
     expanded_files = _expand_universe_by_rare_identifiers(root_dir, concepts, changed_files + edge_discovered, combined_spec)
+    expanded_files = [_normalize_path(p, root_dir) for p in expanded_files]
     all_fragments.extend(_process_files_for_fragments(expanded_files, root_dir, preferred_revs, seen_frag_ids))
 
     for frag in all_fragments:
@@ -207,7 +236,15 @@ def build_diff_context(
         selected = _select_full_mode(all_fragments, changed_files)
         _log_full_mode(selected)
     else:
-        selected, result = _select_with_ppr(all_fragments, core_ids, concepts, budget_tokens, alpha, tau, repo_root=root_dir)
+        selected, result = _select_with_ppr(
+            all_fragments,
+            core_ids,
+            concepts,
+            budget_tokens,
+            alpha,
+            tau,
+            repo_root=root_dir,
+        )
         _log_ppr_mode(selected, core_ids, budget_tokens, result, alpha, tau)
 
     if no_content:
@@ -282,49 +319,29 @@ def _log_ppr_mode(
         logging.debug("diffctx: failed to compute token count: %s", e)
 
 
-_MAX_FILE_SIZE = 100_000  # 100KB
+_MAX_FILE_SIZE = LIMITS.max_file_size
 
-_CODE_EXTS = {
-    ".py",
-    ".js",
-    ".ts",
-    ".tsx",
-    ".jsx",
-    ".rs",
-    ".java",
-    ".kt",
-    ".go",
-    ".rb",
-    ".php",
-    ".cs",
-    ".c",
-    ".h",
-    ".cpp",
-    ".hpp",
-    ".cc",
-    ".cxx",
-    ".hxx",
-    ".hh",
-    ".swift",
-    ".m",
-    ".mm",
-    ".sh",
-    ".bash",
-    ".zsh",
-    ".scala",
-    ".sc",
-    ".lua",
-    ".r",
-    ".R",
-}
-_CFG_EXTS = {".yaml", ".yml", ".json", ".toml", ".ini", ".env"}
-_ALLOWED_EXTS = _CODE_EXTS | _CFG_EXTS
+_ALLOWED_SUFFIXES = CODE_EXTENSIONS | CONFIG_EXTENSIONS | DOC_EXTENSIONS | frozenset({".env"})
+_ALLOWED_FILENAMES = frozenset(k.lower() for k in FILENAME_TO_LANGUAGE.keys())
+
+
+def _is_allowed_file(path: Path) -> bool:
+    suffix = path.suffix.lower()
+    if suffix in _ALLOWED_SUFFIXES:
+        return True
+    return path.name.lower() in _ALLOWED_FILENAMES
+
+
+def _normalize_path(path: Path, root_dir: Path) -> Path:
+    if path.is_absolute():
+        return path.resolve()
+    return (root_dir / path).resolve()
 
 
 def _is_candidate_file(file_path: Path, root_dir: Path, included_set: set[Path], combined_spec: pathspec.PathSpec) -> bool:
     if not file_path.is_file():
         return False
-    if file_path.suffix.lower() not in _ALLOWED_EXTS:
+    if not _is_allowed_file(file_path):
         return False
     if file_path in included_set:
         return False
@@ -340,6 +357,20 @@ def _is_candidate_file(file_path: Path, root_dir: Path, included_set: set[Path],
 
 
 def _collect_candidate_files(root_dir: Path, included_set: set[Path], combined_spec: pathspec.PathSpec) -> list[Path]:
+    try:
+        result = subprocess.run(
+            ["git", "ls-files", "-z"],
+            cwd=root_dir,
+            capture_output=True,
+            text=False,
+            timeout=30,
+        )
+        if result.returncode == 0 and result.stdout:
+            out = result.stdout.decode("utf-8", errors="surrogateescape")
+            files = [root_dir / f for f in out.split("\0") if f]
+            return [f for f in files if _is_candidate_file(f, root_dir, included_set, combined_spec)]
+    except (subprocess.SubprocessError, OSError):
+        pass
     return [f for f in root_dir.rglob("*") if _is_candidate_file(f, root_dir, included_set, combined_spec)]
 
 
@@ -357,10 +388,15 @@ def _build_ident_index(files: list[Path], concepts: frozenset[str]) -> dict[str,
     return inverted_index
 
 
+_MIN_CONCEPT_LENGTH = 4
+
+
 def _collect_expansion_files(
     inverted_index: dict[str, list[Path]], concepts: frozenset[str], included_set: set[Path]
 ) -> list[Path]:
-    rare_concepts = [c for c in concepts if 0 < len(inverted_index.get(c, [])) <= _RARE_THRESHOLD]
+    rare_concepts = [
+        c for c in concepts if len(c) >= _MIN_CONCEPT_LENGTH and 0 < len(inverted_index.get(c, [])) <= _RARE_THRESHOLD
+    ]
     expansion_files: set[Path] = set()
 
     for concept in rare_concepts:

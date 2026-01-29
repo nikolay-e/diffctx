@@ -1,0 +1,33 @@
+name: helm_062_values_resources
+initial:
+  chart/values.yaml: |
+    resources:
+      limits:
+        cpu: 100m
+        memory: 128Mi
+  chart/templates/deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    spec:
+      template:
+        spec:
+          containers:
+            - name: app
+              resources:
+                limits:
+                  cpu: {{ .Values.resources.limits.cpu }}
+                  memory: {{ .Values.resources.limits.memory }}
+changed:
+  chart/values.yaml: |
+    resources:
+      limits:
+        cpu: 500m
+        memory: 512Mi
+      requests:
+        cpu: 100m
+        memory: 128Mi
+assertions:
+  must_include:
+    - Deployment
+options:
+  commit_message: increase resources

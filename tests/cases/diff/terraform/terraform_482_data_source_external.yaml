@@ -1,0 +1,23 @@
+name: terraform_482_data_source_external
+initial:
+  scripts/get_ami.sh: |
+    #!/bin/bash
+    echo '{"ami_id": "ami-12345678"}'
+  main.tf: |
+    resource "aws_instance" "web" {
+      ami = "ami-static"
+    }
+changed:
+  main.tf: |
+    data "external" "ami" {
+      program = ["${path.module}/scripts/get_ami.sh"]
+    }
+
+    resource "aws_instance" "web" {
+      ami = data.external.ami.result.ami_id
+    }
+assertions:
+  must_include:
+  - main.tf
+options:
+  commit_message: Add external data source

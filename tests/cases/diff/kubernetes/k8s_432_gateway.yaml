@@ -1,53 +1,228 @@
 name: k8s_432_gateway
 initial:
-  virtual-service.yaml: |
+  k8s/base/deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: api-service
+      namespace: production
+      labels:
+        app: api-service
+        tier: backend
+    spec:
+      replicas: 3
+      selector:
+        matchLabels:
+          app: api-service
+      template:
+        metadata:
+          labels:
+            app: api-service
+            tier: backend
+          annotations:
+            sidecar.istio.io/inject: "true"
+        spec:
+          containers:
+          - name: api
+            image: registry.example.com/api-service:v1.5.0
+            ports:
+            - containerPort: 8080
+              name: http
+            - containerPort: 8443
+              name: https
+            resources:
+              requests:
+                memory: "512Mi"
+                cpu: "500m"
+              limits:
+                memory: "1Gi"
+                cpu: "1000m"
+
+  k8s/base/service.yaml: |
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: api-service
+      namespace: production
+    spec:
+      selector:
+        app: api-service
+      ports:
+      - name: http
+        port: 80
+        targetPort: 8080
+      - name: https
+        port: 443
+        targetPort: 8443
+
+  k8s/base/virtual-service.yaml: |
     apiVersion: networking.istio.io/v1beta1
     kind: VirtualService
     metadata:
-      name: api
+      name: api-service
+      namespace: production
     spec:
       hosts:
       - api.example.com
+      - api-internal.example.com
       gateways:
       - api-gateway
-  gateway.yaml: |
+      http:
+      - route:
+        - destination:
+            host: api-service
+            port:
+              number: 80
+
+  k8s/base/gateway.yaml: |
     apiVersion: networking.istio.io/v1beta1
     kind: Gateway
     metadata:
       name: api-gateway
+      namespace: production
     spec:
       selector:
         istio: ingressgateway
       servers:
       - port:
           number: 80
+          name: http
           protocol: HTTP
-  unrelated.txt: |
-    garbage_marker_k8s432 = True
-    unused_marker_k8s432 = False
+        hosts:
+        - api.example.com
+
+  k8s/base/peer-authentication.yaml: |
+    apiVersion: security.istio.io/v1beta1
+    kind: PeerAuthentication
+    metadata:
+      name: default
+      namespace: production
+    spec:
+      mtls:
+        mode: STRICT
+
+  k8s/unrelated/cert-manager/clusterissuer.yaml: |
+    # GARBAGE_K8S_432_CERT_MANAGER
+    apiVersion: cert-manager.io/v1
+    kind: ClusterIssuer
+    metadata:
+      name: GARBAGE_K8S_432_ISSUER_NAME
+    spec:
+      acme:
+        server: GARBAGE_K8S_432_ACME_SERVER
+        email: GARBAGE_K8S_432_EMAIL
+        privateKeySecretRef:
+          name: GARBAGE_K8S_432_SECRET_NAME
+
+  k8s/unrelated/external-dns/externaldns.yaml: |
+    # GARBAGE_K8S_432_EXTERNAL_DNS
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: GARBAGE_K8S_432_EXTERNALDNS
+      namespace: external-dns
+    spec:
+      selector:
+        matchLabels:
+          app: GARBAGE_K8S_432_EXTERNALDNS_LABEL
+      template:
+        spec:
+          containers:
+          - name: external-dns
+            image: GARBAGE_K8S_432_EXTERNALDNS_IMAGE
+            args:
+            - GARBAGE_K8S_432_PROVIDER_ARG
+
+  k8s/unrelated/secrets/external-secrets.yaml: |
+    # GARBAGE_K8S_432_EXTERNAL_SECRETS
+    apiVersion: external-secrets.io/v1beta1
+    kind: ExternalSecret
+    metadata:
+      name: GARBAGE_K8S_432_EXT_SECRET
+      namespace: secrets
+    spec:
+      secretStoreRef:
+        name: GARBAGE_K8S_432_SECRET_STORE
+        kind: GARBAGE_K8S_432_STORE_KIND
+      target:
+        name: GARBAGE_K8S_432_TARGET_SECRET
+
+  .github/workflows/deploy.yaml: |
+    # GARBAGE_K8S_432_GHA_WORKFLOW
+    name: GARBAGE_K8S_432_WORKFLOW_NAME
+    on:
+      push:
+        branches: [GARBAGE_K8S_432_BRANCH]
+    jobs:
+      deploy:
+        runs-on: GARBAGE_K8S_432_RUNNER
+        steps:
+        - uses: GARBAGE_K8S_432_ACTION
+
 changed:
-  gateway.yaml: |
+  k8s/base/gateway.yaml: |
     apiVersion: networking.istio.io/v1beta1
     kind: Gateway
     metadata:
       name: api-gateway
+      namespace: production
+      labels:
+        app: api-gateway
     spec:
       selector:
         istio: ingressgateway
       servers:
       - port:
           number: 443
+          name: https
           protocol: HTTPS
         tls:
           mode: SIMPLE
-          credentialName: api-tls
+          credentialName: api-tls-cert
+          minProtocolVersion: TLSV1_2
+          cipherSuites:
+          - ECDHE-RSA-AES256-GCM-SHA384
+          - ECDHE-RSA-AES128-GCM-SHA256
         hosts:
         - api.example.com
+        - api-internal.example.com
+      - port:
+          number: 80
+          name: http
+          protocol: HTTP
+        tls:
+          httpsRedirect: true
+        hosts:
+        - api.example.com
+        - api-internal.example.com
+
 assertions:
   must_include:
-  - Gateway
+  - api-gateway
+  - api-tls-cert
+  - TLSV1_2
+  - cipherSuites
+  - httpsRedirect
   must_not_include:
-  - garbage_marker_k8s432
-  - unused_marker_k8s432
+  - GARBAGE_K8S_432_CERT_MANAGER
+  - GARBAGE_K8S_432_ISSUER_NAME
+  - GARBAGE_K8S_432_ACME_SERVER
+  - GARBAGE_K8S_432_EMAIL
+  - GARBAGE_K8S_432_SECRET_NAME
+  - GARBAGE_K8S_432_EXTERNAL_DNS
+  - GARBAGE_K8S_432_EXTERNALDNS
+  - GARBAGE_K8S_432_EXTERNALDNS_LABEL
+  - GARBAGE_K8S_432_EXTERNALDNS_IMAGE
+  - GARBAGE_K8S_432_PROVIDER_ARG
+  - GARBAGE_K8S_432_EXTERNAL_SECRETS
+  - GARBAGE_K8S_432_EXT_SECRET
+  - GARBAGE_K8S_432_SECRET_STORE
+  - GARBAGE_K8S_432_STORE_KIND
+  - GARBAGE_K8S_432_TARGET_SECRET
+  - GARBAGE_K8S_432_GHA_WORKFLOW
+  - GARBAGE_K8S_432_WORKFLOW_NAME
+  - GARBAGE_K8S_432_BRANCH
+  - GARBAGE_K8S_432_RUNNER
+  - GARBAGE_K8S_432_ACTION
 options:
-  commit_message: Add Gateway TLS
+  commit_message: Add Gateway TLS configuration with cipher suites and HTTPS redirect

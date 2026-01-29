@@ -88,7 +88,7 @@ class GoEdgeBuilder(EdgeBuilder):
         func_defs: dict[str, list[FragmentId]] = defaultdict(list)
 
         for f in go_frags:
-            pkg = _get_package_name(f.path)
+            pkg = _get_package_name(f.path).lower()
             pkg_to_frags[pkg].append(f.id)
 
             if repo_root:
@@ -143,7 +143,7 @@ class GoEdgeBuilder(EdgeBuilder):
         pkg_to_frags: dict[str, list[FragmentId]],
         edges: EdgeDict,
     ) -> None:
-        imp_pkg = imp.split("/")[-1]
+        imp_pkg = imp.split("/")[-1].lower()
         for pkg, frag_ids in pkg_to_frags.items():
             if pkg == imp_pkg:
                 self.add_edges_from_ids(gf_id, frag_ids, self.import_weight, edges)
@@ -190,7 +190,7 @@ class GoEdgeBuilder(EdgeBuilder):
         pkg_to_frags: dict[str, list[FragmentId]],
         edges: EdgeDict,
     ) -> None:
-        current_pkg = _get_package_name(gf.path)
+        current_pkg = _get_package_name(gf.path).lower()
         for fid in pkg_to_frags.get(current_pkg, []):
             if fid != gf.id:
                 self.add_edge(edges, gf.id, fid, self.same_package_weight)

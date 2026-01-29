@@ -1,7 +1,7 @@
 name: go_029_generic_type
 initial:
-  container.go: |
-    package main
+  internal/collections/slice.go: |
+    package collections
 
     type IntSlice []int
 
@@ -11,21 +11,121 @@ initial:
         }
         return s[0]
     }
-  unrelated/garbage.go: |
-    package unrelated
 
-    func UnusedContainer_12345() {
-        println("garbage_marker_12345")
+    func (s IntSlice) Last() int {
+        if len(s) == 0 {
+            return 0
+        }
+        return s[len(s)-1]
     }
 
-    func AnotherUnused_67890() {
-        println("unused_marker_67890")
+    type StringSlice []string
+
+    func (s StringSlice) First() string {
+        if len(s) == 0 {
+            return ""
+        }
+        return s[0]
     }
+
+  internal/collections/map.go: |
+    package collections
+
+    type StringMap map[string]string
+
+    func (m StringMap) Get(key string) (string, bool) {
+        v, ok := m[key]
+        return v, ok
+    }
+
+    func (m StringMap) Keys() []string {
+        keys := make([]string, 0, len(m))
+        for k := range m {
+            keys = append(keys, k)
+        }
+        return keys
+    }
+
+  internal/unrelated/search/elasticsearch.go: |
+    package search
+
+    import "context"
+
+    const GARBAGE_GO_ELASTIC_CLIENT_A1B2C3 = "elastic_garbage_marker"
+
+    type GARBAGE_GO_TYPE_INDEX_D4E5F6 struct {
+        name     string
+        settings map[string]interface{}
+    }
+
+    func GARBAGE_GO_FUNC_ELASTIC_G7H8I9() string {
+        return "GARBAGE_GO_ELASTIC_UNUSED_J0K1L2"
+    }
+
+    type ElasticConfig struct {
+        Addresses []string
+        Username  string
+        Password  string
+        CloudID   string
+    }
+
+    func GARBAGE_GO_FUNC_ES_SEARCH_M3N4O5(ctx context.Context, query string) error {
+        println("GARBAGE_GO_ES_OUTPUT_P6Q7R8")
+        return nil
+    }
+
+  internal/unrelated/search/solr_client.go: |
+    package search
+
+    const GARBAGE_GO_SOLR_CLIENT_S9T0U1 = "solr_garbage"
+
+    type GARBAGE_GO_TYPE_SOLR_V2W3X4 struct {
+        baseURL    string
+        collection string
+    }
+
+    func GARBAGE_GO_FUNC_SOLR_Y5Z6A7() {
+        println("GARBAGE_GO_SOLR_OUTPUT_B8C9D0")
+    }
+
+    type SolrConfig struct {
+        BaseURL    string
+        Collection string
+        Timeout    int
+    }
+
+    func GARBAGE_GO_FUNC_SOLR_QUERY_E1F2G3(q string) ([]interface{}, error) {
+        return nil, nil
+    }
+
+  internal/unrelated/search/meilisearch.go: |
+    package search
+
+    const GARBAGE_GO_MEILI_CLIENT_H4I5J6 = "meilisearch_garbage"
+
+    type GARBAGE_GO_TYPE_MEILI_K7L8M9 struct {
+        host   string
+        apiKey string
+    }
+
+    func GARBAGE_GO_FUNC_MEILI_N0O1P2() {
+        println("GARBAGE_GO_MEILI_OUTPUT_Q3R4S5")
+    }
+
 changed:
-  container.go: |
-    package main
+  internal/collections/slice.go: |
+    package collections
+
+    import (
+        "cmp"
+        "sort"
+    )
 
     type Slice[T any] []T
+
+    func NewSlice[T any](items ...T) Slice[T] {
+        return Slice[T](items)
+    }
 
     func (s Slice[T]) First() (T, bool) {
         var zero T
@@ -33,6 +133,22 @@ changed:
             return zero, false
         }
         return s[0], true
+    }
+
+    func (s Slice[T]) Last() (T, bool) {
+        var zero T
+        if len(s) == 0 {
+            return zero, false
+        }
+        return s[len(s)-1], true
+    }
+
+    func (s Slice[T]) At(index int) (T, bool) {
+        var zero T
+        if index < 0 || index >= len(s) {
+            return zero, false
+        }
+        return s[index], true
     }
 
     func (s Slice[T]) Map(fn func(T) T) Slice[T] {
@@ -43,8 +159,69 @@ changed:
         return result
     }
 
+    func (s Slice[T]) Filter(predicate func(T) bool) Slice[T] {
+        result := make(Slice[T], 0)
+        for _, v := range s {
+            if predicate(v) {
+                result = append(result, v)
+            }
+        }
+        return result
+    }
+
+    func (s Slice[T]) Reduce(initial T, fn func(T, T) T) T {
+        result := initial
+        for _, v := range s {
+            result = fn(result, v)
+        }
+        return result
+    }
+
+    func (s Slice[T]) ForEach(fn func(T)) {
+        for _, v := range s {
+            fn(v)
+        }
+    }
+
+    func (s Slice[T]) Any(predicate func(T) bool) bool {
+        for _, v := range s {
+            if predicate(v) {
+                return true
+            }
+        }
+        return false
+    }
+
+    func (s Slice[T]) All(predicate func(T) bool) bool {
+        for _, v := range s {
+            if !predicate(v) {
+                return false
+            }
+        }
+        return true
+    }
+
+    func (s Slice[T]) Contains(target T, equal func(T, T) bool) bool {
+        for _, v := range s {
+            if equal(v, target) {
+                return true
+            }
+        }
+        return false
+    }
+
+    func (s Slice[T]) Len() int {
+        return len(s)
+    }
+
+    func (s Slice[T]) IsEmpty() bool {
+        return len(s) == 0
+    }
+
     type Ordered interface {
-        ~int | ~int64 | ~float64 | ~string
+        ~int | ~int8 | ~int16 | ~int32 | ~int64 |
+        ~uint | ~uint8 | ~uint16 | ~uint32 | ~uint64 |
+        ~float32 | ~float64 | ~string
     }
 
     func Max[T Ordered](a, b T) T {
@@ -53,13 +230,145 @@ changed:
         }
         return b
     }
+
+    func Min[T Ordered](a, b T) T {
+        if a < b {
+            return a
+        }
+        return b
+    }
+
+    func Clamp[T Ordered](value, minVal, maxVal T) T {
+        if value < minVal {
+            return minVal
+        }
+        if value > maxVal {
+            return maxVal
+        }
+        return value
+    }
+
+    type OrderedSlice[T Ordered] []T
+
+    func (s OrderedSlice[T]) Sort() OrderedSlice[T] {
+        result := make(OrderedSlice[T], len(s))
+        copy(result, s)
+        sort.Slice(result, func(i, j int) bool {
+            return result[i] < result[j]
+        })
+        return result
+    }
+
+    func (s OrderedSlice[T]) Max() (T, bool) {
+        var zero T
+        if len(s) == 0 {
+            return zero, false
+        }
+        max := s[0]
+        for _, v := range s[1:] {
+            if v > max {
+                max = v
+            }
+        }
+        return max, true
+    }
+
+    func (s OrderedSlice[T]) Min() (T, bool) {
+        var zero T
+        if len(s) == 0 {
+            return zero, false
+        }
+        min := s[0]
+        for _, v := range s[1:] {
+            if v < min {
+                min = v
+            }
+        }
+        return min, true
+    }
+
+    func (s OrderedSlice[T]) Sum() T {
+        var sum T
+        for _, v := range s {
+            sum += v
+        }
+        return sum
+    }
+
+    type Result[T any] struct {
+        Value T
+        Err   error
+    }
+
+    func Ok[T any](value T) Result[T] {
+        return Result[T]{Value: value}
+    }
+
+    func Err[T any](err error) Result[T] {
+        return Result[T]{Err: err}
+    }
+
+    func (r Result[T]) IsOk() bool {
+        return r.Err == nil
+    }
+
+    func (r Result[T]) IsErr() bool {
+        return r.Err != nil
+    }
+
+    func (r Result[T]) Unwrap() T {
+        if r.Err != nil {
+            panic(r.Err)
+        }
+        return r.Value
+    }
+
+    func (r Result[T]) UnwrapOr(defaultValue T) T {
+        if r.Err != nil {
+            return defaultValue
+        }
+        return r.Value
+    }
+
 assertions:
   must_include:
-  - Slice[T]
-  - Ordered
-  - Max[T
+    - "Slice[T any]"
+    - "Slice[T]"
+    - Ordered
+    - "OrderedSlice[T Ordered]"
+    - "Result[T any]"
+    - "Max[T Ordered]"
+    - "Min[T Ordered]"
+    - "Clamp[T Ordered]"
+    - "Ok[T any]"
+    - "Err[T any]"
+    - Map
+    - Filter
+    - Reduce
+    - ForEach
+    - Any
+    - All
+    - Contains
+    - UnwrapOr
   must_not_include:
-  - garbage_marker_12345
-  - unused_marker_67890
+    - GARBAGE_GO_ELASTIC_CLIENT_A1B2C3
+    - GARBAGE_GO_TYPE_INDEX_D4E5F6
+    - GARBAGE_GO_FUNC_ELASTIC_G7H8I9
+    - GARBAGE_GO_ELASTIC_UNUSED_J0K1L2
+    - GARBAGE_GO_FUNC_ES_SEARCH_M3N4O5
+    - GARBAGE_GO_ES_OUTPUT_P6Q7R8
+    - GARBAGE_GO_SOLR_CLIENT_S9T0U1
+    - GARBAGE_GO_TYPE_SOLR_V2W3X4
+    - GARBAGE_GO_FUNC_SOLR_Y5Z6A7
+    - GARBAGE_GO_SOLR_OUTPUT_B8C9D0
+    - GARBAGE_GO_FUNC_SOLR_QUERY_E1F2G3
+    - GARBAGE_GO_MEILI_CLIENT_H4I5J6
+    - GARBAGE_GO_TYPE_MEILI_K7L8M9
+    - GARBAGE_GO_FUNC_MEILI_N0O1P2
+    - GARBAGE_GO_MEILI_OUTPUT_Q3R4S5
+    - elasticsearch
+    - solr_client
+    - meilisearch
+
 options:
-  commit_message: Add generic types
+  commit_message: Add comprehensive generic collection types with functional methods

@@ -4,7 +4,7 @@ import re
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from .constants import CODE_EXTENSIONS
+from .constants import CODE_EXTENSIONS, CONFIG_EXTENSIONS, DOC_EXTENSIONS
 
 if TYPE_CHECKING:
     from spacy.language import Language
@@ -94,12 +94,19 @@ def extract_token_list(text: str, *, profile: str = "auto", use_nlp: bool = True
 
 
 def detect_profile(path_str: str) -> str:
-    suffix = Path(path_str).suffix.lower()
+    p = Path(path_str)
+    suffix = p.suffix.lower()
 
     if suffix in CODE_EXTENSIONS:
         return "code"
 
-    return "docs"
+    if suffix in DOC_EXTENSIONS or suffix in {".markdown", ".tex", ".latex"}:
+        return "docs"
+
+    if suffix in CONFIG_EXTENSIONS or suffix in {".env"}:
+        return "data"
+
+    return "generic"
 
 
 def is_nlp_available() -> bool:

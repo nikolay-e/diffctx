@@ -1,0 +1,22 @@
+name: terraform_491_depends_on_explicit
+initial:
+  main.tf: |
+    resource "aws_lambda_function" "api" {
+      function_name = "api-handler"
+    }
+changed:
+  main.tf: |
+    resource "aws_lambda_function" "api" {
+      function_name = "api-handler"
+
+      depends_on = [
+        aws_iam_role_policy_attachment.lambda_logs,
+        aws_cloudwatch_log_group.lambda,
+        aws_vpc_endpoint.s3,
+      ]
+    }
+assertions:
+  must_include:
+  - main.tf
+options:
+  commit_message: Add explicit depends_on

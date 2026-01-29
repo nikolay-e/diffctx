@@ -1,0 +1,123 @@
+name: graph_005_direct_import
+initial:
+  utils.py: |
+    def helper():
+        return 42
+
+    def format_output(value):
+        return f"Result: {value}"
+
+    def validate_input(data):
+        return data is not None
+  core/base.py: |
+    class BaseProcessor:
+        def process(self, data):
+            raise NotImplementedError
+
+        def validate(self, data):
+            return True
+  core/handlers.py: |
+    from core.base import BaseProcessor
+
+    class DataHandler(BaseProcessor):
+        def process(self, data):
+            return {"processed": data}
+
+        def transform(self, data):
+            return str(data).upper()
+  services/data_service.py: |
+    from core.handlers import DataHandler
+    from utils import helper, validate_input
+
+    class DataService:
+        def __init__(self):
+            self.handler = DataHandler()
+
+        def execute(self, data):
+            if not validate_input(data):
+                return None
+            processed = self.handler.process(data)
+            enriched = helper()
+            return {**processed, "helper_value": enriched}
+  main.py: |
+    from utils import helper, format_output
+    from services.data_service import DataService
+    from core.handlers import DataHandler
+
+    def main():
+        result = helper()
+        formatted = format_output(result)
+        return formatted
+
+    def run_service():
+        service = DataService()
+        return service.execute({"input": "data"})
+
+    def direct_handler():
+        handler = DataHandler()
+        return handler.process({"direct": True})
+  garbage/import_chain_GARBAGE_GRAPH_mno001.py: |
+    from garbage.sub_import_GARBAGE_GRAPH_mno001 import sub_helper_GARBAGE_GRAPH_mno001
+
+    def chain_caller_GARBAGE_GRAPH_mno001():
+        return sub_helper_GARBAGE_GRAPH_mno001()
+  garbage/sub_import_GARBAGE_GRAPH_mno001.py: |
+    def sub_helper_GARBAGE_GRAPH_mno001():
+        return "sub"
+  garbage/circular_a_GARBAGE_GRAPH_mno002.py: |
+    from garbage.circular_b_GARBAGE_GRAPH_mno002 import func_b_GARBAGE_GRAPH_mno002
+
+    def func_a_GARBAGE_GRAPH_mno002():
+        return func_b_GARBAGE_GRAPH_mno002()
+  garbage/circular_b_GARBAGE_GRAPH_mno002.py: |
+    def func_b_GARBAGE_GRAPH_mno002():
+        return "b"
+  garbage/star_import_GARBAGE_GRAPH_mno003.py: |
+    from garbage.export_all_GARBAGE_GRAPH_mno003 import *
+
+    def use_star_GARBAGE_GRAPH_mno003():
+        return exported_func_GARBAGE_GRAPH_mno003()
+  garbage/export_all_GARBAGE_GRAPH_mno003.py: |
+    __all__ = ['exported_func_GARBAGE_GRAPH_mno003']
+
+    def exported_func_GARBAGE_GRAPH_mno003():
+        return "exported"
+
+    def private_func_GARBAGE_GRAPH_mno003():
+        return "private"
+changed:
+  main.py: |
+    from utils import helper, format_output, validate_input
+    from services.data_service import DataService
+    from core.handlers import DataHandler
+
+    def main():
+        result = helper()
+        formatted = format_output(result)
+        return formatted
+
+    def run_service():
+        service = DataService()
+        return service.execute({"input": "data"})
+
+    def direct_handler():
+        handler = DataHandler()
+        return handler.process({"direct": True})
+
+    def safe_main(data):
+        if not validate_input(data):
+            return None
+        return main()
+assertions:
+  must_include:
+  - main
+  - helper
+  must_not_include:
+  - GARBAGE_GRAPH_mno001
+  - GARBAGE_GRAPH_mno002
+  - GARBAGE_GRAPH_mno003
+  - chain_caller
+  - func_a_GARBAGE
+  - func_b_GARBAGE
+  - use_star
+  - exported_func

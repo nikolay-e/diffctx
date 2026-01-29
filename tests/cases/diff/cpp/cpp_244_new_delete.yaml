@@ -1,43 +1,303 @@
 name: cpp_244_new_delete
 initial:
-  user.h: |
+  include/entity/user.hpp: |
     #pragma once
     #include <string>
+    #include <vector>
+    #include <chrono>
+
+    namespace app::entity {
+
+    enum class UserRole {
+        Guest,
+        Member,
+        Moderator,
+        Admin
+    };
+
+    struct UserPreferences {
+        bool darkMode = false;
+        bool emailNotifications = true;
+        std::string language = "en";
+        int fontSize = 14;
+    };
 
     class User {
     public:
-        std::string name;
-        User(const std::string& n) : name(n) {}
-        ~User() {}
-    };
-    // unused_marker_67890
-  main.cpp: |
-    int main() { return 0; }
-changed:
-  main.cpp: |
-    #include "user.h"
+        User(const std::string& name, const std::string& email)
+            : name_(name)
+            , email_(email)
+            , createdAt_(std::chrono::system_clock::now())
+            , role_(UserRole::Guest) {}
 
-    User* createUser(const std::string& name) {
-        User* user = new User(name);
-        return user;
+        User(const std::string& name, const std::string& email, UserRole role)
+            : name_(name)
+            , email_(email)
+            , createdAt_(std::chrono::system_clock::now())
+            , role_(role) {}
+
+        ~User() = default;
+
+        const std::string& name() const { return name_; }
+        const std::string& email() const { return email_; }
+        UserRole role() const { return role_; }
+
+        void setRole(UserRole role) { role_ = role; }
+        void setPreferences(const UserPreferences& prefs) { preferences_ = prefs; }
+        const UserPreferences& preferences() const { return preferences_; }
+
+        void addTag(const std::string& tag) { tags_.push_back(tag); }
+        const std::vector<std::string>& tags() const { return tags_; }
+
+    private:
+        std::string name_;
+        std::string email_;
+        std::chrono::system_clock::time_point createdAt_;
+        UserRole role_;
+        UserPreferences preferences_;
+        std::vector<std::string> tags_;
+    };
+
     }
 
-    void deleteUser(User* user) {
-        delete user;
+  include/unrelated/network_socket.hpp: |
+    #pragma once
+    // GARBAGE_CPP_SOCKET_244_001
+    #define GARBAGE_CPP_SOCKET_BUFFER_244_002 4096
+
+    namespace app::unrelated::network {
+
+    // GARBAGE_CPP_SOCKET_ENUM_244_003
+    enum class SocketState {
+        Disconnected,
+        Connecting,
+        Connected,
+        Error
+    };
+
+    // GARBAGE_CPP_SOCKET_CLASS_244_004
+    class TcpSocket {
+    public:
+        // GARBAGE_CPP_SOCKET_CONNECT_244_005
+        bool connect(const char* host, int port) {
+            // GARBAGE_CPP_SOCKET_CONNECT_IMPL_244_006
+            return false;
+        }
+
+        // GARBAGE_CPP_SOCKET_SEND_244_007
+        int send(const char* data, size_t length) {
+            // GARBAGE_CPP_SOCKET_SEND_IMPL_244_008
+            return 0;
+        }
+
+        // GARBAGE_CPP_SOCKET_RECV_244_009
+        int receive(char* buffer, size_t maxLength) {
+            // GARBAGE_CPP_SOCKET_RECV_IMPL_244_010
+            return 0;
+        }
+
+        // GARBAGE_CPP_SOCKET_CLOSE_244_011
+        void close() {
+            // GARBAGE_CPP_SOCKET_CLOSE_IMPL_244_012
+        }
+
+    private:
+        SocketState state_ = SocketState::Disconnected;
+        char buffer_[GARBAGE_CPP_SOCKET_BUFFER_244_002];
+    };
+
+    }
+
+  src/unrelated/database_connection.cpp: |
+    // GARBAGE_CPP_DB_244_013
+    #include <string>
+
+    namespace app::unrelated::database {
+
+    // GARBAGE_CPP_DB_CONFIG_244_014
+    struct ConnectionConfig {
+        std::string host;
+        int port;
+        std::string database;
+        std::string username;
+        std::string password;
+    };
+
+    // GARBAGE_CPP_DB_CLASS_244_015
+    class DatabaseConnection {
+    public:
+        // GARBAGE_CPP_DB_CONNECT_244_016
+        bool connect(const ConnectionConfig& config) {
+            // GARBAGE_CPP_DB_CONNECT_IMPL_244_017
+            return false;
+        }
+
+        // GARBAGE_CPP_DB_QUERY_244_018
+        void executeQuery(const std::string& sql) {
+            // GARBAGE_CPP_DB_QUERY_IMPL_244_019
+        }
+
+        // GARBAGE_CPP_DB_DISCONNECT_244_020
+        void disconnect() {
+            // GARBAGE_CPP_DB_DISCONNECT_IMPL_244_021
+        }
+    };
+
+    }
+
+  src/main.cpp: |
+    int main() { return 0; }
+
+changed:
+  src/main.cpp: |
+    #include "entity/user.hpp"
+    #include <iostream>
+    #include <vector>
+    #include <algorithm>
+
+    namespace app::service {
+
+    class UserRepository {
+    public:
+        UserRepository() = default;
+
+        ~UserRepository() {
+            clear();
+        }
+
+        entity::User* createUser(const std::string& name, const std::string& email) {
+            entity::User* user = new entity::User(name, email);
+            users_.push_back(user);
+            return user;
+        }
+
+        entity::User* createAdmin(const std::string& name, const std::string& email) {
+            entity::User* user = new entity::User(name, email, entity::UserRole::Admin);
+            users_.push_back(user);
+            return user;
+        }
+
+        void deleteUser(entity::User* user) {
+            auto it = std::find(users_.begin(), users_.end(), user);
+            if (it != users_.end()) {
+                delete *it;
+                users_.erase(it);
+            }
+        }
+
+        entity::User* findByEmail(const std::string& email) const {
+            for (auto* user : users_) {
+                if (user->email() == email) {
+                    return user;
+                }
+            }
+            return nullptr;
+        }
+
+        std::vector<entity::User*> findByRole(entity::UserRole role) const {
+            std::vector<entity::User*> result;
+            for (auto* user : users_) {
+                if (user->role() == role) {
+                    result.push_back(user);
+                }
+            }
+            return result;
+        }
+
+        void clear() {
+            for (auto* user : users_) {
+                delete user;
+            }
+            users_.clear();
+        }
+
+        size_t count() const { return users_.size(); }
+
+    private:
+        std::vector<entity::User*> users_;
+    };
+
+    class UserService {
+    public:
+        explicit UserService(UserRepository& repo)
+            : repository_(repo) {}
+
+        entity::User* registerUser(const std::string& name, const std::string& email) {
+            if (repository_.findByEmail(email)) {
+                return nullptr;
+            }
+            return repository_.createUser(name, email);
+        }
+
+        bool promoteToAdmin(const std::string& email) {
+            entity::User* user = repository_.findByEmail(email);
+            if (user) {
+                user->setRole(entity::UserRole::Admin);
+                return true;
+            }
+            return false;
+        }
+
+    private:
+        UserRepository& repository_;
+    };
+
     }
 
     int main() {
-        User* u = createUser("John");
-        deleteUser(u);
+        app::service::UserRepository repository;
+        app::service::UserService service(repository);
+
+        auto* alice = service.registerUser("Alice", "alice@example.com");
+        auto* bob = service.registerUser("Bob", "bob@example.com");
+
+        if (alice) {
+            alice->addTag("premium");
+            app::entity::UserPreferences prefs;
+            prefs.darkMode = true;
+            alice->setPreferences(prefs);
+        }
+
+        service.promoteToAdmin("alice@example.com");
+
+        std::cout << "Total users: " << repository.count() << "\n";
+
+        auto admins = repository.findByRole(app::entity::UserRole::Admin);
+        std::cout << "Admin count: " << admins.size() << "\n";
+
+        repository.deleteUser(bob);
+        std::cout << "After deletion: " << repository.count() << "\n";
+
         return 0;
     }
+
 assertions:
   must_include:
-  - createUser
-  - deleteUser
-  - User
+    - UserRepository
+    - UserService
+    - createUser
+    - deleteUser
+    - registerUser
+    - User
+    - findByEmail
   must_not_include:
-  - garbage_marker_12345
-  - unused_marker_67890
+    - GARBAGE_CPP_SOCKET_244_001
+    - GARBAGE_CPP_SOCKET_BUFFER_244_002
+    - GARBAGE_CPP_SOCKET_ENUM_244_003
+    - GARBAGE_CPP_SOCKET_CLASS_244_004
+    - GARBAGE_CPP_SOCKET_CONNECT_244_005
+    - GARBAGE_CPP_SOCKET_CONNECT_IMPL_244_006
+    - GARBAGE_CPP_SOCKET_SEND_244_007
+    - GARBAGE_CPP_SOCKET_SEND_IMPL_244_008
+    - GARBAGE_CPP_SOCKET_RECV_244_009
+    - GARBAGE_CPP_SOCKET_RECV_IMPL_244_010
+    - GARBAGE_CPP_DB_244_013
+    - GARBAGE_CPP_DB_CONFIG_244_014
+    - GARBAGE_CPP_DB_CLASS_244_015
+    - GARBAGE_CPP_DB_CONNECT_244_016
+    - GARBAGE_CPP_DB_QUERY_244_018
+    - TcpSocket
+    - DatabaseConnection
+    - ConnectionConfig
 options:
-  commit_message: Add new/delete
+  commit_message: Add user repository with new/delete memory management

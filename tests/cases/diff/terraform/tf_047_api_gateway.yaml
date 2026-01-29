@@ -1,0 +1,31 @@
+name: tf_047_api_gateway
+initial:
+  api.tf: |
+    resource "aws_api_gateway_rest_api" "main" {
+      name = "my-api"
+    }
+
+    resource "aws_api_gateway_resource" "users" {
+      rest_api_id = aws_api_gateway_rest_api.main.id
+      parent_id   = aws_api_gateway_rest_api.main.root_resource_id
+      path_part   = "users"
+    }
+  src/handlers/users.py: |
+    def get_users(event, context):
+        return {"statusCode": 200, "body": "[]"}
+changed:
+  api.tf: |
+    resource "aws_api_gateway_rest_api" "main" {
+      name = "my-api-v2"
+    }
+
+    resource "aws_api_gateway_resource" "users" {
+      rest_api_id = aws_api_gateway_rest_api.main.id
+      parent_id   = aws_api_gateway_rest_api.main.root_resource_id
+      path_part   = "v2/users"
+    }
+assertions:
+  must_include:
+    - get_users
+options:
+  commit_message: update api gateway

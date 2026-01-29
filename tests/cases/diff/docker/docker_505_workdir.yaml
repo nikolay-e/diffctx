@@ -1,24 +1,103 @@
 name: docker_505_workdir
 initial:
+  src/main.go: |
+    package main
+    import (
+        "fmt"
+        "net/http"
+        "os"
+    )
+    func main() {
+        port := os.Getenv("PORT")
+        if port == "" {
+            port = "8080"
+        }
+        http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+            fmt.Fprintf(w, "OK")
+        })
+        http.ListenAndServe(":"+port, nil)
+    }
+  go.mod: |
+    module myapp
+    go 1.22
+    require github.com/gorilla/mux v1.8.1
+  go.sum: |
+    github.com/gorilla/mux v1.8.1 h1:TuBL49tXwgrFYWhqrNgrUNEY92u81SPhu7sTdzQEiWY=
+    github.com/gorilla/mux v1.8.1/go.mod h1:AKf9I4AEqPTmMytcMc0KkNouC66V3BtZ4qD5fmWSiMQ=
   Dockerfile: |
-    FROM python:3.11-slim
-    COPY . /app
-    RUN cd /app && pip install -r requirements.txt
-    CMD ["python", "/app/main.py"]
-  unrelated.txt: |
-    garbage_marker_12345 unused_marker_67890
+    FROM golang:1.21-alpine
+    COPY . /go/src/app
+    RUN cd /go/src/app && go build -o /app
+    CMD ["/app"]
+  scripts/release.sh: |
+    #!/bin/bash
+    # GARBAGE_DOCKER_505_RELEASE_MARKER_001
+    GARBAGE_DOCKER_505_RELEASE_VAR_002="v1.0.0"
+    goreleaser release --rm-dist
+  tests/main_test.go: |
+    // GARBAGE_DOCKER_505_TEST_MARKER_003
+    // GARBAGE_DOCKER_505_TEST_VAR_004
+    package main
+    import "testing"
+    func TestHealthEndpoint(t *testing.T) {}
+  docs/contributing.md: |
+    # Contributing
+    GARBAGE_DOCKER_505_CONTRIB_MARKER_005
+    GARBAGE_DOCKER_505_GUIDELINES_006="follow these rules"
+  .github/workflows/ci.yml: |
+    # GARBAGE_DOCKER_505_CI_MARKER_007
+    name: CI
+    GARBAGE_DOCKER_505_WORKFLOW_008: build
+    on: [push]
+  internal/config/config.go: |
+    // GARBAGE_DOCKER_505_CONFIG_MARKER_009
+    package config
+    var GARBAGE_DOCKER_505_INTERNAL_010 = "internal"
 changed:
   Dockerfile: |
-    FROM python:3.11-slim
-    WORKDIR /app
-    COPY . .
-    RUN pip install -r requirements.txt
-    CMD ["python", "main.py"]
+    # Build stage with explicit WORKDIR
+    FROM golang:1.22-alpine AS builder
+    WORKDIR /build
+
+    # Cache dependencies
+    COPY go.mod go.sum ./
+    RUN go mod download && go mod verify
+
+    # Build with optimizations
+    COPY src/ ./src/
+    WORKDIR /build/src
+    RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+        go build -ldflags="-w -s -X main.Version=${VERSION}" \
+        -o /app ./...
+
+    # Production stage with minimal image
+    FROM gcr.io/distroless/static-debian12:nonroot AS production
+    WORKDIR /home/nonroot
+
+    COPY --from=builder --chown=nonroot:nonroot /app ./app
+
+    USER nonroot:nonroot
+    EXPOSE 8080
+
+    ENTRYPOINT ["./app"]
 assertions:
   must_include:
-  - WORKDIR /app
+    - WORKDIR /build
+    - WORKDIR /build/src
+    - WORKDIR /home/nonroot
+    - go mod download
+    - go mod verify
+    - CGO_ENABLED=0
   must_not_include:
-  - garbage_marker_12345
-  - unused_marker_67890
+    - GARBAGE_DOCKER_505_RELEASE_MARKER_001
+    - GARBAGE_DOCKER_505_RELEASE_VAR_002
+    - GARBAGE_DOCKER_505_TEST_MARKER_003
+    - GARBAGE_DOCKER_505_TEST_VAR_004
+    - GARBAGE_DOCKER_505_CONTRIB_MARKER_005
+    - GARBAGE_DOCKER_505_GUIDELINES_006
+    - GARBAGE_DOCKER_505_CI_MARKER_007
+    - GARBAGE_DOCKER_505_WORKFLOW_008
+    - GARBAGE_DOCKER_505_CONFIG_MARKER_009
+    - GARBAGE_DOCKER_505_INTERNAL_010
 options:
-  commit_message: Add WORKDIR
+  commit_message: Refactor WORKDIR with multi-stage Go build

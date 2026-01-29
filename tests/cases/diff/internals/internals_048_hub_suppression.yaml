@@ -1,0 +1,29 @@
+name: internals_048_hub_suppression
+initial:
+  hub.py: |
+    pass
+changed:
+  hub.py: |
+    def hub_function():
+        pass
+
+    def caller_0():
+        hub_function()
+
+    def caller_1():
+        hub_function()
+
+    def caller_2():
+        hub_function()
+
+    def caller_3():
+        hub_function()
+
+    def caller_4():
+        hub_function()
+assertions:
+  must_include:
+  - caller_0
+  - hub_function
+options:
+  add_garbage: true

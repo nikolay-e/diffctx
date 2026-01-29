@@ -1,0 +1,106 @@
+name: pytest_raises_002_raise_sites
+initial:
+  src/auth_errors.py: |
+    class AuthenticationError(Exception):
+        pass
+
+    class TokenExpiredError(AuthenticationError):
+        def __init__(self, token_id: str):
+            self.token_id = token_id
+            super().__init__(f"Token {token_id} has expired")
+
+    class InvalidCredentialsError(AuthenticationError):
+        pass
+  src/auth_service.py: |
+    import time
+    from src.auth_errors import TokenExpiredError, InvalidCredentialsError
+
+    class AuthService:
+        def __init__(self):
+            self.tokens = {}
+            self.users = {"admin": "secret123"}
+
+        def login(self, username: str, password: str) -> str:
+            if username not in self.users or self.users[username] != password:
+                raise InvalidCredentialsError("Invalid username or password")
+            token_id = f"token_{username}_{time.time()}"
+            self.tokens[token_id] = {"user": username, "expires": time.time() + 3600}
+            return token_id
+
+        def verify_token(self, token_id: str) -> dict:
+            if token_id not in self.tokens:
+                raise TokenExpiredError(token_id)
+            return self.tokens[token_id]
+  tests/test_auth.py: |
+    from src.auth_service import AuthService
+
+    def test_login_success():
+        service = AuthService()
+        token = service.login("admin", "secret123")
+        assert token.startswith("token_")
+changed:
+  src/auth_service.py: |
+    import time
+    from src.auth_errors import TokenExpiredError, InvalidCredentialsError
+
+    class AuthService:
+        def __init__(self):
+            self.tokens = {}
+            self.users = {"admin": "secret123"}
+
+        def login(self, username: str, password: str) -> str:
+            if username not in self.users or self.users[username] != password:
+                raise InvalidCredentialsError("Invalid username or password")
+            token_id = f"token_{username}_{time.time()}"
+            self.tokens[token_id] = {"user": username, "expires": time.time() + 3600}
+            return token_id
+
+        def verify_token(self, token_id: str) -> dict:
+            if token_id not in self.tokens:
+                raise TokenExpiredError(token_id)
+            token_data = self.tokens[token_id]
+            if time.time() > token_data["expires"]:
+                del self.tokens[token_id]
+                raise TokenExpiredError(token_id)
+            return token_data
+  tests/test_auth.py: |
+    import pytest
+    from unittest.mock import patch
+    from src.auth_service import AuthService
+    from src.auth_errors import TokenExpiredError, InvalidCredentialsError
+
+    def test_login_success():
+        service = AuthService()
+        token = service.login("admin", "secret123")
+        assert token.startswith("token_")
+
+    def test_login_invalid_credentials():
+        service = AuthService()
+        with pytest.raises(InvalidCredentialsError):
+            service.login("admin", "wrong_password")
+
+    def test_login_unknown_user():
+        service = AuthService()
+        with pytest.raises(InvalidCredentialsError):
+            service.login("unknown", "password")
+
+    @patch('src.auth_service.time.time')
+    def test_verify_expired_token(mock_time):
+        service = AuthService()
+        mock_time.return_value = 1000.0
+        token = service.login("admin", "secret123")
+
+        mock_time.return_value = 5000.0
+        with pytest.raises(TokenExpiredError) as exc_info:
+            service.verify_token(token)
+        assert token in str(exc_info.value)
+
+    def test_verify_nonexistent_token():
+        service = AuthService()
+        with pytest.raises(TokenExpiredError):
+            service.verify_token("nonexistent_token")
+assertions:
+  must_include:
+  - auth_service
+options:
+  commit_message: Add token expiry check in verify_token and pytest.raises tests

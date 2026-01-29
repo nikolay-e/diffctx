@@ -1,0 +1,23 @@
+name: tf_038_module_source
+initial:
+  modules/vpc/main.tf: |
+    resource "aws_vpc" "main" {
+      cidr_block = var.cidr_block
+    }
+  main.tf: |
+    module "vpc" {
+      source     = "./modules/vpc"
+      cidr_block = "10.0.0.0/16"
+    }
+changed:
+  main.tf: |
+    module "vpc" {
+      source     = "./modules/vpc"
+      cidr_block = "10.1.0.0/16"
+      enable_dns = true
+    }
+assertions:
+  must_include:
+    - aws_vpc
+options:
+  commit_message: update module

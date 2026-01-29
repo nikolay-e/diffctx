@@ -1,23 +1,118 @@
 name: docker_507_arg
 initial:
+  src/main.rs: |
+    fn main() {
+        let version = env!("CARGO_PKG_VERSION");
+        println!("App version: {}", version);
+    }
+  Cargo.toml: |
+    [package]
+    name = "myapp"
+    version = "1.0.0"
+    edition = "2021"
+
+    [dependencies]
+    tokio = { version = "1.35", features = ["full"] }
+    axum = "0.7"
   Dockerfile: |
-    FROM node:18
+    FROM rust:1.74-alpine
+    WORKDIR /app
     COPY . .
-  unrelated.py: |
-    garbage_marker_12345 = True
-    unused_marker_67890 = False
+    RUN cargo build --release
+    CMD ["./target/release/myapp"]
+  scripts/build.sh: |
+    #!/bin/bash
+    # GARBAGE_DOCKER_507_BUILD_MARKER_001
+    GARBAGE_DOCKER_507_BUILD_VAR_002="release"
+    cargo build --release
+  tests/integration_test.rs: |
+    // GARBAGE_DOCKER_507_TEST_MARKER_003
+    // GARBAGE_DOCKER_507_TEST_VAR_004
+    #[test]
+    fn test_main() {}
+  docs/building.md: |
+    # Building
+    GARBAGE_DOCKER_507_BUILD_DOC_005
+    GARBAGE_DOCKER_507_INSTRUCTIONS_006="cargo build"
+  .github/actions/release/action.yml: |
+    # GARBAGE_DOCKER_507_ACTION_MARKER_007
+    name: Release
+    GARBAGE_DOCKER_507_ACTION_VAR_008: release
+  benches/benchmark.rs: |
+    // GARBAGE_DOCKER_507_BENCH_MARKER_009
+    // GARBAGE_DOCKER_507_BENCH_VAR_010
+    fn bench_main() {}
 changed:
   Dockerfile: |
-    ARG VERSION=latest
-    FROM node:18
+    # Build arguments for versioning and caching
+    ARG RUST_VERSION=1.75
+    ARG BUILDPLATFORM=linux/amd64
+    ARG TARGETPLATFORM=linux/amd64
+
+    # Build stage
+    FROM --platform=$BUILDPLATFORM rust:${RUST_VERSION}-alpine AS builder
+
+    # Build arguments available inside build stage
+    ARG VERSION=0.0.0
+    ARG GIT_SHA=unknown
     ARG BUILD_DATE
-    LABEL version="${VERSION}" build-date="${BUILD_DATE}"
-    COPY . .
+    ARG CARGO_INCREMENTAL=0
+    ARG CARGO_NET_RETRY=10
+
+    # Install build dependencies
+    RUN apk add --no-cache musl-dev openssl-dev pkgconfig
+
+    WORKDIR /build
+
+    # Cache dependencies
+    COPY Cargo.toml Cargo.lock ./
+    RUN mkdir src && echo "fn main() {}" > src/main.rs && \
+        cargo build --release && \
+        rm -rf src
+
+    # Build actual application
+    COPY src ./src
+    RUN cargo build --release \
+        --config "env.APP_VERSION='${VERSION}'" \
+        --config "env.GIT_SHA='${GIT_SHA}'"
+
+    # Production stage
+    FROM gcr.io/distroless/cc-debian12:nonroot AS production
+
+    ARG VERSION=0.0.0
+    ARG GIT_SHA=unknown
+    ARG BUILD_DATE
+
+    LABEL org.opencontainers.image.version="${VERSION}" \
+          org.opencontainers.image.revision="${GIT_SHA}" \
+          org.opencontainers.image.created="${BUILD_DATE}" \
+          org.opencontainers.image.source="https://github.com/org/myapp"
+
+    COPY --from=builder --chown=nonroot:nonroot /build/target/release/myapp /app
+
+    USER nonroot:nonroot
+    ENTRYPOINT ["/app"]
 assertions:
   must_include:
-  - ARG VERSION=latest
+    - ARG RUST_VERSION=1.75
+    - ARG BUILDPLATFORM
+    - ARG TARGETPLATFORM
+    - ARG VERSION=0.0.0
+    - ARG GIT_SHA=unknown
+    - ARG BUILD_DATE
+    - ARG CARGO_INCREMENTAL=0
+    - FROM --platform=$BUILDPLATFORM
+    - LABEL org.opencontainers.image.version
   must_not_include:
-  - garbage_marker_12345
-  - unused_marker_67890
+    - GARBAGE_DOCKER_507_BUILD_MARKER_001
+    - GARBAGE_DOCKER_507_BUILD_VAR_002
+    - GARBAGE_DOCKER_507_TEST_MARKER_003
+    - GARBAGE_DOCKER_507_TEST_VAR_004
+    - GARBAGE_DOCKER_507_BUILD_DOC_005
+    - GARBAGE_DOCKER_507_INSTRUCTIONS_006
+    - GARBAGE_DOCKER_507_ACTION_MARKER_007
+    - GARBAGE_DOCKER_507_ACTION_VAR_008
+    - GARBAGE_DOCKER_507_BENCH_MARKER_009
+    - GARBAGE_DOCKER_507_BENCH_VAR_010
 options:
-  commit_message: Add ARG
+  commit_message: Add comprehensive ARG usage for multi-platform Rust build

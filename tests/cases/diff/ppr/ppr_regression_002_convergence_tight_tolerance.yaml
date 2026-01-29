@@ -1,0 +1,30 @@
+name: ppr_regression_002_convergence_tight_tolerance
+initial:
+  shared.py: |
+    SHARED_VALUE = 100
+
+    def get_shared():
+        return SHARED_VALUE
+  user_a.py: |
+    from shared import get_shared
+
+    def use_shared_a():
+        return get_shared() + 1
+  user_b.py: |
+    from shared import get_shared
+
+    def use_shared_b():
+        return get_shared() + 2
+changed:
+  shared.py: |
+    SHARED_VALUE = 200
+
+    def get_shared():
+        return SHARED_VALUE
+assertions:
+  must_include:
+  - SHARED_VALUE
+  - get_shared
+  - "200"
+options:
+  commit_message: Update shared value

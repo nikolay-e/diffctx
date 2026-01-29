@@ -1,0 +1,39 @@
+name: terraform_464_target_group
+initial:
+  app.py: |
+    from flask import Flask
+    app = Flask(__name__)
+
+    @app.route('/health')
+    def health():
+        return 'OK', 200
+  lb.tf: |
+    resource "aws_lb" "main" {
+      name = "main-alb"
+    }
+changed:
+  lb.tf: |
+    resource "aws_lb" "main" {
+      name = "main-alb"
+    }
+
+    resource "aws_lb_target_group" "app" {
+      name        = "app-tg"
+      port        = 8080
+      protocol    = "HTTP"
+      vpc_id      = aws_vpc.main.id
+      target_type = "ip"
+
+      health_check {
+        path                = "/health"
+        healthy_threshold   = 2
+        unhealthy_threshold = 10
+        timeout             = 5
+        interval            = 30
+      }
+    }
+assertions:
+  must_include:
+  - lb.tf
+options:
+  commit_message: Add target group

@@ -1,0 +1,44 @@
+name: cicd_091_jenkins_pipeline
+initial:
+  Jenkinsfile: |
+    pipeline {
+        agent any
+        stages {
+            stage('Build') {
+                steps {
+                    sh 'npm run build'
+                }
+            }
+        }
+    }
+  src/app.js: |
+    function startApp() {
+      console.log("Starting app");
+    }
+    module.exports = { startApp };
+changed:
+  Jenkinsfile: |
+    pipeline {
+        agent any
+        environment {
+            NODE_ENV = 'production'
+        }
+        stages {
+            stage('Build') {
+                steps {
+                    sh 'npm ci'
+                    sh 'npm run build'
+                }
+            }
+            stage('Test') {
+                steps {
+                    sh 'npm test'
+                }
+            }
+        }
+    }
+assertions:
+  must_include:
+    - startApp
+options:
+  commit_message: add test stage

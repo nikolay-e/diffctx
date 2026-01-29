@@ -1,0 +1,95 @@
+name: fragments_021_module_gap_between_definitions
+initial:
+  gap_between.py: |
+    import logging
+    from typing import Dict, List
+
+    def func1():
+        pass
+
+    def unrelated_before_const_021():
+        return "GARBAGE_FRAG_beforeconst021"
+
+    CONSTANT = 123
+
+    def unrelated_after_const_021():
+        return "GARBAGE_FRAG_afterconst021"
+
+    def func2():
+        pass
+
+    class UnrelatedGapClass:
+        MARKER = "GARBAGE_FRAG_gapclass021"
+
+        def gap_method(self):
+            return "GARBAGE_FRAG_gapmethod021"
+
+    ANOTHER_CONSTANT = "GARBAGE_FRAG_anotherconst021"
+
+    def trailing_function_021():
+        return "GARBAGE_FRAG_trailing021"
+  garbage_gap_021.py: |
+    GARBAGE_CONST_A = "GARBAGE_FRAG_garbagea021"
+
+    def garbage_between_a():
+        return "GARBAGE_FRAG_betweena021"
+
+    GARBAGE_CONST_B = "GARBAGE_FRAG_garbageb021"
+
+    def garbage_between_b():
+        return "GARBAGE_FRAG_betweenb021"
+
+    class GarbageGapClass:
+        VALUE = "GARBAGE_FRAG_gapvalue021"
+changed:
+  gap_between.py: |
+    import logging
+    from typing import Dict, List
+
+    def func1():
+        pass
+
+    def unrelated_before_const_021():
+        return "GARBAGE_FRAG_beforeconst021"
+
+    CONSTANT = 456
+
+    def unrelated_after_const_021():
+        return "GARBAGE_FRAG_afterconst021"
+
+    def func2():
+        pass
+
+    class UnrelatedGapClass:
+        MARKER = "GARBAGE_FRAG_gapclass021"
+
+        def gap_method(self):
+            return "GARBAGE_FRAG_gapmethod021"
+
+    ANOTHER_CONSTANT = "GARBAGE_FRAG_anotherconst021"
+
+    def trailing_function_021():
+        return "GARBAGE_FRAG_trailing021"
+assertions:
+  must_include:
+    - CONSTANT
+  must_not_include:
+    - GARBAGE_FRAG_beforeconst021
+    - GARBAGE_FRAG_afterconst021
+    - GARBAGE_FRAG_gapclass021
+    - GARBAGE_FRAG_gapmethod021
+    - GARBAGE_FRAG_anotherconst021
+    - GARBAGE_FRAG_trailing021
+    - GARBAGE_FRAG_garbagea021
+    - GARBAGE_FRAG_betweena021
+    - GARBAGE_FRAG_garbageb021
+    - GARBAGE_FRAG_betweenb021
+    - GARBAGE_FRAG_gapvalue021
+    - garbage_gap_021.py
+    - unrelated_before_const_021
+    - unrelated_after_const_021
+    - trailing_function_021
+    - UnrelatedGapClass
+    - GarbageGapClass
+options:
+  commit_message: Change constant value

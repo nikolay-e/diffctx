@@ -1,47 +1,351 @@
 name: cpp_273_virtual_inheritance
 initial:
-  base.h: |
+  include/core/base.hpp: |
     #pragma once
     #include <string>
-
-    class Base {
-    public:
-        std::string name;
-        virtual ~Base() = default;
-    };
-
-    class Left : virtual public Base {
-    public:
-        void leftMethod() {}
-    };
-
-    class Right : virtual public Base {
-    public:
-        void rightMethod() {}
-    };
-    // unused_marker_67890
-  diamond.cpp: |
     #include <iostream>
-    int main() { return 0; }
-changed:
-  diamond.cpp: |
-    #include "base.h"
+    #include <memory>
 
-    class Diamond : public Left, public Right {
+    namespace app::core {
+
+    class Named {
     public:
-        void process() {
-            name = "Diamond";
-            leftMethod();
-            rightMethod();
+        virtual ~Named() = default;
+        virtual std::string getName() const = 0;
+        virtual void setName(const std::string& name) = 0;
+    };
+
+    class Identifiable {
+    public:
+        virtual ~Identifiable() = default;
+        virtual int getId() const = 0;
+    };
+
+    class Persistable : virtual public Named, virtual public Identifiable {
+    public:
+        virtual ~Persistable() = default;
+        virtual bool save() = 0;
+        virtual bool load(int id) = 0;
+    };
+
+    class Auditable : virtual public Named, virtual public Identifiable {
+    public:
+        virtual ~Auditable() = default;
+        virtual std::string getCreatedBy() const = 0;
+        virtual std::string getModifiedBy() const = 0;
+        virtual void setModifiedBy(const std::string& user) = 0;
+    };
+
+    class Versionable : virtual public Identifiable {
+    public:
+        virtual ~Versionable() = default;
+        virtual int getVersion() const = 0;
+        virtual void incrementVersion() = 0;
+    };
+
+    class Taggable {
+    public:
+        virtual ~Taggable() = default;
+        virtual void addTag(const std::string& tag) = 0;
+        virtual bool hasTag(const std::string& tag) const = 0;
+    };
+
+    }
+
+  include/unrelated/matrix_math.hpp: |
+    #pragma once
+    // GARBAGE_CPP_MATRIX_273_001
+    #define GARBAGE_CPP_MATRIX_SIZE_273_002 4
+
+    namespace app::unrelated::math {
+
+    // GARBAGE_CPP_MATRIX_STRUCT_273_003
+    struct Matrix4x4 {
+        float data[16];
+        // GARBAGE_CPP_MATRIX_DATA_273_004
+    };
+
+    // GARBAGE_CPP_MATRIX_OPS_273_005
+    class MatrixOperations {
+    public:
+        // GARBAGE_CPP_MATRIX_MULT_273_006
+        static Matrix4x4 multiply(const Matrix4x4& a, const Matrix4x4& b) {
+            // GARBAGE_CPP_MATRIX_MULT_IMPL_273_007
+            return Matrix4x4{};
+        }
+
+        // GARBAGE_CPP_MATRIX_INV_273_008
+        static Matrix4x4 inverse(const Matrix4x4& m) {
+            // GARBAGE_CPP_MATRIX_INV_IMPL_273_009
+            return Matrix4x4{};
+        }
+
+        // GARBAGE_CPP_MATRIX_TRANS_273_010
+        static Matrix4x4 transpose(const Matrix4x4& m) {
+            // GARBAGE_CPP_MATRIX_TRANS_IMPL_273_011
+            return Matrix4x4{};
         }
     };
+
+    }
+
+  src/unrelated/color_space.cpp: |
+    // GARBAGE_CPP_COLOR_273_012
+    #include <cmath>
+
+    namespace app::unrelated::color {
+
+    // GARBAGE_CPP_COLOR_RGB_273_013
+    struct RGB {
+        unsigned char r, g, b;
+        // GARBAGE_CPP_COLOR_RGB_DATA_273_014
+    };
+
+    // GARBAGE_CPP_COLOR_HSL_273_015
+    struct HSL {
+        float h, s, l;
+    };
+
+    // GARBAGE_CPP_COLOR_CONVERTER_273_016
+    class ColorConverter {
+    public:
+        // GARBAGE_CPP_COLOR_TO_HSL_273_017
+        static HSL rgbToHsl(const RGB& rgb) {
+            // GARBAGE_CPP_COLOR_HSL_IMPL_273_018
+            return HSL{};
+        }
+
+        // GARBAGE_CPP_COLOR_TO_RGB_273_019
+        static RGB hslToRgb(const HSL& hsl) {
+            // GARBAGE_CPP_COLOR_RGB_IMPL_273_020
+            return RGB{};
+        }
+
+        // GARBAGE_CPP_COLOR_BLEND_273_021
+        static RGB blend(const RGB& a, const RGB& b, float t) {
+            // GARBAGE_CPP_COLOR_BLEND_IMPL_273_022
+            return RGB{};
+        }
+    };
+
+    }
+
+  src/entities.cpp: |
+    #include <iostream>
+    int main() { return 0; }
+
+changed:
+  src/entities.cpp: |
+    #include "core/base.hpp"
+    #include <vector>
+    #include <algorithm>
+    #include <chrono>
+    #include <sstream>
+
+    namespace app::entities {
+
+    class Entity : virtual public core::Named,
+                   virtual public core::Identifiable,
+                   public core::Versionable {
+    public:
+        Entity(int id, const std::string& name)
+            : id_(id), name_(name), version_(1) {}
+
+        std::string getName() const override { return name_; }
+        void setName(const std::string& name) override { name_ = name; }
+        int getId() const override { return id_; }
+        int getVersion() const override { return version_; }
+        void incrementVersion() override { ++version_; }
+
+    protected:
+        int id_;
+        std::string name_;
+        int version_;
+    };
+
+    class Document : public Entity,
+                     public core::Persistable,
+                     public core::Auditable,
+                     public core::Taggable {
+    public:
+        Document(int id, const std::string& title, const std::string& creator)
+            : Entity(id, title)
+            , content_()
+            , createdBy_(creator)
+            , modifiedBy_(creator)
+            , tags_() {}
+
+        bool save() override {
+            std::cout << "Saving document: " << getName() << " (v" << getVersion() << ")\n";
+            incrementVersion();
+            return true;
+        }
+
+        bool load(int id) override {
+            std::cout << "Loading document with id: " << id << "\n";
+            id_ = id;
+            return true;
+        }
+
+        std::string getCreatedBy() const override { return createdBy_; }
+        std::string getModifiedBy() const override { return modifiedBy_; }
+        void setModifiedBy(const std::string& user) override { modifiedBy_ = user; }
+
+        void addTag(const std::string& tag) override {
+            if (!hasTag(tag)) {
+                tags_.push_back(tag);
+            }
+        }
+
+        bool hasTag(const std::string& tag) const override {
+            return std::find(tags_.begin(), tags_.end(), tag) != tags_.end();
+        }
+
+        void setContent(const std::string& content) {
+            content_ = content;
+            incrementVersion();
+        }
+
+        const std::string& getContent() const { return content_; }
+
+        std::string getSummary() const {
+            std::ostringstream oss;
+            oss << "Document[" << getId() << "]: " << getName()
+                << " (v" << getVersion() << ")"
+                << " by " << createdBy_
+                << ", modified by " << modifiedBy_;
+            return oss.str();
+        }
+
+    private:
+        std::string content_;
+        std::string createdBy_;
+        std::string modifiedBy_;
+        std::vector<std::string> tags_;
+    };
+
+    class Asset : public Entity,
+                  public core::Persistable,
+                  public core::Taggable {
+    public:
+        Asset(int id, const std::string& name, const std::string& path)
+            : Entity(id, name), filePath_(path) {}
+
+        bool save() override {
+            std::cout << "Saving asset: " << getName() << " to " << filePath_ << "\n";
+            return true;
+        }
+
+        bool load(int id) override {
+            std::cout << "Loading asset: " << id << "\n";
+            id_ = id;
+            return true;
+        }
+
+        void addTag(const std::string& tag) override { tags_.push_back(tag); }
+
+        bool hasTag(const std::string& tag) const override {
+            return std::find(tags_.begin(), tags_.end(), tag) != tags_.end();
+        }
+
+        const std::string& getFilePath() const { return filePath_; }
+
+    private:
+        std::string filePath_;
+        std::vector<std::string> tags_;
+    };
+
+    class Report : public Document {
+    public:
+        Report(int id, const std::string& title, const std::string& creator)
+            : Entity(id, title)
+            , Document(id, title, creator)
+            , generatedAt_(std::chrono::system_clock::now()) {}
+
+        void regenerate() {
+            generatedAt_ = std::chrono::system_clock::now();
+            setModifiedBy("system");
+            incrementVersion();
+        }
+
+        bool isStale(int maxAgeSeconds) const {
+            auto now = std::chrono::system_clock::now();
+            auto age = std::chrono::duration_cast<std::chrono::seconds>(
+                now - generatedAt_).count();
+            return age > maxAgeSeconds;
+        }
+
+    private:
+        std::chrono::system_clock::time_point generatedAt_;
+    };
+
+    }
+
+    int main() {
+        app::entities::Document doc(1, "Technical Spec", "alice");
+        doc.setContent("This is the specification content.");
+        doc.addTag("technical");
+        doc.addTag("v1");
+        doc.setModifiedBy("bob");
+
+        std::cout << doc.getSummary() << "\n";
+        std::cout << "Has 'technical' tag: " << doc.hasTag("technical") << "\n";
+
+        doc.save();
+        std::cout << "After save: " << doc.getSummary() << "\n";
+
+        app::entities::Asset asset(2, "logo.png", "/assets/images/logo.png");
+        asset.addTag("branding");
+        asset.save();
+
+        app::entities::Report report(3, "Monthly Sales", "system");
+        report.setContent("Sales data for this month.");
+        std::cout << "\n" << report.getSummary() << "\n";
+        std::cout << "Report stale (1 sec): " << report.isStale(1) << "\n";
+
+        std::vector<app::core::Persistable*> items = {&doc, &asset, &report};
+        std::cout << "\n=== Saving All Items ===\n";
+        for (auto* item : items) {
+            item->save();
+        }
+
+        return 0;
+    }
+
 assertions:
   must_include:
-  - Diamond
-  - Left
-  - Right
+    - Entity
+    - Document
+    - Asset
+    - Report
+    - Persistable
+    - Auditable
+    - Versionable
+    - Taggable
+    - Named
+    - Identifiable
+    - virtual
+    - save
+    - getVersion
   must_not_include:
-  - garbage_marker_12345
-  - unused_marker_67890
+    - GARBAGE_CPP_MATRIX_273_001
+    - GARBAGE_CPP_MATRIX_SIZE_273_002
+    - GARBAGE_CPP_MATRIX_STRUCT_273_003
+    - GARBAGE_CPP_MATRIX_DATA_273_004
+    - GARBAGE_CPP_MATRIX_OPS_273_005
+    - GARBAGE_CPP_MATRIX_MULT_273_006
+    - GARBAGE_CPP_MATRIX_INV_273_008
+    - GARBAGE_CPP_MATRIX_TRANS_273_010
+    - GARBAGE_CPP_COLOR_273_012
+    - GARBAGE_CPP_COLOR_RGB_273_013
+    - GARBAGE_CPP_COLOR_HSL_273_015
+    - GARBAGE_CPP_COLOR_CONVERTER_273_016
+    - GARBAGE_CPP_COLOR_TO_HSL_273_017
+    - GARBAGE_CPP_COLOR_TO_RGB_273_019
+    - GARBAGE_CPP_COLOR_BLEND_273_021
+    - MatrixOperations
+    - ColorConverter
+    - Matrix4x4
+    - HSL
 options:
-  commit_message: Add virtual inheritance
+  commit_message: Add entity system using virtual inheritance for diamond problem resolution

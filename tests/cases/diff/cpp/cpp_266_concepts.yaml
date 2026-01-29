@@ -1,33 +1,354 @@
 name: cpp_266_concepts
 initial:
-  concepts.h: |
+  include/concepts/concepts.hpp: |
     #pragma once
     #include <concepts>
+    #include <type_traits>
+    #include <iterator>
+
+    namespace app::concepts {
 
     template<typename T>
     concept Numeric = std::integral<T> || std::floating_point<T>;
+
+    template<typename T>
+    concept Addable = requires(T a, T b) {
+        { a + b } -> std::convertible_to<T>;
+    };
+
+    template<typename T>
+    concept Comparable = requires(T a, T b) {
+        { a < b } -> std::convertible_to<bool>;
+        { a > b } -> std::convertible_to<bool>;
+        { a == b } -> std::convertible_to<bool>;
+        { a != b } -> std::convertible_to<bool>;
+    };
+
+    template<typename T>
+    concept Printable = requires(T t, std::ostream& os) {
+        { os << t } -> std::same_as<std::ostream&>;
+    };
+
+    template<typename T>
+    concept Container = requires(T t) {
+        typename T::value_type;
+        typename T::iterator;
+        { t.begin() } -> std::input_or_output_iterator;
+        { t.end() } -> std::input_or_output_iterator;
+        { t.size() } -> std::convertible_to<std::size_t>;
+    };
+
+    template<typename T>
+    concept Hashable = requires(T t) {
+        { std::hash<T>{}(t) } -> std::convertible_to<std::size_t>;
+    };
+
+    template<typename T>
+    concept Stringifiable = requires(T t) {
+        { t.to_string() } -> std::convertible_to<std::string>;
+    };
 
     template<Numeric T>
     T square(T value) {
         return value * value;
     }
-    // garbage_marker_12345
-  calc.cpp: |
+
+    template<Numeric T>
+    T cube(T value) {
+        return value * value * value;
+    }
+
+    template<Addable T>
+    T add(T a, T b) {
+        return a + b;
+    }
+
+    template<Comparable T>
+    const T& maximum(const T& a, const T& b) {
+        return (a > b) ? a : b;
+    }
+
+    template<Comparable T>
+    const T& minimum(const T& a, const T& b) {
+        return (a < b) ? a : b;
+    }
+
+    }
+
+  include/unrelated/protocol_handler.hpp: |
+    #pragma once
+    // GARBAGE_CPP_PROTOCOL_266_001
+    #define GARBAGE_CPP_PROTOCOL_VERSION_266_002 2
+
+    namespace app::unrelated::protocol {
+
+    // GARBAGE_CPP_PROTOCOL_MSG_266_003
+    struct ProtocolMessage {
+        int type;
+        size_t length;
+        // GARBAGE_CPP_PROTOCOL_DATA_266_004
+        char data[1024];
+    };
+
+    // GARBAGE_CPP_PROTOCOL_HANDLER_266_005
+    class ProtocolHandler {
+    public:
+        // GARBAGE_CPP_PROTOCOL_PARSE_266_006
+        ProtocolMessage parse(const char* buffer, size_t len) {
+            // GARBAGE_CPP_PROTOCOL_PARSE_IMPL_266_007
+            return ProtocolMessage{};
+        }
+
+        // GARBAGE_CPP_PROTOCOL_SERIALIZE_266_008
+        size_t serialize(const ProtocolMessage& msg, char* buffer) {
+            // GARBAGE_CPP_PROTOCOL_SER_IMPL_266_009
+            return 0;
+        }
+
+        // GARBAGE_CPP_PROTOCOL_VALIDATE_266_010
+        bool validate(const ProtocolMessage& msg) {
+            // GARBAGE_CPP_PROTOCOL_VAL_IMPL_266_011
+            return false;
+        }
+    };
+
+    }
+
+  src/unrelated/certificate_store.cpp: |
+    // GARBAGE_CPP_CERT_266_012
+    #include <cstddef>
+
+    namespace app::unrelated::cert {
+
+    // GARBAGE_CPP_CERT_INFO_266_013
+    struct CertificateInfo {
+        const char* subject;
+        const char* issuer;
+        // GARBAGE_CPP_CERT_EXPIRY_266_014
+        long expiryDate;
+    };
+
+    // GARBAGE_CPP_CERT_STORE_266_015
+    class CertificateStore {
+    public:
+        // GARBAGE_CPP_CERT_ADD_266_016
+        bool addCertificate(const char* pemData) {
+            // GARBAGE_CPP_CERT_ADD_IMPL_266_017
+            return false;
+        }
+
+        // GARBAGE_CPP_CERT_VERIFY_266_018
+        bool verifyCertificate(const char* certData) {
+            // GARBAGE_CPP_CERT_VERIFY_IMPL_266_019
+            return false;
+        }
+
+        // GARBAGE_CPP_CERT_REMOVE_266_020
+        void removeCertificate(const char* fingerprint) {
+            // GARBAGE_CPP_CERT_REMOVE_IMPL_266_021
+        }
+    };
+
+    }
+
+  src/calc.cpp: |
     #include <iostream>
     int main() { return 0; }
-changed:
-  calc.cpp: |
-    #include "concepts.h"
 
-    double compute(int i, double d) {
-        return square(i) + square(d);
+changed:
+  src/calc.cpp: |
+    #include "concepts/concepts.hpp"
+    #include <iostream>
+    #include <vector>
+    #include <string>
+    #include <cmath>
+    #include <numeric>
+
+    namespace app::calc {
+
+    template<concepts::Numeric T>
+    class Calculator {
+    public:
+        T add(T a, T b) const { return a + b; }
+        T subtract(T a, T b) const { return a - b; }
+        T multiply(T a, T b) const { return a * b; }
+        T divide(T a, T b) const { return a / b; }
+
+        T power(T base, int exp) const {
+            T result = 1;
+            for (int i = 0; i < exp; ++i) {
+                result *= base;
+            }
+            return result;
+        }
+
+        T squareRoot(T value) const requires std::floating_point<T> {
+            return std::sqrt(value);
+        }
+    };
+
+    template<concepts::Numeric T>
+    class Statistics {
+    public:
+        template<concepts::Container C>
+        requires std::same_as<typename C::value_type, T>
+        T sum(const C& container) const {
+            T total = 0;
+            for (const auto& val : container) {
+                total += val;
+            }
+            return total;
+        }
+
+        template<concepts::Container C>
+        requires std::same_as<typename C::value_type, T>
+        double mean(const C& container) const {
+            if (container.size() == 0) return 0.0;
+            return static_cast<double>(sum(container)) / container.size();
+        }
+
+        template<concepts::Container C>
+        requires std::same_as<typename C::value_type, T> && concepts::Comparable<T>
+        T findMax(const C& container) const {
+            T maxVal = *container.begin();
+            for (const auto& val : container) {
+                maxVal = concepts::maximum(maxVal, val);
+            }
+            return maxVal;
+        }
+
+        template<concepts::Container C>
+        requires std::same_as<typename C::value_type, T> && concepts::Comparable<T>
+        T findMin(const C& container) const {
+            T minVal = *container.begin();
+            for (const auto& val : container) {
+                minVal = concepts::minimum(minVal, val);
+            }
+            return minVal;
+        }
+    };
+
+    template<concepts::Printable T>
+    void printValue(const T& value) {
+        std::cout << "Value: " << value << "\n";
     }
+
+    template<concepts::Container C>
+    void printContainer(const C& container) {
+        std::cout << "Container [" << container.size() << " elements]: ";
+        for (const auto& elem : container) {
+            std::cout << elem << " ";
+        }
+        std::cout << "\n";
+    }
+
+    template<concepts::Addable T>
+    T sumTwo(const T& a, const T& b) {
+        return concepts::add(a, b);
+    }
+
+    struct Point {
+        double x, y;
+
+        Point operator+(const Point& other) const {
+            return Point{x + other.x, y + other.y};
+        }
+
+        bool operator<(const Point& other) const {
+            return (x * x + y * y) < (other.x * other.x + other.y * other.y);
+        }
+
+        bool operator>(const Point& other) const {
+            return (x * x + y * y) > (other.x * other.x + other.y * other.y);
+        }
+
+        bool operator==(const Point& other) const {
+            return x == other.x && y == other.y;
+        }
+
+        bool operator!=(const Point& other) const {
+            return !(*this == other);
+        }
+    };
+
+    std::ostream& operator<<(std::ostream& os, const Point& p) {
+        return os << "(" << p.x << ", " << p.y << ")";
+    }
+
+    }
+
+    int main() {
+        app::calc::Calculator<int> intCalc;
+        std::cout << "Integer calculations:\n";
+        std::cout << "5 + 3 = " << intCalc.add(5, 3) << "\n";
+        std::cout << "10 - 4 = " << intCalc.subtract(10, 4) << "\n";
+        std::cout << "2^8 = " << intCalc.power(2, 8) << "\n";
+        std::cout << "square(7) = " << app::concepts::square(7) << "\n";
+        std::cout << "cube(3) = " << app::concepts::cube(3) << "\n";
+
+        app::calc::Calculator<double> doubleCalc;
+        std::cout << "\nDouble calculations:\n";
+        std::cout << "3.14 * 2 = " << doubleCalc.multiply(3.14, 2.0) << "\n";
+        std::cout << "sqrt(16) = " << doubleCalc.squareRoot(16.0) << "\n";
+
+        std::vector<int> numbers{1, 5, 3, 9, 2, 8, 4, 7, 6};
+        app::calc::Statistics<int> stats;
+
+        std::cout << "\nStatistics:\n";
+        std::cout << "Sum: " << stats.sum(numbers) << "\n";
+        std::cout << "Mean: " << stats.mean(numbers) << "\n";
+        std::cout << "Max: " << stats.findMax(numbers) << "\n";
+        std::cout << "Min: " << stats.findMin(numbers) << "\n";
+
+        std::cout << "\nPrinting values:\n";
+        app::calc::printValue(42);
+        app::calc::printValue(3.14159);
+        app::calc::printValue("Hello, Concepts!");
+
+        std::cout << "\nPrinting container:\n";
+        app::calc::printContainer(numbers);
+
+        app::calc::Point p1{1.0, 2.0};
+        app::calc::Point p2{3.0, 4.0};
+        auto p3 = app::calc::sumTwo(p1, p2);
+        std::cout << "\nPoint addition: " << p1 << " + " << p2 << " = " << p3 << "\n";
+
+        std::cout << "Maximum point: " << app::concepts::maximum(p1, p2) << "\n";
+
+        return 0;
+    }
+
 assertions:
   must_include:
-  - compute
-  - square
+    - concept
+    - square
+    - Calculator
+    - Statistics
+    - Numeric
+    - Container
+    - Printable
+    - Addable
+    - printContainer
+    - sumTwo
   must_not_include:
-  - garbage_marker_12345
-  - unused_marker_67890
+    - GARBAGE_CPP_PROTOCOL_266_001
+    - GARBAGE_CPP_PROTOCOL_VERSION_266_002
+    - GARBAGE_CPP_PROTOCOL_MSG_266_003
+    - GARBAGE_CPP_PROTOCOL_DATA_266_004
+    - GARBAGE_CPP_PROTOCOL_HANDLER_266_005
+    - GARBAGE_CPP_PROTOCOL_PARSE_266_006
+    - GARBAGE_CPP_PROTOCOL_SERIALIZE_266_008
+    - GARBAGE_CPP_PROTOCOL_VALIDATE_266_010
+    - GARBAGE_CPP_CERT_266_012
+    - GARBAGE_CPP_CERT_INFO_266_013
+    - GARBAGE_CPP_CERT_EXPIRY_266_014
+    - GARBAGE_CPP_CERT_STORE_266_015
+    - GARBAGE_CPP_CERT_ADD_266_016
+    - GARBAGE_CPP_CERT_VERIFY_266_018
+    - GARBAGE_CPP_CERT_REMOVE_266_020
+    - ProtocolHandler
+    - CertificateStore
+    - ProtocolMessage
+    - CertificateInfo
 options:
-  commit_message: Add concepts usage
+  commit_message: Add calculator and statistics using C++20 concepts

@@ -1,84 +1,16 @@
 from __future__ import annotations
 
-CODE_EXTENSIONS = frozenset(
-    {
-        ".py",
-        ".pyi",
-        ".pyw",
-        ".js",
-        ".ts",
-        ".tsx",
-        ".jsx",
-        ".mjs",
-        ".cjs",
-        ".mts",
-        ".cts",
-        ".go",
-        ".rs",
-        ".java",
-        ".rb",
-        ".php",
-        ".c",
-        ".cpp",
-        ".h",
-        ".hpp",
-        ".cs",
-        ".swift",
-        ".m",
-        ".mm",
-        ".kt",
-        ".kts",
-        ".scala",
-        ".sh",
-        ".bash",
-        ".zsh",
-        ".ps1",
-        ".lua",
-        ".r",
-        ".jl",
-        ".ex",
-        ".exs",
-        ".erl",
-        ".hs",
-        ".clj",
-        ".lisp",
-        ".ml",
-        ".fs",
-        ".nim",
-        ".v",
-        ".zig",
-        ".d",
-        ".ada",
-        ".pas",
-        ".f90",
-        ".f95",
-        ".cob",
-        ".asm",
-        ".s",
-        ".vhd",
-        ".sv",
-    }
-)
+from .config import CODE_EXTENSIONS, CONFIG_EXTENSIONS, DOC_EXTENSIONS
 
-CONFIG_EXTENSIONS = frozenset(
-    {
-        ".yaml",
-        ".yml",
-        ".json",
-        ".toml",
-        ".ini",
-        ".cfg",
-        ".conf",
-        ".xml",
-        ".properties",
-    }
-)
+__all__ = [
+    "CODE_EXTENSIONS",
+    "CONFIG_EXTENSIONS",
+    "DOC_EXTENSIONS",
+    "expand_config_key",
+]
 
-DOC_EXTENSIONS = frozenset(
-    {
-        ".md",
-        ".rst",
-        ".txt",
-        ".adoc",
-    }
-)
+
+def expand_config_key(key: str) -> set[str]:
+    if len(key) < 6:
+        return set()
+    return {key}

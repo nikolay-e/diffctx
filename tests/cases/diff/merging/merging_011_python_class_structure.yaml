@@ -1,0 +1,40 @@
+name: merging_011_python_class_structure
+initial:
+  service.py: |
+    class Service:
+        def __init__(self):
+            self.data = []
+
+        def add(self, item):
+            self.data.append(item)
+
+        def remove(self, item):
+            self.data.remove(item)
+
+        def clear(self):
+            self.data = []
+changed:
+  service.py: |
+    class Service:
+        def __init__(self):
+            self.data = []
+            self.count = 0
+
+        def add(self, item):
+            self.data.append(item)
+            self.count += 1
+
+        def remove(self, item):
+            self.data.remove(item)
+
+        def clear(self):
+            self.data = []
+            self.count = 0
+assertions:
+  must_include:
+  - __init__
+  - add
+  - clear
+  - self.count
+options:
+  commit_message: Add count tracking to Service

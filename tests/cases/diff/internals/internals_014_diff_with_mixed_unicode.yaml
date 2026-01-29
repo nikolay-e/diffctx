@@ -1,0 +1,17 @@
+name: internals_014_diff_with_mixed_unicode
+initial:
+  mixed_unicode.py: |
+    def placeholder():
+        pass
+changed:
+  mixed_unicode.py: |
+    # 这是注释
+    def compute_arabic():
+        arabic_greeting = "مرحبا"
+        return arabic_greeting
+assertions:
+  must_include:
+  - compute_arabic
+  - arabic_greeting
+options:
+  add_garbage: true

@@ -1,0 +1,15 @@
+name: internals_017_zalgo_in_diff_text
+initial:
+  zalgo_diff.py: |
+    def placeholder():
+        pass
+changed:
+  zalgo_diff.py: |
+    # H̸̡̪̯ͨ͊̽̅̾̎Ȩ̬̩̾͛ͪ̈́̀́͘ COMES
+    def process_data(items):
+        return items
+assertions:
+  must_include:
+  - process_data
+options:
+  add_garbage: true

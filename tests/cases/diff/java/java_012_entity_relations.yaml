@@ -1,9 +1,12 @@
 name: java_012_entity_relations
 initial:
-  src/main/java/com/example/Order.java: |
-    package com.example;
+  src/main/java/com/ordersystem/model/Order.java: |
+    package com.ordersystem.model;
 
     import javax.persistence.*;
+    import java.math.BigDecimal;
+    import java.time.LocalDateTime;
+    import java.util.ArrayList;
     import java.util.List;
 
     @Entity
@@ -13,17 +16,48 @@ initial:
         @GeneratedValue(strategy = GenerationType.IDENTITY)
         private Long id;
 
-        @ManyToOne
-        @JoinColumn(name = "customer_id")
+        @Column(name = "order_number", unique = true, nullable = false)
+        private String orderNumber;
+
+        @ManyToOne(fetch = FetchType.LAZY)
+        @JoinColumn(name = "customer_id", nullable = false)
         private Customer customer;
 
-        @OneToMany(mappedBy = "order", cascade = CascadeType.ALL)
-        private List<OrderItem> items;
+        @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
+        private List<OrderItem> items = new ArrayList<>();
+
+        @Column(name = "created_at")
+        private LocalDateTime createdAt;
+
+        @PrePersist
+        protected void onCreate() {
+            createdAt = LocalDateTime.now();
+        }
+
+        public Long getId() { return id; }
+        public void setId(Long id) { this.id = id; }
+        public String getOrderNumber() { return orderNumber; }
+        public void setOrderNumber(String orderNumber) { this.orderNumber = orderNumber; }
+        public Customer getCustomer() { return customer; }
+        public void setCustomer(Customer customer) { this.customer = customer; }
+        public List<OrderItem> getItems() { return items; }
+        public LocalDateTime getCreatedAt() { return createdAt; }
+
+        public void addItem(OrderItem item) {
+            items.add(item);
+            item.setOrder(this);
+        }
+
+        public void removeItem(OrderItem item) {
+            items.remove(item);
+            item.setOrder(null);
+        }
     }
-  src/main/java/com/example/Customer.java: |
-    package com.example;
+  src/main/java/com/ordersystem/model/Customer.java: |
+    package com.ordersystem.model;
 
     import javax.persistence.*;
+    import java.util.ArrayList;
     import java.util.List;
 
     @Entity
@@ -33,47 +67,372 @@ initial:
         @GeneratedValue(strategy = GenerationType.IDENTITY)
         private Long id;
 
+        @Column(nullable = false)
         private String name;
 
-        @OneToMany(mappedBy = "customer")
-        private List<Order> orders;
+        @Column(unique = true, nullable = false)
+        private String email;
+
+        @OneToMany(mappedBy = "customer", cascade = CascadeType.ALL)
+        private List<Order> orders = new ArrayList<>();
+
+        public Long getId() { return id; }
+        public void setId(Long id) { this.id = id; }
+        public String getName() { return name; }
+        public void setName(String name) { this.name = name; }
+        public String getEmail() { return email; }
+        public void setEmail(String email) { this.email = email; }
+        public List<Order> getOrders() { return orders; }
     }
-changed:
-  src/main/java/com/example/Order.java: |
-    package com.example;
+  src/main/java/com/ordersystem/model/OrderItem.java: |
+    package com.ordersystem.model;
 
     import javax.persistence.*;
-    import java.util.List;
     import java.math.BigDecimal;
 
     @Entity
-    @Table(name = "orders")
+    @Table(name = "order_items")
+    public class OrderItem {
+        @Id
+        @GeneratedValue(strategy = GenerationType.IDENTITY)
+        private Long id;
+
+        @ManyToOne(fetch = FetchType.LAZY)
+        @JoinColumn(name = "order_id")
+        private Order order;
+
+        @ManyToOne(fetch = FetchType.LAZY)
+        @JoinColumn(name = "product_id")
+        private Product product;
+
+        private Integer quantity;
+
+        @Column(name = "unit_price")
+        private BigDecimal unitPrice;
+
+        public Long getId() { return id; }
+        public void setId(Long id) { this.id = id; }
+        public Order getOrder() { return order; }
+        public void setOrder(Order order) { this.order = order; }
+        public Product getProduct() { return product; }
+        public void setProduct(Product product) { this.product = product; }
+        public Integer getQuantity() { return quantity; }
+        public void setQuantity(Integer quantity) { this.quantity = quantity; }
+        public BigDecimal getUnitPrice() { return unitPrice; }
+        public void setUnitPrice(BigDecimal unitPrice) { this.unitPrice = unitPrice; }
+    }
+  src/main/java/com/ordersystem/model/Product.java: |
+    package com.ordersystem.model;
+
+    import javax.persistence.*;
+    import java.math.BigDecimal;
+
+    @Entity
+    @Table(name = "products")
+    public class Product {
+        @Id
+        @GeneratedValue(strategy = GenerationType.IDENTITY)
+        private Long id;
+
+        @Column(nullable = false)
+        private String name;
+
+        private BigDecimal price;
+
+        @Column(name = "stock_quantity")
+        private Integer stockQuantity;
+
+        public Long getId() { return id; }
+        public void setId(Long id) { this.id = id; }
+        public String getName() { return name; }
+        public void setName(String name) { this.name = name; }
+        public BigDecimal getPrice() { return price; }
+        public void setPrice(BigDecimal price) { this.price = price; }
+        public Integer getStockQuantity() { return stockQuantity; }
+        public void setStockQuantity(Integer stockQuantity) { this.stockQuantity = stockQuantity; }
+    }
+  src/main/java/com/ordersystem/unrelated/PromotionEngine.java: |
+    package com.ordersystem.unrelated;
+
+    import java.math.BigDecimal;
+    import java.time.LocalDate;
+    import java.util.HashMap;
+    import java.util.Map;
+
+    public class PromotionEngine {
+        public static final String GARBAGE_JAVA_PROMO_501 = "promotion_marker_pi";
+        private static final String GARBAGE_JAVA_DISCOUNT_502 = "discount_marker_rho";
+
+        private final Map<String, BigDecimal> activePromotions = new HashMap<>();
+
+        public void addPromotion(String code, BigDecimal discountPercent, LocalDate expiryDate) {
+            if (expiryDate.isAfter(LocalDate.now())) {
+                activePromotions.put(code, discountPercent);
+            }
+            logGarbageMarkers();
+        }
+
+        public BigDecimal applyPromotion(String code, BigDecimal orderTotal) {
+            BigDecimal discount = activePromotions.getOrDefault(code, BigDecimal.ZERO);
+            return orderTotal.multiply(BigDecimal.ONE.subtract(discount.divide(new BigDecimal("100"))));
+        }
+
+        private void logGarbageMarkers() {
+            System.out.println(GARBAGE_JAVA_PROMO_501 + GARBAGE_JAVA_DISCOUNT_502);
+        }
+    }
+  src/main/java/com/ordersystem/unrelated/TaxCalculator.java: |
+    package com.ordersystem.unrelated;
+
+    import java.math.BigDecimal;
+    import java.math.RoundingMode;
+    import java.util.Map;
+
+    public class TaxCalculator {
+        public static final String GARBAGE_JAVA_TAX_503 = "tax_marker_sigma";
+
+        private static final Map<String, BigDecimal> TAX_RATES = Map.of(
+            "US-CA", new BigDecimal("0.0725"),
+            "US-NY", new BigDecimal("0.08"),
+            "US-TX", new BigDecimal("0.0625")
+        );
+
+        public BigDecimal calculateTax(BigDecimal amount, String region) {
+            BigDecimal rate = TAX_RATES.getOrDefault(region, BigDecimal.ZERO);
+            String GARBAGE_JAVA_RATE_504 = "rate_marker_tau";
+            System.out.println(GARBAGE_JAVA_TAX_503 + GARBAGE_JAVA_RATE_504);
+            return amount.multiply(rate).setScale(2, RoundingMode.HALF_UP);
+        }
+    }
+changed:
+  src/main/java/com/ordersystem/model/Order.java: |
+    package com.ordersystem.model;
+
+    import javax.persistence.*;
+    import java.math.BigDecimal;
+    import java.time.LocalDateTime;
+    import java.util.ArrayList;
+    import java.util.List;
+    import java.util.Objects;
+
+    @Entity
+    @Table(name = "orders", indexes = {
+        @Index(name = "idx_order_number", columnList = "order_number"),
+        @Index(name = "idx_order_customer", columnList = "customer_id"),
+        @Index(name = "idx_order_status", columnList = "status")
+    })
+    @NamedQueries({
+        @NamedQuery(name = "Order.findByCustomerAndStatus",
+            query = "SELECT o FROM Order o WHERE o.customer.id = :customerId AND o.status = :status"),
+        @NamedQuery(name = "Order.findRecentOrders",
+            query = "SELECT o FROM Order o WHERE o.createdAt > :since ORDER BY o.createdAt DESC")
+    })
     public class Order {
         @Id
         @GeneratedValue(strategy = GenerationType.IDENTITY)
         private Long id;
 
-        @ManyToOne
-        @JoinColumn(name = "customer_id")
+        @Column(name = "order_number", unique = true, nullable = false, length = 20)
+        private String orderNumber;
+
+        @ManyToOne(fetch = FetchType.LAZY)
+        @JoinColumn(name = "customer_id", nullable = false)
         private Customer customer;
 
-        @OneToMany(mappedBy = "order", cascade = CascadeType.ALL)
-        private List<OrderItem> items;
+        @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
+        @OrderBy("id ASC")
+        private List<OrderItem> items = new ArrayList<>();
 
-        @Column(name = "total_amount")
+        @Column(name = "total_amount", precision = 12, scale = 2)
         private BigDecimal totalAmount;
 
+        @Column(name = "tax_amount", precision = 10, scale = 2)
+        private BigDecimal taxAmount;
+
+        @Column(name = "shipping_amount", precision = 10, scale = 2)
+        private BigDecimal shippingAmount;
+
         @Enumerated(EnumType.STRING)
+        @Column(nullable = false, length = 20)
         private OrderStatus status;
+
+        @ManyToOne(fetch = FetchType.LAZY)
+        @JoinColumn(name = "shipping_address_id")
+        private Address shippingAddress;
+
+        @ManyToOne(fetch = FetchType.LAZY)
+        @JoinColumn(name = "billing_address_id")
+        private Address billingAddress;
+
+        @Column(name = "notes", length = 500)
+        private String notes;
+
+        @Version
+        private Long version;
+
+        @Column(name = "created_at", nullable = false, updatable = false)
+        private LocalDateTime createdAt;
+
+        @Column(name = "updated_at")
+        private LocalDateTime updatedAt;
+
+        @Column(name = "shipped_at")
+        private LocalDateTime shippedAt;
+
+        @Column(name = "delivered_at")
+        private LocalDateTime deliveredAt;
+
+        @PrePersist
+        protected void onCreate() {
+            createdAt = LocalDateTime.now();
+            status = OrderStatus.PENDING;
+        }
+
+        @PreUpdate
+        protected void onUpdate() {
+            updatedAt = LocalDateTime.now();
+        }
+
+        public Long getId() { return id; }
+        public void setId(Long id) { this.id = id; }
+        public String getOrderNumber() { return orderNumber; }
+        public void setOrderNumber(String orderNumber) { this.orderNumber = orderNumber; }
+        public Customer getCustomer() { return customer; }
+        public void setCustomer(Customer customer) { this.customer = customer; }
+        public List<OrderItem> getItems() { return items; }
+        public BigDecimal getTotalAmount() { return totalAmount; }
+        public void setTotalAmount(BigDecimal totalAmount) { this.totalAmount = totalAmount; }
+        public BigDecimal getTaxAmount() { return taxAmount; }
+        public void setTaxAmount(BigDecimal taxAmount) { this.taxAmount = taxAmount; }
+        public BigDecimal getShippingAmount() { return shippingAmount; }
+        public void setShippingAmount(BigDecimal shippingAmount) { this.shippingAmount = shippingAmount; }
+        public OrderStatus getStatus() { return status; }
+        public void setStatus(OrderStatus status) { this.status = status; }
+        public Address getShippingAddress() { return shippingAddress; }
+        public void setShippingAddress(Address shippingAddress) { this.shippingAddress = shippingAddress; }
+        public Address getBillingAddress() { return billingAddress; }
+        public void setBillingAddress(Address billingAddress) { this.billingAddress = billingAddress; }
+        public String getNotes() { return notes; }
+        public void setNotes(String notes) { this.notes = notes; }
+        public LocalDateTime getCreatedAt() { return createdAt; }
+        public LocalDateTime getUpdatedAt() { return updatedAt; }
+        public LocalDateTime getShippedAt() { return shippedAt; }
+        public void setShippedAt(LocalDateTime shippedAt) { this.shippedAt = shippedAt; }
+        public LocalDateTime getDeliveredAt() { return deliveredAt; }
+        public void setDeliveredAt(LocalDateTime deliveredAt) { this.deliveredAt = deliveredAt; }
+
+        public void addItem(OrderItem item) {
+            items.add(item);
+            item.setOrder(this);
+            recalculateTotal();
+        }
+
+        public void removeItem(OrderItem item) {
+            items.remove(item);
+            item.setOrder(null);
+            recalculateTotal();
+        }
+
+        public void recalculateTotal() {
+            this.totalAmount = items.stream()
+                .map(OrderItem::getSubtotal)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        }
+
+        public BigDecimal getGrandTotal() {
+            BigDecimal total = totalAmount != null ? totalAmount : BigDecimal.ZERO;
+            BigDecimal tax = taxAmount != null ? taxAmount : BigDecimal.ZERO;
+            BigDecimal shipping = shippingAmount != null ? shippingAmount : BigDecimal.ZERO;
+            return total.add(tax).add(shipping);
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (!(o instanceof Order order)) return false;
+            return Objects.equals(orderNumber, order.orderNumber);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(orderNumber);
+        }
+    }
+  src/main/java/com/ordersystem/model/OrderStatus.java: |
+    package com.ordersystem.model;
+
+    public enum OrderStatus {
+        PENDING,
+        CONFIRMED,
+        PROCESSING,
+        SHIPPED,
+        DELIVERED,
+        CANCELLED,
+        REFUNDED
+    }
+  src/main/java/com/ordersystem/model/Address.java: |
+    package com.ordersystem.model;
+
+    import javax.persistence.*;
+
+    @Entity
+    @Table(name = "addresses")
+    public class Address {
+        @Id
+        @GeneratedValue(strategy = GenerationType.IDENTITY)
+        private Long id;
+
+        @Column(nullable = false)
+        private String street;
+
+        @Column(nullable = false)
+        private String city;
+
+        @Column(nullable = false)
+        private String state;
+
+        @Column(name = "postal_code", nullable = false)
+        private String postalCode;
+
+        @Column(nullable = false)
+        private String country;
+
+        public Long getId() { return id; }
+        public void setId(Long id) { this.id = id; }
+        public String getStreet() { return street; }
+        public void setStreet(String street) { this.street = street; }
+        public String getCity() { return city; }
+        public void setCity(String city) { this.city = city; }
+        public String getState() { return state; }
+        public void setState(String state) { this.state = state; }
+        public String getPostalCode() { return postalCode; }
+        public void setPostalCode(String postalCode) { this.postalCode = postalCode; }
+        public String getCountry() { return country; }
+        public void setCountry(String country) { this.country = country; }
     }
 assertions:
   must_include:
-  - '@Entity'
-  - Order
-  - totalAmount
-  - status
+    - '@Entity'
+    - Order
+    - totalAmount
+    - taxAmount
+    - shippingAmount
+    - OrderStatus
+    - '@Index'
+    - '@NamedQuery'
+    - '@Version'
+    - getGrandTotal
+    - recalculateTotal
+    - Address
   must_not_include:
-  - garbage_marker_12345
-  - unused_marker_67890
+    - GARBAGE_JAVA_PROMO_501
+    - GARBAGE_JAVA_DISCOUNT_502
+    - GARBAGE_JAVA_TAX_503
+    - GARBAGE_JAVA_RATE_504
+    - PromotionEngine
+    - TaxCalculator
+    - addPromotion
+    - applyPromotion
+    - calculateTax
 options:
-  commit_message: Add totalAmount and status to Order
+  commit_message: Add order totals, status, addresses and JPA optimizations

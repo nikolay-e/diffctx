@@ -1,0 +1,16 @@
+name: internals_030_thai_long_comment
+initial:
+  thai_long.py: |
+    def placeholder():
+        pass
+changed:
+  thai_long.py: |
+    # ภาษาไทยไม่มีช่องว่างระหว่างคำ สามารถเขียนต่อเนื่องกันได้ยาวมาก
+    # อีกบรรทัดหนึ่งของความคิดเห็นภาษาไทย
+    def process_items(data_list):
+        return [item for item in data_list]
+assertions:
+  must_include:
+  - process_items
+options:
+  add_garbage: true

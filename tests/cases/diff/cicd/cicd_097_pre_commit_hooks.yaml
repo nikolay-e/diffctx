@@ -1,0 +1,29 @@
+name: cicd_097_pre_commit_hooks
+initial:
+  .pre-commit-config.yaml: |
+    repos:
+      - repo: https://github.com/pre-commit/pre-commit-hooks
+        rev: v4.5.0
+        hooks:
+          - id: trailing-whitespace
+  src/code.py: |
+    def process():
+        return True
+changed:
+  .pre-commit-config.yaml: |
+    repos:
+      - repo: https://github.com/pre-commit/pre-commit-hooks
+        rev: v4.5.0
+        hooks:
+          - id: trailing-whitespace
+          - id: end-of-file-fixer
+      - repo: https://github.com/astral-sh/ruff-pre-commit
+        rev: v0.1.0
+        hooks:
+          - id: ruff
+            args: [--fix]
+assertions:
+  must_include:
+    - process
+options:
+  commit_message: add ruff hook

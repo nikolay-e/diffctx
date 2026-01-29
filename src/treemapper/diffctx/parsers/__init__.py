@@ -8,6 +8,7 @@ from .base import FragmentationStrategy
 from .config import ConfigStrategy, RuamelYamlStrategy
 from .generic import GenericStrategy
 from .html import HTMLStrategy
+from .kubernetes import KubernetesYamlStrategy
 from .markdown import MistuneMarkdownStrategy, RegexMarkdownStrategy
 from .python import PythonAstStrategy
 from .text import ParagraphStrategy, PySBDTextStrategy
@@ -26,6 +27,7 @@ class FragmentationEngine:
             MistuneMarkdownStrategy(),
             RegexMarkdownStrategy(),
             HTMLStrategy(),
+            KubernetesYamlStrategy(),
             RuamelYamlStrategy(),
             ConfigStrategy(),
             PySBDTextStrategy(),
@@ -73,6 +75,7 @@ __all__ = [
     "FragmentationStrategy",
     "GenericStrategy",
     "HTMLStrategy",
+    "KubernetesYamlStrategy",
     "MistuneMarkdownStrategy",
     "ParagraphStrategy",
     "PySBDTextStrategy",

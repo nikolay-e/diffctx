@@ -1,33 +1,113 @@
 name: k8s_413_pod_affinity
 initial:
-  deployment.yaml: |
+  k8s/apps/web/deployment.yaml: |
     apiVersion: apps/v1
     kind: Deployment
     metadata:
-      name: myapp
+      name: web-app
+      namespace: production
+      labels:
+        app: web-app
+        tier: frontend
     spec:
+      replicas: 3
+      selector:
+        matchLabels:
+          app: web-app
       template:
         metadata:
           labels:
-            app: myapp
+            app: web-app
+            tier: frontend
         spec:
           containers:
-          - name: app
-            image: myapp:latest
-  unrelated.txt: |
-    garbage_marker_k8s413 = True
-    unused_marker_k8s413 = False
-changed:
-  deployment.yaml: |
+          - name: web
+            image: web-app:v1.0.0
+            ports:
+            - containerPort: 3000
+            env:
+            - name: CACHE_URL
+              value: "redis://cache.production.svc.cluster.local:6379"
+            resources:
+              requests:
+                memory: "128Mi"
+                cpu: "100m"
+              limits:
+                memory: "256Mi"
+                cpu: "200m"
+
+  k8s/apps/cache/deployment.yaml: |
     apiVersion: apps/v1
     kind: Deployment
     metadata:
-      name: myapp
+      name: cache
+      namespace: production
+      labels:
+        app: cache
+        tier: caching
     spec:
+      replicas: 3
+      selector:
+        matchLabels:
+          app: cache
       template:
         metadata:
           labels:
-            app: myapp
+            app: cache
+            tier: caching
+        spec:
+          containers:
+          - name: redis
+            image: redis:7-alpine
+            ports:
+            - containerPort: 6379
+
+  k8s/unrelated/velero/backup.yaml: |
+    # GARBAGE_K8S_413_VELERO_BACKUP
+    apiVersion: velero.io/v1
+    kind: Backup
+    metadata:
+      name: GARBAGE_K8S_413_BACKUP_NAME
+    spec:
+      includedNamespaces:
+      - GARBAGE_K8S_413_NAMESPACE
+      storageLocation: GARBAGE_K8S_413_STORAGE_LOC
+      ttl: GARBAGE_K8S_413_TTL
+
+  k8s/unrelated/kubevirt/vm.yaml: |
+    # GARBAGE_K8S_413_KUBEVIRT_VM
+    apiVersion: kubevirt.io/v1
+    kind: VirtualMachine
+    metadata:
+      name: GARBAGE_K8S_413_VM_NAME
+    spec:
+      running: GARBAGE_K8S_413_RUNNING
+      template:
+        spec:
+          domain:
+            cpu:
+              cores: GARBAGE_K8S_413_CPU_CORES
+
+changed:
+  k8s/apps/web/deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: web-app
+      namespace: production
+      labels:
+        app: web-app
+        tier: frontend
+    spec:
+      replicas: 3
+      selector:
+        matchLabels:
+          app: web-app
+      template:
+        metadata:
+          labels:
+            app: web-app
+            tier: frontend
         spec:
           affinity:
             podAffinity:
@@ -36,14 +116,47 @@ changed:
                   matchLabels:
                     app: cache
                 topologyKey: kubernetes.io/hostname
+            podAntiAffinity:
+              preferredDuringSchedulingIgnoredDuringExecution:
+              - weight: 100
+                podAffinityTerm:
+                  labelSelector:
+                    matchLabels:
+                      app: web-app
+                  topologyKey: topology.kubernetes.io/zone
           containers:
-          - name: app
-            image: myapp:latest
+          - name: web
+            image: web-app:v1.0.0
+            ports:
+            - containerPort: 3000
+            env:
+            - name: CACHE_URL
+              value: "redis://cache.production.svc.cluster.local:6379"
+            resources:
+              requests:
+                memory: "128Mi"
+                cpu: "100m"
+              limits:
+                memory: "256Mi"
+                cpu: "200m"
+
 assertions:
   must_include:
   - podAffinity
+  - podAntiAffinity
+  - requiredDuringSchedulingIgnoredDuringExecution
+  - preferredDuringSchedulingIgnoredDuringExecution
+  - topologyKey
+  - kubernetes.io/hostname
   must_not_include:
-  - garbage_marker_k8s413
-  - unused_marker_k8s413
+  - GARBAGE_K8S_413_VELERO_BACKUP
+  - GARBAGE_K8S_413_BACKUP_NAME
+  - GARBAGE_K8S_413_NAMESPACE
+  - GARBAGE_K8S_413_STORAGE_LOC
+  - GARBAGE_K8S_413_TTL
+  - GARBAGE_K8S_413_KUBEVIRT_VM
+  - GARBAGE_K8S_413_VM_NAME
+  - GARBAGE_K8S_413_RUNNING
+  - GARBAGE_K8S_413_CPU_CORES
 options:
-  commit_message: Add pod affinity
+  commit_message: Add pod affinity and anti-affinity rules

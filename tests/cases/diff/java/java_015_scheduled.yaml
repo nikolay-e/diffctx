@@ -1,21 +1,7 @@
 name: java_015_scheduled
 initial:
-  src/main/java/com/example/ScheduledTasks.java: |
-    package com.example;
-
-    import org.springframework.scheduling.annotation.Scheduled;
-    import org.springframework.stereotype.Component;
-
-    @Component
-    public class ScheduledTasks {
-        @Scheduled(fixedRate = 60000)
-        public void cleanupTask() {
-            System.out.println("Running cleanup");
-        }
-    }
-changed:
-  src/main/java/com/example/ScheduledTasks.java: |
-    package com.example;
+  src/main/java/com/dataplatform/scheduler/DataCleanupJob.java: |
+    package com.dataplatform.scheduler;
 
     import org.springframework.scheduling.annotation.Scheduled;
     import org.springframework.stereotype.Component;
@@ -23,26 +9,281 @@ changed:
     import org.slf4j.LoggerFactory;
 
     @Component
-    public class ScheduledTasks {
-        private static final Logger logger = LoggerFactory.getLogger(ScheduledTasks.class);
+    public class DataCleanupJob {
+        private static final Logger log = LoggerFactory.getLogger(DataCleanupJob.class);
 
         @Scheduled(fixedRate = 60000)
-        public void cleanupTask() {
-            logger.info("Running cleanup");
+        public void cleanupExpiredData() {
+            log.info("Running expired data cleanup");
+        }
+    }
+  src/main/java/com/dataplatform/service/DataService.java: |
+    package com.dataplatform.service;
+
+    import org.springframework.stereotype.Service;
+    import java.time.LocalDateTime;
+    import java.util.ArrayList;
+    import java.util.List;
+
+    @Service
+    public class DataService {
+        private final List<DataRecord> records = new ArrayList<>();
+
+        public void addRecord(DataRecord record) {
+            records.add(record);
         }
 
-        @Scheduled(cron = "0 0 2 * * ?")
-        public void dailyReport() {
-            logger.info("Generating daily report");
+        public List<DataRecord> getRecords() {
+            return new ArrayList<>(records);
+        }
+
+        public int deleteExpiredRecords(LocalDateTime before) {
+            int sizeBefore = records.size();
+            records.removeIf(r -> r.createdAt().isBefore(before));
+            return sizeBefore - records.size();
+        }
+
+        public record DataRecord(String id, String data, LocalDateTime createdAt) {}
+    }
+  src/main/java/com/dataplatform/unrelated/BackupService.java: |
+    package com.dataplatform.unrelated;
+
+    import java.io.IOException;
+    import java.nio.file.Files;
+    import java.nio.file.Path;
+    import java.time.LocalDateTime;
+
+    public class BackupService {
+        public static final String GARBAGE_JAVA_BACKUP_801 = "backup_marker_delta2";
+        private static final String GARBAGE_JAVA_ARCHIVE_802 = "archive_marker_epsilon2";
+
+        private final Path backupDirectory;
+
+        public BackupService(Path backupDirectory) {
+            this.backupDirectory = backupDirectory;
+        }
+
+        public void createBackup(String dataSource) throws IOException {
+            Path backupFile = backupDirectory.resolve("backup_" + LocalDateTime.now() + ".bak");
+            Files.writeString(backupFile, dataSource);
+            logGarbageMarkers();
+        }
+
+        private void logGarbageMarkers() {
+            System.out.println(GARBAGE_JAVA_BACKUP_801 + GARBAGE_JAVA_ARCHIVE_802);
+        }
+    }
+  src/main/java/com/dataplatform/unrelated/IndexingService.java: |
+    package com.dataplatform.unrelated;
+
+    import java.util.HashMap;
+    import java.util.Map;
+
+    public class IndexingService {
+        public static final String GARBAGE_JAVA_INDEX_803 = "index_marker_zeta2";
+
+        private final Map<String, Long> indexOffsets = new HashMap<>();
+
+        public void updateIndex(String key, long offset) {
+            indexOffsets.put(key, offset);
+            String GARBAGE_JAVA_OFFSET_804 = "offset_marker_eta2";
+            System.out.println(GARBAGE_JAVA_INDEX_803 + GARBAGE_JAVA_OFFSET_804);
+        }
+
+        public Long getOffset(String key) {
+            return indexOffsets.get(key);
+        }
+    }
+changed:
+  src/main/java/com/dataplatform/scheduler/DataCleanupJob.java: |
+    package com.dataplatform.scheduler;
+
+    import com.dataplatform.service.DataService;
+    import com.dataplatform.service.MetricsService;
+    import com.dataplatform.config.SchedulerConfig;
+    import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
+    import org.springframework.scheduling.annotation.Scheduled;
+    import org.springframework.scheduling.annotation.Async;
+    import org.springframework.stereotype.Component;
+    import org.slf4j.Logger;
+    import org.slf4j.LoggerFactory;
+
+    import java.time.LocalDateTime;
+    import java.time.Duration;
+
+    @Component
+    public class DataCleanupJob {
+        private static final Logger log = LoggerFactory.getLogger(DataCleanupJob.class);
+
+        private final DataService dataService;
+        private final MetricsService metricsService;
+        private final SchedulerConfig schedulerConfig;
+
+        public DataCleanupJob(DataService dataService, MetricsService metricsService, SchedulerConfig schedulerConfig) {
+            this.dataService = dataService;
+            this.metricsService = metricsService;
+            this.schedulerConfig = schedulerConfig;
+        }
+
+        @Scheduled(fixedRateString = "${scheduler.cleanup.rate:60000}")
+        @SchedulerLock(name = "expiredDataCleanup", lockAtMostFor = "PT5M", lockAtLeastFor = "PT1M")
+        public void cleanupExpiredData() {
+            log.info("Starting expired data cleanup job");
+            LocalDateTime cutoffTime = LocalDateTime.now().minus(schedulerConfig.getRetentionPeriod());
+
+            try {
+                int deletedCount = dataService.deleteExpiredRecords(cutoffTime);
+                metricsService.recordCleanupMetrics("expired_data", deletedCount);
+                log.info("Expired data cleanup completed: {} records deleted", deletedCount);
+            } catch (Exception e) {
+                log.error("Expired data cleanup failed", e);
+                metricsService.incrementErrorCount("cleanup_expired_data");
+            }
+        }
+
+        @Scheduled(cron = "${scheduler.report.cron:0 0 2 * * ?}")
+        @SchedulerLock(name = "dailyReportGeneration", lockAtMostFor = "PT30M")
+        public void generateDailyReport() {
+            log.info("Starting daily report generation");
+            try {
+                dataService.generateDailyStatistics();
+                log.info("Daily report generation completed");
+            } catch (Exception e) {
+                log.error("Daily report generation failed", e);
+                metricsService.incrementErrorCount("daily_report");
+            }
+        }
+
+        @Scheduled(cron = "0 */15 * * * *")
+        @Async
+        public void syncDataFromExternalSources() {
+            log.info("Starting external data sync");
+            try {
+                int syncedRecords = dataService.syncFromExternalSource();
+                metricsService.recordSyncMetrics("external_source", syncedRecords);
+                log.info("External data sync completed: {} records synced", syncedRecords);
+            } catch (Exception e) {
+                log.error("External data sync failed", e);
+                metricsService.incrementErrorCount("external_sync");
+            }
+        }
+
+        @Scheduled(fixedDelayString = "${scheduler.health.delay:30000}")
+        public void performHealthCheck() {
+            log.debug("Performing system health check");
+            boolean isHealthy = dataService.checkDataIntegrity();
+            metricsService.recordHealthStatus(isHealthy);
+            if (!isHealthy) {
+                log.warn("Data integrity check failed");
+            }
+        }
+
+        @Scheduled(cron = "0 0 0 1 * ?")
+        @SchedulerLock(name = "monthlyArchive", lockAtMostFor = "PT2H")
+        public void archiveOldData() {
+            log.info("Starting monthly data archival");
+            LocalDateTime archiveCutoff = LocalDateTime.now().minusMonths(3);
+            try {
+                int archivedCount = dataService.archiveRecordsBefore(archiveCutoff);
+                metricsService.recordCleanupMetrics("archive", archivedCount);
+                log.info("Monthly archival completed: {} records archived", archivedCount);
+            } catch (Exception e) {
+                log.error("Monthly archival failed", e);
+                metricsService.incrementErrorCount("monthly_archive");
+            }
+        }
+
+        @Scheduled(initialDelay = 10000, fixedRate = 300000)
+        public void warmupCaches() {
+            log.info("Warming up caches");
+            dataService.warmupFrequentlyAccessedData();
+        }
+    }
+  src/main/java/com/dataplatform/config/SchedulerConfig.java: |
+    package com.dataplatform.config;
+
+    import org.springframework.boot.context.properties.ConfigurationProperties;
+    import org.springframework.context.annotation.Configuration;
+    import java.time.Duration;
+
+    @Configuration
+    @ConfigurationProperties(prefix = "scheduler")
+    public class SchedulerConfig {
+        private Duration retentionPeriod = Duration.ofDays(30);
+        private boolean enabled = true;
+
+        public Duration getRetentionPeriod() { return retentionPeriod; }
+        public void setRetentionPeriod(Duration retentionPeriod) { this.retentionPeriod = retentionPeriod; }
+        public boolean isEnabled() { return enabled; }
+        public void setEnabled(boolean enabled) { this.enabled = enabled; }
+    }
+  src/main/java/com/dataplatform/service/MetricsService.java: |
+    package com.dataplatform.service;
+
+    import org.springframework.stereotype.Service;
+    import io.micrometer.core.instrument.MeterRegistry;
+    import io.micrometer.core.instrument.Counter;
+    import io.micrometer.core.instrument.Gauge;
+
+    @Service
+    public class MetricsService {
+        private final MeterRegistry meterRegistry;
+
+        public MetricsService(MeterRegistry meterRegistry) {
+            this.meterRegistry = meterRegistry;
+        }
+
+        public void recordCleanupMetrics(String jobType, int count) {
+            Counter.builder("scheduler.cleanup.count")
+                .tag("job", jobType)
+                .register(meterRegistry)
+                .increment(count);
+        }
+
+        public void recordSyncMetrics(String source, int count) {
+            Counter.builder("scheduler.sync.count")
+                .tag("source", source)
+                .register(meterRegistry)
+                .increment(count);
+        }
+
+        public void incrementErrorCount(String jobName) {
+            Counter.builder("scheduler.errors")
+                .tag("job", jobName)
+                .register(meterRegistry)
+                .increment();
+        }
+
+        public void recordHealthStatus(boolean healthy) {
+            Gauge.builder("scheduler.health", () -> healthy ? 1 : 0)
+                .register(meterRegistry);
         }
     }
 assertions:
   must_include:
-  - '@Scheduled'
-  - dailyReport
-  - cron
+    - '@Scheduled'
+    - DataCleanupJob
+    - generateDailyReport
+    - syncDataFromExternalSources
+    - performHealthCheck
+    - archiveOldData
+    - warmupCaches
+    - '@SchedulerLock'
+    - '@Async'
+    - fixedRateString
+    - fixedDelayString
+    - cron
+    - initialDelay
+    - MetricsService
+    - SchedulerConfig
   must_not_include:
-  - garbage_marker_12345
-  - unused_marker_67890
+    - GARBAGE_JAVA_BACKUP_801
+    - GARBAGE_JAVA_ARCHIVE_802
+    - GARBAGE_JAVA_INDEX_803
+    - GARBAGE_JAVA_OFFSET_804
+    - BackupService
+    - IndexingService
+    - createBackup
+    - updateIndex
 options:
-  commit_message: Add dailyReport scheduled task
+  commit_message: Add comprehensive scheduled jobs with distributed locking and metrics

@@ -1,0 +1,23 @@
+name: json_035_firebase_config
+initial:
+  firebase.json: |
+    {
+      "hosting": {"public": "public", "ignore": ["firebase.json"]},
+      "functions": {"source": "functions"}
+    }
+  functions/index.js: |
+    const functions = require('firebase-functions');
+    exports.hello = functions.https.onRequest((req, res) => {
+      res.send('Hello!');
+    });
+changed:
+  firebase.json: |
+    {
+      "hosting": {"public": "dist", "rewrites": [{"source": "**", "destination": "/index.html"}]},
+      "functions": {"source": "functions", "runtime": "nodejs18"}
+    }
+assertions:
+  must_include:
+    - firebase-functions
+options:
+  commit_message: add spa rewrites

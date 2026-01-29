@@ -1,0 +1,25 @@
+name: json_028_prettier_config
+initial:
+  .prettierrc.json: |
+    {
+      "semi": true,
+      "singleQuote": false,
+      "tabWidth": 2
+    }
+  src/format.js: |
+    function formatCode(code) {
+      return code.trim();
+    }
+changed:
+  .prettierrc.json: |
+    {
+      "semi": false,
+      "singleQuote": true,
+      "tabWidth": 4,
+      "printWidth": 100
+    }
+assertions:
+  must_include:
+    - formatCode
+options:
+  commit_message: change formatting

@@ -1,34 +1,237 @@
 name: cpp_242_pointer_arithmetic
 initial:
-  string_utils.h: |
+  include/memory/buffer_view.hpp: |
     #pragma once
+    #include <cstddef>
     #include <cstring>
+    #include <stdexcept>
 
-    inline size_t safe_strlen(const char* str) {
+    namespace app::memory {
+
+    template<typename T>
+    class BufferView {
+    public:
+        BufferView(T* data, size_t size)
+            : data_(data), size_(size) {}
+
+        T* begin() { return data_; }
+        T* end() { return data_ + size_; }
+        const T* begin() const { return data_; }
+        const T* end() const { return data_ + size_; }
+
+        T& operator[](size_t index) {
+            if (index >= size_) throw std::out_of_range("Index out of bounds");
+            return data_[index];
+        }
+
+        const T& operator[](size_t index) const {
+            if (index >= size_) throw std::out_of_range("Index out of bounds");
+            return data_[index];
+        }
+
+        size_t size() const { return size_; }
+        bool empty() const { return size_ == 0; }
+
+        BufferView<T> subview(size_t offset, size_t count) const {
+            if (offset + count > size_) throw std::out_of_range("Subview out of bounds");
+            return BufferView<T>(data_ + offset, count);
+        }
+
+    private:
+        T* data_;
+        size_t size_;
+    };
+
+    inline size_t safeStrlen(const char* str) {
         if (!str) return 0;
         return strlen(str);
     }
-    // unused_marker_67890 - not relevant
-  parser.cpp: |
+
+    }
+
+  include/unrelated/compression_engine.hpp: |
+    #pragma once
+    // GARBAGE_CPP_COMPRESS_242_001
+    #define GARBAGE_CPP_COMPRESS_LEVEL_242_002 9
+
+    namespace app::unrelated::compression {
+
+    // GARBAGE_CPP_COMPRESS_CLASS_242_003
+    class CompressionEngine {
+    public:
+        // GARBAGE_CPP_COMPRESS_METHOD_242_004
+        void compress(const char* input, size_t inputSize, char* output, size_t& outputSize) {
+            // GARBAGE_CPP_COMPRESS_IMPL_242_005
+        }
+
+        // GARBAGE_CPP_COMPRESS_DECOMPRESS_242_006
+        void decompress(const char* input, size_t inputSize, char* output, size_t& outputSize) {
+            // GARBAGE_CPP_COMPRESS_DECOMP_IMPL_242_007
+        }
+
+    private:
+        int compressionLevel_ = GARBAGE_CPP_COMPRESS_LEVEL_242_002;
+    };
+
+    }
+
+  src/unrelated/image_filter.cpp: |
+    // GARBAGE_CPP_IMAGE_242_008
+    namespace app::unrelated::image {
+
+    // GARBAGE_CPP_IMAGE_FILTER_242_009
+    struct ImageFilter {
+        // GARBAGE_CPP_IMAGE_APPLY_242_010
+        void applyGaussianBlur(unsigned char* pixels, int width, int height, float sigma) {
+            // GARBAGE_CPP_IMAGE_GAUSSIAN_242_011
+        }
+
+        // GARBAGE_CPP_IMAGE_SHARPEN_242_012
+        void applySharpen(unsigned char* pixels, int width, int height) {
+            // GARBAGE_CPP_IMAGE_SHARPEN_IMPL_242_013
+        }
+    };
+
+    }
+
+  src/parser.cpp: |
     #include <iostream>
     int main() { return 0; }
-changed:
-  parser.cpp: |
-    #include "string_utils.h"
 
-    void parse(const char* str) {
-        size_t len = safe_strlen(str);
-        char* end = const_cast<char*>(str) + len;
-        while (str < end) {
-            str++;
+changed:
+  src/parser.cpp: |
+    #include "memory/buffer_view.hpp"
+    #include <iostream>
+    #include <vector>
+    #include <cstring>
+
+    namespace app::parser {
+
+    struct Token {
+        enum class Type { Identifier, Number, Operator, EndOfInput };
+        Type type;
+        const char* start;
+        size_t length;
+    };
+
+    class Tokenizer {
+    public:
+        Tokenizer(const char* input, size_t length)
+            : current_(input)
+            , end_(input + length)
+            , start_(input) {}
+
+        Token nextToken() {
+            skipWhitespace();
+
+            if (current_ >= end_) {
+                return Token{Token::Type::EndOfInput, current_, 0};
+            }
+
+            const char* tokenStart = current_;
+
+            if (isIdentifierStart(*current_)) {
+                while (current_ < end_ && isIdentifierChar(*current_)) {
+                    ++current_;
+                }
+                return Token{Token::Type::Identifier, tokenStart,
+                             static_cast<size_t>(current_ - tokenStart)};
+            }
+
+            if (isDigit(*current_)) {
+                while (current_ < end_ && isDigit(*current_)) {
+                    ++current_;
+                }
+                return Token{Token::Type::Number, tokenStart,
+                             static_cast<size_t>(current_ - tokenStart)};
+            }
+
+            ++current_;
+            return Token{Token::Type::Operator, tokenStart, 1};
+        }
+
+        size_t position() const {
+            return static_cast<size_t>(current_ - start_);
+        }
+
+        size_t remaining() const {
+            return static_cast<size_t>(end_ - current_);
+        }
+
+    private:
+        void skipWhitespace() {
+            while (current_ < end_ && (*current_ == ' ' || *current_ == '\t' || *current_ == '\n')) {
+                ++current_;
+            }
+        }
+
+        static bool isIdentifierStart(char c) {
+            return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_';
+        }
+
+        static bool isIdentifierChar(char c) {
+            return isIdentifierStart(c) || isDigit(c);
+        }
+
+        static bool isDigit(char c) {
+            return c >= '0' && c <= '9';
+        }
+
+        const char* current_;
+        const char* end_;
+        const char* start_;
+    };
+
+    void parseExpression(const char* input) {
+        size_t len = app::memory::safeStrlen(input);
+        Tokenizer tokenizer(input, len);
+
+        app::memory::BufferView<const char> view(input, len);
+        const char* ptr = view.begin();
+        const char* endPtr = view.end();
+
+        while (ptr < endPtr) {
+            Token token = tokenizer.nextToken();
+            if (token.type == Token::Type::EndOfInput) break;
+
+            std::cout << "Token at position " << tokenizer.position()
+                      << ", remaining: " << tokenizer.remaining() << "\n";
         }
     }
+
+    }
+
+    int main() {
+        app::parser::parseExpression("x + 42 * y");
+        return 0;
+    }
+
 assertions:
   must_include:
-  - parse
-  - safe_strlen
+    - Tokenizer
+    - nextToken
+    - parseExpression
+    - BufferView
+    - safeStrlen
+    - position
+    - remaining
   must_not_include:
-  - garbage_marker_12345
-  - unused_marker_67890
+    - GARBAGE_CPP_COMPRESS_242_001
+    - GARBAGE_CPP_COMPRESS_LEVEL_242_002
+    - GARBAGE_CPP_COMPRESS_CLASS_242_003
+    - GARBAGE_CPP_COMPRESS_METHOD_242_004
+    - GARBAGE_CPP_COMPRESS_IMPL_242_005
+    - GARBAGE_CPP_COMPRESS_DECOMPRESS_242_006
+    - GARBAGE_CPP_COMPRESS_DECOMP_IMPL_242_007
+    - GARBAGE_CPP_IMAGE_242_008
+    - GARBAGE_CPP_IMAGE_FILTER_242_009
+    - GARBAGE_CPP_IMAGE_APPLY_242_010
+    - GARBAGE_CPP_IMAGE_GAUSSIAN_242_011
+    - GARBAGE_CPP_IMAGE_SHARPEN_242_012
+    - GARBAGE_CPP_IMAGE_SHARPEN_IMPL_242_013
+    - CompressionEngine
+    - ImageFilter
+    - applyGaussianBlur
+    - applySharpen
 options:
-  commit_message: Add pointer arithmetic
+  commit_message: Add tokenizer with pointer arithmetic for parsing

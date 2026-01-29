@@ -1,0 +1,16 @@
+name: internals_013_diff_with_unicode_content
+initial:
+  unicode_diff.py: |
+    def placeholder():
+        pass
+changed:
+  unicode_diff.py: |
+    def greet_user():
+        greeting_text = "Привет мир"
+        return greeting_text
+assertions:
+  must_include:
+  - greet_user
+  - greeting_text
+options:
+  add_garbage: true

@@ -1,23 +1,110 @@
 name: docker_514_label
 initial:
+  src/main.py: |
+    import os
+    VERSION = os.environ.get('APP_VERSION', 'unknown')
+    BUILD_DATE = os.environ.get('BUILD_DATE', 'unknown')
+
+    def get_version_info():
+        return {
+            'version': VERSION,
+            'build_date': BUILD_DATE
+        }
+  requirements.txt: |
+    flask==2.3.0
   Dockerfile: |
     FROM python:3.11-slim
-    COPY . .
-  unrelated.py: |
-    garbage_marker_12345 = True
-    unused_marker_67890 = False
+    WORKDIR /app
+    COPY requirements.txt .
+    RUN pip install -r requirements.txt
+    COPY src/ ./src/
+    CMD ["python", "src/main.py"]
+  scripts/build_info.sh: |
+    #!/bin/bash
+    # GARBAGE_DOCKER_514_BUILD_MARKER_001
+    GARBAGE_DOCKER_514_BUILD_VAR_002="info"
+    echo "Build date: $(date)"
+  tests/test_version.py: |
+    # GARBAGE_DOCKER_514_TEST_MARKER_003
+    GARBAGE_DOCKER_514_TEST_VER_004 = {"version": "1.0.0"}
+    def test_version():
+        pass
+  docs/versioning.md: |
+    # Versioning
+    GARBAGE_DOCKER_514_VER_DOC_005
+    GARBAGE_DOCKER_514_SEMVER_006="1.0.0"
+  .github/workflows/release.yml: |
+    # GARBAGE_DOCKER_514_RELEASE_MARKER_007
+    name: Release
+    GARBAGE_DOCKER_514_WORKFLOW_008: release
+  changelog/CHANGELOG.md: |
+    # GARBAGE_DOCKER_514_CHANGELOG_MARKER_009
+    GARBAGE_DOCKER_514_ENTRY_010="v1.0.0"
 changed:
   Dockerfile: |
-    FROM python:3.11-slim
-    LABEL version="1.0" \
-          maintainer="team@example.com" \
-          description="My application"
-    COPY . .
+    FROM python:3.12-slim-bookworm AS base
+
+    # Build arguments for labels
+    ARG VERSION=0.0.0
+    ARG GIT_SHA=unknown
+    ARG BUILD_DATE
+    ARG VCS_URL=https://github.com/org/repo
+
+    # OCI Image Format labels (standard)
+    LABEL org.opencontainers.image.title="My Application" \
+          org.opencontainers.image.description="Production-ready Python application" \
+          org.opencontainers.image.version="${VERSION}" \
+          org.opencontainers.image.revision="${GIT_SHA}" \
+          org.opencontainers.image.created="${BUILD_DATE}" \
+          org.opencontainers.image.source="${VCS_URL}" \
+          org.opencontainers.image.url="${VCS_URL}" \
+          org.opencontainers.image.documentation="${VCS_URL}/blob/main/README.md" \
+          org.opencontainers.image.vendor="My Organization" \
+          org.opencontainers.image.licenses="MIT"
+
+    # Custom application labels
+    LABEL com.myorg.app.component="api" \
+          com.myorg.app.team="platform" \
+          com.myorg.app.tier="backend"
+
+    ENV PYTHONDONTWRITEBYTECODE=1
+    ENV PYTHONUNBUFFERED=1
+
+    FROM base AS dependencies
+    WORKDIR /app
+    COPY requirements.txt .
+    RUN pip install --no-cache-dir -r requirements.txt
+
+    FROM base AS production
+    WORKDIR /app
+
+    COPY --from=dependencies /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
+    COPY --from=dependencies /usr/local/bin /usr/local/bin
+    COPY src/ ./src/
+
+    RUN useradd --create-home appuser
+    USER appuser
+
+    CMD ["python", "src/main.py"]
 assertions:
   must_include:
-  - LABEL
+    - org.opencontainers.image.title
+    - org.opencontainers.image.version
+    - org.opencontainers.image.revision
+    - org.opencontainers.image.created
+    - org.opencontainers.image.source
+    - com.myorg.app.component
+    - com.myorg.app.team
   must_not_include:
-  - garbage_marker_12345
-  - unused_marker_67890
+    - GARBAGE_DOCKER_514_BUILD_MARKER_001
+    - GARBAGE_DOCKER_514_BUILD_VAR_002
+    - GARBAGE_DOCKER_514_TEST_MARKER_003
+    - GARBAGE_DOCKER_514_TEST_VER_004
+    - GARBAGE_DOCKER_514_VER_DOC_005
+    - GARBAGE_DOCKER_514_SEMVER_006
+    - GARBAGE_DOCKER_514_RELEASE_MARKER_007
+    - GARBAGE_DOCKER_514_WORKFLOW_008
+    - GARBAGE_DOCKER_514_CHANGELOG_MARKER_009
+    - GARBAGE_DOCKER_514_ENTRY_010
 options:
-  commit_message: Add LABEL
+  commit_message: Add comprehensive OCI-compliant LABEL metadata

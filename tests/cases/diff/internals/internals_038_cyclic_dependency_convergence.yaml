@@ -1,0 +1,22 @@
+name: internals_038_cyclic_dependency_convergence
+initial:
+  cycle.py: |
+    def placeholder():
+        pass
+changed:
+  cycle.py: |
+    def func_alpha():
+        func_beta()
+
+    def func_beta():
+        func_gamma()
+
+    def func_gamma():
+        func_alpha()
+assertions:
+  must_include:
+  - func_alpha
+  - func_beta
+  - func_gamma
+options:
+  add_garbage: true

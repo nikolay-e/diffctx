@@ -1,0 +1,15 @@
+name: internals_032_thai_in_diff
+initial:
+  thai_diff.py: |
+    x = 0
+changed:
+  thai_diff.py: |
+    # ภาษาไทยไม่มีช่องว่าง
+    result = calculate_sum(values)
+    output = format_result(result)
+assertions:
+  must_include:
+  - calculate_sum
+  - format_result
+options:
+  add_garbage: true

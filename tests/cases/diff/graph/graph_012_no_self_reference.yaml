@@ -1,0 +1,163 @@
+name: graph_012_no_self_reference
+initial:
+  module.py: |
+    def func():
+        if should_recurse():
+            return func()
+        return base_case()
+
+    def should_recurse():
+        return False
+
+    def base_case():
+        return 0
+
+    class RecursiveProcessor:
+        def process(self, data, depth=0):
+            if depth > 10:
+                return self.finalize(data)
+            transformed = self.transform(data)
+            return self.process(transformed, depth + 1)
+
+        def transform(self, data):
+            return data * 2
+
+        def finalize(self, data):
+            return {"result": data}
+  recursive_utils.py: |
+    def factorial(n):
+        if n <= 1:
+            return 1
+        return n * factorial(n - 1)
+
+    def fibonacci(n):
+        if n <= 1:
+            return n
+        return fibonacci(n - 1) + fibonacci(n - 2)
+
+    def gcd(a, b):
+        if b == 0:
+            return a
+        return gcd(b, a % b)
+
+    def binary_search(arr, target, low, high):
+        if low > high:
+            return -1
+        mid = (low + high) // 2
+        if arr[mid] == target:
+            return mid
+        elif arr[mid] < target:
+            return binary_search(arr, target, mid + 1, high)
+        else:
+            return binary_search(arr, target, low, mid - 1)
+  tree_traversal.py: |
+    class TreeNode:
+        def __init__(self, value):
+            self.value = value
+            self.left = None
+            self.right = None
+
+    def inorder(node, result=None):
+        if result is None:
+            result = []
+        if node:
+            inorder(node.left, result)
+            result.append(node.value)
+            inorder(node.right, result)
+        return result
+
+    def preorder(node, result=None):
+        if result is None:
+            result = []
+        if node:
+            result.append(node.value)
+            preorder(node.left, result)
+            preorder(node.right, result)
+        return result
+
+    def postorder(node, result=None):
+        if result is None:
+            result = []
+        if node:
+            postorder(node.left, result)
+            postorder(node.right, result)
+            result.append(node.value)
+        return result
+  garbage/recursive_garbage_GARBAGE_GRAPH_hij001.py: |
+    def ackermann_GARBAGE_GRAPH_hij001(m, n):
+        if m == 0:
+            return n + 1
+        elif n == 0:
+            return ackermann_GARBAGE_GRAPH_hij001(m - 1, 1)
+        else:
+            return ackermann_GARBAGE_GRAPH_hij001(m - 1, ackermann_GARBAGE_GRAPH_hij001(m, n - 1))
+
+    def tower_of_hanoi_GARBAGE_GRAPH_hij001(n, source, target, auxiliary):
+        if n == 1:
+            return [(source, target)]
+        moves = []
+        moves.extend(tower_of_hanoi_GARBAGE_GRAPH_hij001(n - 1, source, auxiliary, target))
+        moves.append((source, target))
+        moves.extend(tower_of_hanoi_GARBAGE_GRAPH_hij001(n - 1, auxiliary, target, source))
+        return moves
+  garbage/mutual_recursion_GARBAGE_GRAPH_hij002.py: |
+    def is_even_GARBAGE_GRAPH_hij002(n):
+        if n == 0:
+            return True
+        return is_odd_GARBAGE_GRAPH_hij002(n - 1)
+
+    def is_odd_GARBAGE_GRAPH_hij002(n):
+        if n == 0:
+            return False
+        return is_even_GARBAGE_GRAPH_hij002(n - 1)
+  garbage/nested_recursion_GARBAGE_GRAPH_hij003.py: |
+    def nested_recurse_GARBAGE_GRAPH_hij003(n):
+        if n <= 0:
+            return 1
+        return nested_recurse_GARBAGE_GRAPH_hij003(nested_recurse_GARBAGE_GRAPH_hij003(n - 1) - 1)
+changed:
+  module.py: |
+    def func():
+        if should_recurse():
+            return func()
+        return base_case()
+
+    def should_recurse():
+        return False
+
+    def base_case():
+        return 0
+
+    def memoized_func(n, cache=None):
+        if cache is None:
+            cache = {}
+        if n in cache:
+            return cache[n]
+        result = func()
+        cache[n] = result
+        return result
+
+    class RecursiveProcessor:
+        def process(self, data, depth=0):
+            if depth > 10:
+                return self.finalize(data)
+            transformed = self.transform(data)
+            return self.process(transformed, depth + 1)
+
+        def transform(self, data):
+            return data * 2
+
+        def finalize(self, data):
+            return {"result": data}
+assertions:
+  must_include:
+  - func
+  must_not_include:
+  - GARBAGE_GRAPH_hij001
+  - GARBAGE_GRAPH_hij002
+  - GARBAGE_GRAPH_hij003
+  - ackermann
+  - tower_of_hanoi
+  - is_even_GARBAGE
+  - is_odd_GARBAGE
+  - nested_recurse

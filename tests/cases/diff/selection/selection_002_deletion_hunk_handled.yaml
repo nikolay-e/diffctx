@@ -1,0 +1,100 @@
+name: selection_002_deletion_hunk_handled
+initial:
+  delete_test.py: |
+    def func1():
+        func1_marker = "func1_important"
+        return func1_marker
+
+    def func2_to_delete():
+        x = 1
+        y = 2
+        delete_marker = "this_will_be_deleted"
+        return x + y
+
+    def func3():
+        func3_marker = "func3_important"
+        return func3_marker
+
+    def func4_unchanged():
+        unchanged_value = 42
+        return unchanged_value
+
+    def func5_unchanged():
+        another_unchanged = 99
+        return another_unchanged
+
+  support_module.py: |
+    def support_helper_alpha():
+        return "support_alpha_value"
+
+    def support_helper_beta():
+        return "support_beta_value"
+
+    def support_helper_gamma():
+        return "support_gamma_value"
+
+  garbage_sel_002_file.py: |
+    def GARBAGE_SEL_002_func_one():
+        return "GARBAGE_SEL_002_marker_one"
+
+    def GARBAGE_SEL_002_func_two():
+        return "GARBAGE_SEL_002_marker_two"
+
+    def GARBAGE_SEL_002_func_three():
+        return "GARBAGE_SEL_002_marker_three"
+
+    class GARBAGE_SEL_002_Handler:
+        def handle_garbage(self):
+            return "GARBAGE_SEL_002_handler_result"
+
+        def process_garbage(self):
+            return "GARBAGE_SEL_002_process_result"
+
+  garbage_sel_002_constants.py: |
+    GARBAGE_SEL_002_CONST_ONE = "garbage_sel_002_const_one_value"
+    GARBAGE_SEL_002_CONST_TWO = "garbage_sel_002_const_two_value"
+    GARBAGE_SEL_002_CONST_THREE = "garbage_sel_002_const_three_value"
+    GARBAGE_SEL_002_CONST_FOUR = "garbage_sel_002_const_four_value"
+
+    def GARBAGE_SEL_002_util_func():
+        return "GARBAGE_SEL_002_util_result"
+
+changed:
+  delete_test.py: |
+    def func1():
+        func1_marker = "func1_important"
+        return func1_marker
+
+    def func3():
+        func3_marker = "func3_important"
+        return func3_marker
+
+    def func4_unchanged():
+        unchanged_value = 42
+        return unchanged_value
+
+    def func5_unchanged():
+        another_unchanged = 99
+        return another_unchanged
+
+assertions:
+  must_include:
+    - func1
+  must_not_include:
+    - func2_to_delete
+    - this_will_be_deleted
+    - GARBAGE_SEL_002_func_one
+    - GARBAGE_SEL_002_func_two
+    - GARBAGE_SEL_002_func_three
+    - GARBAGE_SEL_002_marker_one
+    - GARBAGE_SEL_002_marker_two
+    - GARBAGE_SEL_002_Handler
+    - GARBAGE_SEL_002_handler_result
+    - GARBAGE_SEL_002_process_result
+    - GARBAGE_SEL_002_CONST_ONE
+    - GARBAGE_SEL_002_CONST_TWO
+    - garbage_sel_002_const_one_value
+    - GARBAGE_SEL_002_util_func
+    - GARBAGE_SEL_002_util_result
+    - garbage_sel_002_file.py
+    - garbage_sel_002_constants.py

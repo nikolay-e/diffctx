@@ -1,0 +1,21 @@
+name: config_002_new_config_key_added
+initial:
+  config.yaml: |
+    app:
+      name: MyApp
+      debug: false
+  checkout/views.py: |
+    def checkout():
+        return "Standard checkout"
+changed:
+  config.yaml: |
+    app:
+      name: MyApp
+      debug: false
+    feature_flags:
+      new_checkout: true
+assertions:
+  must_include:
+  - config.yaml
+options:
+  commit_message: Add feature flag

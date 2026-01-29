@@ -1,0 +1,14 @@
+name: internals_023_cyrillic_in_diff
+initial:
+  cyrillic_diff.py: |
+    x = 0
+changed:
+  cyrillic_diff.py: |
+    # Cyrillic а vs Latin a
+    vаr_cyrillic = 1
+    var_latin = 2
+assertions:
+  must_include:
+  - var_latin
+options:
+  add_garbage: true

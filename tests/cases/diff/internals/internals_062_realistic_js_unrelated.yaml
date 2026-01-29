@@ -1,0 +1,111 @@
+name: internals_062_realistic_js_unrelated
+initial:
+  src/api/users.js: |
+    export function fetchUserProfile(userId) {
+        return { id: userId, status: 'active' };
+    }
+
+    export function updateUserPreferences(userId, prefs) {
+        return { ...prefs, userId };
+    }
+
+  utils/stringHelpers.js: |
+    const STRING_HELPER_MARKER_QWE123 = 'string_utils';
+
+    export function capitalizeFirstLetter(str) {
+        const CAPITALIZE_MARKER_RTY456 = true;
+        if (!str) return str;
+        return str.charAt(0).toUpperCase() + str.slice(1);
+    }
+
+    export function truncateWithEllipsis(str, maxLength) {
+        const TRUNCATE_MARKER_UIO789 = true;
+        if (str.length <= maxLength) return str;
+        return str.slice(0, maxLength - 3) + '...';
+    }
+
+    export class StringFormatter {
+        static FORMATTER_MARKER_ASD012 = 'formatter';
+
+        static toCamelCase(str) {
+            return str.replace(/-./g, x => x[1].toUpperCase());
+        }
+
+        static toSnakeCase(str) {
+            return str.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
+        }
+    }
+
+  utils/dateHelpers.js: |
+    const DATE_HELPER_MARKER_FGH345 = 'date_utils';
+
+    export function formatDateISO(date) {
+        const FORMAT_ISO_MARKER_JKL678 = true;
+        return date.toISOString().split('T')[0];
+    }
+
+    export function addDaysToDate(date, days) {
+        const ADD_DAYS_MARKER_ZXC901 = true;
+        const result = new Date(date);
+        result.setDate(result.getDate() + days);
+        return result;
+    }
+
+    export function calculateDaysBetween(start, end) {
+        const CALC_DAYS_MARKER_VBN234 = true;
+        const diffTime = Math.abs(end - start);
+        return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    }
+
+    export class DateRangeValidator {
+        static VALIDATOR_MARKER_MNB567 = 'validator';
+
+        static isValidRange(start, end) {
+            return start < end;
+        }
+    }
+
+changed:
+  src/api/users.js: |
+    export function fetchUserProfile(userId) {
+        if (!userId || userId <= 0) {
+            throw new Error('Invalid userId');
+        }
+        return { id: userId, status: 'active', fetchedAt: new Date() };
+    }
+
+    export function updateUserPreferences(userId, prefs) {
+        if (!prefs || typeof prefs !== 'object') {
+            throw new Error('Invalid preferences');
+        }
+        return { ...prefs, userId, updatedAt: new Date() };
+    }
+
+assertions:
+  must_include:
+    - fetchUserProfile
+    - updateUserPreferences
+    - Invalid userId
+
+  must_not_include:
+    - STRING_HELPER_MARKER_QWE123
+    - CAPITALIZE_MARKER_RTY456
+    - TRUNCATE_MARKER_UIO789
+    - FORMATTER_MARKER_ASD012
+    - DATE_HELPER_MARKER_FGH345
+    - FORMAT_ISO_MARKER_JKL678
+    - ADD_DAYS_MARKER_ZXC901
+    - CALC_DAYS_MARKER_VBN234
+    - VALIDATOR_MARKER_MNB567
+    - capitalizeFirstLetter
+    - truncateWithEllipsis
+    - StringFormatter
+    - formatDateISO
+    - addDaysToDate
+    - calculateDaysBetween
+    - DateRangeValidator
+
+options:
+  commit_message: "Add validation to user API"
+  add_garbage: false
+  skip_garbage_check: true

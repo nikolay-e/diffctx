@@ -1,0 +1,32 @@
+name: ppr_regression_011_normalization_sum_to_one
+initial:
+  mod0.py: |
+    def func0():
+        return 0
+  mod1.py: |
+    def func1():
+        return 1
+  mod2.py: |
+    def func2():
+        return 2
+  mod3.py: |
+    def func3():
+        return 3
+  mod4.py: |
+    def func4():
+        return 4
+changed:
+  mod0.py: |
+    def func0():
+        return 100
+  mod2.py: |
+    def func2():
+        return 200
+assertions:
+  must_include:
+  - func0
+  - func2
+  - "100"
+  - "200"
+options:
+  commit_message: Modify multiple modules

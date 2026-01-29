@@ -5,14 +5,25 @@ from typing import TYPE_CHECKING
 
 from .base import EdgeBuilder, EdgeDict
 from .config import get_config_builders
+from .document import get_document_builders
+from .history import get_history_builders
 from .semantic import get_semantic_builders
+from .similarity import get_similarity_builders
+from .structural import get_structural_builders
 
 if TYPE_CHECKING:
     from ..types import Fragment
 
 
 def get_all_builders() -> list[EdgeBuilder]:
-    all_builder_classes = get_config_builders() + get_semantic_builders()
+    all_builder_classes = (
+        get_config_builders()
+        + get_semantic_builders()
+        + get_structural_builders()
+        + get_document_builders()
+        + get_similarity_builders()
+        + get_history_builders()
+    )
     return [cls() for cls in all_builder_classes]
 
 
@@ -36,4 +47,16 @@ def discover_all_related_files(
     return list(discovered)
 
 
-__all__ = ["EdgeBuilder", "EdgeDict", "collect_all_edges", "discover_all_related_files", "get_all_builders"]
+__all__ = [
+    "EdgeBuilder",
+    "EdgeDict",
+    "collect_all_edges",
+    "discover_all_related_files",
+    "get_all_builders",
+    "get_config_builders",
+    "get_document_builders",
+    "get_history_builders",
+    "get_semantic_builders",
+    "get_similarity_builders",
+    "get_structural_builders",
+]

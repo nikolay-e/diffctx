@@ -1,0 +1,32 @@
+name: helm_063_chart_yaml_dependencies
+initial:
+  chart/Chart.yaml: |
+    apiVersion: v2
+    name: myapp
+    version: 1.0.0
+    dependencies:
+      - name: postgresql
+        version: "12.1.0"
+        repository: https://charts.bitnami.com/bitnami
+  src/db.py: |
+    import psycopg2
+
+    def get_connection():
+        return psycopg2.connect(host="postgresql", database="myapp")
+changed:
+  chart/Chart.yaml: |
+    apiVersion: v2
+    name: myapp
+    version: 1.1.0
+    dependencies:
+      - name: postgresql
+        version: "13.0.0"
+        repository: https://charts.bitnami.com/bitnami
+      - name: redis
+        version: "17.0.0"
+        repository: https://charts.bitnami.com/bitnami
+assertions:
+  must_include:
+    - psycopg2
+options:
+  commit_message: add redis dependency

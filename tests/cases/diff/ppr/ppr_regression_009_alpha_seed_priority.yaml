@@ -1,0 +1,24 @@
+name: ppr_regression_009_alpha_seed_priority
+initial:
+  seed.py: |
+    COMMON_VALUE = 1
+
+    def seed_func():
+        return COMMON_VALUE
+  far.py: |
+    COMMON_VALUE = 2
+
+    def far_func():
+        return COMMON_VALUE
+changed:
+  seed.py: |
+    COMMON_VALUE = 1
+
+    def seed_func():
+        return COMMON_VALUE + 100
+assertions:
+  must_include:
+  - seed_func
+  - "COMMON_VALUE + 100"
+options:
+  commit_message: Modify seed function

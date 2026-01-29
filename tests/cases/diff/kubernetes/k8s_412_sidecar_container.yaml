@@ -1,54 +1,176 @@
 name: k8s_412_sidecar_container
 initial:
-  fluent-bit.conf: |
+  config/fluent-bit.conf: |
+    [SERVICE]
+        Flush         5
+        Daemon        Off
+        Log_Level     info
+
     [INPUT]
-        Name tail
-        Path /var/log/app/*.log
+        Name              tail
+        Path              /var/log/app/*.log
+        Tag               app.logs
+        Refresh_Interval  5
+
     [OUTPUT]
-        Name stdout
-  deployment.yaml: |
+        Name          stdout
+        Match         *
+
+  k8s/apps/backend/deployment.yaml: |
     apiVersion: apps/v1
     kind: Deployment
     metadata:
-      name: myapp
+      name: backend-service
+      namespace: production
+      labels:
+        app: backend-service
+        tier: backend
     spec:
+      replicas: 3
+      selector:
+        matchLabels:
+          app: backend-service
       template:
+        metadata:
+          labels:
+            app: backend-service
+            tier: backend
         spec:
           containers:
-          - name: app
-            image: myapp:latest
-  unrelated.txt: |
-    garbage_marker_k8s412 = True
-    unused_marker_k8s412 = False
+          - name: backend
+            image: backend-service:v2.0.0
+            ports:
+            - containerPort: 8080
+            env:
+            - name: LOG_FORMAT
+              value: "json"
+            - name: LOG_PATH
+              value: "/var/log/app"
+            resources:
+              requests:
+                memory: "256Mi"
+                cpu: "250m"
+              limits:
+                memory: "512Mi"
+                cpu: "500m"
+
+  k8s/apps/backend/service.yaml: |
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: backend-service
+      namespace: production
+    spec:
+      selector:
+        app: backend-service
+      ports:
+      - port: 80
+        targetPort: 8080
+
+  k8s/unrelated/opentelemetry/collector.yaml: |
+    # GARBAGE_K8S_412_OTEL_COLLECTOR
+    apiVersion: opentelemetry.io/v1alpha1
+    kind: OpenTelemetryCollector
+    metadata:
+      name: GARBAGE_K8S_412_COLLECTOR_NAME
+    spec:
+      mode: GARBAGE_K8S_412_MODE
+      config: |
+        receivers:
+          otlp:
+            protocols:
+              grpc:
+                endpoint: GARBAGE_K8S_412_GRPC_ENDPOINT
+
+  k8s/unrelated/jaeger/jaeger-instance.yaml: |
+    # GARBAGE_K8S_412_JAEGER_INSTANCE
+    apiVersion: jaegertracing.io/v1
+    kind: Jaeger
+    metadata:
+      name: GARBAGE_K8S_412_JAEGER_NAME
+    spec:
+      strategy: GARBAGE_K8S_412_STRATEGY
+      storage:
+        type: GARBAGE_K8S_412_STORAGE_TYPE
+
 changed:
-  deployment.yaml: |
+  k8s/apps/backend/deployment.yaml: |
     apiVersion: apps/v1
     kind: Deployment
     metadata:
-      name: myapp
+      name: backend-service
+      namespace: production
+      labels:
+        app: backend-service
+        tier: backend
     spec:
+      replicas: 3
+      selector:
+        matchLabels:
+          app: backend-service
       template:
+        metadata:
+          labels:
+            app: backend-service
+            tier: backend
         spec:
           containers:
-          - name: app
-            image: myapp:latest
+          - name: backend
+            image: backend-service:v2.0.0
+            ports:
+            - containerPort: 8080
+            env:
+            - name: LOG_FORMAT
+              value: "json"
+            - name: LOG_PATH
+              value: "/var/log/app"
             volumeMounts:
-            - name: logs
+            - name: shared-logs
               mountPath: /var/log/app
-          - name: log-agent
-            image: fluent/fluent-bit:latest
+            resources:
+              requests:
+                memory: "256Mi"
+                cpu: "250m"
+              limits:
+                memory: "512Mi"
+                cpu: "500m"
+          - name: log-shipper
+            image: fluent/fluent-bit:2.1
             volumeMounts:
-            - name: logs
+            - name: shared-logs
               mountPath: /var/log/app
               readOnly: true
+            - name: fluent-bit-config
+              mountPath: /fluent-bit/etc
+            resources:
+              requests:
+                memory: "64Mi"
+                cpu: "50m"
+              limits:
+                memory: "128Mi"
+                cpu: "100m"
           volumes:
-          - name: logs
+          - name: shared-logs
             emptyDir: {}
+          - name: fluent-bit-config
+            configMap:
+              name: fluent-bit-config
+
 assertions:
   must_include:
-  - log-agent
+  - log-shipper
+  - fluent/fluent-bit
+  - shared-logs
+  - emptyDir
+  - fluent-bit-config
   must_not_include:
-  - garbage_marker_k8s412
-  - unused_marker_k8s412
+  - GARBAGE_K8S_412_OTEL_COLLECTOR
+  - GARBAGE_K8S_412_COLLECTOR_NAME
+  - GARBAGE_K8S_412_MODE
+  - GARBAGE_K8S_412_GRPC_ENDPOINT
+  - GARBAGE_K8S_412_JAEGER_INSTANCE
+  - GARBAGE_K8S_412_JAEGER_NAME
+  - GARBAGE_K8S_412_STRATEGY
+  - GARBAGE_K8S_412_STORAGE_TYPE
 options:
-  commit_message: Add sidecar container
+  commit_message: Add Fluent Bit log shipper sidecar container

@@ -1,0 +1,51 @@
+name: pytest_parametrize_002_edge_cases
+initial:
+  src/validator.py: |
+    import re
+
+    def validate_email(email: str) -> bool:
+        pattern = r'^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$'
+        return bool(re.match(pattern, email))
+
+    def validate_phone(phone: str) -> bool:
+        return phone.isdigit() and 10 <= len(phone) <= 15
+
+    def validate_username(username: str) -> bool:
+        return len(username) >= 3 and username.isalnum()
+  tests/test_validator.py: |
+    from src.validator import validate_email
+
+    def test_email_valid():
+        assert validate_email("test@example.com")
+changed:
+  tests/test_validator.py: |
+    import pytest
+    from src.validator import validate_email, validate_phone
+
+    @pytest.mark.parametrize("email,expected", [
+        ("test@example.com", True),
+        ("user.name+tag@domain.co.uk", True),
+        ("invalid", False),
+        ("missing@domain", False),
+        ("@nodomain.com", False),
+        ("spaces in@email.com", False),
+        ("", False),
+    ])
+    def test_email_validation(email, expected):
+        assert validate_email(email) == expected
+
+    @pytest.mark.parametrize("phone,expected", [
+        ("1234567890", True),
+        ("12345678901234", True),
+        ("123", False),
+        ("12345678901234567", False),
+        ("123-456-7890", False),
+        ("phone123", False),
+    ])
+    def test_phone_validation(phone, expected):
+        assert validate_phone(phone) == expected
+assertions:
+  must_include:
+  - validator
+options:
+  commit_message: Add comprehensive parametrized validation tests

@@ -1,0 +1,89 @@
+name: fragments_031_partial_syntax_error_graceful
+initial:
+  partial_broken.py: |
+    import sys
+    from typing import Optional
+
+    def unrelated_before_valid_031():
+        return "GARBAGE_FRAG_beforevalid031"
+
+    class UnrelatedClassBefore031:
+        MARKER = "GARBAGE_FRAG_classbefore031"
+
+        def method_before(self):
+            return "GARBAGE_FRAG_methodbefore031"
+
+    def valid_function():
+        return 42
+
+    def unrelated_between_031():
+        return "GARBAGE_FRAG_between031"
+
+    class BrokenClass
+        def method(self):
+            pass
+
+    def unrelated_after_broken_031():
+        return "GARBAGE_FRAG_afterbroken031"
+
+    class UnrelatedClassAfter031:
+        VALUE = "GARBAGE_FRAG_classafter031"
+  garbage_partial_031.py: |
+    def garbage_partial_func():
+        return "GARBAGE_FRAG_partialfunc031"
+
+    class GarbagePartial031:
+        CONST = "GARBAGE_FRAG_partialclass031"
+
+    GARBAGE_PARTIAL_CONST = "GARBAGE_FRAG_partialconst031"
+changed:
+  partial_broken.py: |
+    import sys
+    from typing import Optional
+
+    def unrelated_before_valid_031():
+        return "GARBAGE_FRAG_beforevalid031"
+
+    class UnrelatedClassBefore031:
+        MARKER = "GARBAGE_FRAG_classbefore031"
+
+        def method_before(self):
+            return "GARBAGE_FRAG_methodbefore031"
+
+    def valid_function():
+        return 100
+
+    def unrelated_between_031():
+        return "GARBAGE_FRAG_between031"
+
+    class BrokenClass
+        def method(self):
+            pass
+
+    def unrelated_after_broken_031():
+        return "GARBAGE_FRAG_afterbroken031"
+
+    class UnrelatedClassAfter031:
+        VALUE = "GARBAGE_FRAG_classafter031"
+assertions:
+  must_include:
+    - valid_function
+  must_not_include:
+    - GARBAGE_FRAG_beforevalid031
+    - GARBAGE_FRAG_classbefore031
+    - GARBAGE_FRAG_methodbefore031
+    - GARBAGE_FRAG_between031
+    - GARBAGE_FRAG_afterbroken031
+    - GARBAGE_FRAG_classafter031
+    - GARBAGE_FRAG_partialfunc031
+    - GARBAGE_FRAG_partialclass031
+    - GARBAGE_FRAG_partialconst031
+    - garbage_partial_031.py
+    - unrelated_before_valid_031
+    - unrelated_between_031
+    - unrelated_after_broken_031
+    - UnrelatedClassBefore031
+    - UnrelatedClassAfter031
+    - GarbagePartial031
+options:
+  commit_message: Modify valid function

@@ -1,0 +1,30 @@
+name: yaml_010_email_config
+initial:
+  config/email.yaml: |
+    email:
+      smtp_host: localhost
+      smtp_port: 25
+      from_address: noreply@example.com
+  src/mailer.py: |
+    import smtplib
+
+    class Mailer:
+        def __init__(self, host: str, port: int, from_addr: str):
+            self.host = host
+            self.port = port
+            self.from_addr = from_addr
+
+        def send(self, to: str, subject: str, body: str):
+            pass
+changed:
+  config/email.yaml: |
+    email:
+      smtp_host: smtp.sendgrid.net
+      smtp_port: 587
+      from_address: noreply@example.com
+      use_tls: true
+assertions:
+  must_include:
+    - Mailer
+options:
+  commit_message: update smtp config

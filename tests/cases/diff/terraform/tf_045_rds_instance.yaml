@@ -1,0 +1,28 @@
+name: tf_045_rds_instance
+initial:
+  rds.tf: |
+    resource "aws_db_instance" "main" {
+      identifier        = "mydb"
+      engine            = "postgres"
+      instance_class    = "db.t3.micro"
+      allocated_storage = 20
+    }
+  src/db.py: |
+    import psycopg2
+
+    def connect():
+        return psycopg2.connect(host="mydb.example.com", database="mydb")
+changed:
+  rds.tf: |
+    resource "aws_db_instance" "main" {
+      identifier        = "mydb"
+      engine            = "postgres"
+      engine_version    = "15.4"
+      instance_class    = "db.t3.medium"
+      allocated_storage = 50
+    }
+assertions:
+  must_include:
+    - psycopg2
+options:
+  commit_message: upgrade rds

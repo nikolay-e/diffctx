@@ -1,0 +1,27 @@
+name: yaml_016_pagination_config
+initial:
+  config/api.yaml: |
+    pagination:
+      default_limit: 20
+      max_limit: 100
+  src/pagination.py: |
+    class Paginator:
+        def __init__(self, default_limit: int = 20, max_limit: int = 100):
+            self.default_limit = default_limit
+            self.max_limit = max_limit
+
+        def paginate(self, query, page: int, limit: int = None):
+            limit = min(limit or self.default_limit, self.max_limit)
+            offset = (page - 1) * limit
+            return query.offset(offset).limit(limit)
+changed:
+  config/api.yaml: |
+    pagination:
+      default_limit: 50
+      max_limit: 200
+      cursor_based: true
+assertions:
+  must_include:
+    - Paginator
+options:
+  commit_message: increase pagination limits

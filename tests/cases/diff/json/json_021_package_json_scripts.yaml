@@ -1,0 +1,32 @@
+name: json_021_package_json_scripts
+initial:
+  package.json: |
+    {
+      "name": "myapp",
+      "scripts": {
+        "build": "webpack",
+        "test": "jest"
+      }
+    }
+  webpack.config.js: |
+    module.exports = {
+      entry: './src/index.js',
+      output: {
+        filename: 'bundle.js'
+      }
+    };
+changed:
+  package.json: |
+    {
+      "name": "myapp",
+      "scripts": {
+        "build": "webpack --mode production",
+        "test": "jest --coverage",
+        "lint": "eslint src"
+      }
+    }
+assertions:
+  must_include:
+    - module.exports
+options:
+  commit_message: update build script

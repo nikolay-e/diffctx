@@ -1,48 +1,450 @@
 name: rust_024_async_await
 initial:
+  src/lib.rs: |
+    pub mod async_service;
+    pub mod unrelated;
   src/async_service.rs: |
-    pub async fn fetch_data(url: &str) -> Result<String, Error> {
-        let response = reqwest::get(url).await?;
-        response.text().await
+    use std::time::Duration;
+    use std::future::Future;
+    use std::pin::Pin;
+    use std::task::{Context, Poll};
+
+    #[derive(Debug, Clone)]
+    pub struct RequestConfig {
+        pub timeout: Duration,
+        pub max_retries: u32,
+        pub base_url: String,
     }
 
-    pub struct Error;
-  src/main.rs: |
-    mod async_service;
+    impl Default for RequestConfig {
+        fn default() -> Self {
+            Self {
+                timeout: Duration::from_secs(30),
+                max_retries: 3,
+                base_url: String::from("https://api.example.com"),
+            }
+        }
+    }
 
-    #[tokio::main]
-    async fn main() {
-        let data = async_service::fetch_data("http://example.com").await;
-        println!("{:?}", data);
+    #[derive(Debug)]
+    pub enum FetchError {
+        NetworkError(String),
+        Timeout,
+        InvalidResponse,
+    }
+
+    impl std::fmt::Display for FetchError {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            match self {
+                FetchError::NetworkError(msg) => write!(f, "Network error: {}", msg),
+                FetchError::Timeout => write!(f, "Request timed out"),
+                FetchError::InvalidResponse => write!(f, "Invalid response"),
+            }
+        }
+    }
+
+    impl std::error::Error for FetchError {}
+
+    pub async fn fetch_data(url: &str) -> Result<String, FetchError> {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        Ok(format!("Response from {}", url))
+    }
+
+    pub struct AsyncClient {
+        config: RequestConfig,
+    }
+
+    impl AsyncClient {
+        pub fn new(config: RequestConfig) -> Self {
+            Self { config }
+        }
+
+        pub async fn get(&self, path: &str) -> Result<String, FetchError> {
+            let url = format!("{}{}", self.config.base_url, path);
+            fetch_data(&url).await
+        }
+    }
+  src/unrelated/mod.rs: |
+    pub mod compression;
+    pub mod serialization;
+    pub mod validation;
+  src/unrelated/compression.rs: |
+    // GARBAGE_RUST_COMPRESS_async001
+    use std::io::{Read, Write};
+
+    pub const GARBAGE_COMPRESSION_LEVEL_async002: u8 = 9;
+    pub const GARBAGE_BUFFER_SIZE_async003: usize = 65536;
+    pub const GARBAGE_MAGIC_HEADER_async004: &[u8] = b"GZIP";
+
+    pub trait GarbageCompressor_async005 {
+        fn garbage_compress_async006(&self, data: &[u8]) -> Result<Vec<u8>, String>;
+        fn garbage_decompress_async007(&self, data: &[u8]) -> Result<Vec<u8>, String>;
+        fn garbage_compression_ratio_async008(&self) -> f64;
+    }
+
+    pub struct GarbageGzipCompressor_async009 {
+        level: u8,
+        buffer: Vec<u8>,
+    }
+
+    impl GarbageGzipCompressor_async009 {
+        pub fn garbage_new_async010(level: u8) -> Self {
+            Self {
+                level,
+                buffer: Vec::with_capacity(GARBAGE_BUFFER_SIZE_async003),
+            }
+        }
+
+        pub fn garbage_set_level_async011(&mut self, level: u8) {
+            self.level = level.min(GARBAGE_COMPRESSION_LEVEL_async002);
+        }
+
+        fn garbage_internal_compress_async012(&self, chunk: &[u8]) -> Vec<u8> {
+            chunk.iter().map(|b| b.wrapping_add(1)).collect()
+        }
+    }
+
+    impl GarbageCompressor_async005 for GarbageGzipCompressor_async009 {
+        fn garbage_compress_async006(&self, data: &[u8]) -> Result<Vec<u8>, String> {
+            Ok(self.garbage_internal_compress_async012(data))
+        }
+
+        fn garbage_decompress_async007(&self, data: &[u8]) -> Result<Vec<u8>, String> {
+            Ok(data.iter().map(|b| b.wrapping_sub(1)).collect())
+        }
+
+        fn garbage_compression_ratio_async008(&self) -> f64 {
+            0.75
+        }
+    }
+
+    pub struct GarbageLz4Compressor_async013 {
+        acceleration: u32,
+    }
+
+    impl GarbageLz4Compressor_async013 {
+        pub fn garbage_new_fast_async014() -> Self {
+            Self { acceleration: 1 }
+        }
+
+        pub fn garbage_new_high_async015(acceleration: u32) -> Self {
+            Self { acceleration }
+        }
+    }
+  src/unrelated/serialization.rs: |
+    // GARBAGE_RUST_SERIAL_async016
+    use std::collections::HashMap;
+
+    pub const GARBAGE_MAX_DEPTH_async017: usize = 64;
+    pub const GARBAGE_MAX_STRING_LEN_async018: usize = 1048576;
+
+    #[derive(Debug, Clone)]
+    pub enum GarbageValue_async019 {
+        Null,
+        Bool(bool),
+        Number(f64),
+        String(String),
+        Array(Vec<GarbageValue_async019>),
+        Object(HashMap<String, GarbageValue_async019>),
+    }
+
+    pub trait GarbageSerializer_async020 {
+        fn garbage_serialize_async021(&self, value: &GarbageValue_async019) -> Result<Vec<u8>, String>;
+        fn garbage_deserialize_async022(&self, data: &[u8]) -> Result<GarbageValue_async019, String>;
+    }
+
+    pub struct GarbageJsonSerializer_async023 {
+        pretty_print: bool,
+        indent: usize,
+    }
+
+    impl GarbageJsonSerializer_async023 {
+        pub fn garbage_new_async024(pretty_print: bool) -> Self {
+            Self {
+                pretty_print,
+                indent: 2,
+            }
+        }
+
+        pub fn garbage_set_indent_async025(&mut self, indent: usize) {
+            self.indent = indent;
+        }
+
+        fn garbage_escape_string_async026(&self, s: &str) -> String {
+            s.replace('\\', "\\\\").replace('"', "\\\"")
+        }
+    }
+
+    impl GarbageSerializer_async020 for GarbageJsonSerializer_async023 {
+        fn garbage_serialize_async021(&self, value: &GarbageValue_async019) -> Result<Vec<u8>, String> {
+            Err("GARBAGE_NOT_IMPLEMENTED_async027".to_string())
+        }
+
+        fn garbage_deserialize_async022(&self, data: &[u8]) -> Result<GarbageValue_async019, String> {
+            Err("GARBAGE_NOT_IMPLEMENTED_async028".to_string())
+        }
+    }
+  src/unrelated/validation.rs: |
+    // GARBAGE_RUST_VALID_async029
+    use std::collections::HashSet;
+
+    pub const GARBAGE_MIN_LENGTH_async030: usize = 1;
+    pub const GARBAGE_MAX_LENGTH_async031: usize = 255;
+
+    pub trait GarbageValidator_async032 {
+        fn garbage_validate_async033(&self, value: &str) -> Result<(), Vec<String>>;
+        fn garbage_is_valid_async034(&self, value: &str) -> bool {
+            self.garbage_validate_async033(value).is_ok()
+        }
+    }
+
+    pub struct GarbageEmailValidator_async035 {
+        allowed_domains: HashSet<String>,
+    }
+
+    impl GarbageEmailValidator_async035 {
+        pub fn garbage_new_async036() -> Self {
+            Self {
+                allowed_domains: HashSet::new(),
+            }
+        }
+
+        pub fn garbage_allow_domain_async037(&mut self, domain: &str) {
+            self.allowed_domains.insert(domain.to_lowercase());
+        }
+    }
+
+    impl GarbageValidator_async032 for GarbageEmailValidator_async035 {
+        fn garbage_validate_async033(&self, value: &str) -> Result<(), Vec<String>> {
+            let mut errors = Vec::new();
+            if !value.contains('@') {
+                errors.push("GARBAGE_MISSING_AT_async038".to_string());
+            }
+            if value.len() < GARBAGE_MIN_LENGTH_async030 {
+                errors.push("GARBAGE_TOO_SHORT_async039".to_string());
+            }
+            if errors.is_empty() { Ok(()) } else { Err(errors) }
+        }
+    }
+
+    pub struct GarbagePasswordValidator_async040 {
+        min_length: usize,
+        require_uppercase: bool,
+        require_digit: bool,
+    }
+
+    impl GarbagePasswordValidator_async040 {
+        pub fn garbage_new_async041(min_length: usize) -> Self {
+            Self {
+                min_length,
+                require_uppercase: true,
+                require_digit: true,
+            }
+        }
     }
 changed:
   src/async_service.rs: |
     use std::time::Duration;
+    use std::future::Future;
+    use std::pin::Pin;
+    use std::task::{Context, Poll};
 
-    pub async fn fetch_data(url: &str) -> Result<String, Error> {
-        let client = reqwest::Client::builder()
-            .timeout(Duration::from_secs(30))
-            .build()?;
-        let response = client.get(url).send().await?;
-        response.text().await
+    #[derive(Debug, Clone)]
+    pub struct RequestConfig {
+        pub timeout: Duration,
+        pub max_retries: u32,
+        pub base_url: String,
+        pub headers: Vec<(String, String)>,
     }
 
-    pub async fn fetch_with_retry(url: &str, retries: u32) -> Result<String, Error> {
-        for _ in 0..retries {
-            if let Ok(data) = fetch_data(url).await {
-                return Ok(data);
+    impl Default for RequestConfig {
+        fn default() -> Self {
+            Self {
+                timeout: Duration::from_secs(30),
+                max_retries: 3,
+                base_url: String::from("https://api.example.com"),
+                headers: Vec::new(),
             }
         }
-        Err(Error)
     }
 
-    pub struct Error;
+    impl RequestConfig {
+        pub fn with_header(mut self, key: &str, value: &str) -> Self {
+            self.headers.push((key.to_string(), value.to_string()));
+            self
+        }
+
+        pub fn with_timeout(mut self, timeout: Duration) -> Self {
+            self.timeout = timeout;
+            self
+        }
+    }
+
+    #[derive(Debug)]
+    pub enum FetchError {
+        NetworkError(String),
+        Timeout,
+        InvalidResponse,
+        MaxRetriesExceeded { attempts: u32 },
+        RateLimited { retry_after: Duration },
+    }
+
+    impl std::fmt::Display for FetchError {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            match self {
+                FetchError::NetworkError(msg) => write!(f, "Network error: {}", msg),
+                FetchError::Timeout => write!(f, "Request timed out"),
+                FetchError::InvalidResponse => write!(f, "Invalid response"),
+                FetchError::MaxRetriesExceeded { attempts } => {
+                    write!(f, "Max retries exceeded after {} attempts", attempts)
+                }
+                FetchError::RateLimited { retry_after } => {
+                    write!(f, "Rate limited, retry after {:?}", retry_after)
+                }
+            }
+        }
+    }
+
+    impl std::error::Error for FetchError {}
+
+    pub async fn fetch_data(url: &str) -> Result<String, FetchError> {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        Ok(format!("Response from {}", url))
+    }
+
+    pub async fn fetch_with_timeout(
+        url: &str,
+        timeout: Duration,
+    ) -> Result<String, FetchError> {
+        tokio::time::timeout(timeout, fetch_data(url))
+            .await
+            .map_err(|_| FetchError::Timeout)?
+    }
+
+    pub async fn fetch_with_retry(
+        url: &str,
+        max_retries: u32,
+        backoff: Duration,
+    ) -> Result<String, FetchError> {
+        let mut attempts = 0;
+        loop {
+            attempts += 1;
+            match fetch_data(url).await {
+                Ok(data) => return Ok(data),
+                Err(e) if attempts < max_retries => {
+                    tokio::time::sleep(backoff * attempts).await;
+                    continue;
+                }
+                Err(_) => {
+                    return Err(FetchError::MaxRetriesExceeded { attempts });
+                }
+            }
+        }
+    }
+
+    pub struct AsyncClient {
+        config: RequestConfig,
+    }
+
+    impl AsyncClient {
+        pub fn new(config: RequestConfig) -> Self {
+            Self { config }
+        }
+
+        pub async fn get(&self, path: &str) -> Result<String, FetchError> {
+            let url = format!("{}{}", self.config.base_url, path);
+            fetch_with_timeout(&url, self.config.timeout).await
+        }
+
+        pub async fn get_with_retry(&self, path: &str) -> Result<String, FetchError> {
+            let url = format!("{}{}", self.config.base_url, path);
+            fetch_with_retry(&url, self.config.max_retries, Duration::from_millis(100)).await
+        }
+
+        pub async fn post(&self, path: &str, body: &str) -> Result<String, FetchError> {
+            let url = format!("{}{}", self.config.base_url, path);
+            tokio::time::sleep(Duration::from_millis(50)).await;
+            Ok(format!("Posted to {}: {}", url, body))
+        }
+    }
+
+    pub trait AsyncFetcher: Send + Sync {
+        fn fetch<'a>(
+            &'a self,
+            url: &'a str,
+        ) -> Pin<Box<dyn Future<Output = Result<String, FetchError>> + Send + 'a>>;
+    }
+
+    impl AsyncFetcher for AsyncClient {
+        fn fetch<'a>(
+            &'a self,
+            url: &'a str,
+        ) -> Pin<Box<dyn Future<Output = Result<String, FetchError>> + Send + 'a>> {
+            Box::pin(async move { self.get(url).await })
+        }
+    }
+
+    pub async fn fetch_all<F: AsyncFetcher>(
+        fetcher: &F,
+        urls: &[&str],
+    ) -> Vec<Result<String, FetchError>> {
+        let mut results = Vec::with_capacity(urls.len());
+        for url in urls {
+            results.push(fetcher.fetch(url).await);
+        }
+        results
+    }
 assertions:
   must_include:
-  - fetch_with_retry
-  - timeout
-  - Duration
+    - fetch_with_retry
+    - fetch_with_timeout
+    - MaxRetriesExceeded
+    - RateLimited
+    - AsyncFetcher
+    - fetch_all
+    - with_header
+    - get_with_retry
   must_not_include:
-  - garbage_async_function
+    - GARBAGE_RUST_COMPRESS_async001
+    - GARBAGE_COMPRESSION_LEVEL_async002
+    - GARBAGE_BUFFER_SIZE_async003
+    - GARBAGE_MAGIC_HEADER_async004
+    - GarbageCompressor_async005
+    - garbage_compress_async006
+    - garbage_decompress_async007
+    - garbage_compression_ratio_async008
+    - GarbageGzipCompressor_async009
+    - garbage_new_async010
+    - garbage_set_level_async011
+    - garbage_internal_compress_async012
+    - GarbageLz4Compressor_async013
+    - garbage_new_fast_async014
+    - garbage_new_high_async015
+    - GARBAGE_RUST_SERIAL_async016
+    - GARBAGE_MAX_DEPTH_async017
+    - GARBAGE_MAX_STRING_LEN_async018
+    - GarbageValue_async019
+    - GarbageSerializer_async020
+    - garbage_serialize_async021
+    - garbage_deserialize_async022
+    - GarbageJsonSerializer_async023
+    - garbage_new_async024
+    - garbage_set_indent_async025
+    - garbage_escape_string_async026
+    - GARBAGE_NOT_IMPLEMENTED_async027
+    - GARBAGE_NOT_IMPLEMENTED_async028
+    - GARBAGE_RUST_VALID_async029
+    - GARBAGE_MIN_LENGTH_async030
+    - GARBAGE_MAX_LENGTH_async031
+    - GarbageValidator_async032
+    - garbage_validate_async033
+    - garbage_is_valid_async034
+    - GarbageEmailValidator_async035
+    - garbage_new_async036
+    - garbage_allow_domain_async037
+    - GARBAGE_MISSING_AT_async038
+    - GARBAGE_TOO_SHORT_async039
+    - GarbagePasswordValidator_async040
+    - garbage_new_async041
 options:
-  commit_message: Add fetch_with_retry and timeout
+  commit_message: Add async retry and timeout with traits

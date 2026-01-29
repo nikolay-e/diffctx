@@ -1,0 +1,28 @@
+name: internals_015_fragment_all_unicode_edge_cases
+initial:
+  all_unicode.py: |
+    def placeholder():
+        pass
+changed:
+  all_unicode.py: |
+    # 多语言测试 / Тест / اختبار
+    def handler():
+        cyrillic = "Привет"
+        chinese = "你好"
+        arabic = "مرحبا"
+        japanese = "こんにちは"
+        korean = "안녕하세요"
+        emoji = "🎉🔥🚀"
+        return {"status": "ok"}
+assertions:
+  must_include:
+  - handler
+  - cyrillic
+  - chinese
+  - arabic
+  - japanese
+  - korean
+  - emoji
+  - status
+options:
+  add_garbage: true

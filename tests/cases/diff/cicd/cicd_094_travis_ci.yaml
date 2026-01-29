@@ -1,0 +1,27 @@
+name: cicd_094_travis_ci
+initial:
+  .travis.yml: |
+    language: python
+    python:
+      - "3.10"
+    script:
+      - pytest
+  tests/test_math.py: |
+    def test_multiply():
+        assert 2 * 3 == 6
+changed:
+  .travis.yml: |
+    language: python
+    python:
+      - "3.11"
+      - "3.12"
+    install:
+      - pip install -e .[dev]
+    script:
+      - pytest --cov
+      - mypy src/
+assertions:
+  must_include:
+    - test_multiply
+options:
+  commit_message: add mypy
