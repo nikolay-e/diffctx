@@ -1,0 +1,27 @@
+User.swift: |
+  struct User: Codable {
+      let id: String
+      let name: String
+      let email: String
+  }
+APIResponse.swift: |
+  struct APIResponse<T: Codable>: Decodable {
+      let data: T
+      let status: String
+      let timestamp: Date
+  }
+APIClient.swift: |
+  // Initial
+  class APIClient {}
+GarbageArchiver.swift: |
+  class GarbageArchiver {
+      static let GARBAGE_JVM_061_ARCHIVE_MARKER_A = "marker"
+      static let GARBAGE_JVM_061_UNARCHIVE_MARKER_B = "marker"
+      func noop() {}
+  }
+GarbagePlistCoder.swift: |
+  class GarbagePlistCoder {
+      static let GARBAGE_JVM_061_PLIST_MARKER_C = "marker"
+      static let GARBAGE_JVM_061_BINARY_MARKER_D = "marker"
+      func noop() {}
+  }

@@ -1,0 +1,18 @@
+ContentView.swift: |
+  // Initial
+  import SwiftUI
+  struct ContentView: View {
+      var body: some View { Text("") }
+  }
+GarbageAppStorage.swift: |
+  class GarbageAppStorage {
+      static let GARBAGE_JVM_071_APPSTATE_MARKER_A = "marker"
+      static let GARBAGE_JVM_071_SCENE_MARKER_B = "marker"
+      func noop() {}
+  }
+GarbageScenePersist.swift: |
+  class GarbageScenePersist {
+      static let GARBAGE_JVM_071_STORAGE_MARKER_C = "marker"
+      static let GARBAGE_JVM_071_PERSIST_MARKER_D = "marker"
+      func noop() {}
+  }

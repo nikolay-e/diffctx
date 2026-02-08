@@ -1,0 +1,89 @@
+src/lib.rs: |
+  pub mod circle;
+  pub mod unrelated;
+src/circle.rs: |
+  use std::f64::consts::PI;
+  use std::fmt;
+
+  #[derive(Debug, Clone, PartialEq)]
+  pub struct Circle {
+      pub radius: f64,
+      center_x: f64,
+      center_y: f64,
+  }
+
+  impl Circle {
+      pub const MIN_RADIUS: f64 = 0.001;
+
+      pub fn unit() -> Self {
+          Self {
+              radius: 1.0,
+              center_x: 0.0,
+              center_y: 0.0,
+          }
+      }
+  }
+
+  impl fmt::Display for Circle {
+      fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+          write!(f, "Circle(r={}, center=({}, {}))", self.radius, self.center_x, self.center_y)
+      }
+  }
+
+  impl Default for Circle {
+      fn default() -> Self {
+          Self::unit()
+      }
+  }
+src/unrelated/mod.rs: |
+  pub mod compression;
+  pub mod encryption;
+src/unrelated/compression.rs: |
+  // GARBAGE_RUST_COMPRESS_001
+  pub const GARBAGE_COMPRESSION_LEVEL_002: u8 = 6;
+  pub const GARBAGE_BUFFER_SIZE_003: usize = 65536;
+
+  pub struct GarbageCompressor004 {
+      level: u8,
+      buffer: Vec<u8>,
+  }
+
+  impl GarbageCompressor004 {
+      pub fn garbage_compress_005(&self, data: &[u8]) -> Vec<u8> {
+          // GARBAGE_COMPRESS_IMPL_006
+          data.to_vec()
+      }
+
+      pub fn garbage_decompress_007(&self, data: &[u8]) -> Result<Vec<u8>, String> {
+          Err("GARBAGE_DECOMPRESS_ERROR_008".to_string())
+      }
+  }
+
+  pub trait GarbageCompressionAlgorithm009 {
+      fn garbage_encode_010(&self, data: &[u8]) -> Vec<u8>;
+      fn garbage_decode_011(&self, data: &[u8]) -> Vec<u8>;
+  }
+src/unrelated/encryption.rs: |
+  // GARBAGE_RUST_ENCRYPT_012
+  pub const GARBAGE_KEY_SIZE_013: usize = 256;
+  pub const GARBAGE_IV_SIZE_014: usize = 16;
+
+  pub struct GarbageCipher015 {
+      key: Vec<u8>,
+      iv: Vec<u8>,
+  }
+
+  impl GarbageCipher015 {
+      pub fn garbage_encrypt_016(&self, plaintext: &[u8]) -> Vec<u8> {
+          // GARBAGE_ENCRYPT_IMPL_017
+          plaintext.to_vec()
+      }
+
+      pub fn garbage_decrypt_018(&self, ciphertext: &[u8]) -> Result<Vec<u8>, String> {
+          Err("GARBAGE_DECRYPT_ERROR_019".to_string())
+      }
+  }
+
+  pub fn garbage_generate_key_020() -> Vec<u8> {
+      vec![0u8; 32]
+  }

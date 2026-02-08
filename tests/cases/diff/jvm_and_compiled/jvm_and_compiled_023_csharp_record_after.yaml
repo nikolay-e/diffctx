@@ -1,0 +1,35 @@
+Person.cs: |
+  public record Person(string Name, int Age)
+  {
+      public bool IsAdult => Age >= 18;
+  }
+
+  public record Employee(string Name, int Age, string Department) : Person(Name, Age);
+Program.cs: |
+  class Program
+  {
+      static void Main()
+      {
+          var person = new Person("John", 30);
+          var updated = person with { Age = 31 };
+
+          var employee = new Employee("Jane", 25, "IT");
+
+          Console.WriteLine(person == new Person("John", 30)); // true
+          Console.WriteLine(employee.Department);
+      }
+  }
+GarbageTupleHelper.cs: |
+  public class GarbageTupleHelper
+  {
+      public const string GARBAGE_JVM_023_TUPLE_MARKER_A = "marker";
+      public const string GARBAGE_JVM_023_PAIR_MARKER_B = "marker";
+      public void Noop() {}
+  }
+GarbageStructBuilder.cs: |
+  public class GarbageStructBuilder
+  {
+      public const string GARBAGE_JVM_023_STRUCT_MARKER_C = "marker";
+      public const string GARBAGE_JVM_023_VALUE_MARKER_D = "marker";
+      public void Noop() {}
+  }

@@ -1,0 +1,41 @@
+UserRepository.swift: |
+  struct User {
+      let id: String
+      let name: String
+  }
+
+  class UserRepository {
+      private var users: [String: User] = [:]
+
+      func fetchUser(id: String) -> User? {
+          return users[id]
+      }
+
+      func save(user: User) {
+          users[user.id] = user
+      }
+  }
+UserController.swift: |
+  class UserController {
+      let repository = UserRepository()
+
+      func showUser(id: String) -> String {
+          if let user = repository.fetchUser(id: id) {
+              return "User: \(user.name)"
+          } else {
+              return "User not found"
+          }
+      }
+  }
+GarbageUnwrapper.swift: |
+  class GarbageUnwrapper {
+      static let GARBAGE_JVM_068_UNWRAP_MARKER_A = "marker"
+      static let GARBAGE_JVM_068_COALESCE_MARKER_B = "marker"
+      func noop() {}
+  }
+GarbageNilCoalescer.swift: |
+  class GarbageNilCoalescer {
+      static let GARBAGE_JVM_068_NIL_MARKER_C = "marker"
+      static let GARBAGE_JVM_068_MAYBE_MARKER_D = "marker"
+      func noop() {}
+  }

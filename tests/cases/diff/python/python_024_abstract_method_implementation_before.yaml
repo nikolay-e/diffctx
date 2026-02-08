@@ -1,0 +1,57 @@
+base.py: |
+  from abc import ABC, abstractmethod
+  from typing import Generic, TypeVar, Optional, Dict, Any
+  from dataclasses import dataclass
+  from enum import Enum
+
+  T = TypeVar("T")
+
+  class HandlerStatus(Enum):
+      PENDING = "pending"
+      COMPLETED = "completed"
+      FAILED = "failed"
+
+  @dataclass
+  class HandlerResult(Generic[T]):
+      data: Optional[T]
+      status: HandlerStatus
+      error_message: str = ""
+
+      @classmethod
+      def success(cls, data: T) -> "HandlerResult[T]":
+          return cls(data=data, status=HandlerStatus.COMPLETED)
+
+      @classmethod
+      def failure(cls, error: str) -> "HandlerResult[T]":
+          return cls(data=None, status=HandlerStatus.FAILED, error_message=error)
+
+  class BaseHandler(ABC, Generic[T]):
+      @abstractmethod
+      def execute(self, data: dict) -> HandlerResult[T]:
+          pass
+
+      @abstractmethod
+      def validate(self, data: dict) -> bool:
+          pass
+
+      def run(self, data: dict) -> HandlerResult[T]:
+          if not self.validate(data):
+              return HandlerResult.failure("Validation failed")
+          return self.execute(data)
+handlers.py: |
+  class Handler:
+      pass
+garbage_websocket.py: |
+  GARBAGE_PY_WS_827364 = "websocket handler garbage"
+  UNRELATED_WS_MARKER_918273 = "unused socket.io config"
+
+  class GarbageWebSocketHandler:
+      def garbage_on_connect(self, client_id):
+          return f"Garbage connected: {client_id}"
+garbage_graphql.py: |
+  GARBAGE_PY_GQL_918273 = "graphql resolver garbage"
+  UNRELATED_GQL_MARKER_827163 = "unused strawberry config"
+
+  class GarbageGraphQLResolver:
+      def garbage_resolve_query(self, query):
+          return f"Garbage query: {query}"

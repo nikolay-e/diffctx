@@ -1,0 +1,120 @@
+include/interfaces/interfaces.hpp: |
+  #pragma once
+  #include <string>
+  #include <iostream>
+
+  namespace app::interfaces {
+
+  class Serializable {
+  public:
+      virtual ~Serializable() = default;
+      virtual std::string serialize() const = 0;
+      virtual void deserialize(const std::string& data) = 0;
+  };
+
+  class Printable {
+  public:
+      virtual ~Printable() = default;
+      virtual void print(std::ostream& os) const = 0;
+      virtual std::string toString() const = 0;
+  };
+
+  class Comparable {
+  public:
+      virtual ~Comparable() = default;
+      virtual int compare(const Comparable& other) const = 0;
+      virtual bool equals(const Comparable& other) const = 0;
+  };
+
+  class Cloneable {
+  public:
+      virtual ~Cloneable() = default;
+      virtual Cloneable* clone() const = 0;
+  };
+
+  class Hashable {
+  public:
+      virtual ~Hashable() = default;
+      virtual size_t hash() const = 0;
+  };
+
+  class Validatable {
+  public:
+      virtual ~Validatable() = default;
+      virtual bool isValid() const = 0;
+      virtual std::string validationError() const = 0;
+  };
+
+  }
+include/unrelated/database_driver.hpp: |
+  #pragma once
+  // GARBAGE_CPP_DB_272_001
+  #define GARBAGE_CPP_DB_TIMEOUT_272_002 30000
+
+  namespace app::unrelated::database {
+
+  // GARBAGE_CPP_DB_RESULT_272_003
+  struct QueryResult {
+      int rowCount;
+      int columnCount;
+      // GARBAGE_CPP_DB_DATA_272_004
+  };
+
+  // GARBAGE_CPP_DB_DRIVER_272_005
+  class DatabaseDriver {
+  public:
+      // GARBAGE_CPP_DB_CONNECT_272_006
+      bool connect(const char* connectionString) {
+          // GARBAGE_CPP_DB_CONN_IMPL_272_007
+          return false;
+      }
+
+      // GARBAGE_CPP_DB_QUERY_272_008
+      QueryResult executeQuery(const char* sql) {
+          // GARBAGE_CPP_DB_QUERY_IMPL_272_009
+          return QueryResult{};
+      }
+
+      // GARBAGE_CPP_DB_CLOSE_272_010
+      void close() {
+          // GARBAGE_CPP_DB_CLOSE_IMPL_272_011
+      }
+  };
+
+  }
+src/unrelated/image_processor.cpp: |
+  // GARBAGE_CPP_IMAGE_272_012
+  #include <cstdint>
+
+  namespace app::unrelated::image {
+
+  // GARBAGE_CPP_IMAGE_PIXEL_272_013
+  struct Pixel {
+      uint8_t r, g, b, a;
+      // GARBAGE_CPP_IMAGE_BLEND_272_014
+  };
+
+  // GARBAGE_CPP_IMAGE_PROCESSOR_272_015
+  class ImageProcessor {
+  public:
+      // GARBAGE_CPP_IMAGE_RESIZE_272_016
+      void resize(int newWidth, int newHeight) {
+          // GARBAGE_CPP_IMAGE_RESIZE_IMPL_272_017
+      }
+
+      // GARBAGE_CPP_IMAGE_FILTER_272_018
+      void applyFilter(const char* filterName) {
+          // GARBAGE_CPP_IMAGE_FILTER_IMPL_272_019
+      }
+
+      // GARBAGE_CPP_IMAGE_SAVE_272_020
+      bool save(const char* path) {
+          // GARBAGE_CPP_IMAGE_SAVE_IMPL_272_021
+          return false;
+      }
+  };
+
+  }
+src/models.cpp: |
+  #include <iostream>
+  int main() { return 0; }

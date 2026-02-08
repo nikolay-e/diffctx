@@ -1,0 +1,59 @@
+Services/ComputeService.cs: |
+  using System;
+
+  namespace MyApp.Services;
+
+  public class ComputeService
+  {
+      public int HeavyComputation(int input)
+      {
+          int result = 0;
+          for (int i = 0; i < input; i++)
+          {
+              result += (i * i) % 997;
+          }
+          return result;
+      }
+
+      public double ComputeAverage(int[] values)
+      {
+          if (values.Length == 0) return 0.0;
+          long sum = 0;
+          foreach (var v in values) sum += v;
+          return (double)sum / values.Length;
+      }
+  }
+Program.cs: |
+  using System;
+
+  class Program
+  {
+      static void Main()
+      {
+          Console.WriteLine("Application ready");
+      }
+  }
+Unrelated/NotificationSender.cs: |
+  namespace MyApp.Unrelated;
+
+  public class NotificationSender
+  {
+      private const string GARBAGE_CS_004_NOTIFICATION_A = "notification_marker";
+
+      public void Send(string message)
+      {
+          _ = GARBAGE_CS_004_NOTIFICATION_A + message;
+      }
+  }
+Unrelated/RateLimiter.cs: |
+  namespace MyApp.Unrelated;
+
+  public class RateLimiter
+  {
+      public const string GARBAGE_CS_004_RATE_LIMITER_B = "rate_limit_marker";
+
+      public bool IsAllowed(string key)
+      {
+          return key != GARBAGE_CS_004_RATE_LIMITER_B;
+      }
+  }

@@ -1,0 +1,24 @@
+core/calculator.py: |
+  def calculate(x: float, precision: int = 2) -> float:
+      result = x * 2
+      return round(result, precision)
+services/billing.py: |
+  from core.calculator import calculate
+
+  def compute_bill(amount: float) -> float:
+      base = calculate(amount)
+      return base + 10
+services/pricing.py: |
+  from core.calculator import calculate
+
+  def get_price(value: float) -> float:
+      return calculate(value) * 1.1
+api/endpoints.py: |
+  from core.calculator import calculate
+
+  def handle_request(data: dict) -> dict:
+      result = calculate(data["value"])
+      return {"result": result}
+utils/helpers.py: |
+  def format_output(value: float) -> str:
+      return f"Result: {value:.2f}"

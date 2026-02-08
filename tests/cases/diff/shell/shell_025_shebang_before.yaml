@@ -1,0 +1,33 @@
+script.sh: |
+  #!/bin/bash
+
+  echo "Running with bash"
+  echo "Version: $BASH_VERSION"
+unrelated/garbage_fstab.sh: |
+  #!/bin/bash
+  # GARBAGE_SH_025_FSTAB_ENTRY_A
+  GARBAGE_SH_025_MOUNT_OPTS_B="defaults,noatime"
+
+  garbage_check_mounts_025() {
+      echo "All mounts OK"
+  }
+
+  garbage_add_mount_025() {
+      local dev=$1
+      local mnt=$2
+      echo "Adding $dev at $mnt"
+  }
+unrelated/garbage_ulimit.sh: |
+  #!/bin/bash
+  # GARBAGE_SH_025_ULIMIT_CONF_C
+  GARBAGE_SH_025_NOFILE_D="65535"
+
+  garbage_show_limits_025() {
+      echo "Open files: $GARBAGE_SH_025_NOFILE_D"
+  }
+
+  garbage_set_limit_025() {
+      local resource=$1
+      local val=$2
+      echo "Setting $resource to $val"
+  }

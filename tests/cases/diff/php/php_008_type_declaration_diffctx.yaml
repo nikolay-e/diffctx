@@ -1,0 +1,18 @@
+must_include_files:
+  - src/Services/DataProcessor.php
+must_include_content:
+  - |
+    new Response($status, ['Content-Type' => 'application/json'], $body)
+must_not_include:
+  - GARBAGE_PHP_008_RETRY_COUNT_A
+  - GARBAGE_PHP_008_BACKOFF_MS_B
+  - GARBAGE_PHP_008_CONTENT_TYPE_C
+  - GARBAGE_PHP_008_VERIFY_SSL_D
+  - GARBAGE_PHP_008_CAPACITY_E
+  - GARBAGE_PHP_008_REFILL_RATE_F
+  - GARBAGE_PHP_008_INTERVAL_G
+  - GARBAGE_PHP_008_OVERFLOW_H
+  - GarbageWebhookSender
+  - GarbageTokenBucket
+  - garbage_webhook_sender.php
+  - garbage_token_bucket.php

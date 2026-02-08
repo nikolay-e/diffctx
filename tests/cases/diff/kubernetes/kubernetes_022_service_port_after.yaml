@@ -1,0 +1,73 @@
+k8s/apps/backend/deployment.yaml: |
+  apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    name: backend-api
+    namespace: production
+    labels:
+      app: backend-api
+  spec:
+    replicas: 3
+    selector:
+      matchLabels:
+        app: backend-api
+    template:
+      metadata:
+        labels:
+          app: backend-api
+      spec:
+        containers:
+        - name: api
+          image: backend-api:v1.0.0
+          ports:
+          - containerPort: 8080
+            name: http
+          - containerPort: 9090
+            name: metrics
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+k8s/apps/backend/service.yaml: |
+  apiVersion: v1
+  kind: Service
+  metadata:
+    name: backend-api
+    namespace: production
+    labels:
+      app: backend-api
+  spec:
+    selector:
+      app: backend-api
+    ports:
+    - name: http
+      port: 80
+      targetPort: 8080
+      protocol: TCP
+    - name: metrics
+      port: 9090
+      targetPort: 9090
+      protocol: TCP
+k8s/unrelated/contour/httpproxy.yaml: |
+  # GARBAGE_K8S_422_CONTOUR_PROXY
+  apiVersion: projectcontour.io/v1
+  kind: HTTPProxy
+  metadata:
+    name: GARBAGE_K8S_422_PROXY_NAME
+  spec:
+    virtualhost:
+      fqdn: GARBAGE_K8S_422_FQDN
+    routes:
+    - services:
+      - name: GARBAGE_K8S_422_SERVICE_NAME
+        port: GARBAGE_K8S_422_SVC_PORT
+k8s/unrelated/ambassador/mapping.yaml: |
+  # GARBAGE_K8S_422_AMBASSADOR_MAPPING
+  apiVersion: getambassador.io/v3alpha1
+  kind: Mapping
+  metadata:
+    name: GARBAGE_K8S_422_MAPPING_NAME
+  spec:
+    hostname: GARBAGE_K8S_422_HOSTNAME
+    prefix: GARBAGE_K8S_422_PREFIX
+    service: GARBAGE_K8S_422_SERVICE

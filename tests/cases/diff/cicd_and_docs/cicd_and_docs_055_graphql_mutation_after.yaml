@@ -1,0 +1,74 @@
+schema.graphql: |
+  type Mutation {
+    createUser(input: CreateUserInput!): User!
+    updateUser(id: ID!, input: UpdateUserInput!): User!
+    deleteUser(id: ID!): Boolean!
+  }
+
+  input CreateUserInput {
+    name: String!
+    email: String!
+    role: UserRole = USER
+  }
+
+  input UpdateUserInput {
+    name: String
+    email: String
+    role: UserRole
+  }
+
+  enum UserRole {
+    USER
+    ADMIN
+    MODERATOR
+  }
+
+  type User {
+    id: ID!
+    name: String!
+    email: String!
+    role: UserRole!
+  }
+
+src/resolvers/mutations.py: |
+  from models.user import User
+  from database import get_db
+
+  def resolve_create_user(obj, info, input: dict) -> User:
+      db = get_db()
+      user = User(name=input['name'], email=input['email'])
+      db.add(user)
+      db.commit()
+      return user
+
+src/validators/user_input.py: |
+  import re
+
+  def validate_email(email: str) -> bool:
+      pattern = r'^[\w\.-]+@[\w\.-]+\.\w+$'
+      return bool(re.match(pattern, email))
+
+  def validate_create_user_input(input: dict) -> bool:
+      if not input.get('name') or len(input['name']) < 2:
+          raise ValueError("Name must be at least 2 characters")
+      if not validate_email(input.get('email', '')):
+          raise ValueError("Invalid email format")
+      return True
+
+garbage_mutation_handler.ts: |
+  const GARBAGE_CICD_DOCS_055_TRANSACTION_MARKER_A = "atomic";
+  const GARBAGE_CICD_DOCS_055_RETRY_MARKER_B = 3;
+
+  class GarbageMutationHandler {
+    static GARBAGE_CICD_DOCS_055_ROLLBACK_MARKER_C = true;
+    handle(): void {}
+  }
+
+garbage_mutation_validator.ts: |
+  const GARBAGE_CICD_DOCS_055_SANITIZE_MARKER_D = "html";
+  const GARBAGE_CICD_DOCS_055_ESCAPE_MARKER_E = "sql";
+
+  class GarbageMutationValidator {
+    static GARBAGE_CICD_DOCS_055_STRIP_MARKER_F = false;
+    validate(): boolean { return true; }
+  }

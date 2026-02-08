@@ -1,0 +1,16 @@
+must_include_files:
+  - lib/form.rb
+must_include_content:
+  - |
+    Validators::POSITIVE
+must_not_include:
+  - GARBAGE_RUBY_010_BUS_TYPE_A
+  - GARBAGE_RUBY_010_DELIVERY_MODE_B
+  - GARBAGE_RUBY_010_MAX_SUBSCRIBERS_C
+  - GARBAGE_RUBY_010_FAILURE_THRESHOLD_D
+  - GARBAGE_RUBY_010_RESET_TIMEOUT_E
+  - GARBAGE_RUBY_010_HALF_OPEN_LIMIT_F
+  - GarbageEventBus
+  - GarbageCircuitBreaker
+  - garbage_event_bus.rb
+  - garbage_circuit_breaker.rb

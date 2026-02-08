@@ -1,0 +1,35 @@
+config.sh: |
+  #!/bin/bash
+  export LOG_FILE="/var/log/app.log"
+runner.sh: |
+  #!/bin/bash
+  source ./config.sh
+
+  echo "Starting application..."
+  ./app >> "$LOG_FILE" 2>&1
+unrelated/garbage_zfs.sh: |
+  #!/bin/bash
+  # GARBAGE_SH_019_ZFS_POOL_A
+  GARBAGE_SH_019_POOL_NAME_B="tank"
+
+  garbage_scrub_pool_019() {
+      echo "Scrubbing pool $GARBAGE_SH_019_POOL_NAME_B"
+  }
+
+  garbage_snapshot_dataset_019() {
+      local ds=$1
+      echo "Snapshot: ${ds}@$(date +%s)"
+  }
+unrelated/garbage_mdadm.sh: |
+  #!/bin/bash
+  # GARBAGE_SH_019_MDADM_RAID_C
+  GARBAGE_SH_019_ARRAY_DEV_D="/dev/md0"
+
+  garbage_check_array_019() {
+      echo "Array $GARBAGE_SH_019_ARRAY_DEV_D: healthy"
+  }
+
+  garbage_rebuild_array_019() {
+      local disk=$1
+      echo "Rebuilding with $disk"
+  }

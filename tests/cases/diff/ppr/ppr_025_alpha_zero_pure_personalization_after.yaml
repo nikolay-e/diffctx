@@ -1,0 +1,10 @@
+primary.py: |
+  SHARED = "shared"
+
+  def primary_func():
+      return SHARED + "_modified"
+secondary.py: |
+  SHARED = "shared"
+
+  def secondary_func():
+      return SHARED

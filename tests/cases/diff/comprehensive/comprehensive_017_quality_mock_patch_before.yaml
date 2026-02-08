@@ -1,0 +1,44 @@
+src/api_client.py: |
+  import requests
+  from typing import Dict, Optional
+
+  BASE_URL = "https://api.example.com"
+
+  def fetch_user(user_id: int) -> Dict:
+      response = requests.get(f"{BASE_URL}/users/{user_id}")
+      response.raise_for_status()
+      return response.json()
+
+  def create_user(name: str, email: str) -> Dict:
+      response = requests.post(f"{BASE_URL}/users", json={"name": name, "email": email})
+      response.raise_for_status()
+      return response.json()
+
+  def delete_user(user_id: int) -> bool:
+      response = requests.delete(f"{BASE_URL}/users/{user_id}")
+      return response.status_code == 204
+
+tests/test_api.py: |
+  def test_placeholder():
+      pass
+
+  def test_another_placeholder():
+      pass
+
+garbage_http_interceptor.py: |
+  GARBAGE_COMP_017_PROXY_MODE_A = "transparent"
+  GARBAGE_COMP_017_HEADER_INJECT_B = "custom"
+
+  class GarbageHttpInterceptor:
+      GARBAGE_COMP_017_RETRY_POLICY_C = True
+      def intercept(self):
+          pass
+
+garbage_mock_server.py: |
+  GARBAGE_COMP_017_FIXTURE_PATH_D = "snapshots"
+  GARBAGE_COMP_017_RECORD_MODE_E = "replay"
+
+  class GarbageMockServer:
+      GARBAGE_COMP_017_PORT_RANGE_F = False
+      def serve(self):
+          pass

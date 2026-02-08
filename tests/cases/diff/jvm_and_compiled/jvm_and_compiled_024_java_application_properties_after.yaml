@@ -1,0 +1,31 @@
+src/main/resources/application.properties: |
+  server.port=8080
+  spring.datasource.url=jdbc:postgresql://localhost/db
+  spring.cache.type=redis
+  spring.redis.host=localhost
+  spring.redis.port=6379
+src/main/java/com/example/Config.java: |
+  package com.example;
+
+  import org.springframework.beans.factory.annotation.Value;
+  import org.springframework.stereotype.Component;
+
+  @Component
+  public class Config {
+      @Value("${server.port}")
+      private int port;
+
+      public int getPort() { return port; }
+  }
+GarbageEnvLoader.java: |
+  public class GarbageEnvLoader {
+      public static final String GARBAGE_JVM_024_ENV_MARKER_A = "marker";
+      public static final String GARBAGE_JVM_024_PROFILE_MARKER_B = "marker";
+      public void noop() {}
+  }
+GarbageSecretVault.java: |
+  public class GarbageSecretVault {
+      public static final String GARBAGE_JVM_024_SECRET_MARKER_C = "marker";
+      public static final String GARBAGE_JVM_024_VAULT_MARKER_D = "marker";
+      public void noop() {}
+  }

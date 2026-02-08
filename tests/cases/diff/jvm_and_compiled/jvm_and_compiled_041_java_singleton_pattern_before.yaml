@@ -1,0 +1,26 @@
+src/main/java/com/example/Config.java: |
+  package com.example;
+
+  public class Config {
+      private String value;
+
+      public Config() {
+          this.value = "default";
+      }
+
+      public String getValue() {
+          return value;
+      }
+  }
+GarbageFlyweight.java: |
+  public class GarbageFlyweight {
+      public static final String GARBAGE_JVM_041_FLYWEIGHT_MARKER_A = "marker";
+      public static final String GARBAGE_JVM_041_POOL_MARKER_B = "marker";
+      public void noop() {}
+  }
+GarbageLazyInit.java: |
+  public class GarbageLazyInit {
+      public static final String GARBAGE_JVM_041_LAZY_MARKER_C = "marker";
+      public static final String GARBAGE_JVM_041_EAGER_MARKER_D = "marker";
+      public void noop() {}
+  }

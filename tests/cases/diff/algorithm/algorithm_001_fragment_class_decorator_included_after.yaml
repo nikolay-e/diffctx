@@ -1,0 +1,78 @@
+models/user.py: |
+  from dataclasses import dataclass, field
+  from typing import Optional, List
+  from datetime import datetime
+
+  @dataclass
+  class Address:
+      street: str
+      city: str
+      country: str
+      postal_code: str
+
+      def format(self) -> str:
+          return f"{self.street}, {self.city}, {self.postal_code}"
+
+  @dataclass
+  class User:
+      id: int
+      username: str
+      email: str
+      display_name: Optional[str] = None
+      created_at: datetime = field(default_factory=datetime.now)
+      address: Optional[Address] = None
+      roles: List[str] = field(default_factory=list)
+
+      def is_admin(self) -> bool:
+          return "admin" in self.roles
+
+      def has_address(self) -> bool:
+          return self.address is not None
+
+      def get_display_name(self) -> str:
+          return self.display_name or self.username
+
+services/user_service.py: |
+  from models.user import User, Address
+
+  class UserService:
+      def __init__(self, repository):
+          self.repository = repository
+
+      def create_user(self, username: str, email: str) -> User:
+          user = User(
+              id=self.repository.next_id(),
+              username=username,
+              email=email
+          )
+          self.repository.save(user)
+          return user
+
+      def add_role(self, user: User, role: str) -> None:
+          if role not in user.roles:
+              user.roles.append(role)
+              self.repository.save(user)
+
+      def set_address(self, user: User, address: Address) -> None:
+          user.address = address
+          self.repository.save(user)
+
+garbage_analytics.py: |
+  GARBAGE_ALGO_001_ANALYTICS_MARKER_A = "analytics"
+  GARBAGE_ALGO_001_TRACKER_MARKER_B = True
+
+  class AnalyticsTracker:
+      GARBAGE_ALGO_001_CLASS_MARKER_C = "tracker"
+
+      def track(self, event: str) -> None:
+          pass
+
+garbage_notifications.py: |
+  GARBAGE_ALGO_001_NOTIFY_MARKER_D = "notify"
+  GARBAGE_ALGO_001_PUSH_MARKER_E = 42
+
+  class PushService:
+      GARBAGE_ALGO_001_PUSH_CLASS_F = True
+
+      def send(self, token: str, message: str) -> bool:
+          return True

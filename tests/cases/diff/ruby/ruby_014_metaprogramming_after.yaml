@@ -1,0 +1,70 @@
+lib/dsl.rb: |
+  module DSL
+    def self.included(base)
+      base.extend(ClassMethods)
+    end
+
+    module ClassMethods
+      def define_accessors(*names)
+        names.each do |name|
+          define_method(name) do
+            instance_variable_get("@#{name}")
+          end
+
+          define_method("#{name}=") do |value|
+            instance_variable_set("@#{name}", value)
+          end
+        end
+      end
+
+      def define_validators(*names)
+        names.each do |name|
+          define_method("validate_#{name}") do
+            !send(name).nil?
+          end
+        end
+      end
+    end
+  end
+lib/config.rb: |
+  require_relative 'dsl'
+
+  class Config
+    include DSL
+
+    define_accessors :host, :port, :debug, :timeout
+    define_validators :host, :port
+
+    def initialize(host: 'localhost', port: 3000, debug: false, timeout: 30)
+      @host = host
+      @port = port
+      @debug = debug
+      @timeout = timeout
+    end
+
+    def valid?
+      validate_host && validate_port
+    end
+  end
+lib/garbage_currency.rb: |
+  GARBAGE_RUBY_014_BASE_CURRENCY_A = "USD"
+  GARBAGE_RUBY_014_EXCHANGE_API_B = "openexchangerates"
+
+  class GarbageCurrencyConverter
+    GARBAGE_RUBY_014_PRECISION_DIGITS_C = 4
+
+    def convert(amount, from, to)
+      GARBAGE_RUBY_014_BASE_CURRENCY_A
+    end
+  end
+lib/garbage_tax_calc.rb: |
+  GARBAGE_RUBY_014_TAX_REGION_D = "US-CA"
+  GARBAGE_RUBY_014_DEFAULT_RATE_E = "0.0875"
+
+  class GarbageTaxCalculator
+    GARBAGE_RUBY_014_EXEMPT_THRESHOLD_F = 100
+
+    def calculate(amount)
+      GARBAGE_RUBY_014_TAX_REGION_D
+    end
+  end

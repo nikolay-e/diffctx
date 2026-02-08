@@ -1,0 +1,37 @@
+AppState.swift: |
+  import Combine
+
+  class AppState: ObservableObject {
+      @Published var currentUser: String?
+      @Published var isLoggedIn = false
+
+      func login(username: String) {
+          currentUser = username
+          isLoggedIn = true
+      }
+
+      func logout() {
+          currentUser = nil
+          isLoggedIn = false
+      }
+  }
+  // garbage_marker_12345
+ProfileView.swift: |
+  import SwiftUI
+
+  struct ProfileView: View {
+      @EnvironmentObject var appState: AppState
+
+      var body: some View {
+          VStack {
+              if appState.isLoggedIn {
+                  Text("Welcome, \(appState.currentUser ?? "")")
+                  Button("Logout") {
+                      appState.logout()
+                  }
+              } else {
+                  Text("Please log in")
+              }
+          }
+      }
+  }

@@ -1,0 +1,58 @@
+package.json: |
+  {
+    "name": "frontend-app",
+    "version": "1.5.0",
+    "scripts": {
+      "test": "jest --coverage",
+      "lint": "eslint src/ --ext .ts,.tsx",
+      "build": "vite build"
+    },
+    "dependencies": {
+      "react": "^18.2.0",
+      "react-dom": "^18.2.0"
+    },
+    "devDependencies": {
+      "jest": "^29.0.0",
+      "eslint": "^8.50.0"
+    }
+  }
+
+.github/workflows/ci.yml: |
+  name: CI
+  on: [push]
+  jobs:
+    build:
+      runs-on: ubuntu-latest
+      steps:
+        - uses: actions/checkout@v4
+        - run: npm install
+
+src/components/Button.tsx: |
+  import React from 'react';
+
+  interface ButtonProps {
+    label: string;
+    onClick: () => void;
+  }
+
+  export function Button({ label, onClick }: ButtonProps) {
+    return <button onClick={onClick}>{label}</button>;
+  }
+
+garbage_analytics.ts: |
+  const GARBAGE_CICD_DOCS_005_ANALYTICS_MARKER_A = "mixpanel";
+  const GARBAGE_CICD_DOCS_005_EVENT_MARKER_B = "page_view";
+
+  class GarbageAnalyticsService {
+    static GARBAGE_CICD_DOCS_005_BATCH_MARKER_C = 100;
+    track(): void {}
+  }
+
+garbage_telemetry.ts: |
+  const GARBAGE_CICD_DOCS_005_TELEMETRY_MARKER_D = "opentelemetry";
+  const GARBAGE_CICD_DOCS_005_SPAN_MARKER_E = "http_request";
+
+  class GarbageTelemetryCollector {
+    static GARBAGE_CICD_DOCS_005_SAMPLE_MARKER_F = 0.1;
+    collect(): void {}
+  }

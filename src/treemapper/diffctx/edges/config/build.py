@@ -130,7 +130,7 @@ class BuildSystemEdgeBuilder(EdgeBuilder):
             return []
 
         refs = _collect_build_refs(make_files, cmake_files)
-        return discover_files_by_refs(refs, changed_files, all_candidate_files)
+        return discover_files_by_refs(refs, changed_files, all_candidate_files, repo_root)
 
     def build(self, fragments: list[Fragment], repo_root: Path | None = None) -> EdgeDict:
         make_frags = [f for f in fragments if _is_makefile(f.path)]

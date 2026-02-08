@@ -1,0 +1,11 @@
+utils.py: |
+  def helper():
+      return 42
+main.py: |
+  from utils import helper
+
+  def main():
+      return helper() + 1
+unrelated.py: |
+  def unrelated_func():
+      pass

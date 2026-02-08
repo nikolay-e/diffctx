@@ -1,0 +1,43 @@
+Models/Shape.cs: |
+  namespace MyApp.Models;
+
+  public abstract class Shape { }
+
+  public class Circle : Shape
+  {
+      public double Radius { get; set; }
+  }
+
+  public class Rectangle : Shape
+  {
+      public double Width { get; set; }
+      public double Height { get; set; }
+  }
+
+  public class Triangle : Shape
+  {
+      public double Base { get; set; }
+      public double Height { get; set; }
+  }
+Services/AreaCalculator.cs: |
+  namespace MyApp.Services;
+
+  public class AreaCalculator { }
+Unrelated/TaxCalculator.cs: |
+  namespace MyApp.Unrelated;
+
+  public class TaxCalculator
+  {
+      private const string GARBAGE_CS_022_TAX_CALCULATOR_A = "tax_calculator_marker";
+
+      public decimal Calculate(decimal amount) => amount * 0.2m;
+  }
+Unrelated/DiscountEngine.cs: |
+  namespace MyApp.Unrelated;
+
+  public class DiscountEngine
+  {
+      public const string GARBAGE_CS_022_DISCOUNT_ENGINE_B = "discount_engine_marker";
+
+      public decimal Apply(decimal price, decimal percent) => price * (1 - percent);
+  }

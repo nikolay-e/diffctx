@@ -1,0 +1,62 @@
+models.py: |
+  from __future__ import annotations
+  from typing import TYPE_CHECKING
+
+  if TYPE_CHECKING:
+      from services import UserService
+
+  class User:
+      def __init__(self, name: str, email: str):
+          self.name = name
+          self.email = email
+          self._service: UserService | None = None
+
+      def display_info(self) -> str:
+          return f"{self.name} <{self.email}>"
+
+      def is_valid(self) -> bool:
+          return "@" in self.email and len(self.name) > 0
+
+services.py: |
+  from models import User
+
+  class UserService:
+      def __init__(self, repository):
+          self.repository = repository
+
+      def create(self, name: str, email: str) -> User:
+          return User(name, email)
+
+      def validate_and_save(self, user: User) -> bool:
+          if not user.is_valid():
+              return False
+          self.repository.save(user)
+          return True
+
+garbage_serialization.py: |
+  GARBAGE_PY_041_SERIAL_A = "serialization marker"
+  GARBAGE_PY_041_JSON_B = "json codec marker"
+
+  class JsonSerializer:
+      GARBAGE_PY_041_SERIALIZER_C = "serializer class marker"
+
+      def serialize(self, obj: dict) -> str:
+          return str(obj)
+
+      def deserialize(self, data: str) -> dict:
+          GARBAGE_PY_041_DESER_D = "deserialize marker"
+          return {}
+
+garbage_middleware.py: |
+  GARBAGE_PY_041_MIDDLEWARE_E = "middleware chain marker"
+  GARBAGE_PY_041_CHAIN_F = "request chain marker"
+
+  class RequestMiddleware:
+      GARBAGE_PY_041_REQUEST_G = True
+
+      def process_request(self, request: dict) -> dict:
+          return request
+
+      def process_response(self, response: dict) -> dict:
+          GARBAGE_PY_041_RESPONSE_H = "response marker"
+          return response

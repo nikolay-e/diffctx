@@ -1,0 +1,61 @@
+src/config/AppConfig.scala: |
+  package config
+
+  object AppConfig {
+    val timeout: Int = 30
+    val maxRetries: Int = 3
+    val baseUrl: String = "https://api.example.com"
+    val apiVersion: String = "v1"
+
+    def getFullUrl(path: String): String = s"$baseUrl/$apiVersion$path"
+
+    def getTimeoutMillis: Long = timeout * 1000L
+  }
+src/client/ApiClient.scala: |
+  package client
+
+  import config.AppConfig
+
+  class ApiClient {
+    def healthCheck(): String = "ok"
+
+    def fetch(path: String): String = {
+      val url = AppConfig.getFullUrl(path)
+      val timeout = AppConfig.timeout
+      s"Fetching $url with timeout $timeout"
+    }
+
+    def retry[T](action: => T): T = {
+      var attempts = 0
+      var lastError: Throwable = null
+      while (attempts < AppConfig.maxRetries) {
+        try {
+          return action
+        } catch {
+          case e: Throwable =>
+            lastError = e
+            attempts += 1
+        }
+      }
+      throw lastError
+    }
+
+    def fetchWithRetry(path: String): String = {
+      retry(fetch(path))
+    }
+  }
+unrelated/MigrationRunner.scala: |
+  package migration
+  // GARBAGE_SCALA_003_MARKER_A
+  object MigrationRunner {
+    val GARBAGE_SCALA_003_VERSION = "GARBAGE_SCALA_003_MARKER_B"
+    def run(): Unit = println("GARBAGE_SCALA_003_MARKER_C running migration")
+    def rollback(): Unit = println("GARBAGE_SCALA_003_MARKER_D rollback")
+  }
+unrelated/FeatureFlags.scala: |
+  package features
+  // GARBAGE_SCALA_003_MARKER_E
+  object FeatureFlags {
+    val GARBAGE_SCALA_003_FLAG = false
+    def isEnabled(flag: String): Boolean = { println("GARBAGE_SCALA_003_MARKER_F"); false }
+  }

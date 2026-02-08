@@ -1,0 +1,97 @@
+features/__init__.py: ''
+
+features/base.py: |
+  from abc import ABC, abstractmethod
+  from typing import Any
+
+  class BaseFeature(ABC):
+      def __init__(self, name: str, enabled: bool = True):
+          self.name = name
+          self.enabled = enabled
+
+      @abstractmethod
+      def execute(self, context: dict[str, Any]) -> dict[str, Any]:
+          pass
+
+      def is_enabled(self) -> bool:
+          return self.enabled
+
+      def disable(self) -> None:
+          self.enabled = False
+
+      def enable(self) -> None:
+          self.enabled = True
+
+      def __repr__(self) -> str:
+          status = "on" if self.enabled else "off"
+          return f"<{self.__class__.__name__}({self.name}, {status})>"
+
+features/registry.py: |
+  from features.base import BaseFeature
+
+  _registry: dict[str, BaseFeature] = {}
+
+  def register(feature: BaseFeature) -> None:
+      _registry[feature.name] = feature
+
+  def get_feature(name: str) -> BaseFeature | None:
+      return _registry.get(name)
+
+  def list_enabled() -> list[str]:
+      return [name for name, f in _registry.items() if f.is_enabled()]
+
+features/new_feature.py: |
+  from typing import Any
+  from features.base import BaseFeature
+
+  class NewFeature(BaseFeature):
+      def __init__(self, threshold: float = 0.5):
+          super().__init__(name="new_feature", enabled=True)
+          self.threshold = threshold
+
+      def execute(self, context: dict[str, Any]) -> dict[str, Any]:
+          score = context.get("score", 0.0)
+          if score >= self.threshold:
+              return {"action": "proceed", "score": score}
+          return {"action": "skip", "score": score}
+
+      def adjust_threshold(self, new_threshold: float) -> None:
+          self.threshold = new_threshold
+
+garbage_telemetry.py: |
+  GARBAGE_OPS_002_TELEM_A = "telemetry collector marker"
+  GARBAGE_OPS_002_SPAN_B = "tracing span marker"
+
+  class TelemetryCollector:
+      GARBAGE_OPS_002_METRIC_C = "metric endpoint marker"
+
+      def __init__(self, service_name: str = "app"):
+          self.service_name = service_name
+          self._spans: list[dict] = []
+
+      def start_span(self, name: str) -> dict:
+          span = {"name": name, "service": self.service_name}
+          self._spans.append(span)
+          return span
+
+      def end_span(self, span: dict) -> None:
+          GARBAGE_OPS_002_EXPORT_D = "span export marker"
+          pass
+
+garbage_profiler.py: |
+  GARBAGE_OPS_002_PROFILE_E = "cpu profiler marker"
+  GARBAGE_OPS_002_FLAME_F = "flame graph marker"
+
+  class Profiler:
+      GARBAGE_OPS_002_SAMPLE_G = True
+
+      def __init__(self, sample_rate: float = 0.01):
+          self.sample_rate = sample_rate
+          self._samples: list[dict] = []
+
+      def start(self) -> None:
+          pass
+
+      def stop(self) -> dict:
+          GARBAGE_OPS_002_REPORT_H = "profile report marker"
+          return {"samples": len(self._samples)}

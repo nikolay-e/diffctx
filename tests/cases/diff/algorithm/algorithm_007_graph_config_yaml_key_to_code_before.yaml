@@ -1,0 +1,58 @@
+config/database.yaml: |
+  database:
+    host: localhost
+    port: 5432
+    name: myapp_dev
+    pool_size: 10
+    timeout: 30
+
+  redis:
+    host: localhost
+    port: 6379
+    db: 0
+
+config/application.yaml: |
+  app:
+    name: MyApplication
+    debug: true
+    log_level: DEBUG
+
+src/database/connection.py: |
+  import os
+  import yaml
+  from typing import Optional
+  from pathlib import Path
+
+  class DatabaseConfig:
+      def __init__(self, config_path: Path):
+          with open(config_path) as f:
+              config = yaml.safe_load(f)
+
+          db_config = config.get("database", {})
+          self.host = os.getenv("DATABASE_HOST", db_config.get("host", "localhost"))
+          self.port = int(os.getenv("DATABASE_PORT", db_config.get("port", 5432)))
+          self.name = db_config.get("name", "app")
+          self.pool_size = db_config.get("pool_size", 5)
+          self.timeout = db_config.get("timeout", 30)
+
+      def get_connection_string(self) -> str:
+          return f"postgresql://{self.host}:{self.port}/{self.name}"
+
+  def create_connection(config: DatabaseConfig):
+      return {"host": config.host, "port": config.port}
+
+garbage_cache_config.yaml: |
+  cache:
+    GARBAGE_ALGO_007_CACHE_MARKER_A: true
+    GARBAGE_ALGO_007_TTL_MARKER_B: 3600
+
+garbage_queue.py: |
+  GARBAGE_ALGO_007_QUEUE_MARKER_C = "queue"
+  GARBAGE_ALGO_007_WORKER_MARKER_D = True
+
+  class QueueManager:
+      GARBAGE_ALGO_007_JOBS_MARKER_E = []
+      GARBAGE_ALGO_007_PRIORITY_MARKER_F = 1
+
+      def enqueue(self, job: str) -> None:
+          pass

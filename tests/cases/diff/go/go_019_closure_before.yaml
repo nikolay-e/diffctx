@@ -1,0 +1,47 @@
+internal/counter/types.go: |
+  package counter
+
+  type Counter struct {
+      value int
+      name  string
+  }
+
+  func NewCounter(name string) *Counter {
+      return &Counter{name: name, value: 0}
+  }
+
+  func (c *Counter) Increment() {
+      c.value++
+  }
+
+  func (c *Counter) Value() int {
+      return c.value
+  }
+internal/factory/placeholder.go: |
+  package factory
+
+  func placeholder() {}
+internal/unrelated/pool/connection.go: |
+  package pool
+
+  const GARBAGE_GO_POOL_CONN_001 = "pool_garbage"
+
+  type GARBAGE_GO_TYPE_CONN_002 struct {
+      maxSize int
+  }
+
+  func GARBAGE_GO_FUNC_CONN_003() string {
+      return "GARBAGE_GO_CONN_UNUSED_004"
+  }
+internal/unrelated/pool/worker.go: |
+  package pool
+
+  const GARBAGE_GO_POOL_WORKER_005 = "worker_garbage"
+
+  type GARBAGE_GO_TYPE_WORKER_006 struct {
+      count int
+  }
+
+  func GARBAGE_GO_FUNC_WORKER_007() {
+      println("GARBAGE_GO_WORKER_OUTPUT_008")
+  }

@@ -1,0 +1,10 @@
+Ordering.scala: |
+  case class User(name: String, age: Int)
+
+  object UserOrdering {
+    given Ordering[User] = Ordering.by(_.name)
+
+    given ageOrdering: Ordering[User] = Ordering.by(_.age)
+  }
+UserSorter.scala: |
+  class UserSorter {}

@@ -1,0 +1,57 @@
+src/main/java/com/example/PaymentProcessor.java: |
+  package com.example;
+
+  public class PaymentProcessor {
+      private PaymentStrategy strategy;
+
+      public void setStrategy(PaymentStrategy strategy) {
+          this.strategy = strategy;
+      }
+
+      public void process(double amount) {
+          if (strategy.validate(amount)) {
+              strategy.pay(amount);
+          } else {
+              throw new IllegalArgumentException("Invalid amount");
+          }
+      }
+  }
+src/main/java/com/example/PaymentStrategy.java: |
+  package com.example;
+
+  public interface PaymentStrategy {
+      void pay(double amount);
+      boolean validate(double amount);
+  }
+src/main/java/com/example/CreditCardPayment.java: |
+  package com.example;
+
+  public class CreditCardPayment implements PaymentStrategy {
+      private final String cardNumber;
+
+      public CreditCardPayment(String cardNumber) {
+          this.cardNumber = cardNumber;
+      }
+
+      @Override
+      public void pay(double amount) {
+          System.out.println("Credit card " + cardNumber + ": " + amount);
+      }
+
+      @Override
+      public boolean validate(double amount) {
+          return amount > 0 && amount < 10000;
+      }
+  }
+GarbageCommand.java: |
+  public class GarbageCommand {
+      public static final String GARBAGE_JVM_042_COMMAND_MARKER_A = "marker";
+      public static final String GARBAGE_JVM_042_INVOKE_MARKER_B = "marker";
+      public void noop() {}
+  }
+GarbageChainHandler.java: |
+  public class GarbageChainHandler {
+      public static final String GARBAGE_JVM_042_CHAIN_MARKER_C = "marker";
+      public static final String GARBAGE_JVM_042_RESP_MARKER_D = "marker";
+      public void noop() {}
+  }

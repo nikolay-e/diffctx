@@ -1,0 +1,13 @@
+start.py: |
+  from middle import middle_func
+
+  def start_func():
+      return middle_func()
+middle.py: |
+  from end import end_func
+
+  def middle_func():
+      return end_func()
+end.py: |
+  def end_func():
+      return "end"

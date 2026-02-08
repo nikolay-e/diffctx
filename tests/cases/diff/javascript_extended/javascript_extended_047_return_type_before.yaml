@@ -1,0 +1,51 @@
+src/factory.ts: |
+  export function createUser(name: string, age: number) {
+      return {
+          id: Date.now().toString(),
+          name,
+          age,
+          createdAt: new Date(),
+          active: true,
+      };
+  }
+
+  export function createProduct(title: string, price: number) {
+      return {
+          sku: `SKU-${Date.now()}`,
+          title,
+          price,
+          inStock: true,
+      };
+  }
+src/types.ts: |
+  console.log('initial');
+src/unrelated/pdf.ts: |
+  const GARBAGE_JSX_047_PDF_CONFIG_A = 'pdf_garbage_marker';
+
+  export class GarbagePdfGenerator {
+      private pages: string[] = [];
+
+      addPage(content: string): void {
+          this.pages.push(content);
+      }
+
+      generate(): string {
+          return this.pages.join('\n');
+      }
+  }
+
+  export function GARBAGE_JSX_047_MERGE_PDFS_B(): string {
+      return 'GARBAGE_JSX_047_MERGED_OUTPUT_C';
+  }
+src/unrelated/email.ts: |
+  const GARBAGE_JSX_047_EMAIL_CONFIG_D = { smtp: 'localhost', port: 25 };
+
+  export class GARBAGE_JSX_047_EMAIL_SENDER_E {
+      send(to: string, subject: string): void {
+          console.log(`Sending to ${to}: ${subject}`);
+      }
+  }
+
+  export function GARBAGE_JSX_047_VALIDATE_EMAIL_F(email: string): boolean {
+      return email.includes('@');
+  }

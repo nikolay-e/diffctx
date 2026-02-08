@@ -1,0 +1,20 @@
+must_include_files:
+- a.py
+- b.py
+must_include_content:
+- 'x = 10
+
+  '
+must_not_include:
+- c.py
+- z = 3
+- GARBAGE_OUT_008_FLAG_MARKER_A
+- GARBAGE_OUT_008_TOGGLE_MARKER_B
+- GARBAGE_OUT_008_SERVICE_CLASS_C
+- GARBAGE_OUT_008_TOGGLE_CONFIG_MARKER_D
+- GARBAGE_OUT_008_ROLLOUT_MARKER_E
+- GARBAGE_OUT_008_ROLLOUT_CLASS_F
+- FeatureFlagService
+- RolloutManager
+- garbage_flags.py
+- garbage_toggles.py

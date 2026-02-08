@@ -1,0 +1,33 @@
+DynamicObject.php: |
+  <?php
+  class DynamicObject {
+      private array $data = [];
+
+      public function __get(string $name): mixed {
+          return $this->data[$name] ?? null;
+      }
+
+      public function __set(string $name, mixed $value): void {
+          $this->data[$name] = $value;
+      }
+
+      public function __isset(string $name): bool {
+          return isset($this->data[$name]);
+      }
+  }
+app.php: |
+  <?php
+  require_once 'DynamicObject.php';
+
+  $obj = new DynamicObject();
+  $obj->name = 'John';
+  $obj->email = 'john@example.com';
+
+  echo $obj->name;
+  if (isset($obj->email)) {
+      echo $obj->email;
+  }
+garbage.php: |
+  <?php
+  $garbageMagic99999 = "never called";
+  $unused_marker_12345 = "not used";

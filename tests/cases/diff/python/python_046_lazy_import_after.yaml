@@ -1,0 +1,63 @@
+heavy.py: |
+  import time
+  from typing import Any
+
+  _CACHE: dict[str, Any] = {}
+
+  def expensive_init() -> dict:
+      time.sleep(0.1)
+      return {"initialized": True, "version": "2.0"}
+
+  _data = expensive_init()
+
+  def get_data() -> dict:
+      return _data
+
+  def get_cached_value(key: str) -> Any:
+      return _CACHE.get(key)
+
+  def set_cached_value(key: str, value: Any) -> None:
+      _CACHE[key] = value
+
+service.py: |
+  def get_heavy_data() -> dict:
+      import heavy
+      return heavy.get_data()
+
+  def process() -> dict:
+      data = get_heavy_data()
+      return {"status": "processed", "source": data}
+
+  def get_status() -> str:
+      return "idle"
+
+garbage_search.py: |
+  GARBAGE_PY_046_SEARCH_A = "search engine marker"
+  GARBAGE_PY_046_INDEX_B = "index builder marker"
+
+  class SearchEngine:
+      GARBAGE_PY_046_ENGINE_C = "engine marker"
+
+      def __init__(self):
+          self._index = {}
+
+      def index_document(self, doc_id: str, content: str) -> None:
+          self._index[doc_id] = content
+
+      def search(self, query: str) -> list[str]:
+          GARBAGE_PY_046_QUERY_D = "query marker"
+          return []
+
+garbage_export.py: |
+  GARBAGE_PY_046_EXPORT_E = "export module marker"
+  GARBAGE_PY_046_FORMAT_F = "format handler marker"
+
+  class DataExporter:
+      GARBAGE_PY_046_EXPORTER_G = True
+
+      def __init__(self, output_format: str = "csv"):
+          self.output_format = output_format
+
+      def export(self, data: list[dict]) -> str:
+          GARBAGE_PY_046_DATA_H = "data marker"
+          return ""

@@ -1,0 +1,29 @@
+User.swift: |
+  struct User {
+      var name: String
+      var email: String
+  }
+  // garbage_marker_12345
+UserEditor.swift: |
+  import SwiftUI
+
+  struct UserEditor: View {
+      @Binding var selectedUser: User?
+
+      var body: some View {
+          if let user = selectedUser {
+              Form {
+                  TextField("Name", text: Binding(
+                      get: { user.name },
+                      set: { selectedUser?.name = $0 }
+                  ))
+                  TextField("Email", text: Binding(
+                      get: { user.email },
+                      set: { selectedUser?.email = $0 }
+                  ))
+              }
+          } else {
+              Text("No user selected")
+          }
+      }
+  }

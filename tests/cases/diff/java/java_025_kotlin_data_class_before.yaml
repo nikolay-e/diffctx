@@ -1,0 +1,89 @@
+src/main/kotlin/com/example/catalog/model/Product.kt: |
+  package com.example.catalog.model
+
+  data class Product(
+      val id: Long,
+      val name: String,
+      val price: Double
+  )
+src/main/kotlin/com/example/catalog/mapper/ProductMapper.kt: |
+  package com.example.catalog.mapper
+
+  import com.example.catalog.model.Product
+  import com.example.catalog.dto.ProductDto
+
+  object ProductMapper {
+      fun toDto(product: Product): ProductDto {
+          return ProductDto(
+              id = product.id,
+              name = product.name,
+              displayPrice = "$${product.price}"
+          )
+      }
+
+      fun toDomain(dto: ProductDto): Product {
+          return Product(
+              id = dto.id,
+              name = dto.name,
+              price = dto.displayPrice.removePrefix("$").toDouble()
+          )
+      }
+  }
+src/main/kotlin/com/example/catalog/dto/ProductDto.kt: |
+  package com.example.catalog.dto
+
+  data class ProductDto(
+      val id: Long,
+      val name: String,
+      val displayPrice: String
+  )
+src/main/kotlin/com/example/catalog/unrelated/InventoryTracker.kt: |
+  package com.example.catalog.unrelated
+
+  class InventoryTracker {
+      companion object {
+          const val GARBAGE_JAVA_025_INVENTORY_A = "inventory_tracker_marker"
+          private const val GARBAGE_JAVA_025_INVENTORY_B = "inventory_internal_tag"
+      }
+
+      private val stockLevels = mutableMapOf<Long, Int>()
+
+      fun updateStock(productId: Long, quantity: Int) {
+          stockLevels[productId] = quantity
+      }
+
+      fun getStock(productId: Long): Int {
+          return stockLevels.getOrDefault(productId, 0)
+      }
+
+      fun clearAll() {
+          stockLevels.clear()
+          println(GARBAGE_JAVA_025_INVENTORY_A + GARBAGE_JAVA_025_INVENTORY_B)
+      }
+  }
+src/main/kotlin/com/example/catalog/unrelated/PriceHistory.kt: |
+  package com.example.catalog.unrelated
+
+  import java.time.Instant
+
+  class PriceHistory {
+      companion object {
+          const val GARBAGE_JAVA_025_PRICE_C = "price_history_marker"
+          private const val GARBAGE_JAVA_025_PRICE_D = "price_internal_tag"
+      }
+
+      private val history = mutableListOf<Pair<Double, Instant>>()
+
+      fun record(price: Double) {
+          history.add(price to Instant.now())
+      }
+
+      fun getLatest(): Double? {
+          return history.lastOrNull()?.first
+      }
+
+      fun purge() {
+          history.clear()
+          println(GARBAGE_JAVA_025_PRICE_C + GARBAGE_JAVA_025_PRICE_D)
+      }
+  }

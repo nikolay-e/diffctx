@@ -1,0 +1,613 @@
+src/main/java/com/messaging/core/MessageChannel.java: |
+  package com.messaging.core;
+
+  import java.util.concurrent.CompletableFuture;
+
+  public interface MessageChannel {
+      void send(Message message);
+      CompletableFuture<DeliveryResult> sendAsync(Message message);
+      boolean isAvailable();
+      String getChannelType();
+      int getPriority();
+  }
+src/main/java/com/messaging/core/Message.java: |
+  package com.messaging.core;
+
+  import java.time.Instant;
+  import java.util.Map;
+  import java.util.UUID;
+
+  public class Message {
+      private final String id;
+      private final String recipient;
+      private final String subject;
+      private final String body;
+      private final Map<String, String> metadata;
+      private final Instant createdAt;
+      private final MessagePriority priority;
+
+      public Message(String recipient, String subject, String body,
+                    Map<String, String> metadata, MessagePriority priority) {
+          this.id = UUID.randomUUID().toString();
+          this.recipient = recipient;
+          this.subject = subject;
+          this.body = body;
+          this.metadata = metadata;
+          this.createdAt = Instant.now();
+          this.priority = priority;
+      }
+
+      public String getId() { return id; }
+      public String getRecipient() { return recipient; }
+      public String getSubject() { return subject; }
+      public String getBody() { return body; }
+      public Map<String, String> getMetadata() { return metadata; }
+      public Instant getCreatedAt() { return createdAt; }
+      public MessagePriority getPriority() { return priority; }
+  }
+src/main/java/com/messaging/core/MessagePriority.java: |
+  package com.messaging.core;
+
+  public enum MessagePriority {
+      LOW(1),
+      NORMAL(5),
+      HIGH(8),
+      URGENT(10);
+
+      private final int weight;
+
+      MessagePriority(int weight) {
+          this.weight = weight;
+      }
+
+      public int getWeight() { return weight; }
+  }
+src/main/java/com/messaging/core/DeliveryResult.java: |
+  package com.messaging.core;
+
+  import java.time.Instant;
+
+  public class DeliveryResult {
+      private final String messageId;
+      private final boolean success;
+      private final String errorMessage;
+      private final Instant deliveredAt;
+      private final String channelUsed;
+
+      public DeliveryResult(String messageId, boolean success, String errorMessage, String channelUsed) {
+          this.messageId = messageId;
+          this.success = success;
+          this.errorMessage = errorMessage;
+          this.deliveredAt = Instant.now();
+          this.channelUsed = channelUsed;
+      }
+
+      public static DeliveryResult success(String messageId, String channel) {
+          return new DeliveryResult(messageId, true, null, channel);
+      }
+
+      public static DeliveryResult failure(String messageId, String error, String channel) {
+          return new DeliveryResult(messageId, false, error, channel);
+      }
+
+      public String getMessageId() { return messageId; }
+      public boolean isSuccess() { return success; }
+      public String getErrorMessage() { return errorMessage; }
+      public Instant getDeliveredAt() { return deliveredAt; }
+      public String getChannelUsed() { return channelUsed; }
+  }
+src/main/java/com/messaging/channels/EmailChannel.java: |
+  package com.messaging.channels;
+
+  import com.messaging.core.*;
+  import java.util.concurrent.CompletableFuture;
+
+  public class EmailChannel implements MessageChannel {
+      private final String smtpHost;
+      private final int smtpPort;
+      private final String username;
+      private final String password;
+      private final boolean tlsEnabled;
+
+      public EmailChannel(String smtpHost, int smtpPort, String username, String password, boolean tlsEnabled) {
+          this.smtpHost = smtpHost;
+          this.smtpPort = smtpPort;
+          this.username = username;
+          this.password = password;
+          this.tlsEnabled = tlsEnabled;
+      }
+
+      @Override
+      public void send(Message message) {
+          System.out.println("Sending email via " + smtpHost + ":" + smtpPort + " to " + message.getRecipient());
+      }
+
+      @Override
+      public CompletableFuture<DeliveryResult> sendAsync(Message message) {
+          return CompletableFuture.supplyAsync(() -> {
+              send(message);
+              return DeliveryResult.success(message.getId(), getChannelType());
+          });
+      }
+
+      @Override
+      public boolean isAvailable() { return smtpHost != null && !smtpHost.isEmpty(); }
+
+      @Override
+      public String getChannelType() { return "EMAIL"; }
+
+      @Override
+      public int getPriority() { return 5; }
+  }
+src/main/java/com/messaging/unrelated/MessageArchiver.java: |
+  package com.messaging.unrelated;
+
+  import org.springframework.stereotype.Service;
+  import java.time.LocalDate;
+  import java.util.ArrayList;
+  import java.util.HashMap;
+  import java.util.List;
+  import java.util.Map;
+
+  @Service
+  public class MessageArchiver {
+      public static final String GARBAGE_JAVA_ARCHIVE_F022A = "message_archive_marker_alpha";
+      private static final String GARBAGE_JAVA_COMPRESS_F022B = "compression_marker_beta";
+
+      private final Map<LocalDate, List<String>> archivedMessages = new HashMap<>();
+
+      public void archiveMessage(String messageId, LocalDate date) {
+          archivedMessages.computeIfAbsent(date, k -> new ArrayList<>()).add(messageId);
+          logGarbageMarkers();
+      }
+
+      public List<String> getArchivedMessages(LocalDate date) {
+          return archivedMessages.getOrDefault(date, new ArrayList<>());
+      }
+
+      public void compressOldArchives(int daysOld) {
+          LocalDate cutoff = LocalDate.now().minusDays(daysOld);
+          String GARBAGE_JAVA_CUTOFF_F022C = "cutoff_marker_gamma";
+          System.out.println(GARBAGE_JAVA_CUTOFF_F022C + " cutoff=" + cutoff);
+          archivedMessages.entrySet().removeIf(e -> e.getKey().isBefore(cutoff));
+      }
+
+      private void logGarbageMarkers() {
+          System.out.println(GARBAGE_JAVA_ARCHIVE_F022A + GARBAGE_JAVA_COMPRESS_F022B);
+      }
+  }
+src/main/java/com/messaging/unrelated/DeliveryScheduler.java: |
+  package com.messaging.unrelated;
+
+  import org.springframework.scheduling.annotation.Scheduled;
+  import org.springframework.stereotype.Service;
+  import java.time.LocalDateTime;
+  import java.util.PriorityQueue;
+  import java.util.concurrent.atomic.AtomicLong;
+
+  @Service
+  public class DeliveryScheduler {
+      public static final String GARBAGE_JAVA_SCHED_F022D = "scheduler_marker_delta";
+      private static final String GARBAGE_JAVA_QUEUE_F022E = "queue_marker_epsilon";
+
+      private final PriorityQueue<ScheduledDelivery> deliveryQueue = new PriorityQueue<>();
+      private final AtomicLong sequenceNumber = new AtomicLong(0);
+
+      public void scheduleDelivery(String messageId, LocalDateTime scheduledTime, int priority) {
+          ScheduledDelivery delivery = new ScheduledDelivery(
+              messageId, scheduledTime, priority, sequenceNumber.incrementAndGet()
+          );
+          deliveryQueue.offer(delivery);
+          logGarbageMarkers();
+      }
+
+      @Scheduled(fixedDelay = 5000)
+      public void processQueue() {
+          while (!deliveryQueue.isEmpty()) {
+              ScheduledDelivery next = deliveryQueue.peek();
+              if (next.scheduledTime().isBefore(LocalDateTime.now())) {
+                  deliveryQueue.poll();
+                  processDelivery(next);
+              } else {
+                  break;
+              }
+          }
+      }
+
+      private void processDelivery(ScheduledDelivery delivery) {
+          String GARBAGE_JAVA_PROCESS_F022F = "process_marker_zeta";
+          System.out.println(GARBAGE_JAVA_PROCESS_F022F + " id=" + delivery.messageId());
+      }
+
+      private void logGarbageMarkers() {
+          System.out.println(GARBAGE_JAVA_SCHED_F022D + GARBAGE_JAVA_QUEUE_F022E);
+      }
+
+      private record ScheduledDelivery(
+          String messageId,
+          LocalDateTime scheduledTime,
+          int priority,
+          long sequence
+      ) implements Comparable<ScheduledDelivery> {
+          @Override
+          public int compareTo(ScheduledDelivery other) {
+              int timeCompare = this.scheduledTime.compareTo(other.scheduledTime);
+              if (timeCompare != 0) return timeCompare;
+              int priorityCompare = Integer.compare(other.priority, this.priority);
+              if (priorityCompare != 0) return priorityCompare;
+              return Long.compare(this.sequence, other.sequence);
+          }
+      }
+  }
+src/main/java/com/messaging/unrelated/BounceHandler.java: |
+  package com.messaging.unrelated;
+
+  import org.springframework.stereotype.Service;
+  import java.util.HashMap;
+  import java.util.Map;
+  import java.util.concurrent.atomic.AtomicInteger;
+
+  @Service
+  public class BounceHandler {
+      public static final String GARBAGE_JAVA_BOUNCE_F022G = "bounce_handler_marker_eta";
+
+      private final Map<String, AtomicInteger> bounceCounters = new HashMap<>();
+      private final int maxBounces;
+
+      public BounceHandler() {
+          this.maxBounces = 3;
+      }
+
+      public void recordBounce(String recipient, String reason) {
+          bounceCounters.computeIfAbsent(recipient, k -> new AtomicInteger(0)).incrementAndGet();
+          String GARBAGE_JAVA_REASON_F022H = "reason_marker_theta";
+          System.out.println(GARBAGE_JAVA_BOUNCE_F022G + GARBAGE_JAVA_REASON_F022H + " reason=" + reason);
+      }
+
+      public boolean isBlacklisted(String recipient) {
+          AtomicInteger counter = bounceCounters.get(recipient);
+          return counter != null && counter.get() >= maxBounces;
+      }
+
+      public void clearBounces(String recipient) {
+          bounceCounters.remove(recipient);
+      }
+  }
+src/main/java/com/messaging/factory/MessageChannelFactory.java: |
+  package com.messaging.factory;
+
+  import com.messaging.core.*;
+  import com.messaging.channels.*;
+  import org.springframework.stereotype.Component;
+
+  import java.util.HashMap;
+  import java.util.Map;
+  import java.util.Optional;
+  import java.util.function.Supplier;
+
+  @Component
+  public class MessageChannelFactory {
+      private final Map<ChannelType, Supplier<MessageChannel>> channelRegistry = new HashMap<>();
+      private final ChannelConfig config;
+
+      public MessageChannelFactory(ChannelConfig config) {
+          this.config = config;
+          registerDefaultChannels();
+      }
+
+      private void registerDefaultChannels() {
+          channelRegistry.put(ChannelType.EMAIL, this::createEmailChannel);
+          channelRegistry.put(ChannelType.SMS, this::createSmsChannel);
+          channelRegistry.put(ChannelType.PUSH, this::createPushChannel);
+          channelRegistry.put(ChannelType.SLACK, this::createSlackChannel);
+          channelRegistry.put(ChannelType.WEBHOOK, this::createWebhookChannel);
+      }
+
+      public MessageChannel create(ChannelType type) {
+          Supplier<MessageChannel> supplier = channelRegistry.get(type);
+          if (supplier == null) {
+              throw new UnsupportedChannelException("Channel type not supported: " + type);
+          }
+          return supplier.get();
+      }
+
+      public Optional<MessageChannel> createIfAvailable(ChannelType type) {
+          try {
+              MessageChannel channel = create(type);
+              return channel.isAvailable() ? Optional.of(channel) : Optional.empty();
+          } catch (UnsupportedChannelException e) {
+              return Optional.empty();
+          }
+      }
+
+      public void registerChannel(ChannelType type, Supplier<MessageChannel> supplier) {
+          channelRegistry.put(type, supplier);
+      }
+
+      public boolean supportsChannel(ChannelType type) {
+          return channelRegistry.containsKey(type);
+      }
+
+      private MessageChannel createEmailChannel() {
+          return new EmailChannel(
+              config.getEmailHost(),
+              config.getEmailPort(),
+              config.getEmailUsername(),
+              config.getEmailPassword(),
+              config.isEmailTlsEnabled()
+          );
+      }
+
+      private MessageChannel createSmsChannel() {
+          return new SmsChannel(
+              config.getSmsApiKey(),
+              config.getSmsFromNumber(),
+              config.getSmsRegion()
+          );
+      }
+
+      private MessageChannel createPushChannel() {
+          return new PushNotificationChannel(
+              config.getPushApiKey(),
+              config.getPushAppId()
+          );
+      }
+
+      private MessageChannel createSlackChannel() {
+          return new SlackChannel(
+              config.getSlackWebhookUrl(),
+              config.getSlackDefaultChannel()
+          );
+      }
+
+      private MessageChannel createWebhookChannel() {
+          return new WebhookChannel(
+              config.getWebhookTimeout(),
+              config.getWebhookRetries()
+          );
+      }
+  }
+src/main/java/com/messaging/factory/ChannelType.java: |
+  package com.messaging.factory;
+
+  public enum ChannelType {
+      EMAIL("email", 5, true),
+      SMS("sms", 8, true),
+      PUSH("push", 7, false),
+      SLACK("slack", 3, false),
+      WEBHOOK("webhook", 4, false);
+
+      private final String code;
+      private final int defaultPriority;
+      private final boolean requiresAuth;
+
+      ChannelType(String code, int defaultPriority, boolean requiresAuth) {
+          this.code = code;
+          this.defaultPriority = defaultPriority;
+          this.requiresAuth = requiresAuth;
+      }
+
+      public String getCode() { return code; }
+      public int getDefaultPriority() { return defaultPriority; }
+      public boolean isRequiresAuth() { return requiresAuth; }
+
+      public static ChannelType fromCode(String code) {
+          for (ChannelType type : values()) {
+              if (type.code.equalsIgnoreCase(code)) {
+                  return type;
+              }
+          }
+          throw new IllegalArgumentException("Unknown channel code: " + code);
+      }
+  }
+src/main/java/com/messaging/factory/ChannelConfig.java: |
+  package com.messaging.factory;
+
+  import org.springframework.boot.context.properties.ConfigurationProperties;
+  import org.springframework.stereotype.Component;
+
+  @Component
+  @ConfigurationProperties(prefix = "messaging.channels")
+  public class ChannelConfig {
+      private String emailHost;
+      private int emailPort;
+      private String emailUsername;
+      private String emailPassword;
+      private boolean emailTlsEnabled;
+      private String smsApiKey;
+      private String smsFromNumber;
+      private String smsRegion;
+      private String pushApiKey;
+      private String pushAppId;
+      private String slackWebhookUrl;
+      private String slackDefaultChannel;
+      private int webhookTimeout;
+      private int webhookRetries;
+
+      public String getEmailHost() { return emailHost; }
+      public void setEmailHost(String emailHost) { this.emailHost = emailHost; }
+      public int getEmailPort() { return emailPort; }
+      public void setEmailPort(int emailPort) { this.emailPort = emailPort; }
+      public String getEmailUsername() { return emailUsername; }
+      public void setEmailUsername(String emailUsername) { this.emailUsername = emailUsername; }
+      public String getEmailPassword() { return emailPassword; }
+      public void setEmailPassword(String emailPassword) { this.emailPassword = emailPassword; }
+      public boolean isEmailTlsEnabled() { return emailTlsEnabled; }
+      public void setEmailTlsEnabled(boolean emailTlsEnabled) { this.emailTlsEnabled = emailTlsEnabled; }
+      public String getSmsApiKey() { return smsApiKey; }
+      public void setSmsApiKey(String smsApiKey) { this.smsApiKey = smsApiKey; }
+      public String getSmsFromNumber() { return smsFromNumber; }
+      public void setSmsFromNumber(String smsFromNumber) { this.smsFromNumber = smsFromNumber; }
+      public String getSmsRegion() { return smsRegion; }
+      public void setSmsRegion(String smsRegion) { this.smsRegion = smsRegion; }
+      public String getPushApiKey() { return pushApiKey; }
+      public void setPushApiKey(String pushApiKey) { this.pushApiKey = pushApiKey; }
+      public String getPushAppId() { return pushAppId; }
+      public void setPushAppId(String pushAppId) { this.pushAppId = pushAppId; }
+      public String getSlackWebhookUrl() { return slackWebhookUrl; }
+      public void setSlackWebhookUrl(String slackWebhookUrl) { this.slackWebhookUrl = slackWebhookUrl; }
+      public String getSlackDefaultChannel() { return slackDefaultChannel; }
+      public void setSlackDefaultChannel(String slackDefaultChannel) { this.slackDefaultChannel = slackDefaultChannel; }
+      public int getWebhookTimeout() { return webhookTimeout; }
+      public void setWebhookTimeout(int webhookTimeout) { this.webhookTimeout = webhookTimeout; }
+      public int getWebhookRetries() { return webhookRetries; }
+      public void setWebhookRetries(int webhookRetries) { this.webhookRetries = webhookRetries; }
+  }
+src/main/java/com/messaging/factory/UnsupportedChannelException.java: |
+  package com.messaging.factory;
+
+  public class UnsupportedChannelException extends RuntimeException {
+      public UnsupportedChannelException(String message) {
+          super(message);
+      }
+  }
+src/main/java/com/messaging/channels/SmsChannel.java: |
+  package com.messaging.channels;
+
+  import com.messaging.core.*;
+  import java.util.concurrent.CompletableFuture;
+
+  public class SmsChannel implements MessageChannel {
+      private final String apiKey;
+      private final String fromNumber;
+      private final String region;
+
+      public SmsChannel(String apiKey, String fromNumber, String region) {
+          this.apiKey = apiKey;
+          this.fromNumber = fromNumber;
+          this.region = region;
+      }
+
+      @Override
+      public void send(Message message) {
+          System.out.println("Sending SMS from " + fromNumber + " to " + message.getRecipient());
+      }
+
+      @Override
+      public CompletableFuture<DeliveryResult> sendAsync(Message message) {
+          return CompletableFuture.supplyAsync(() -> {
+              send(message);
+              return DeliveryResult.success(message.getId(), getChannelType());
+          });
+      }
+
+      @Override
+      public boolean isAvailable() { return apiKey != null && !apiKey.isEmpty(); }
+
+      @Override
+      public String getChannelType() { return "SMS"; }
+
+      @Override
+      public int getPriority() { return 8; }
+  }
+src/main/java/com/messaging/channels/PushNotificationChannel.java: |
+  package com.messaging.channels;
+
+  import com.messaging.core.*;
+  import java.util.concurrent.CompletableFuture;
+
+  public class PushNotificationChannel implements MessageChannel {
+      private final String apiKey;
+      private final String appId;
+
+      public PushNotificationChannel(String apiKey, String appId) {
+          this.apiKey = apiKey;
+          this.appId = appId;
+      }
+
+      @Override
+      public void send(Message message) {
+          System.out.println("Sending push notification to " + message.getRecipient());
+      }
+
+      @Override
+      public CompletableFuture<DeliveryResult> sendAsync(Message message) {
+          return CompletableFuture.supplyAsync(() -> {
+              send(message);
+              return DeliveryResult.success(message.getId(), getChannelType());
+          });
+      }
+
+      @Override
+      public boolean isAvailable() { return apiKey != null; }
+
+      @Override
+      public String getChannelType() { return "PUSH"; }
+
+      @Override
+      public int getPriority() { return 7; }
+  }
+src/main/java/com/messaging/channels/SlackChannel.java: |
+  package com.messaging.channels;
+
+  import com.messaging.core.*;
+  import java.util.concurrent.CompletableFuture;
+
+  public class SlackChannel implements MessageChannel {
+      private final String webhookUrl;
+      private final String defaultChannel;
+
+      public SlackChannel(String webhookUrl, String defaultChannel) {
+          this.webhookUrl = webhookUrl;
+          this.defaultChannel = defaultChannel;
+      }
+
+      @Override
+      public void send(Message message) {
+          System.out.println("Sending Slack message to " + defaultChannel);
+      }
+
+      @Override
+      public CompletableFuture<DeliveryResult> sendAsync(Message message) {
+          return CompletableFuture.supplyAsync(() -> {
+              send(message);
+              return DeliveryResult.success(message.getId(), getChannelType());
+          });
+      }
+
+      @Override
+      public boolean isAvailable() { return webhookUrl != null; }
+
+      @Override
+      public String getChannelType() { return "SLACK"; }
+
+      @Override
+      public int getPriority() { return 3; }
+  }
+src/main/java/com/messaging/channels/WebhookChannel.java: |
+  package com.messaging.channels;
+
+  import com.messaging.core.*;
+  import java.util.concurrent.CompletableFuture;
+
+  public class WebhookChannel implements MessageChannel {
+      private final int timeout;
+      private final int maxRetries;
+
+      public WebhookChannel(int timeout, int maxRetries) {
+          this.timeout = timeout;
+          this.maxRetries = maxRetries;
+      }
+
+      @Override
+      public void send(Message message) {
+          System.out.println("Sending webhook for " + message.getId());
+      }
+
+      @Override
+      public CompletableFuture<DeliveryResult> sendAsync(Message message) {
+          return CompletableFuture.supplyAsync(() -> {
+              send(message);
+              return DeliveryResult.success(message.getId(), getChannelType());
+          });
+      }
+
+      @Override
+      public boolean isAvailable() { return true; }
+
+      @Override
+      public String getChannelType() { return "WEBHOOK"; }
+
+      @Override
+      public int getPriority() { return 4; }
+  }

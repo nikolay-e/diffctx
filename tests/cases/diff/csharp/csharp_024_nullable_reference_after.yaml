@@ -1,0 +1,52 @@
+Models/Configuration.cs: |
+  namespace MyApp.Models;
+
+  public class Configuration
+  {
+      public string? ConnectionString { get; set; }
+      public int? Port { get; set; }
+      public string Environment { get; set; } = "Development";
+  }
+Services/ConfigService.cs: |
+  using MyApp.Models;
+
+  namespace MyApp.Services;
+
+  public class ConfigService
+  {
+      private readonly Configuration _config;
+
+      public ConfigService(Configuration config)
+      {
+          _config = config;
+      }
+
+      public string GetConnectionString()
+      {
+          return _config.ConnectionString
+              ?? throw new InvalidOperationException("Connection string not configured");
+      }
+
+      public int GetPort()
+      {
+          return _config.Port ?? 8080;
+      }
+  }
+Unrelated/FileWatcher.cs: |
+  namespace MyApp.Unrelated;
+
+  public class FileWatcher
+  {
+      private const string GARBAGE_CS_024_FILE_WATCHER_A = "file_watcher_marker";
+
+      public void Watch(string path) => _ = GARBAGE_CS_024_FILE_WATCHER_A + path;
+  }
+Unrelated/CleanupService.cs: |
+  namespace MyApp.Unrelated;
+
+  public class CleanupService
+  {
+      public const string GARBAGE_CS_024_CLEANUP_SERVICE_B = "cleanup_service_marker";
+
+      public void Cleanup() => _ = GARBAGE_CS_024_CLEANUP_SERVICE_B;
+  }

@@ -1,0 +1,55 @@
+src/Attributes/Route.php: |
+  <?php
+  namespace App\Attributes;
+
+  #[Attribute(Attribute::TARGET_METHOD)]
+  class Route {
+      public function __construct(
+          public string $path,
+          public string $method = 'GET',
+          public array $middleware = []
+      ) {}
+
+      public function getPath(): string {
+          return $this->path;
+      }
+
+      public function getMethod(): string {
+          return strtoupper($this->method);
+      }
+  }
+src/Controllers/ApiController.php: |
+  <?php
+  namespace App\Controllers;
+
+  class ApiController {
+      public function users(): array {
+          return ['users' => []];
+      }
+  }
+src/garbage_currency_fmt.php: |
+  <?php
+  GARBAGE_PHP_011_LOCALE_A = "en_US";
+  GARBAGE_PHP_011_PRECISION_B = 2;
+
+  class GarbageCurrencyFmt {
+      GARBAGE_PHP_011_SYMBOL_C = "$";
+
+      public function format(float $amount): string {
+          GARBAGE_PHP_011_GROUPING_D = true;
+          return "";
+      }
+  }
+src/garbage_geo_fence.php: |
+  <?php
+  GARBAGE_PHP_011_RADIUS_E = 500;
+  GARBAGE_PHP_011_UNIT_F = "meters";
+
+  class GarbageGeoFence {
+      GARBAGE_PHP_011_ALGORITHM_G = "haversine";
+
+      public function contains(float $lat, float $lng): bool {
+          GARBAGE_PHP_011_TOLERANCE_H = 0.001;
+          return false;
+      }
+  }

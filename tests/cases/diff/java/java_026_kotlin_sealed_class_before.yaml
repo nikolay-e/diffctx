@@ -1,0 +1,107 @@
+src/main/kotlin/com/example/network/result/NetworkResult.kt: |
+  package com.example.network.result
+
+  sealed class NetworkResult<out T> {
+      data class Success<T>(val data: T) : NetworkResult<T>()
+      data class Error(val message: String) : NetworkResult<Nothing>()
+  }
+src/main/kotlin/com/example/network/handler/ResultHandler.kt: |
+  package com.example.network.handler
+
+  import com.example.network.result.NetworkResult
+
+  class ResultHandler {
+      fun <T> handle(result: NetworkResult<T>, onSuccess: (T) -> Unit, onError: (String) -> Unit) {
+          when (result) {
+              is NetworkResult.Success -> onSuccess(result.data)
+              is NetworkResult.Error -> onError(result.message)
+          }
+      }
+
+      fun <T> unwrapOrNull(result: NetworkResult<T>): T? {
+          return when (result) {
+              is NetworkResult.Success -> result.data
+              is NetworkResult.Error -> null
+          }
+      }
+
+      fun <T> unwrapOrThrow(result: NetworkResult<T>): T {
+          return when (result) {
+              is NetworkResult.Success -> result.data
+              is NetworkResult.Error -> throw RuntimeException(result.message)
+          }
+      }
+  }
+src/main/kotlin/com/example/network/client/ApiClient.kt: |
+  package com.example.network.client
+
+  import com.example.network.result.NetworkResult
+
+  class ApiClient(private val baseUrl: String) {
+      fun <T> get(endpoint: String, parser: (String) -> T): NetworkResult<T> {
+          return try {
+              val response = fetchData("$baseUrl$endpoint")
+              NetworkResult.Success(parser(response))
+          } catch (e: Exception) {
+              NetworkResult.Error(e.message ?: "Unknown error")
+          }
+      }
+
+      private fun fetchData(url: String): String {
+          return "{}"
+      }
+  }
+src/main/kotlin/com/example/network/unrelated/RetryPolicy.kt: |
+  package com.example.network.unrelated
+
+  class RetryPolicy {
+      companion object {
+          const val GARBAGE_JAVA_026_RETRY_A = "retry_policy_marker"
+          private const val GARBAGE_JAVA_026_RETRY_B = "retry_internal_tag"
+      }
+
+      private var maxRetries = 3
+      private var backoffMs = 1000L
+
+      fun withMaxRetries(count: Int): RetryPolicy {
+          maxRetries = count
+          return this
+      }
+
+      fun withBackoff(ms: Long): RetryPolicy {
+          backoffMs = ms
+          return this
+      }
+
+      fun reset() {
+          maxRetries = 3
+          backoffMs = 1000L
+          println(GARBAGE_JAVA_026_RETRY_A + GARBAGE_JAVA_026_RETRY_B)
+      }
+  }
+src/main/kotlin/com/example/network/unrelated/ConnectionPool.kt: |
+  package com.example.network.unrelated
+
+  class ConnectionPool {
+      companion object {
+          const val GARBAGE_JAVA_026_POOL_C = "connection_pool_marker"
+          private const val GARBAGE_JAVA_026_POOL_D = "pool_internal_tag"
+      }
+
+      private val activeConnections = mutableListOf<String>()
+
+      fun acquire(host: String): String {
+          val conn = "conn-$host-${activeConnections.size}"
+          activeConnections.add(conn)
+          return conn
+      }
+
+      fun release(conn: String) {
+          activeConnections.remove(conn)
+      }
+
+      fun drainAll() {
+          activeConnections.clear()
+          println(GARBAGE_JAVA_026_POOL_C + GARBAGE_JAVA_026_POOL_D)
+      }
+  }

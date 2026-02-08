@@ -1,0 +1,71 @@
+LoggingTrait.php: |
+  <?php
+  trait LoggingTrait {
+      private array $logEntries = [];
+
+      public function log(string $message, string $level = 'INFO'): void {
+          $entry = sprintf("[%s] %s: %s", date('Y-m-d H:i:s'), $level, $message);
+          $this->logEntries[] = $entry;
+          echo $entry . "\n";
+      }
+
+      public function logError(string $message): void {
+          $this->log($message, 'ERROR');
+      }
+
+      public function logWarning(string $message): void {
+          $this->log($message, 'WARNING');
+      }
+
+      public function getLogEntries(): array {
+          return $this->logEntries;
+      }
+
+      public function clearLog(): void {
+          $this->logEntries = [];
+      }
+  }
+Service.php: |
+  <?php
+  require_once 'LoggingTrait.php';
+
+  class Service {
+      use LoggingTrait;
+
+      public function process(array $data): array {
+          $this->log("Processing started with " . count($data) . " items");
+          $result = array_filter($data, fn($item) => $item !== null);
+          $this->log("Processing completed, " . count($result) . " valid items");
+          return $result;
+      }
+  }
+unrelated/barcode_gen.php: |
+  <?php
+  // GARBAGE_SCR_003_MARKER_A
+  define('GARBAGE_SCR_003_BARCODE_B', 'unrelated-barcode');
+
+  function generate_barcode(string $data): string {
+      return 'BC-' . md5($data);
+  }
+
+  function validate_barcode(string $code): bool {
+      return str_starts_with($code, 'BC-');
+  }
+
+  $GARBAGE_SCR_003_TYPE_C = 'unused-barcode-type';
+unrelated/qr_generator.php: |
+  <?php
+  // GARBAGE_SCR_003_MARKER_D
+  define('GARBAGE_SCR_003_QR_E', 'unrelated-qr-config');
+
+  class QRGenerator {
+      private int $size;
+
+      public function __construct(int $size = 256) {
+          $this->size = $size;
+      }
+
+      public function generate(string $data): string {
+          return sprintf('qr_%s_%d.png', md5($data), $this->size);
+      }
+  }

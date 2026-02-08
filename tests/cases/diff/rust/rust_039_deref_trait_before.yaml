@@ -1,0 +1,70 @@
+src/lib.rs: |
+  pub mod wrapper;
+  pub mod unrelated;
+src/wrapper.rs: |
+  pub struct Wrapper<T> {
+      value: T,
+      label: String,
+  }
+
+  impl<T> Wrapper<T> {
+      pub fn new(value: T, label: &str) -> Self {
+          Self {
+              value,
+              label: label.to_string(),
+          }
+      }
+
+      pub fn into_inner(self) -> T {
+          self.value
+      }
+
+      pub fn label(&self) -> &str {
+          &self.label
+      }
+
+      pub fn set_label(&mut self, label: &str) {
+          self.label = label.to_string();
+      }
+  }
+src/unrelated/mod.rs: |
+  pub mod retry_policy;
+  pub mod backoff_strategy;
+src/unrelated/retry_policy.rs: |
+  // GARBAGE_RUST_039_RETRY_POLICY_A
+  pub const GARBAGE_RUST_039_MAX_RETRIES_B: u32 = 3;
+
+  pub struct GarbageRetryPolicy039 {
+      max_retries: u32,
+      current: u32,
+  }
+
+  impl GarbageRetryPolicy039 {
+      pub fn garbage_should_retry_039(&self) -> bool {
+          self.current < self.max_retries
+      }
+
+      pub fn garbage_record_attempt_039(&mut self) {
+          self.current += 1;
+      }
+  }
+src/unrelated/backoff_strategy.rs: |
+  // GARBAGE_RUST_039_BACKOFF_STRATEGY_C
+  pub const GARBAGE_RUST_039_BASE_DELAY_D: u64 = 100;
+
+  pub struct GarbageExponentialBackoff039 {
+      base_ms: u64,
+      attempt: u32,
+  }
+
+  impl GarbageExponentialBackoff039 {
+      pub fn garbage_next_delay_039(&mut self) -> u64 {
+          let delay = self.base_ms * 2u64.pow(self.attempt);
+          self.attempt += 1;
+          delay
+      }
+
+      pub fn garbage_reset_039(&mut self) {
+          self.attempt = 0;
+      }
+  }

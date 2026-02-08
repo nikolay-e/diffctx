@@ -1,0 +1,57 @@
+src/main/java/com/example/Order.java: |
+  package com.example;
+
+  import javax.persistence.*;
+  import java.util.List;
+  import java.math.BigDecimal;
+
+  @Entity
+  @Table(name = "orders")
+  public class Order {
+      @Id
+      @GeneratedValue(strategy = GenerationType.IDENTITY)
+      private Long id;
+
+      @ManyToOne
+      @JoinColumn(name = "customer_id")
+      private Customer customer;
+
+      @OneToMany(mappedBy = "order", cascade = CascadeType.ALL)
+      private List<OrderItem> items;
+
+      @Column(name = "total_amount")
+      private BigDecimal totalAmount;
+
+      @Enumerated(EnumType.STRING)
+      private OrderStatus status;
+  }
+src/main/java/com/example/Customer.java: |
+  package com.example;
+
+  import javax.persistence.*;
+  import java.util.List;
+
+  @Entity
+  @Table(name = "customers")
+  public class Customer {
+      @Id
+      @GeneratedValue(strategy = GenerationType.IDENTITY)
+      private Long id;
+
+      private String name;
+
+      @OneToMany(mappedBy = "customer")
+      private List<Order> orders;
+  }
+GarbageAuditTrail.java: |
+  public class GarbageAuditTrail {
+      public static final String GARBAGE_JVM_029_AUDIT_MARKER_A = "marker";
+      public static final String GARBAGE_JVM_029_TRAIL_MARKER_B = "marker";
+      public void noop() {}
+  }
+GarbageVersionHistory.java: |
+  public class GarbageVersionHistory {
+      public static final String GARBAGE_JVM_029_HISTORY_MARKER_C = "marker";
+      public static final String GARBAGE_JVM_029_VERSION_MARKER_D = "marker";
+      public void noop() {}
+  }

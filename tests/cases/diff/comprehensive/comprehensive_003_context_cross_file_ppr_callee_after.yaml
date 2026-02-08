@@ -1,0 +1,59 @@
+src/math_utils.py: |
+  from typing import List
+
+  def calculate_sum(a: float, b: float) -> float:
+      return a + b
+
+  def calculate_product(a: float, b: float) -> float:
+      return a * b
+
+  def calculate_average(numbers: List[float]) -> float:
+      total = calculate_sum(numbers[0], numbers[1])
+      for n in numbers[2:]:
+          total = calculate_sum(total, n)
+      return total / len(numbers)
+
+  def calculate_median(numbers: List[float]) -> float:
+      sorted_nums = sorted(numbers)
+      mid = len(sorted_nums) // 2
+      if len(sorted_nums) % 2 == 0:
+          return calculate_average([sorted_nums[mid - 1], sorted_nums[mid]])
+      return sorted_nums[mid]
+
+src/processor.py: |
+  from src.math_utils import calculate_average, calculate_product
+
+  def process_data(data):
+      avg = calculate_average(data)
+      prod = calculate_product(data[0], data[1])
+      return avg + prod
+
+  def process_batch(batches):
+      return [process_data(batch) for batch in batches]
+
+src/validator.py: |
+  from typing import List
+
+  def validate_numeric_input(data: List) -> bool:
+      return all(isinstance(x, (int, float)) for x in data)
+
+  def validate_non_empty(data: List) -> bool:
+      return len(data) > 0
+
+garbage_feature_flag.py: |
+  GARBAGE_COMP_003_ROLLOUT_PERCENT_A = "gradual"
+  GARBAGE_COMP_003_EXPERIMENT_GROUP_B = "control"
+
+  class GarbageFeatureFlagService:
+      GARBAGE_COMP_003_STICKY_SESSION_C = True
+      def evaluate(self):
+          pass
+
+garbage_ab_testing.py: |
+  GARBAGE_COMP_003_VARIANT_ALLOCATION_D = "random"
+  GARBAGE_COMP_003_SIGNIFICANCE_LEVEL_E = "p_value"
+
+  class GarbageABTestRunner:
+      GARBAGE_COMP_003_SAMPLE_SIZE_F = 1000
+      def run(self):
+          pass

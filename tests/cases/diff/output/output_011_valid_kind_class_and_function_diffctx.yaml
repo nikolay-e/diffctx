@@ -1,0 +1,17 @@
+must_include_files:
+- module.py
+must_include_content:
+- '        return 1
+
+  '
+must_not_include:
+- GARBAGE_OUT_011_COMPRESS_MARKER_A
+- GARBAGE_OUT_011_GZIP_MARKER_B
+- GARBAGE_OUT_011_COMPRESSOR_CLASS_C
+- GARBAGE_OUT_011_ARCHIVE_MARKER_D
+- GARBAGE_OUT_011_TAR_MARKER_E
+- GARBAGE_OUT_011_BUILDER_CLASS_F
+- StreamCompressor
+- ArchiveBuilder
+- garbage_compression.py
+- garbage_archiving.py

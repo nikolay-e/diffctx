@@ -1,0 +1,52 @@
+Collections/Cache.cs: |
+  namespace MyApp.Collections;
+
+  public class Cache<TKey, TValue> where TKey : notnull
+  {
+      private readonly Dictionary<TKey, TValue> _cache = new();
+
+      public void Set(TKey key, TValue value) => _cache[key] = value;
+
+      public TValue? Get(TKey key) =>
+          _cache.TryGetValue(key, out var value) ? value : default;
+
+      public bool Contains(TKey key) => _cache.ContainsKey(key);
+  }
+Services/CacheService.cs: |
+  using MyApp.Collections;
+  using MyApp.Models;
+
+  namespace MyApp.Services;
+
+  public class CacheService
+  {
+      private readonly Cache<string, User> _userCache = new();
+
+      public void CacheUser(string key, User user)
+      {
+          _userCache.Set(key, user);
+      }
+
+      public User? GetCachedUser(string key)
+      {
+          return _userCache.Get(key);
+      }
+  }
+Unrelated/RetryPolicy.cs: |
+  namespace MyApp.Unrelated;
+
+  public class RetryPolicy
+  {
+      private const string GARBAGE_CS_009_RETRY_POLICY_A = "retry_policy_marker";
+
+      public int MaxRetries => GARBAGE_CS_009_RETRY_POLICY_A.Length;
+  }
+Unrelated/CorrelationIdProvider.cs: |
+  namespace MyApp.Unrelated;
+
+  public class CorrelationIdProvider
+  {
+      public const string GARBAGE_CS_009_CORRELATION_ID_B = "correlation_id_marker";
+
+      public string Generate() => GARBAGE_CS_009_CORRELATION_ID_B + Guid.NewGuid();
+  }

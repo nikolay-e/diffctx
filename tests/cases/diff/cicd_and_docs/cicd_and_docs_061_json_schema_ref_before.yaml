@@ -1,0 +1,51 @@
+schemas/user.json: |
+  {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "id": {"type": "integer"},
+      "name": {"type": "string"}
+    }
+  }
+
+schemas/order.json: |
+  {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "id": {"type": "integer"},
+      "user": {"$ref": "user.json"}
+    }
+  }
+
+src/validators/schema_validator.py: |
+  import json
+  from jsonschema import validate, RefResolver
+
+  def load_schema(schema_path: str) -> dict:
+      with open(schema_path) as f:
+          return json.load(f)
+
+  def validate_data(data: dict, schema_name: str) -> bool:
+      schema = load_schema(f"schemas/{schema_name}")
+      resolver = RefResolver(f"file://schemas/", schema)
+      validate(data, schema, resolver=resolver)
+      return True
+
+garbage_schema_loader.ts: |
+  const GARBAGE_CICD_DOCS_061_LOADER_MARKER_A = "ajv";
+  const GARBAGE_CICD_DOCS_061_CACHE_MARKER_B = true;
+
+  class GarbageSchemaLoader {
+    static GARBAGE_CICD_DOCS_061_BUNDLE_MARKER_C = "flat";
+    load(): void {}
+  }
+
+garbage_schema_resolver.ts: |
+  const GARBAGE_CICD_DOCS_061_RESOLVER_MARKER_D = "json-refs";
+  const GARBAGE_CICD_DOCS_061_CIRCULAR_MARKER_E = "ignore";
+
+  class GarbageSchemaResolver {
+    static GARBAGE_CICD_DOCS_061_DEREFERENCE_MARKER_F = false;
+    resolve(): void {}
+  }

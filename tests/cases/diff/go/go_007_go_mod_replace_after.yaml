@@ -1,0 +1,141 @@
+go.mod: |
+  module myproject
+
+  go 1.21
+
+  require (
+      myproject/pkg/shared v0.0.0
+      myproject/pkg/logger v0.0.0
+  )
+
+  replace (
+      myproject/pkg/shared => ./pkg/shared
+      myproject/pkg/logger => ./pkg/logger
+  )
+pkg/shared/types.go: |
+  package shared
+
+  import "time"
+
+  type Config struct {
+      Environment string
+      Debug       bool
+      LogLevel    string
+      Timeout     time.Duration
+  }
+
+  type Response struct {
+      Success   bool        `json:"success"`
+      Data      interface{} `json:"data,omitempty"`
+      Error     string      `json:"error,omitempty"`
+      RequestID string      `json:"request_id,omitempty"`
+      Timestamp time.Time   `json:"timestamp"`
+  }
+
+  type PaginatedResponse struct {
+      Response
+      Page       int `json:"page"`
+      PerPage    int `json:"per_page"`
+      TotalPages int `json:"total_pages"`
+      TotalItems int `json:"total_items"`
+  }
+
+  func NewSuccessResponse(data interface{}, requestID string) Response {
+      return Response{Success: true, Data: data, RequestID: requestID, Timestamp: time.Now()}
+  }
+
+  func NewErrorResponse(err string, requestID string) Response {
+      return Response{Success: false, Error: err, RequestID: requestID, Timestamp: time.Now()}
+  }
+
+  func NewPaginatedResponse(data interface{}, page, perPage, total int) PaginatedResponse {
+      totalPages := (total + perPage - 1) / perPage
+      return PaginatedResponse{
+          Response:   Response{Success: true, Data: data, Timestamp: time.Now()},
+          Page:       page,
+          PerPage:    perPage,
+          TotalPages: totalPages,
+          TotalItems: total,
+      }
+  }
+pkg/shared/helpers.go: |
+  package shared
+
+  import (
+      "regexp"
+      "strings"
+      "unicode"
+  )
+
+  var emailRegex = regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
+
+  func SanitizeInput(s string) string {
+      s = strings.TrimSpace(s)
+      return s
+  }
+
+  func ValidateNotEmpty(s string) bool {
+      return strings.TrimSpace(s) != ""
+  }
+
+  func ValidateEmail(email string) bool {
+      return emailRegex.MatchString(email)
+  }
+
+  func Slugify(s string) string {
+      s = strings.ToLower(s)
+      s = strings.Map(func(r rune) rune {
+          if unicode.IsLetter(r) || unicode.IsDigit(r) || r == '-' {
+              return r
+          }
+          if r == ' ' {
+              return '-'
+          }
+          return -1
+      }, s)
+      return s
+  }
+pkg/logger/logger.go: |
+  package logger
+
+  import "log"
+
+  type Logger struct {
+      prefix string
+  }
+
+  func New(prefix string) *Logger {
+      return &Logger{prefix: prefix}
+  }
+
+  func (l *Logger) Info(msg string) {
+      log.Printf("[INFO] %s: %s", l.prefix, msg)
+  }
+
+  func (l *Logger) Error(msg string) {
+      log.Printf("[ERROR] %s: %s", l.prefix, msg)
+  }
+internal/unrelated/experimental/feature.go: |
+  package experimental
+
+  const GARBAGE_GO_EXPERIMENTAL_FEAT_001 = "experimental_garbage"
+
+  type GARBAGE_GO_TYPE_FEATURE_002 struct {
+      name string
+  }
+
+  func GARBAGE_GO_FUNC_FEATURE_003() string {
+      return "GARBAGE_GO_FEATURE_UNUSED_004"
+  }
+internal/unrelated/deprecated/legacy.go: |
+  package deprecated
+
+  const GARBAGE_GO_DEPRECATED_LEGACY_005 = "deprecated_garbage"
+
+  type GARBAGE_GO_TYPE_LEGACY_006 struct {
+      version int
+  }
+
+  func GARBAGE_GO_FUNC_LEGACY_007() {
+      println("GARBAGE_GO_LEGACY_OUTPUT_008")
+  }

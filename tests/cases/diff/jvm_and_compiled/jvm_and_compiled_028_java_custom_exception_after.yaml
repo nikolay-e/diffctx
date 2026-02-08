@@ -1,0 +1,53 @@
+src/main/java/com/example/Service.java: |
+  package com.example;
+
+  public class Service {
+      public void process(String input) {
+          if (input == null) {
+              throw new ValidationException("Input cannot be null");
+          }
+          if (input.isEmpty()) {
+              throw new ValidationException("Input cannot be empty");
+          }
+      }
+  }
+src/main/java/com/example/ServiceException.java: |
+  package com.example;
+
+  public class ServiceException extends RuntimeException {
+      private final String errorCode;
+
+      public ServiceException(String message, String errorCode) {
+          super(message);
+          this.errorCode = errorCode;
+      }
+
+      public ServiceException(String message, String errorCode, Throwable cause) {
+          super(message, cause);
+          this.errorCode = errorCode;
+      }
+
+      public String getErrorCode() {
+          return errorCode;
+      }
+  }
+src/main/java/com/example/ValidationException.java: |
+  package com.example;
+
+  public class ValidationException extends ServiceException {
+      public ValidationException(String message) {
+          super(message, "VALIDATION_ERROR");
+      }
+  }
+GarbageErrorHandler.java: |
+  public class GarbageErrorHandler {
+      public static final String GARBAGE_JVM_028_HANDLER_MARKER_A = "marker";
+      public static final String GARBAGE_JVM_028_RECOVER_MARKER_B = "marker";
+      public void noop() {}
+  }
+GarbageFallbackService.java: |
+  public class GarbageFallbackService {
+      public static final String GARBAGE_JVM_028_FALLBACK_MARKER_C = "marker";
+      public static final String GARBAGE_JVM_028_RETRY_MARKER_D = "marker";
+      public void noop() {}
+  }

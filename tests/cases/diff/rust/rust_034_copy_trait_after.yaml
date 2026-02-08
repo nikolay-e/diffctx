@@ -1,0 +1,90 @@
+src/lib.rs: |
+  pub mod point;
+  pub mod geometry;
+  pub mod unrelated;
+src/point.rs: |
+  #[derive(Debug, Clone, Copy)]
+  pub struct Point {
+      x: f64,
+      y: f64,
+  }
+
+  impl Point {
+      pub fn new(x: f64, y: f64) -> Self {
+          Self { x, y }
+      }
+
+      pub fn x(&self) -> f64 {
+          self.x
+      }
+
+      pub fn y(&self) -> f64 {
+          self.y
+      }
+
+      pub fn distance(self, other: Point) -> f64 {
+          ((self.x - other.x).powi(2) + (self.y - other.y).powi(2)).sqrt()
+      }
+
+      pub fn translate(self, dx: f64, dy: f64) -> Point {
+          Point::new(self.x + dx, self.y + dy)
+      }
+
+      pub fn midpoint(self, other: Point) -> Point {
+          Point::new((self.x + other.x) / 2.0, (self.y + other.y) / 2.0)
+      }
+  }
+src/geometry.rs: |
+  use crate::point::Point;
+
+  pub fn calculate_area(p1: Point, p2: Point, p3: Point) -> f64 {
+      let a = p1.distance(p2);
+      let b = p2.distance(p3);
+      let c = p3.distance(p1);
+      let s = (a + b + c) / 2.0;
+      (s * (s - a) * (s - b) * (s - c)).sqrt()
+  }
+
+  pub fn centroid(p1: Point, p2: Point, p3: Point) -> Point {
+      Point::new(
+          (p1.x() + p2.x() + p3.x()) / 3.0,
+          (p1.y() + p2.y() + p3.y()) / 3.0,
+      )
+  }
+src/unrelated/mod.rs: |
+  pub mod color_palette;
+  pub mod font_registry;
+src/unrelated/color_palette.rs: |
+  // GARBAGE_RUST_034_COLOR_PALETTE_A
+  pub const GARBAGE_RUST_034_DEFAULT_COLOR_B: &str = "#000000";
+
+  pub struct GarbageColorPalette034 {
+      colors: Vec<String>,
+  }
+
+  impl GarbageColorPalette034 {
+      pub fn garbage_add_color_034(&mut self, hex: &str) {
+          self.colors.push(hex.to_string());
+      }
+
+      pub fn garbage_get_primary_034(&self) -> Option<&String> {
+          self.colors.first()
+      }
+  }
+src/unrelated/font_registry.rs: |
+  // GARBAGE_RUST_034_FONT_REGISTRY_C
+  pub const GARBAGE_RUST_034_DEFAULT_FONT_D: &str = "monospace";
+
+  pub struct GarbageFontRegistry034 {
+      fonts: Vec<String>,
+  }
+
+  impl GarbageFontRegistry034 {
+      pub fn garbage_register_font_034(&mut self, name: &str) {
+          self.fonts.push(name.to_string());
+      }
+
+      pub fn garbage_lookup_font_034(&self, name: &str) -> bool {
+          self.fonts.iter().any(|f| f == name)
+      }
+  }

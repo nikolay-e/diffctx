@@ -1,0 +1,83 @@
+k8s/apps/critical/deployment.yaml: |
+  apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    name: critical-service
+    namespace: production
+    labels:
+      app: critical-service
+      priority: high
+  spec:
+    replicas: 3
+    selector:
+      matchLabels:
+        app: critical-service
+    template:
+      metadata:
+        labels:
+          app: critical-service
+          priority: high
+      spec:
+        tolerations:
+        - key: "dedicated"
+          operator: "Equal"
+          value: "high-priority"
+          effect: "NoSchedule"
+        - key: "critical-workloads"
+          operator: "Exists"
+          effect: "NoExecute"
+          tolerationSeconds: 3600
+        - key: "node.kubernetes.io/not-ready"
+          operator: "Exists"
+          effect: "NoExecute"
+          tolerationSeconds: 300
+        containers:
+        - name: service
+          image: critical-service:v1.0.0
+          ports:
+          - containerPort: 8080
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 5
+k8s/apps/critical/service.yaml: |
+  apiVersion: v1
+  kind: Service
+  metadata:
+    name: critical-service
+    namespace: production
+  spec:
+    selector:
+      app: critical-service
+    ports:
+    - port: 80
+      targetPort: 8080
+k8s/unrelated/gatekeeper/constraint.yaml: |
+  # GARBAGE_K8S_415_GATEKEEPER_CONSTRAINT
+  apiVersion: constraints.gatekeeper.sh/v1beta1
+  kind: K8sRequiredLabels
+  metadata:
+    name: GARBAGE_K8S_415_CONSTRAINT_NAME
+  spec:
+    match:
+      kinds:
+      - apiGroups: GARBAGE_K8S_415_API_GROUPS
+        kinds: GARBAGE_K8S_415_KINDS
+k8s/unrelated/falco/falco-rules.yaml: |
+  # GARBAGE_K8S_415_FALCO_RULES
+  apiVersion: v1
+  kind: ConfigMap
+  metadata:
+    name: GARBAGE_K8S_415_FALCO_CONFIG
+  data:
+    rules: GARBAGE_K8S_415_RULE_CONTENT
+    output: GARBAGE_K8S_415_OUTPUT_FORMAT

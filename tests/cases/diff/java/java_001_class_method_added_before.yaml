@@ -1,0 +1,119 @@
+src/main/java/com/mathengine/core/Calculator.java: |
+  package com.mathengine.core;
+
+  import java.math.BigDecimal;
+  import java.math.RoundingMode;
+
+  public class Calculator {
+      private static final int DEFAULT_SCALE = 10;
+      private final int scale;
+
+      public Calculator() {
+          this.scale = DEFAULT_SCALE;
+      }
+
+      public Calculator(int scale) {
+          if (scale < 0) {
+              throw new IllegalArgumentException("Scale must be non-negative");
+          }
+          this.scale = scale;
+      }
+
+      public BigDecimal add(BigDecimal a, BigDecimal b) {
+          validateInputs(a, b);
+          return a.add(b).setScale(scale, RoundingMode.HALF_UP);
+      }
+
+      public BigDecimal add(double a, double b) {
+          return add(BigDecimal.valueOf(a), BigDecimal.valueOf(b));
+      }
+
+      private void validateInputs(BigDecimal... values) {
+          for (BigDecimal value : values) {
+              if (value == null) {
+                  throw new IllegalArgumentException("Input values cannot be null");
+              }
+          }
+      }
+
+      public int getScale() {
+          return scale;
+      }
+  }
+src/main/java/com/mathengine/Main.java: |
+  package com.mathengine;
+
+  import com.mathengine.core.Calculator;
+  import java.math.BigDecimal;
+
+  public class Main {
+      public static void main(String[] args) {
+          Calculator calc = new Calculator();
+          BigDecimal result = calc.add(BigDecimal.valueOf(1.5), BigDecimal.valueOf(2.5));
+          System.out.println("Result: " + result);
+      }
+  }
+src/main/java/com/mathengine/unrelated/ReportGenerator.java: |
+  package com.mathengine.unrelated;
+
+  import java.time.LocalDateTime;
+  import java.util.UUID;
+
+  public class ReportGenerator {
+      public static final String GARBAGE_JAVA_REPORT_001 = "unrelated_report_marker";
+      private static final String GARBAGE_JAVA_INTERNAL_002 = "internal_marker";
+
+      private final String reportId;
+      private final LocalDateTime createdAt;
+
+      public ReportGenerator() {
+          this.reportId = UUID.randomUUID().toString();
+          this.createdAt = LocalDateTime.now();
+          initializeGarbageData();
+      }
+
+      private void initializeGarbageData() {
+          String marker = GARBAGE_JAVA_REPORT_001 + GARBAGE_JAVA_INTERNAL_002;
+          System.out.println(marker);
+      }
+
+      public String generateSummary() {
+          return String.format("Report %s created at %s", reportId, createdAt);
+      }
+
+      public void processUnrelatedData() {
+          String GARBAGE_JAVA_LOCAL_003 = "local_marker";
+          System.out.println(GARBAGE_JAVA_LOCAL_003);
+      }
+  }
+src/main/java/com/mathengine/unrelated/StatisticsCollector.java: |
+  package com.mathengine.unrelated;
+
+  import java.util.ArrayList;
+  import java.util.List;
+
+  public class StatisticsCollector {
+      public static final String GARBAGE_JAVA_STATS_004 = "stats_collector_marker";
+
+      private final List<Double> samples = new ArrayList<>();
+
+      public void addSample(double value) {
+          samples.add(value);
+      }
+
+      public double calculateMean() {
+          if (samples.isEmpty()) {
+              return 0.0;
+          }
+          return samples.stream().mapToDouble(Double::doubleValue).average().orElse(0.0);
+      }
+
+      public void clearSamples() {
+          samples.clear();
+          logGarbageMarker();
+      }
+
+      private void logGarbageMarker() {
+          System.out.println(GARBAGE_JAVA_STATS_004);
+      }
+  }

@@ -1,0 +1,67 @@
+src/lib.rs: |
+  pub mod resource;
+  pub mod handler;
+  pub mod unrelated;
+src/resource.rs: |
+  pub struct Resource {
+      data: String,
+      size: usize,
+  }
+
+  impl Resource {
+      pub fn new(data: String) -> Self {
+          let size = data.len();
+          Self { data, size }
+      }
+
+      pub fn consume(self) -> String {
+          self.data
+      }
+
+      pub fn size(&self) -> usize {
+          self.size
+      }
+  }
+src/handler.rs: |
+  use crate::resource::Resource;
+
+  pub fn handle(resource: Resource) {
+      println!("Handling resource of size {}", resource.size());
+      let data = resource.consume();
+      println!("Handled: {}", data);
+  }
+src/unrelated/mod.rs: |
+  pub mod compressor;
+  pub mod hasher;
+src/unrelated/compressor.rs: |
+  // GARBAGE_RUST_032_COMPRESSOR_A
+  pub const GARBAGE_RUST_032_COMP_ALGO_B: &str = "gzip";
+
+  pub struct GarbageStreamCompressor032 {
+      level: u8,
+  }
+
+  impl GarbageStreamCompressor032 {
+      pub fn garbage_compress_032(&self, data: &[u8]) -> Vec<u8> {
+          data.to_vec()
+      }
+
+      pub fn garbage_decompress_032(&self, data: &[u8]) -> Vec<u8> {
+          data.to_vec()
+      }
+  }
+src/unrelated/hasher.rs: |
+  // GARBAGE_RUST_032_HASHER_C
+  pub const GARBAGE_RUST_032_HASH_ALGO_D: &str = "sha256";
+
+  pub struct GarbageContentHasher032;
+
+  impl GarbageContentHasher032 {
+      pub fn garbage_hash_032(&self, data: &[u8]) -> String {
+          format!("hash_{}", data.len())
+      }
+
+      pub fn garbage_verify_032(&self, data: &[u8], hash: &str) -> bool {
+          self.garbage_hash_032(data) == hash
+      }
+  }

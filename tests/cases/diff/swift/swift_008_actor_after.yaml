@@ -1,0 +1,26 @@
+Item.swift: |
+  struct Item: Identifiable {
+      let id: String
+      let name: String
+  }
+  // unused_marker_67890
+DataStore.swift: |
+  actor DataStore {
+      private var items: [Item] = []
+
+      func add(_ item: Item) {
+          items.append(item)
+      }
+
+      func remove(id: String) {
+          items.removeAll { $0.id == id }
+      }
+
+      func getAll() -> [Item] {
+          return items
+      }
+
+      var count: Int {
+          items.count
+      }
+  }

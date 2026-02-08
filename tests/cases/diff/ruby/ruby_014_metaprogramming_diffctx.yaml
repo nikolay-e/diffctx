@@ -1,0 +1,16 @@
+must_include_files:
+  - lib/config.rb
+must_include_content:
+  - |
+    define_accessors :host, :port, :debug, :timeout
+must_not_include:
+  - GARBAGE_RUBY_014_BASE_CURRENCY_A
+  - GARBAGE_RUBY_014_EXCHANGE_API_B
+  - GARBAGE_RUBY_014_PRECISION_DIGITS_C
+  - GARBAGE_RUBY_014_TAX_REGION_D
+  - GARBAGE_RUBY_014_DEFAULT_RATE_E
+  - GARBAGE_RUBY_014_EXEMPT_THRESHOLD_F
+  - GarbageCurrencyConverter
+  - GarbageTaxCalculator
+  - garbage_currency.rb
+  - garbage_tax_calc.rb

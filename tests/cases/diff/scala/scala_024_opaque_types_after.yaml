@@ -1,0 +1,31 @@
+Types.scala: |
+  object Types {
+    opaque type UserId = Long
+    opaque type OrderId = Long
+
+    object UserId {
+      def apply(value: Long): UserId = value
+      extension (id: UserId) def value: Long = id
+    }
+
+    object OrderId {
+      def apply(value: Long): OrderId = value
+      extension (id: OrderId) def value: Long = id
+    }
+  }
+UserService.scala: |
+  import Types._
+
+  class UserService {
+    def getUserById(id: UserId): Option[String] = {
+      Some(s"User with id ${id.value}")
+    }
+
+    def createUser(name: String): UserId = {
+      UserId(System.currentTimeMillis())
+    }
+
+    def getOrderForUser(userId: UserId, orderId: OrderId): String = {
+      s"Order ${orderId.value} for user ${userId.value}"
+    }
+  }

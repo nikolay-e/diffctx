@@ -1,0 +1,102 @@
+src/lib.rs: |
+  pub mod models;
+  pub mod unrelated;
+src/models.rs: |
+  use std::fmt;
+
+  #[derive(Debug, Clone)]
+  pub struct User {
+      pub id: u64,
+      pub name: String,
+  }
+
+  impl User {
+      pub fn new(id: u64, name: String) -> Self {
+          Self { id, name }
+      }
+
+      pub fn display_name(&self) -> &str {
+          &self.name
+      }
+  }
+
+  impl fmt::Display for User {
+      fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+          write!(f, "User #{}: {}", self.id, self.name)
+      }
+  }
+
+  impl Default for User {
+      fn default() -> Self {
+          Self::new(0, String::from("Anonymous"))
+      }
+  }
+src/unrelated/mod.rs: |
+  pub mod events;
+  pub mod commands;
+src/unrelated/events.rs: |
+  // GARBAGE_RUST_EVENTS_001
+  use std::collections::VecDeque;
+
+  pub const GARBAGE_MAX_EVENTS_002: usize = 1000;
+
+  #[derive(Debug)]
+  pub enum GarbageEventType003 {
+      Created,
+      Updated,
+      Deleted,
+  }
+
+  pub struct GarbageEvent004 {
+      event_type: GarbageEventType003,
+      timestamp: u64,
+      data: String,
+  }
+
+  impl GarbageEvent004 {
+      pub fn garbage_emit_005(&self) {
+          // GARBAGE_EMIT_IMPL_006
+      }
+
+      pub fn garbage_serialize_007(&self) -> String {
+          "GARBAGE_SERIALIZED_008".to_string()
+      }
+  }
+
+  pub struct GarbageEventBus009 {
+      events: VecDeque<GarbageEvent004>,
+  }
+
+  impl GarbageEventBus009 {
+      pub fn garbage_publish_010(&mut self, event: GarbageEvent004) {
+          self.events.push_back(event);
+      }
+  }
+src/unrelated/commands.rs: |
+  // GARBAGE_RUST_COMMANDS_011
+  pub const GARBAGE_CMD_TIMEOUT_012: u64 = 30000;
+
+  pub trait GarbageCommand013 {
+      fn garbage_execute_014(&self) -> Result<(), String>;
+      fn garbage_undo_015(&self) -> Result<(), String>;
+  }
+
+  pub struct GarbageCommandHandler016 {
+      history: Vec<Box<dyn GarbageCommand013>>,
+  }
+
+  impl GarbageCommandHandler016 {
+      pub fn garbage_run_017(&mut self, cmd: Box<dyn GarbageCommand013>) -> Result<(), String> {
+          cmd.garbage_execute_014()?;
+          self.history.push(cmd);
+          Ok(())
+      }
+
+      pub fn garbage_undo_last_018(&mut self) -> Result<(), String> {
+          if let Some(cmd) = self.history.pop() {
+              cmd.garbage_undo_015()
+          } else {
+              Err("GARBAGE_NO_HISTORY_019".to_string())
+          }
+      }
+  }

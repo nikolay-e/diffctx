@@ -1,0 +1,65 @@
+src/models/user.py: |
+  class User:
+      def __init__(self, name, email, role="viewer"):
+          self.name = name
+          self.email = email
+          self.role = role
+
+      def validate(self):
+          return len(self.name) > 0 and "@" in self.email
+
+      def is_admin(self):
+          return self.role == "admin"
+
+      def display_name(self):
+          return f"{self.name} ({self.role})"
+
+src/services/auth.py: |
+  from src.models.user import User
+
+  def authenticate(username, password):
+      user = User(username, f"{username}@example.com")
+      if not user.validate():
+          raise ValueError("Invalid username")
+      if not check_password(password):
+          raise ValueError("Invalid password")
+      return True
+
+  def check_password(password):
+      has_upper = any(c.isupper() for c in password)
+      has_digit = any(c.isdigit() for c in password)
+      return len(password) >= 8 and has_upper and has_digit
+
+  def generate_session_token(user):
+      return f"token_{user.name}_{user.role}"
+
+src/api/routes.py: |
+  from src.services.auth import authenticate
+
+  def login_endpoint(request):
+      result = authenticate(request.username, request.password)
+      return {"success": result}
+
+  def logout_endpoint(request):
+      return {"success": True, "message": "Logged out"}
+
+  def health_check():
+      return {"status": "ok", "version": "1.0.0"}
+
+garbage_notification_hub.py: |
+  GARBAGE_COMP_004_CHANNEL_TYPE_A = "websocket"
+  GARBAGE_COMP_004_DELIVERY_MODE_B = "push"
+
+  class GarbageNotificationHub:
+      GARBAGE_COMP_004_MAX_RETRIES_C = 3
+      def notify(self):
+          pass
+
+garbage_audit_logger.py: |
+  GARBAGE_COMP_004_LOG_RETENTION_D = "days"
+  GARBAGE_COMP_004_COMPLIANCE_LEVEL_E = "gdpr"
+
+  class GarbageAuditLogger:
+      GARBAGE_COMP_004_ROTATION_POLICY_F = "daily"
+      def log(self):
+          pass

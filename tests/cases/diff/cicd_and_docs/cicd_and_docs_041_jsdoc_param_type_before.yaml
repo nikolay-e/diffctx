@@ -1,0 +1,52 @@
+src/types.ts: |
+  export interface User {
+    id: number;
+    name: string;
+    email: string;
+  }
+
+  export interface Order {
+    id: number;
+    userId: number;
+    items: OrderItem[];
+    total: number;
+  }
+
+  export interface OrderItem {
+    productId: number;
+    quantity: number;
+    price: number;
+  }
+
+src/service.ts: |
+  import { User, Order } from './types';
+
+  /**
+   * Process an order for a user
+   * @param {User} user - The user placing the order
+   * @param {Order} order - The order to process
+   * @returns {boolean} Success status
+   */
+  function processOrder(user: User, order: Order): boolean {
+    return true;
+  }
+
+  export { processOrder };
+
+garbage_jsdoc_parser.ts: |
+  const GARBAGE_CICD_DOCS_041_PARSER_MARKER_A = "typescript";
+  const GARBAGE_CICD_DOCS_041_AST_MARKER_B = "estree";
+
+  class GarbageJsdocParser {
+    static GARBAGE_CICD_DOCS_041_STRICT_MARKER_C = true;
+    parse(): void {}
+  }
+
+garbage_jsdoc_validator.ts: |
+  const GARBAGE_CICD_DOCS_041_VALIDATOR_MARKER_D = "eslint";
+  const GARBAGE_CICD_DOCS_041_RULE_MARKER_E = "jsdoc/require-param";
+
+  class GarbageJsdocValidator {
+    static GARBAGE_CICD_DOCS_041_ENFORCE_MARKER_F = false;
+    validate(): boolean { return true; }
+  }

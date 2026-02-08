@@ -1,0 +1,83 @@
+models/order.py: |
+  from dataclasses import dataclass, field
+  from typing import List
+  from enum import Enum
+
+  class OrderStatus(Enum):
+      PENDING = "pending"
+      CONFIRMED = "confirmed"
+      SHIPPED = "shipped"
+
+  @dataclass
+  class LineItem:
+      product_name: str
+      quantity: int
+      unit_price: float
+
+      def subtotal(self) -> float:
+          return self.quantity * self.unit_price
+
+  @dataclass
+  class Order:
+      order_id: int
+      customer_name: str
+      status: OrderStatus = OrderStatus.PENDING
+      items: List[LineItem] = field(default_factory=list)
+
+      def total_amount(self) -> float:
+          return sum(item.subtotal() for item in self.items)
+
+      def item_count(self) -> int:
+          return sum(item.quantity for item in self.items)
+
+repository/order_repo.py: |
+  from models.order import Order, OrderStatus
+
+  class OrderRepository:
+      def __init__(self):
+          self._orders = {}
+          self._next_id = 1
+
+      def save(self, order: Order) -> None:
+          self._orders[order.order_id] = order
+
+      def get_orders(self):
+          pass
+
+      def find_by_status(self, status: OrderStatus):
+          return [o for o in self._orders.values() if o.status == status]
+
+garbage_shipping.py: |
+  GARBAGE_PY_028_SHIPPING_A = "shipping module marker"
+  GARBAGE_PY_028_TRACKING_B = "tracking system marker"
+
+  class ShippingCalculator:
+      GARBAGE_PY_028_CALC_C = "calculator marker"
+
+      def calculate_cost(self, weight: float, distance: float) -> float:
+          return weight * distance * 0.5
+
+      def estimate_delivery(self, distance: float) -> int:
+          return max(1, int(distance / 500))
+
+  def generate_tracking_number() -> str:
+      GARBAGE_PY_028_TRACKNUM_D = "track number marker"
+      return "TRK-000001"
+
+garbage_inventory.py: |
+  GARBAGE_PY_028_INVENTORY_E = "inventory module marker"
+  GARBAGE_PY_028_STOCK_F = "stock level marker"
+
+  class InventoryManager:
+      GARBAGE_PY_028_MANAGER_G = True
+
+      def __init__(self):
+          self._stock = {}
+
+      def check_availability(self, product_id: str) -> bool:
+          return self._stock.get(product_id, 0) > 0
+
+      def reserve_stock(self, product_id: str, quantity: int) -> bool:
+          GARBAGE_PY_028_RESERVE_H = "reserve marker"
+          available = self._stock.get(product_id, 0)
+          return available >= quantity

@@ -1,0 +1,20 @@
+calculator.py: |
+  def calculate_total(items):
+      return sum(i.price for i in items)
+checkout.py: |
+  from calculator import calculate_total
+
+  class CartItem:
+      def __init__(self, price, quantity):
+          self.price = price
+          self.quantity = quantity
+
+  def process_checkout(cart_items):
+      total = calculate_total(cart_items)
+      return {"total": total}
+invoice.py: |
+  from calculator import calculate_total
+
+  def create_invoice(line_items):
+      amount = calculate_total(line_items)
+      return {"amount": amount}

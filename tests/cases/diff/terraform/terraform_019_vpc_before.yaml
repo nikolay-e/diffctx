@@ -1,0 +1,20 @@
+network.tf: |
+  # Network resources placeholder
+outputs.tf: |
+  # Outputs placeholder
+deprecated/legacy_network_GARBAGE_TF_vpc459a.tf: |
+  # GARBAGE_TF_vpc459a - Legacy VPC configuration
+  resource "aws_vpc" "legacy_GARBAGE_TF_vpc459a" {
+    cidr_block = "172.16.0.0/16"
+    tags = {
+      Name = "legacy-vpc-GARBAGE_TF_vpc459a"
+    }
+  }
+
+  resource "aws_subnet" "legacy_public_GARBAGE_TF_vpc459a" {
+    vpc_id     = aws_vpc.legacy_GARBAGE_TF_vpc459a.id
+    cidr_block = "172.16.1.0/24"
+  }
+docs/network_diagram_GARBAGE_TF_vpc459b.md: |
+  # Legacy Network GARBAGE_TF_vpc459b
+  Old network architecture documentation GARBAGE_TF_vpc459b

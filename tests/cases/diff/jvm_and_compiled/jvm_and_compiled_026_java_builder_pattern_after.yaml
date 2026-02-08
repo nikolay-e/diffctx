@@ -1,0 +1,80 @@
+src/main/java/com/example/User.java: |
+  package com.example;
+
+  public class User {
+      private final String name;
+      private final String email;
+      private final int age;
+      private final String address;
+
+      private User(Builder builder) {
+          this.name = builder.name;
+          this.email = builder.email;
+          this.age = builder.age;
+          this.address = builder.address;
+      }
+
+      public String getName() { return name; }
+      public String getEmail() { return email; }
+      public int getAge() { return age; }
+      public String getAddress() { return address; }
+
+      public static Builder builder() {
+          return new Builder();
+      }
+
+      public static class Builder {
+          private String name;
+          private String email;
+          private int age;
+          private String address;
+
+          public Builder name(String name) {
+              this.name = name;
+              return this;
+          }
+
+          public Builder email(String email) {
+              this.email = email;
+              return this;
+          }
+
+          public Builder age(int age) {
+              this.age = age;
+              return this;
+          }
+
+          public Builder address(String address) {
+              this.address = address;
+              return this;
+          }
+
+          public User build() {
+              return new User(this);
+          }
+      }
+  }
+src/main/java/com/example/UserService.java: |
+  package com.example;
+
+  public class UserService {
+      public User createUser(String name, String email) {
+          return User.builder()
+              .name(name)
+              .email(email)
+              .age(0)
+              .build();
+      }
+  }
+GarbagePrototype.java: |
+  public class GarbagePrototype {
+      public static final String GARBAGE_JVM_026_PROTO_MARKER_A = "marker";
+      public static final String GARBAGE_JVM_026_CLONE_MARKER_B = "marker";
+      public void noop() {}
+  }
+GarbageDeepCopier.java: |
+  public class GarbageDeepCopier {
+      public static final String GARBAGE_JVM_026_COPY_MARKER_C = "marker";
+      public static final String GARBAGE_JVM_026_DEEP_MARKER_D = "marker";
+      public void noop() {}
+  }

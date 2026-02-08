@@ -1,0 +1,4 @@
+main.tf: |
+  resource "aws_lambda_function" "api" {
+    function_name = "api-handler"
+  }

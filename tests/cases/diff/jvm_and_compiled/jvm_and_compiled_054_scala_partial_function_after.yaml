@@ -1,0 +1,35 @@
+Event.scala: |
+  sealed trait Event
+  case class UserCreated(name: String) extends Event
+  case class UserDeleted(id: String) extends Event
+  case class OrderPlaced(orderId: String, amount: Double) extends Event
+EventHandler.scala: |
+  class EventHandler {
+    val userHandler: PartialFunction[Event, String] = {
+      case UserCreated(name) => s"Created user: $name"
+      case UserDeleted(id) => s"Deleted user: $id"
+    }
+
+    val orderHandler: PartialFunction[Event, String] = {
+      case OrderPlaced(id, amount) => s"Order $id: $$$amount"
+    }
+
+    val combinedHandler: PartialFunction[Event, String] =
+      userHandler orElse orderHandler
+
+    def handle(event: Event): Option[String] = {
+      combinedHandler.lift(event)
+    }
+  }
+GarbageLiftOps.scala: |
+  object GarbageLiftOps {
+    val GARBAGE_JVM_054_LIFT_MARKER_A = "marker"
+    val GARBAGE_JVM_054_COLLECT_MARKER_B = "marker"
+    def noop(): Unit = {}
+  }
+GarbageGuardHelper.scala: |
+  object GarbageGuardHelper {
+    val GARBAGE_JVM_054_GUARD_MARKER_C = "marker"
+    val GARBAGE_JVM_054_FILTER_MARKER_D = "marker"
+    def noop(): Unit = {}
+  }

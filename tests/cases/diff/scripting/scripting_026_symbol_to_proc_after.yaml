@@ -1,0 +1,29 @@
+user.rb: |
+  class User
+    attr_reader :name, :email, :age
+
+    def initialize(name:, email:, age:)
+      @name = name
+      @email = email
+      @age = age
+    end
+  end
+report.rb: |
+  require_relative 'user'
+
+  class Report
+    def initialize(users)
+      @users = users
+    end
+
+    def names
+      @users.map(&:name)
+    end
+
+    def emails
+      @users.map(&:email)
+    end
+  end
+garbage.rb: |
+  garbage_user_method_unused_67890 = "never called"
+  unused_marker_12345 = "not used"

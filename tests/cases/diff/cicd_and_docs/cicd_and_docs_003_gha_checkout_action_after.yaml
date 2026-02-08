@@ -1,0 +1,45 @@
+package.json: |
+  {
+    "name": "myapp",
+    "version": "1.0.0",
+    "scripts": {
+      "build": "tsc",
+      "start": "node dist/index.js"
+    },
+    "dependencies": {
+      "express": "^4.18.0"
+    }
+  }
+
+.github/workflows/ci.yml: |
+  name: CI
+  jobs:
+    build:
+      runs-on: ubuntu-latest
+      steps:
+        - uses: actions/checkout@v4
+        - run: npm run build
+
+src/index.ts: |
+  import express from 'express';
+  const app = express();
+  app.get('/', (req, res) => res.send('Hello'));
+  app.listen(3000);
+
+garbage_backup.ts: |
+  const GARBAGE_CICD_DOCS_003_BACKUP_MARKER_A = "s3";
+  const GARBAGE_CICD_DOCS_003_RETENTION_MARKER_B = 30;
+
+  class GarbageBackupService {
+    static GARBAGE_CICD_DOCS_003_COMPRESS_MARKER_C = true;
+    backup(): void {}
+  }
+
+garbage_restore.ts: |
+  const GARBAGE_CICD_DOCS_003_RESTORE_MARKER_D = "snapshot";
+  const GARBAGE_CICD_DOCS_003_VERIFY_MARKER_E = true;
+
+  class GarbageRestoreManager {
+    static GARBAGE_CICD_DOCS_003_PARALLEL_MARKER_F = 4;
+    restore(): void {}
+  }

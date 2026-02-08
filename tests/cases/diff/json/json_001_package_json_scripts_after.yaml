@@ -1,0 +1,118 @@
+package.json: |
+  {
+    "name": "myapp",
+    "version": "1.0.0",
+    "description": "Web application with build pipeline",
+    "scripts": {
+      "build": "webpack --mode production",
+      "test": "jest --coverage",
+      "lint": "eslint src",
+      "start": "node dist/server.js"
+    },
+    "dependencies": {
+      "express": "^4.18.0",
+      "lodash": "^4.17.21"
+    },
+    "devDependencies": {
+      "webpack": "^5.88.0",
+      "webpack-cli": "^5.1.0",
+      "jest": "^29.6.0",
+      "eslint": "^8.45.0"
+    }
+  }
+webpack.config.js: |
+  const path = require('path');
+
+  module.exports = {
+      entry: './src/index.js',
+      output: {
+          filename: 'bundle.js',
+          path: path.resolve(__dirname, 'dist'),
+          clean: true,
+      },
+      module: {
+          rules: [
+              {
+                  test: /\.js$/,
+                  exclude: /node_modules/,
+                  use: 'babel-loader',
+              },
+          ],
+      },
+      resolve: {
+          extensions: ['.js', '.json'],
+      },
+  };
+src/index.js: |
+  const express = require('express');
+  const { merge } = require('lodash');
+
+  const defaultConfig = { port: 3000, host: 'localhost' };
+
+  function createApp(userConfig) {
+      const config = merge({}, defaultConfig, userConfig);
+      const app = express();
+
+      app.get('/health', (req, res) => {
+          res.json({ status: 'ok', uptime: process.uptime() });
+      });
+
+      app.listen(config.port, config.host, () => {
+          console.log(`Server running on ${config.host}:${config.port}`);
+      });
+
+      return app;
+  }
+
+  module.exports = { createApp };
+unrelated/formatter.js: |
+  const GARBAGE_JSON_001_FORMAT_CONFIG_A = { indent: 2, lineWidth: 80 };
+
+  class GARBAGE_JSON_001_CODE_FORMATTER_B {
+      constructor(options) {
+          this.options = { ...GARBAGE_JSON_001_FORMAT_CONFIG_A, ...options };
+      }
+
+      formatLine(line) {
+          return line.trimEnd();
+      }
+
+      formatBlock(lines) {
+          return lines.map(l => this.formatLine(l)).join('\n');
+      }
+  }
+
+  function GARBAGE_JSON_001_APPLY_FORMATTING_C(source) {
+      const formatter = new GARBAGE_JSON_001_CODE_FORMATTER_B();
+      return formatter.formatBlock(source.split('\n'));
+  }
+
+  module.exports = { GARBAGE_JSON_001_CODE_FORMATTER_B, GARBAGE_JSON_001_APPLY_FORMATTING_C };
+unrelated/migrator.js: |
+  const GARBAGE_JSON_001_MIGRATION_REGISTRY_D = new Map();
+
+  class GARBAGE_JSON_001_SCHEMA_MIGRATOR_E {
+      constructor(version) {
+          this.version = version;
+          this.applied = [];
+      }
+
+      register(name, fn) {
+          GARBAGE_JSON_001_MIGRATION_REGISTRY_D.set(name, fn);
+      }
+
+      async migrate(data) {
+          for (const [name, fn] of GARBAGE_JSON_001_MIGRATION_REGISTRY_D) {
+              data = await fn(data);
+              this.applied.push(name);
+          }
+          return data;
+      }
+  }
+
+  function GARBAGE_JSON_001_RUN_MIGRATIONS_F(data) {
+      const migrator = new GARBAGE_JSON_001_SCHEMA_MIGRATOR_E('1.0');
+      return migrator.migrate(data);
+  }
+
+  module.exports = { GARBAGE_JSON_001_SCHEMA_MIGRATOR_E, GARBAGE_JSON_001_RUN_MIGRATIONS_F };

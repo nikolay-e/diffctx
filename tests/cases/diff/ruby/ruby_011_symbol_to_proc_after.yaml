@@ -1,0 +1,69 @@
+lib/user.rb: |
+  class User
+    attr_reader :name, :email, :age, :active
+
+    def initialize(name:, email:, age:, active: true)
+      @name = name
+      @email = email
+      @age = age
+      @active = active
+    end
+
+    def to_s
+      "#{@name} <#{@email}>"
+    end
+
+    def adult?
+      @age >= 18
+    end
+  end
+lib/report.rb: |
+  require_relative 'user'
+
+  class Report
+    def initialize(users)
+      @users = users
+    end
+
+    def names
+      @users.map(&:name)
+    end
+
+    def emails
+      @users.map(&:email)
+    end
+
+    def total_age
+      @users.map(&:age).sum
+    end
+
+    def active_adults
+      @users.select(&:active).select(&:adult?)
+    end
+
+    def summary
+      @users.map(&:to_s).join(", ")
+    end
+  end
+lib/garbage_dns_resolver.rb: |
+  GARBAGE_RUBY_011_RESOLVER_TYPE_A = "recursive"
+  GARBAGE_RUBY_011_CACHE_POLICY_B = "ttl_based"
+
+  class GarbageDnsResolver
+    GARBAGE_RUBY_011_TIMEOUT_SEC_C = 5
+
+    def resolve(hostname)
+      GARBAGE_RUBY_011_RESOLVER_TYPE_A
+    end
+  end
+lib/garbage_session_store.rb: |
+  GARBAGE_RUBY_011_STORE_BACKEND_D = "memcached"
+  GARBAGE_RUBY_011_EXPIRY_HOURS_E = "24"
+
+  class GarbageSessionStore
+    GARBAGE_RUBY_011_MAX_SESSIONS_F = 10000
+
+    def get(session_id)
+      GARBAGE_RUBY_011_STORE_BACKEND_D
+    end
+  end

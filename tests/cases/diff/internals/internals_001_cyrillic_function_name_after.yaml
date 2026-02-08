@@ -1,0 +1,36 @@
+src/localization/greetings.py: |
+  from src.localization.formatter import format_greeting
+  def get_default_language():
+      return "ru"
+  def привет_мир():
+      return "здравствуй"
+  def select_greeting(language_code: str) -> str:
+      if language_code == "ru":
+          return привет_мир()
+      return "Hello"
+  def build_response(user_name: str, language_code: str) -> dict:
+      greeting = select_greeting(language_code)
+      formatted = format_greeting(greeting, user_name)
+      return {"message": formatted, "lang": language_code}
+src/localization/formatter.py: |
+  def format_greeting(greeting: str, name: str) -> str:
+      return greeting + ", " + name + "!"
+  def truncate_text(text: str, max_length: int) -> str:
+      if len(text) > max_length:
+          return text[:max_length] + "..."
+      return text
+garbage_intl_cache.py: |
+  GARBAGE_INT_001_CACHE_MARKER_A = "locale"
+  GARBAGE_INT_001_INTL_MARKER_B = "i18n"
+
+  class GarbageIntlCache:
+      def noop(self):
+          pass
+
+garbage_encoding_utils.py: |
+  GARBAGE_INT_001_ENCODE_MARKER_C = "utf8"
+  GARBAGE_INT_001_DECODE_MARKER_D = "ascii"
+
+  class GarbageEncodingUtils:
+      def noop(self):
+          pass

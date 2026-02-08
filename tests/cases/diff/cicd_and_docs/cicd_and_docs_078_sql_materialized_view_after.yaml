@@ -1,0 +1,107 @@
+sql/views/sales_summary_mv.sql: |
+  -- Materialized view for daily sales aggregation with extended metrics
+  -- Excludes cancelled orders and tracks refunds separately
+  CREATE MATERIALIZED VIEW sales_summary AS
+  SELECT
+      DATE_TRUNC('day', o.created_at) AS day,
+      COUNT(*) AS order_count,
+      SUM(o.total) AS revenue,
+      AVG(o.total) AS avg_order_value,
+      COUNT(DISTINCT o.user_id) AS unique_customers,
+      SUM(CASE WHEN o.status = 'refunded' THEN o.total ELSE 0 END) AS refunded_amount,
+      SUM(CASE WHEN o.status = 'refunded' THEN 1 ELSE 0 END) AS refund_count,
+      MIN(o.total) AS min_order_value,
+      MAX(o.total) AS max_order_value,
+      PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY o.total) AS median_order_value
+  FROM orders o
+  WHERE o.status != 'cancelled'
+  GROUP BY DATE_TRUNC('day', o.created_at)
+  WITH DATA;
+
+  -- Primary index for day lookups
+  CREATE UNIQUE INDEX idx_sales_summary_day ON sales_summary(day);
+
+  -- Secondary indexes for analytics queries
+  CREATE INDEX idx_sales_summary_revenue ON sales_summary(revenue DESC);
+  CREATE INDEX idx_sales_summary_order_count ON sales_summary(order_count DESC);
+  CREATE INDEX idx_sales_summary_customers ON sales_summary(unique_customers DESC);
+
+sql/views/product_sales_mv.sql: |
+  -- Materialized view for product-level sales metrics
+  CREATE MATERIALIZED VIEW product_sales AS
+  SELECT
+      p.id AS product_id,
+      p.name AS product_name,
+      c.name AS category_name,
+      COUNT(DISTINCT o.id) AS orders_count,
+      SUM(oi.quantity) AS units_sold,
+      SUM(oi.quantity * oi.price) AS total_revenue,
+      AVG(oi.price) AS avg_selling_price
+  FROM products p
+  JOIN order_items oi ON p.id = oi.product_id
+  JOIN orders o ON oi.order_id = o.id
+  LEFT JOIN categories c ON p.category_id = c.id
+  WHERE o.status NOT IN ('cancelled', 'refunded')
+  GROUP BY p.id, p.name, c.name
+  WITH DATA;
+
+  CREATE UNIQUE INDEX idx_product_sales_id ON product_sales(product_id);
+  CREATE INDEX idx_product_sales_revenue ON product_sales(total_revenue DESC);
+
+sql/jobs/refresh_views.sql: |
+  -- Refresh all materialized views
+  -- Run during off-peak hours via pg_cron
+  REFRESH MATERIALIZED VIEW CONCURRENTLY sales_summary;
+  REFRESH MATERIALIZED VIEW CONCURRENTLY product_sales;
+
+src/models/sales_summary.py: |
+  from dataclasses import dataclass
+  from datetime import date
+  from decimal import Decimal
+  from typing import Optional
+
+  @dataclass
+  class SalesSummary:
+      day: date
+      order_count: int
+      revenue: Decimal
+      avg_order_value: Decimal
+      unique_customers: int
+      refunded_amount: Decimal
+      refund_count: int
+      min_order_value: Decimal
+      max_order_value: Decimal
+      median_order_value: Optional[Decimal]
+
+src/repositories/analytics_repository.py: |
+  from typing import List
+  from models.sales_summary import SalesSummary
+
+  class AnalyticsRepository:
+      def __init__(self, db):
+          self.db = db
+
+      def get_sales_summary(self) -> List[SalesSummary]:
+          results = self.db.execute("SELECT * FROM sales_summary ORDER BY day DESC")
+          return [SalesSummary(**r) for r in results]
+
+      def refresh_views(self):
+          self.db.execute_file('sql/jobs/refresh_views.sql')
+
+garbage_view_manager.ts: |
+  const GARBAGE_CICD_DOCS_078_VIEW_MARKER_A = "materialized";
+  const GARBAGE_CICD_DOCS_078_REFRESH_MARKER_B = "concurrent";
+
+  class GarbageViewManager {
+    static GARBAGE_CICD_DOCS_078_INDEX_MARKER_C = true;
+    manage(): void {}
+  }
+
+garbage_analytics_cache.ts: |
+  const GARBAGE_CICD_DOCS_078_CACHE_MARKER_D = "invalidate";
+  const GARBAGE_CICD_DOCS_078_TTL_MARKER_E = "expire";
+
+  class GarbageAnalyticsCache {
+    static GARBAGE_CICD_DOCS_078_PRECOMPUTE_MARKER_F = false;
+    cache(): void {}
+  }

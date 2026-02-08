@@ -1,0 +1,42 @@
+Services/Serializer.cs: |
+  using System.Text.Json;
+
+  namespace MyApp.Services;
+
+  public static class Serializer
+  {
+      public static string ToJson<T>(T obj)
+      {
+          return JsonSerializer.Serialize(obj);
+      }
+
+      public static T? FromJson<T>(string json)
+      {
+          return JsonSerializer.Deserialize<T>(json);
+      }
+  }
+Program.cs: |
+  using System;
+
+  class Program
+  {
+      static void Main() { }
+  }
+Unrelated/TemplateEngine.cs: |
+  namespace MyApp.Unrelated;
+
+  public class TemplateEngine
+  {
+      private const string GARBAGE_CS_011_TEMPLATE_ENGINE_A = "template_engine_marker";
+
+      public string Render(string template) => GARBAGE_CS_011_TEMPLATE_ENGINE_A + template;
+  }
+Unrelated/LocalizationService.cs: |
+  namespace MyApp.Unrelated;
+
+  public class LocalizationService
+  {
+      public const string GARBAGE_CS_011_LOCALIZATION_B = "localization_marker";
+
+      public string Translate(string key) => GARBAGE_CS_011_LOCALIZATION_B + key;
+  }

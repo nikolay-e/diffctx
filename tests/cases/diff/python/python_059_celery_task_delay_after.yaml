@@ -1,0 +1,80 @@
+tasks.py: |
+  from celery import shared_task
+  import logging
+
+  logger = logging.getLogger(__name__)
+
+  @shared_task(bind=True, max_retries=3)
+  def send_email(self, to: str, subject: str, body: str) -> bool:
+      logger.info("Sending email to %s: %s", to, subject)
+      return True
+
+  @shared_task(bind=True, max_retries=5)
+  def process_data(self, data: dict) -> dict:
+      logger.info("Processing data batch of %d items", len(data))
+      return {"processed": True, "count": len(data)}
+
+  @shared_task
+  def cleanup_expired_sessions() -> int:
+      logger.info("Cleaning up expired sessions")
+      return 0
+
+  @shared_task
+  def generate_report(report_type: str, date_range: dict) -> str:
+      logger.info("Generating %s report", report_type)
+      return f"/reports/{report_type}.pdf"
+
+views.py: |
+  from typing import Any
+  from tasks import send_email, process_data, generate_report
+
+  def submit_form(email: str, data: dict[str, Any]) -> dict[str, Any]:
+      send_email.delay(email, "Form Received", "Thank you for your submission")
+      process_data.delay(data)
+      return {"status": "queued"}
+
+  def request_report(report_type: str) -> dict[str, Any]:
+      task = generate_report.delay(report_type, {"start": "2024-01-01", "end": "2024-12-31"})
+      return {"status": "generating", "task_id": task.id}
+
+  def get_task_status(task_id: str) -> dict[str, Any]:
+      from celery.result import AsyncResult
+      result = AsyncResult(task_id)
+      return {"task_id": task_id, "status": result.status, "result": result.result}
+
+garbage_queue.py: |
+  GARBAGE_PY_059_QUEUE_A = "message queue marker"
+  GARBAGE_PY_059_BROKER_B = "broker config marker"
+
+  class MessageQueue:
+      GARBAGE_PY_059_ROUTING_C = "routing key marker"
+
+      def __init__(self, broker_url: str = "redis://localhost:6379"):
+          self.broker_url = broker_url
+          self._messages: list[dict] = []
+
+      def publish(self, topic: str, message: dict) -> None:
+          self._messages.append({"topic": topic, **message})
+
+      def consume(self, topic: str) -> list[dict]:
+          GARBAGE_PY_059_ACK_D = "acknowledge marker"
+          return [m for m in self._messages if m.get("topic") == topic]
+
+garbage_webhook.py: |
+  GARBAGE_PY_059_HOOK_E = "webhook handler marker"
+  GARBAGE_PY_059_RETRY_F = "retry policy marker"
+
+  class WebhookDispatcher:
+      GARBAGE_PY_059_SIGN_G = True
+
+      def __init__(self, secret: str = ""):
+          self.secret = secret
+          self._dispatched: list[dict] = []
+
+      def dispatch(self, url: str, payload: dict) -> bool:
+          self._dispatched.append({"url": url, "payload": payload})
+          return True
+
+      def get_history(self) -> list[dict]:
+          GARBAGE_PY_059_LOG_H = "dispatch log marker"
+          return self._dispatched

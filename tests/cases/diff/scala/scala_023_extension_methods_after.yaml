@@ -1,0 +1,24 @@
+IntExtensions.scala: |
+  object IntExtensions {
+    extension (n: Int) {
+      def squared: Int = n * n
+      def isEven: Boolean = n % 2 == 0
+      def times(f: => Unit): Unit = (1 to n).foreach(_ => f)
+    }
+  }
+Calculator.scala: |
+  import IntExtensions._
+
+  class Calculator {
+    def squareSum(nums: List[Int]): Int = {
+      nums.map(_.squared).sum
+    }
+
+    def countEven(nums: List[Int]): Int = {
+      nums.count(_.isEven)
+    }
+
+    def repeatAction(n: Int, action: => Unit): Unit = {
+      n.times(action)
+    }
+  }

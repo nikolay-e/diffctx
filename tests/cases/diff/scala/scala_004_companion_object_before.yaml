@@ -1,0 +1,39 @@
+src/models/User.scala: |
+  package models
+
+  case class User(id: String, name: String, role: String)
+
+  object User {
+    def apply(name: String): User =
+      User(java.util.UUID.randomUUID().toString, name, "user")
+
+    def fromJson(json: String): User = User("parsed-id", json, "user")
+
+    val anonymous: User = User("anon", "Anonymous", "guest")
+
+    def admin(name: String): User =
+      User(java.util.UUID.randomUUID().toString, name, "admin")
+  }
+src/services/UserFactory.scala: |
+  package services
+
+  import models.User
+
+  class UserFactory {
+    def createBasicUser(name: String): User = User(name)
+  }
+unrelated/NotificationSender.scala: |
+  package notifications
+  // GARBAGE_SCALA_004_MARKER_A
+  class NotificationSender {
+    val GARBAGE_SCALA_004_CHANNEL = "GARBAGE_SCALA_004_MARKER_B"
+    def send(msg: String): Unit = println(s"GARBAGE_SCALA_004_MARKER_C $msg")
+    def broadcast(): Unit = println("GARBAGE_SCALA_004_MARKER_D broadcasting")
+  }
+unrelated/AuditLogger.scala: |
+  package audit
+  // GARBAGE_SCALA_004_MARKER_E
+  object AuditLogger {
+    def log(action: String): Unit = println(s"GARBAGE_SCALA_004_MARKER_F $action")
+    val GARBAGE_SCALA_004_LEVEL = "INFO"
+  }

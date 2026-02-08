@@ -1,0 +1,54 @@
+src/config.ts: |
+  export interface AppConfig {
+      apiUrl: string;
+      timeout: number;
+      debug: boolean;
+      maxRetries: number;
+      logLevel: string;
+  }
+
+  export const defaultConfig: AppConfig = {
+      apiUrl: 'http://localhost:3000',
+      timeout: 5000,
+      debug: false,
+      maxRetries: 3,
+      logLevel: 'info',
+  };
+src/getter.ts: |
+  console.log('initial');
+src/unrelated/fontLoader.ts: |
+  const GARBAGE_JSX_041_FONT_CONFIG_A = 'font_garbage_marker';
+
+  export class GarbageFontLoader {
+      private loaded: Set<string> = new Set();
+
+      load(family: string): void {
+          this.loaded.add(family);
+      }
+
+      isLoaded(family: string): boolean {
+          return this.loaded.has(family);
+      }
+  }
+
+  export function GARBAGE_JSX_041_PRELOAD_FONTS_B(): void {
+      console.log('GARBAGE_JSX_041_FONT_OUTPUT_C');
+  }
+src/unrelated/viewport.ts: |
+  const GARBAGE_JSX_041_VIEWPORT_CONFIG_D = { breakpoints: [768, 1024, 1440] };
+
+  export class GARBAGE_JSX_041_VIEWPORT_OBSERVER_E {
+      private width = 0;
+
+      observe(): void {
+          this.width = 1024;
+      }
+
+      getWidth(): number {
+          return this.width;
+      }
+  }
+
+  export function GARBAGE_JSX_041_IS_MOBILE_F(): boolean {
+      return false;
+  }

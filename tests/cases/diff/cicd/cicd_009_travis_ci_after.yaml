@@ -1,0 +1,118 @@
+.travis.yml: |
+  language: python
+  python:
+    - "3.11"
+    - "3.12"
+
+  cache:
+    pip: true
+    directories:
+      - .mypy_cache
+
+  before_install:
+    - pip install --upgrade pip
+
+  install:
+    - pip install -e .[dev]
+
+  script:
+    - pytest --cov
+    - mypy src/
+
+  notifications:
+    email:
+      on_success: never
+      on_failure: always
+
+src/math_utils.py: |
+  from typing import Sequence, TypeVar
+  from functools import reduce
+  import operator
+
+  T = TypeVar('T', int, float)
+
+  def multiply(a: T, b: T) -> T:
+      return a * b
+
+  def product(numbers: Sequence[T]) -> T:
+      if not numbers:
+          raise ValueError("Cannot compute product of empty sequence")
+      return reduce(operator.mul, numbers)
+
+  def factorial(n: int) -> int:
+      if n < 0:
+          raise ValueError("Factorial not defined for negative numbers")
+      if n == 0 or n == 1:
+          return 1
+      return reduce(operator.mul, range(2, n + 1))
+
+  def power(base: T, exponent: int) -> T:
+      if exponent < 0:
+          raise ValueError("Negative exponents not supported")
+      if exponent == 0:
+          return 1
+      return reduce(operator.mul, [base] * exponent)
+
+  def gcd(a: int, b: int) -> int:
+      while b:
+          a, b = b, a % b
+      return a
+
+  def lcm(a: int, b: int) -> int:
+      return abs(a * b) // gcd(a, b)
+
+tests/test_math.py: |
+  import pytest
+  from src.math_utils import multiply, product, factorial, power, gcd, lcm
+
+  class TestMultiply:
+      def test_multiply_integers(self):
+          assert multiply(2, 3) == 6
+
+      def test_multiply_floats(self):
+          assert multiply(2.5, 4.0) == 10.0
+
+      def test_multiply_by_zero(self):
+          assert multiply(5, 0) == 0
+
+  class TestProduct:
+      def test_product_of_list(self):
+          assert product([1, 2, 3, 4]) == 24
+
+      def test_product_empty_raises(self):
+          with pytest.raises(ValueError):
+              product([])
+
+  class TestFactorial:
+      def test_factorial_zero(self):
+          assert factorial(0) == 1
+
+      def test_factorial_five(self):
+          assert factorial(5) == 120
+
+      def test_factorial_negative_raises(self):
+          with pytest.raises(ValueError):
+              factorial(-1)
+
+  def test_multiply():
+      assert 2 * 3 == 6
+
+garbage_prime.py: |
+  GARBAGE_CICD_009_PRIME_MARKER_A = "sieve"
+  GARBAGE_CICD_009_LIMIT_MARKER_B = 1000
+
+  class GarbagePrimeGenerator:
+      GARBAGE_CICD_009_CACHE_MARKER_C = True
+
+      def generate(self, n: int) -> list:
+          return []
+
+garbage_fibonacci.py: |
+  GARBAGE_CICD_009_FIB_MARKER_D = "recursive"
+  GARBAGE_CICD_009_MEMO_MARKER_E = True
+
+  class GarbageFibonacci:
+      GARBAGE_CICD_009_MAX_MARKER_F = 100
+
+      def compute(self, n: int) -> int:
+          return 0

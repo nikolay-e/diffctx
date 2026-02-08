@@ -1,0 +1,59 @@
+README.md: |
+  # My Library
+
+  A Python library for data processing.
+
+  ## Installation
+
+  ```bash
+  pip install mylib
+  ```
+
+  ## Usage
+
+  ```python
+  from mylib import process
+
+  result = process(data)
+  print(result)
+  ```
+
+examples/basic_usage.py: |
+  from mylib import process
+
+  data = [1, 2, 3]
+  result = process(data)
+  print(result)
+
+src/mylib/__init__.py: |
+  from .core import process, transform
+
+  __all__ = ['process', 'transform']
+
+src/mylib/core.py: |
+  def process(data):
+      return [x * 2 for x in data]
+
+  def transform(data, options=None):
+      if options and options.get('format') == 'json':
+          import json
+          return json.dumps(data)
+      return data
+
+garbage_docs_generator.ts: |
+  const GARBAGE_CICD_DOCS_040_GENERATOR_MARKER_A = "sphinx";
+  const GARBAGE_CICD_DOCS_040_FORMAT_MARKER_B = "rst";
+
+  class GarbageDocsGenerator {
+    static GARBAGE_CICD_DOCS_040_THEME_MARKER_C = "alabaster";
+    generate(): void {}
+  }
+
+garbage_docs_validator.ts: |
+  const GARBAGE_CICD_DOCS_040_VALIDATOR_MARKER_D = "doctest";
+  const GARBAGE_CICD_DOCS_040_STRICT_MARKER_E = true;
+
+  class GarbageDocsValidator {
+    static GARBAGE_CICD_DOCS_040_COVERAGE_MARKER_F = 80;
+    validate(): boolean { return true; }
+  }

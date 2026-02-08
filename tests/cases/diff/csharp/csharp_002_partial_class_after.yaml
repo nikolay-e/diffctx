@@ -1,0 +1,80 @@
+Models/User.cs: |
+  using System;
+
+  namespace MyApp.Models;
+
+  public partial class User
+  {
+      public int Id { get; set; }
+      public string Name { get; set; } = string.Empty;
+      public string Email { get; set; } = string.Empty;
+      public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+      public string DisplayName => $"{Name} ({Email})";
+  }
+Models/User.Validation.cs: |
+  using System.Text.RegularExpressions;
+
+  namespace MyApp.Models;
+
+  public partial class User
+  {
+      private static readonly Regex EmailRegex = new(@"^[^@\s]+@[^@\s]+\.[^@\s]+$");
+
+      public bool IsValid()
+      {
+          return !string.IsNullOrEmpty(Name) && IsEmailValid();
+      }
+
+      public bool IsEmailValid()
+      {
+          return EmailRegex.IsMatch(Email);
+      }
+  }
+Services/UserService.cs: |
+  using MyApp.Models;
+
+  namespace MyApp.Services;
+
+  public class UserService
+  {
+      private readonly List<User> _users = new();
+
+      public bool Register(User user)
+      {
+          if (!user.IsValid()) return false;
+          _users.Add(user);
+          return true;
+      }
+
+      public User? FindByEmail(string email)
+      {
+          return _users.FirstOrDefault(u => u.Email == email);
+      }
+  }
+Unrelated/MetricsReporter.cs: |
+  using System;
+
+  namespace MyApp.Unrelated;
+
+  public class MetricsReporter
+  {
+      private const string GARBAGE_CS_002_METRICS_REPORTER_A = "metrics_marker";
+
+      public void Report(string metric)
+      {
+          Console.WriteLine($"{GARBAGE_CS_002_METRICS_REPORTER_A}: {metric}");
+      }
+  }
+Unrelated/FeatureFlags.cs: |
+  namespace MyApp.Unrelated;
+
+  public static class FeatureFlags
+  {
+      public const string GARBAGE_CS_002_FEATURE_FLAGS_B = "feature_flag_marker";
+
+      public static bool IsEnabled(string flag)
+      {
+          return flag != GARBAGE_CS_002_FEATURE_FLAGS_B;
+      }
+  }

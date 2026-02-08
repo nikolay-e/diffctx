@@ -1,0 +1,167 @@
+include/callback/handler.hpp: |
+  #pragma once
+  #include <functional>
+  #include <string>
+  #include <map>
+  #include <vector>
+
+  namespace app::callback {
+
+  enum class StatusCode {
+      Success = 0,
+      Timeout = 1,
+      ConnectionError = 2,
+      InvalidResponse = 3,
+      AuthenticationFailed = 4
+  };
+
+  struct ResponseContext {
+      StatusCode code;
+      std::string message;
+      std::map<std::string, std::string> headers;
+      std::vector<char> body;
+
+      bool isSuccess() const { return code == StatusCode::Success; }
+      size_t bodySize() const { return body.size(); }
+  };
+
+  using SuccessHandler = void(*)(const ResponseContext&);
+  using ErrorHandler = void(*)(StatusCode, const std::string&);
+
+  void defaultSuccessHandler(const ResponseContext& ctx);
+  void defaultErrorHandler(StatusCode code, const std::string& msg);
+
+  class CallbackRegistry {
+  public:
+      void registerSuccess(const std::string& name, SuccessHandler handler);
+      void registerError(const std::string& name, ErrorHandler handler);
+      SuccessHandler getSuccessHandler(const std::string& name) const;
+      ErrorHandler getErrorHandler(const std::string& name) const;
+
+  private:
+      std::map<std::string, SuccessHandler> successHandlers_;
+      std::map<std::string, ErrorHandler> errorHandlers_;
+  };
+
+  }
+include/unrelated/telemetry_collector.hpp: |
+  #pragma once
+  // GARBAGE_CPP_TELEMETRY_241_001
+  #define GARBAGE_CPP_TELEMETRY_MARKER_241_002 "telemetry_unrelated"
+
+  namespace app::unrelated::telemetry {
+
+  // GARBAGE_CPP_TELEMETRY_CLASS_241_003
+  class TelemetryCollector {
+  public:
+      void recordMetric(const char* name, double value) {}
+      void flush() {}
+  private:
+      // GARBAGE_CPP_TELEMETRY_PRIVATE_241_004
+      int bufferSize_ = 1024;
+  };
+
+  inline void initTelemetry() {
+      // GARBAGE_CPP_TELEMETRY_INIT_241_005
+  }
+
+  }
+src/unrelated/audio_processor.cpp: |
+  // GARBAGE_CPP_AUDIO_241_006
+  #include <cmath>
+
+  namespace app::unrelated::audio {
+
+  // GARBAGE_CPP_AUDIO_CLASS_241_007
+  class AudioProcessor {
+  public:
+      void processBuffer(float* buffer, size_t samples) {
+          // GARBAGE_CPP_AUDIO_PROCESS_241_008
+          for (size_t i = 0; i < samples; ++i) {
+              buffer[i] *= 0.5f;
+          }
+      }
+
+      float calculateRMS(const float* buffer, size_t samples) {
+          // GARBAGE_CPP_AUDIO_RMS_241_009
+          float sum = 0.0f;
+          for (size_t i = 0; i < samples; ++i) {
+              sum += buffer[i] * buffer[i];
+          }
+          return std::sqrt(sum / samples);
+      }
+  };
+
+  // GARBAGE_CPP_AUDIO_FACTORY_241_010
+  AudioProcessor* createProcessor() {
+      return new AudioProcessor();
+  }
+
+  }
+src/main.cpp: |
+  #include "callback/handler.hpp"
+  #include <iostream>
+  #include <memory>
+
+  namespace {
+
+  void onRequestSuccess(const app::callback::ResponseContext& ctx) {
+      std::cout << "Request succeeded with " << ctx.bodySize() << " bytes\n";
+      if (!ctx.headers.empty()) {
+          std::cout << "Headers received: " << ctx.headers.size() << "\n";
+      }
+  }
+
+  void onRequestError(app::callback::StatusCode code, const std::string& msg) {
+      std::cerr << "Request failed: " << msg << " (code: "
+                << static_cast<int>(code) << ")\n";
+  }
+
+  void onTimeoutError(app::callback::StatusCode code, const std::string& msg) {
+      std::cerr << "Timeout: " << msg << "\n";
+  }
+
+  }
+
+  class RequestExecutor {
+  public:
+      using SuccessCallback = void(*)(const app::callback::ResponseContext&);
+      using ErrorCallback = void(*)(app::callback::StatusCode, const std::string&);
+
+      RequestExecutor(SuccessCallback onSuccess, ErrorCallback onError)
+          : successHandler_(onSuccess)
+          , errorHandler_(onError) {}
+
+      void execute(bool simulateSuccess) {
+          if (simulateSuccess) {
+              app::callback::ResponseContext ctx;
+              ctx.code = app::callback::StatusCode::Success;
+              ctx.message = "OK";
+              ctx.body = {'d', 'a', 't', 'a'};
+              successHandler_(ctx);
+          } else {
+              errorHandler_(app::callback::StatusCode::Timeout, "Connection timed out");
+          }
+      }
+
+      void setErrorHandler(ErrorCallback handler) {
+          errorHandler_ = handler;
+      }
+
+  private:
+      SuccessCallback successHandler_;
+      ErrorCallback errorHandler_;
+  };
+
+  int main() {
+      void (*successPtr)(const app::callback::ResponseContext&) = onRequestSuccess;
+      void (*errorPtr)(app::callback::StatusCode, const std::string&) = onRequestError;
+
+      RequestExecutor executor(successPtr, errorPtr);
+      executor.execute(true);
+
+      executor.setErrorHandler(onTimeoutError);
+      executor.execute(false);
+
+      return 0;
+  }

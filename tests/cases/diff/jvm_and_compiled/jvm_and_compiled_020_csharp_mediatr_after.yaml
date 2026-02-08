@@ -1,0 +1,48 @@
+CreateUser.cs: |
+  using MediatR;
+
+  public class CreateUser : IRequest<User>
+  {
+      public string Name { get; set; }
+      public string Email { get; set; }
+  }
+CreateUserHandler.cs: |
+  using MediatR;
+  using System.Threading;
+  using System.Threading.Tasks;
+
+  public class CreateUserHandler : IRequestHandler<CreateUser, User>
+  {
+      private readonly IUserRepository _repository;
+
+      public CreateUserHandler(IUserRepository repository)
+      {
+          _repository = repository;
+      }
+
+      public async Task<User> Handle(CreateUser request, CancellationToken cancellationToken)
+      {
+          var user = new User
+          {
+              Name = request.Name,
+              Email = request.Email
+          };
+
+          await _repository.AddAsync(user, cancellationToken);
+          return user;
+      }
+  }
+GarbageDispatcher.cs: |
+  public class GarbageDispatcher
+  {
+      public const string GARBAGE_JVM_020_DISPATCH_MARKER_A = "marker";
+      public const string GARBAGE_JVM_020_QUEUE_MARKER_B = "marker";
+      public void Noop() {}
+  }
+GarbageEventBus.cs: |
+  public class GarbageEventBus
+  {
+      public const string GARBAGE_JVM_020_EVENT_MARKER_C = "marker";
+      public const string GARBAGE_JVM_020_BUS_MARKER_D = "marker";
+      public void Noop() {}
+  }

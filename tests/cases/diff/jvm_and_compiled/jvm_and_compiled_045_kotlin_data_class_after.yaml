@@ -1,0 +1,29 @@
+src/main/kotlin/com/example/User.kt: |
+  package com.example
+
+  data class User(
+      val id: Long,
+      val name: String,
+      val email: String,
+      val active: Boolean = true
+  )
+src/main/kotlin/com/example/UserMapper.kt: |
+  package com.example
+
+  object UserMapper {
+      fun toDto(user: User): UserDto = UserDto(user.id, user.name)
+  }
+
+  data class UserDto(val id: Long, val name: String)
+GarbageSealedHelper.kt: |
+  object GarbageSealedHelper {
+      const val GARBAGE_JVM_045_SEALED_MARKER_A = "marker"
+      const val GARBAGE_JVM_045_VARIANT_MARKER_B = "marker"
+      fun noop() {}
+  }
+GarbageEnumMapper.kt: |
+  object GarbageEnumMapper {
+      const val GARBAGE_JVM_045_ENUM_MARKER_C = "marker"
+      const val GARBAGE_JVM_045_CONST_MARKER_D = "marker"
+      fun noop() {}
+  }

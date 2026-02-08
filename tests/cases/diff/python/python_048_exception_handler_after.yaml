@@ -1,0 +1,94 @@
+errors.py: |
+  class DatabaseError(Exception):
+      def __init__(self, message: str, query: str = ""):
+          self.query = query
+          super().__init__(message)
+
+      def get_details(self) -> dict:
+          return {"error": str(self), "query": self.query}
+
+  class ConnectionError(DatabaseError):
+      def __init__(self, host: str, port: int):
+          self.host = host
+          self.port = port
+          super().__init__(f"Cannot connect to {host}:{port}")
+
+  class QueryError(DatabaseError):
+      def __init__(self, query: str, reason: str):
+          self.reason = reason
+          super().__init__(f"Query failed: {reason}", query=query)
+
+  class TimeoutError(DatabaseError):
+      def __init__(self, timeout_seconds: float):
+          self.timeout_seconds = timeout_seconds
+          super().__init__(f"Operation timed out after {timeout_seconds}s")
+
+handler.py: |
+  import logging
+  from errors import DatabaseError, ConnectionError, QueryError, TimeoutError
+
+  logger = logging.getLogger(__name__)
+
+  def handle_request(request_data: dict) -> dict:
+      try:
+          result = execute_query(request_data.get("sql", ""))
+          return {"status": "ok", "data": result}
+      except ConnectionError as exc:
+          logger.error("Connection failed: host=%s port=%d", exc.host, exc.port)
+          return {"status": "error", "code": "CONNECTION_FAILED", "detail": str(exc)}
+      except QueryError as exc:
+          logger.warning("Query error: %s", exc.reason)
+          return {"status": "error", "code": "QUERY_FAILED", "detail": exc.reason}
+      except TimeoutError as exc:
+          logger.warning("Timeout after %.1fs", exc.timeout_seconds)
+          return {"status": "error", "code": "TIMEOUT", "detail": str(exc)}
+      except DatabaseError as exc:
+          logger.exception("Unexpected database error")
+          return {"status": "error", "code": "DB_ERROR", "detail": str(exc)}
+
+  def execute_query(sql: str) -> list[dict]:
+      return [{"id": 1}]
+
+  def health_check() -> dict:
+      try:
+          execute_query("SELECT 1")
+          return {"database": "healthy"}
+      except DatabaseError:
+          return {"database": "unhealthy"}
+
+garbage_metrics.py: |
+  GARBAGE_PY_048_METRICS_A = "metrics collector marker"
+  GARBAGE_PY_048_COUNTER_B = "counter type marker"
+
+  class MetricsCollector:
+      GARBAGE_PY_048_GAUGE_C = "gauge marker"
+
+      def __init__(self, prefix: str = "app"):
+          self.prefix = prefix
+          self._counters: dict[str, int] = {}
+
+      def increment(self, metric: str, value: int = 1) -> None:
+          self._counters[metric] = self._counters.get(metric, 0) + value
+
+      def get_value(self, metric: str) -> int:
+          GARBAGE_PY_048_HIST_D = "histogram marker"
+          return self._counters.get(metric, 0)
+
+garbage_scheduler.py: |
+  GARBAGE_PY_048_SCHED_E = "scheduler marker"
+  GARBAGE_PY_048_CRON_F = "cron expression marker"
+
+  class TaskScheduler:
+      GARBAGE_PY_048_QUEUE_G = True
+
+      def __init__(self, max_workers: int = 4):
+          self.max_workers = max_workers
+          self._tasks: list[dict] = []
+
+      def schedule(self, name: str, interval: int) -> None:
+          self._tasks.append({"name": name, "interval": interval})
+
+      def cancel(self, name: str) -> bool:
+          GARBAGE_PY_048_CANCEL_H = "cancel marker"
+          self._tasks = [t for t in self._tasks if t["name"] != name]
+          return True

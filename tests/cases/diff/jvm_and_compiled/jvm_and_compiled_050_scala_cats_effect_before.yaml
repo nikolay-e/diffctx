@@ -1,0 +1,23 @@
+Database.scala: |
+  import cats.effect.IO
+
+  object Database {
+    def connect(): IO[Unit] = IO(println("Connected"))
+    def disconnect(): IO[Unit] = IO(println("Disconnected"))
+    def query(sql: String): IO[List[String]] = IO(List("result1", "result2"))
+  }
+Program.scala: |
+  // Initial
+  object Program {}
+GarbageZioFiber.scala: |
+  object GarbageZioFiber {
+    val GARBAGE_JVM_050_ZIO_MARKER_A = "marker"
+    val GARBAGE_JVM_050_FIBER_MARKER_B = "marker"
+    def noop(): Unit = {}
+  }
+GarbageLayerBuilder.scala: |
+  object GarbageLayerBuilder {
+    val GARBAGE_JVM_050_LAYER_MARKER_C = "marker"
+    val GARBAGE_JVM_050_RUNTIME_MARKER_D = "marker"
+    def noop(): Unit = {}
+  }

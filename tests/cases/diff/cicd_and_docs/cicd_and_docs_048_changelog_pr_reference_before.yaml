@@ -1,0 +1,39 @@
+CHANGELOG.md: |
+  # Changelog
+
+  ## [1.0.0] - 2024-01-01
+
+  ### Added
+  - Initial release
+
+src/feature.py: |
+  def new_feature():
+      pass
+
+src/auth.py: |
+  def authenticate(token):
+      return True
+
+package.json: |
+  {
+    "name": "changelog-app",
+    "version": "1.0.0"
+  }
+
+garbage_changelog_parser.ts: |
+  const GARBAGE_CICD_DOCS_048_PARSER_MARKER_A = "keep-a-changelog";
+  const GARBAGE_CICD_DOCS_048_FORMAT_MARKER_B = "markdown";
+
+  class GarbageChangelogParser {
+    static GARBAGE_CICD_DOCS_048_STRICT_MARKER_C = true;
+    parse(): void {}
+  }
+
+garbage_changelog_generator.ts: |
+  const GARBAGE_CICD_DOCS_048_GENERATOR_MARKER_D = "conventional-changelog";
+  const GARBAGE_CICD_DOCS_048_PRESET_MARKER_E = "angular";
+
+  class GarbageChangelogGenerator {
+    static GARBAGE_CICD_DOCS_048_APPEND_MARKER_F = false;
+    generate(): void {}
+  }

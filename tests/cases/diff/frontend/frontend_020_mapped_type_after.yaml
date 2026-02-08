@@ -1,0 +1,86 @@
+src/models.ts: |
+  export interface UserModel {
+      id: string;
+      name: string;
+      email: string;
+      password: string;
+  }
+
+  export interface ProductModel {
+      id: string;
+      name: string;
+      price: number;
+      stock: number;
+  }
+src/mapped.ts: |
+  import { UserModel, ProductModel } from './models';
+
+  export type ReadonlyDeep<T> = {
+      readonly [K in keyof T]: T[K];
+  };
+
+  export type Mutable<T> = {
+      -readonly [K in keyof T]: T[K];
+  };
+
+  export type Optional<T> = {
+      [K in keyof T]?: T[K];
+  };
+
+  export type Nullable<T> = {
+      [K in keyof T]: T[K] | null;
+  };
+
+  export type ReadonlyUser = ReadonlyDeep<UserModel>;
+  export type OptionalProduct = Optional<ProductModel>;
+  export type NullableUser = Nullable<UserModel>;
+src/unrelated/color_utils.ts: |
+  // GARBAGE_FE_020_COLOR_A
+  export interface HSL {
+      h: number;
+      s: number;
+      l: number;
+  }
+
+  // GARBAGE_FE_020_COLOR_B
+  export function hslToHex(hsl: HSL): string {
+      const { h, s, l } = hsl;
+      const a = s * Math.min(l, 1 - l);
+      const f = (n: number) => {
+          const k = (n + h / 30) % 12;
+          return l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1);
+      };
+      return '#' + [f(0), f(8), f(4)]
+          .map(x => Math.round(x * 255).toString(16).padStart(2, '0'))
+          .join('');
+  }
+
+  // GARBAGE_FE_020_CONTRAST_C
+  export function contrastRatio(fg: HSL, bg: HSL): number {
+      return Math.abs(fg.l - bg.l);
+  }
+src/unrelated/debounce_utils.ts: |
+  // GARBAGE_FE_020_DEBOUNCE_D
+  export function debounce<T extends (...args: any[]) => void>(
+      fn: T, delay: number
+  ): T {
+      let timer: ReturnType<typeof setTimeout>;
+      return ((...args: any[]) => {
+          clearTimeout(timer);
+          timer = setTimeout(() => fn(...args), delay);
+      }) as T;
+  }
+
+  // GARBAGE_FE_020_THROTTLE_E
+  export function throttle<T extends (...args: any[]) => void>(
+      fn: T, limit: number
+  ): T {
+      let inThrottle = false;
+      return ((...args: any[]) => {
+          if (!inThrottle) {
+              fn(...args);
+              inThrottle = true;
+              setTimeout(() => { inThrottle = false; }, limit);
+          }
+      }) as T;
+  }

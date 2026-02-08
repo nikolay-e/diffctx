@@ -1,0 +1,103 @@
+.github/workflows/ci.yml: |
+  name: CI
+  on:
+    push:
+      branches: [main, develop]
+    pull_request:
+      branches: [main]
+  jobs:
+    build:
+      runs-on: ubuntu-latest
+      steps:
+        - uses: actions/checkout@v4
+        - name: Setup Node.js
+          uses: actions/setup-node@v4
+          with:
+            node-version: '20'
+        - run: npm ci
+        - run: npm run build
+        - run: npm test
+
+src/index.ts: |
+  import { Application } from './app';
+  import { Config } from './config';
+  import { Logger } from './utils/logger';
+
+  const logger = new Logger('main');
+
+  async function main(): Promise<void> {
+    const config = Config.load();
+    const app = new Application(config);
+
+    await app.initialize();
+    await app.start();
+
+    logger.info(`Application started on port ${config.port}`);
+
+    process.on('SIGTERM', async () => {
+      logger.info('Shutting down...');
+      await app.stop();
+      process.exit(0);
+    });
+  }
+
+  main().catch((error) => {
+    logger.error('Failed to start', error);
+    process.exit(1);
+  });
+
+src/app.ts: |
+  import express, { Express } from 'express';
+  import { Config } from './config';
+  import { setupRoutes } from './routes';
+
+  export class Application {
+    private app: Express;
+    private server: any;
+
+    constructor(private config: Config) {
+      this.app = express();
+      this.app.use(express.json());
+      setupRoutes(this.app);
+    }
+
+    async initialize(): Promise<void> {
+      // Initialize database, cache, etc.
+    }
+
+    async start(): Promise<void> {
+      return new Promise((resolve) => {
+        this.server = this.app.listen(this.config.port, resolve);
+      });
+    }
+
+    async stop(): Promise<void> {
+      return new Promise((resolve) => {
+        this.server?.close(resolve);
+      });
+    }
+  }
+
+garbage_scheduler.ts: |
+  const GARBAGE_CICD_DOCS_001_SCHEDULE_MARKER_A = "cron";
+  const GARBAGE_CICD_DOCS_001_INTERVAL_MARKER_B = 3600;
+
+  class GarbageTaskScheduler {
+    static GARBAGE_CICD_DOCS_001_QUEUE_MARKER_C = "default";
+
+    schedule(): void {}
+  }
+
+  export { GarbageTaskScheduler };
+
+garbage_webhook.ts: |
+  const GARBAGE_CICD_DOCS_001_WEBHOOK_MARKER_D = "github";
+  const GARBAGE_CICD_DOCS_001_SECRET_MARKER_E = "sha256";
+
+  class GarbageWebhookHandler {
+    static GARBAGE_CICD_DOCS_001_VERIFY_MARKER_F = true;
+
+    handle(): void {}
+  }
+
+  export { GarbageWebhookHandler };

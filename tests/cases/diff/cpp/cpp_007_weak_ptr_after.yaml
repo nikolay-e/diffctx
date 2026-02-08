@@ -1,0 +1,292 @@
+include/graph/node.hpp: |
+  #pragma once
+  #include <memory>
+  #include <vector>
+  #include <string>
+  #include <functional>
+
+  namespace app::graph {
+
+  class GraphNode;
+
+  struct NodeData {
+      std::string label;
+      double weight;
+      std::vector<std::string> tags;
+
+      NodeData(const std::string& label, double weight = 1.0)
+          : label(label), weight(weight) {}
+  };
+
+  class GraphNode : public std::enable_shared_from_this<GraphNode> {
+  public:
+      explicit GraphNode(int id, const NodeData& data)
+          : id_(id)
+          , data_(data) {}
+
+      int id() const { return id_; }
+      const NodeData& data() const { return data_; }
+      NodeData& data() { return data_; }
+
+      void setParent(std::shared_ptr<GraphNode> parent) {
+          parent_ = parent;
+      }
+
+      std::shared_ptr<GraphNode> parent() const {
+          return parent_.lock();
+      }
+
+      bool hasParent() const {
+          return !parent_.expired();
+      }
+
+      void addChild(std::shared_ptr<GraphNode> child) {
+          children_.push_back(child);
+          child->setParent(shared_from_this());
+      }
+
+      const std::vector<std::shared_ptr<GraphNode>>& children() const {
+          return children_;
+      }
+
+      size_t childCount() const { return children_.size(); }
+
+      void clearChildren() {
+          for (auto& child : children_) {
+              child->parent_.reset();
+          }
+          children_.clear();
+      }
+
+  private:
+      int id_;
+      NodeData data_;
+      std::weak_ptr<GraphNode> parent_;
+      std::vector<std::shared_ptr<GraphNode>> children_;
+  };
+
+  }
+include/unrelated/thread_pool.hpp: |
+  #pragma once
+  // GARBAGE_CPP_THREADPOOL_247_001
+  #define GARBAGE_CPP_THREADPOOL_SIZE_247_002 8
+
+  namespace app::unrelated::threading {
+
+  // GARBAGE_CPP_THREADPOOL_TASK_247_003
+  struct Task {
+      int priority;
+      // GARBAGE_CPP_THREADPOOL_TASK_DATA_247_004
+  };
+
+  // GARBAGE_CPP_THREADPOOL_CLASS_247_005
+  class ThreadPool {
+  public:
+      // GARBAGE_CPP_THREADPOOL_CTOR_247_006
+      explicit ThreadPool(size_t numThreads) {
+          // GARBAGE_CPP_THREADPOOL_INIT_247_007
+      }
+
+      // GARBAGE_CPP_THREADPOOL_SUBMIT_247_008
+      void submit(Task task) {
+          // GARBAGE_CPP_THREADPOOL_SUBMIT_IMPL_247_009
+      }
+
+      // GARBAGE_CPP_THREADPOOL_SHUTDOWN_247_010
+      void shutdown() {
+          // GARBAGE_CPP_THREADPOOL_SHUTDOWN_IMPL_247_011
+      }
+
+  private:
+      size_t numThreads_;
+  };
+
+  }
+src/unrelated/message_queue.cpp: |
+  // GARBAGE_CPP_MSGQUEUE_247_012
+  #include <string>
+
+  namespace app::unrelated::messaging {
+
+  // GARBAGE_CPP_MSGQUEUE_MSG_247_013
+  struct Message {
+      std::string topic;
+      std::string payload;
+      // GARBAGE_CPP_MSGQUEUE_MSG_DATA_247_014
+  };
+
+  // GARBAGE_CPP_MSGQUEUE_CLASS_247_015
+  class MessageQueue {
+  public:
+      // GARBAGE_CPP_MSGQUEUE_PUSH_247_016
+      void push(const Message& msg) {
+          // GARBAGE_CPP_MSGQUEUE_PUSH_IMPL_247_017
+      }
+
+      // GARBAGE_CPP_MSGQUEUE_POP_247_018
+      bool pop(Message& msg) {
+          // GARBAGE_CPP_MSGQUEUE_POP_IMPL_247_019
+          return false;
+      }
+
+      // GARBAGE_CPP_MSGQUEUE_SIZE_247_020
+      size_t size() const {
+          return 0;
+      }
+  };
+
+  }
+src/tree.cpp: |
+  #include "graph/node.hpp"
+  #include <iostream>
+  #include <queue>
+  #include <stack>
+  #include <unordered_set>
+
+  namespace app::tree {
+
+  class TreeBuilder {
+  public:
+      std::shared_ptr<graph::GraphNode> createNode(int id, const std::string& label) {
+          auto node = std::make_shared<graph::GraphNode>(id, graph::NodeData(label));
+          nodes_[id] = node;
+          return node;
+      }
+
+      void setRoot(std::shared_ptr<graph::GraphNode> node) {
+          root_ = node;
+      }
+
+      std::shared_ptr<graph::GraphNode> root() const {
+          return root_;
+      }
+
+      std::shared_ptr<graph::GraphNode> findNode(int id) const {
+          auto it = nodes_.find(id);
+          return it != nodes_.end() ? it->second : nullptr;
+      }
+
+  private:
+      std::shared_ptr<graph::GraphNode> root_;
+      std::unordered_map<int, std::shared_ptr<graph::GraphNode>> nodes_;
+  };
+
+  class TreeTraverser {
+  public:
+      explicit TreeTraverser(std::shared_ptr<graph::GraphNode> root)
+          : root_(root) {}
+
+      void breadthFirst(std::function<void(graph::GraphNode&)> visitor) {
+          if (!root_) return;
+
+          std::queue<std::shared_ptr<graph::GraphNode>> queue;
+          queue.push(root_);
+
+          while (!queue.empty()) {
+              auto node = queue.front();
+              queue.pop();
+
+              visitor(*node);
+
+              for (const auto& child : node->children()) {
+                  queue.push(child);
+              }
+          }
+      }
+
+      void depthFirst(std::function<void(graph::GraphNode&)> visitor) {
+          if (!root_) return;
+
+          std::stack<std::shared_ptr<graph::GraphNode>> stack;
+          stack.push(root_);
+
+          while (!stack.empty()) {
+              auto node = stack.top();
+              stack.pop();
+
+              visitor(*node);
+
+              const auto& children = node->children();
+              for (auto it = children.rbegin(); it != children.rend(); ++it) {
+                  stack.push(*it);
+              }
+          }
+      }
+
+      std::vector<std::shared_ptr<graph::GraphNode>> pathToRoot(
+          std::shared_ptr<graph::GraphNode> node) {
+          std::vector<std::shared_ptr<graph::GraphNode>> path;
+
+          auto current = node;
+          while (current) {
+              path.push_back(current);
+              current = current->parent();
+          }
+
+          return path;
+      }
+
+      std::shared_ptr<graph::GraphNode> findLowestCommonAncestor(
+          std::shared_ptr<graph::GraphNode> a,
+          std::shared_ptr<graph::GraphNode> b) {
+
+          std::unordered_set<graph::GraphNode*> ancestorsOfA;
+          auto current = a;
+          while (current) {
+              ancestorsOfA.insert(current.get());
+              current = current->parent();
+          }
+
+          current = b;
+          while (current) {
+              if (ancestorsOfA.count(current.get())) {
+                  return current;
+              }
+              current = current->parent();
+          }
+
+          return nullptr;
+      }
+
+  private:
+      std::shared_ptr<graph::GraphNode> root_;
+  };
+
+  }
+
+  int main() {
+      app::tree::TreeBuilder builder;
+
+      auto root = builder.createNode(1, "Root");
+      builder.setRoot(root);
+
+      auto child1 = builder.createNode(2, "Child1");
+      auto child2 = builder.createNode(3, "Child2");
+      auto grandchild = builder.createNode(4, "Grandchild");
+
+      root->addChild(child1);
+      root->addChild(child2);
+      child1->addChild(grandchild);
+
+      app::tree::TreeTraverser traverser(root);
+
+      std::cout << "BFS traversal:\n";
+      traverser.breadthFirst([](app::graph::GraphNode& node) {
+          std::cout << "  " << node.data().label << "\n";
+      });
+
+      auto path = traverser.pathToRoot(grandchild);
+      std::cout << "Path to root: " << path.size() << " nodes\n";
+
+      if (grandchild->hasParent()) {
+          auto parent = grandchild->parent();
+          std::cout << "Grandchild's parent: " << parent->data().label << "\n";
+      }
+
+      auto lca = traverser.findLowestCommonAncestor(grandchild, child2);
+      if (lca) {
+          std::cout << "LCA: " << lca->data().label << "\n";
+      }
+
+      return 0;
+  }

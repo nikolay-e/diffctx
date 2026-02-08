@@ -1,0 +1,128 @@
+models.py: |
+  from dataclasses import dataclass, field
+  from typing import Optional, List
+  from datetime import datetime
+  from enum import Enum
+
+  class OrderStatus(Enum):
+      PENDING = "pending"
+      PROCESSING = "processing"
+      SHIPPED = "shipped"
+      DELIVERED = "delivered"
+      CANCELLED = "cancelled"
+
+  @dataclass
+  class Address:
+      street: str
+      city: str
+      country: str
+      postal_code: str
+
+      def format_full(self) -> str:
+          return f"{self.street}, {self.city}, {self.postal_code}, {self.country}"
+
+  @dataclass
+  class OrderItem:
+      product_id: int
+      quantity: int
+      unit_price: float
+
+      def subtotal(self) -> float:
+          return self.quantity * self.unit_price
+
+  @dataclass
+  class Order:
+      id: int
+      customer_id: int
+      total: float
+      priority: int = 0
+      status: OrderStatus = OrderStatus.PENDING
+      items: List[OrderItem] = field(default_factory=list)
+      shipping_address: Optional[Address] = None
+      created_at: datetime = field(default_factory=datetime.now)
+
+      def calculate_total(self) -> float:
+          return sum(item.subtotal() for item in self.items)
+
+      def can_cancel(self) -> bool:
+          return self.status in (OrderStatus.PENDING, OrderStatus.PROCESSING)
+
+      def mark_shipped(self) -> None:
+          if self.status != OrderStatus.PROCESSING:
+              raise ValueError("Order must be processing to ship")
+          self.status = OrderStatus.SHIPPED
+
+      def is_high_priority(self) -> bool:
+          return self.priority >= 5
+services.py: |
+  from models import Order, OrderStatus, OrderItem, Address
+
+  class OrderService:
+      def __init__(self, repository):
+          self.repository = repository
+
+      def create_order(self, customer_id: int, total: float) -> Order:
+          order = Order(id=self._generate_id(), customer_id=customer_id, total=total)
+          self.repository.save(order)
+          return order
+
+      def process_order(self, order: Order) -> str:
+          if order.status != OrderStatus.PENDING:
+              raise ValueError("Cannot process non-pending order")
+          order.status = OrderStatus.PROCESSING
+          self.repository.save(order)
+          return f"Processing order {order.id}"
+
+      def add_item(self, order: Order, product_id: int, quantity: int, price: float) -> None:
+          item = OrderItem(product_id=product_id, quantity=quantity, unit_price=price)
+          order.items.append(item)
+          order.total = order.calculate_total()
+          self.repository.save(order)
+
+      def set_shipping_address(self, order: Order, address: Address) -> None:
+          order.shipping_address = address
+          self.repository.save(order)
+
+      def _generate_id(self) -> int:
+          return self.repository.next_id()
+garbage_analytics.py: |
+  GARBAGE_MARKER_ANALYTICS_001 = "analytics module marker"
+  UNRELATED_CONSTANT_ANALYTICS_002 = 42
+
+  class AnalyticsTracker:
+      GARBAGE_TRACKER_MARKER_003 = "tracker class marker"
+
+      def __init__(self):
+          self.events = []
+
+      def track_event(self, event_name: str, properties: dict) -> None:
+          self.events.append({"name": event_name, "props": properties})
+
+      def flush_events(self) -> int:
+          count = len(self.events)
+          self.events.clear()
+          return count
+
+  def calculate_conversion_rate(visits: int, conversions: int) -> float:
+      GARBAGE_CONVERSION_MARKER_004 = "local marker"
+      if visits == 0:
+          return 0.0
+      return conversions / visits
+garbage_notifications.py: |
+  GARBAGE_MARKER_NOTIFY_005 = "notification garbage"
+  UNRELATED_NOTIFY_CONSTANT_006 = "should not appear"
+
+  class NotificationService:
+      GARBAGE_NOTIFY_CLASS_MARKER_007 = True
+
+      def send_email(self, to: str, subject: str, body: str) -> bool:
+          return True
+
+      def send_sms(self, phone: str, message: str) -> bool:
+          return True
+
+  class PushNotifier:
+      GARBAGE_PUSH_MARKER_008 = "push marker"
+
+      def notify(self, device_token: str, payload: dict) -> None:
+          pass

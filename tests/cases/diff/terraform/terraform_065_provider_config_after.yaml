@@ -1,0 +1,13 @@
+provider.tf: |
+  provider "aws" {
+    region = "eu-west-1"
+  }
+
+  provider "aws" {
+    alias  = "us"
+    region = "us-east-1"
+  }
+main.tf: |
+  resource "aws_s3_bucket" "data" {
+    bucket = "my-data-bucket"
+  }

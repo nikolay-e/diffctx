@@ -1,0 +1,17 @@
+Types.scala: |
+  object Types {
+    opaque type UserId = Long
+    opaque type OrderId = Long
+
+    object UserId {
+      def apply(value: Long): UserId = value
+      extension (id: UserId) def value: Long = id
+    }
+
+    object OrderId {
+      def apply(value: Long): OrderId = value
+      extension (id: OrderId) def value: Long = id
+    }
+  }
+UserService.scala: |
+  class UserService {}

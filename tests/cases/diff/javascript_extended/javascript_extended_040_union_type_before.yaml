@@ -1,0 +1,50 @@
+src/result.ts: |
+  export type Success<T> = { success: true; data: T };
+
+  export type Failure = { success: false; error: string; code?: number };
+
+  export type Result<T> = Success<T> | Failure;
+
+  export function isSuccess<T>(result: Result<T>): result is Success<T> {
+      return result.success === true;
+  }
+
+  export function isFailure<T>(result: Result<T>): result is Failure {
+      return result.success === false;
+  }
+src/handler.ts: |
+  console.log('initial');
+src/unrelated/color.ts: |
+  const GARBAGE_JSX_040_COLOR_PALETTE_A = 'color_garbage_marker';
+
+  export class GarbageColorPicker {
+      private selected = '#000000';
+
+      pick(hex: string): void {
+          this.selected = hex;
+      }
+
+      getSelected(): string {
+          return this.selected;
+      }
+  }
+
+  export function GARBAGE_JSX_040_HEX_TO_RGB_B(hex: string): string {
+      return 'GARBAGE_JSX_040_RGB_OUTPUT_C';
+  }
+src/unrelated/sound.ts: |
+  const GARBAGE_JSX_040_AUDIO_CONFIG_D = { sampleRate: 44100 };
+
+  export class GARBAGE_JSX_040_AUDIO_PLAYER_E {
+      play(src: string): void {
+          console.log('playing', src);
+      }
+
+      stop(): void {
+          console.log('stopping playback');
+      }
+  }
+
+  export function GARBAGE_JSX_040_PRELOAD_AUDIO_F(): void {
+      console.log('preloading audio');
+  }

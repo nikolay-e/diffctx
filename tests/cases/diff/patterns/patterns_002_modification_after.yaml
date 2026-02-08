@@ -1,0 +1,65 @@
+src/user_service.py: |
+  from typing import Optional
+
+  class User:
+      def __init__(self, id: int, name: str, email: str):
+          self.id = id
+          self.name = name
+          self.email = email
+
+  class UserService:
+      def __init__(self):
+          self.users = {}
+
+      def create_user(self, name: str, email: str) -> User:
+          user_id = len(self.users) + 1
+          user = User(user_id, name, email)
+          self.users[user_id] = user
+          return user
+
+      def get_user(self, user_id: int) -> Optional[User]:
+          return self.users.get(user_id)
+
+      def list_users(self) -> list[User]:
+          return list(self.users.values())
+tests/conftest.py: |
+  import pytest
+  from src.user_service import UserService
+
+  @pytest.fixture
+  def user_service():
+      service = UserService()
+      yield service
+      service.users.clear()
+
+  @pytest.fixture
+  def sample_user(user_service):
+      return user_service.create_user("Test", "test@example.com")
+
+  @pytest.fixture
+  def admin_user(user_service):
+      user = user_service.create_user("Admin", "admin@example.com")
+      user.is_admin = True
+      return user
+tests/test_user_service.py: |
+  def test_create_user(user_service):
+      user = user_service.create_user("John", "john@example.com")
+      assert user.name == "John"
+
+  def test_get_user(user_service, sample_user):
+      retrieved = user_service.get_user(sample_user.id)
+      assert retrieved.name == "Test"
+utils/garbage_email_validator.py: |
+  # GARBAGE_PAT_002_EMAIL_VALIDATOR_A
+  GARBAGE_PAT_002_EMAIL_REGEX_B = r"^[\w.-]+@[\w.-]+\.\w+$"
+
+  class GarbageEmailValidator:
+      def validate(self, email):
+          return "@" in email
+utils/garbage_id_generator.py: |
+  # GARBAGE_PAT_002_ID_GENERATOR_A
+  GARBAGE_PAT_002_COUNTER_SEED_B = 100000
+
+  class GarbageIdGenerator:
+      def next_id(self):
+          return 0

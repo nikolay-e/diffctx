@@ -1,0 +1,18 @@
+must_include_files:
+  - src/Services/Parser.php
+must_include_content:
+  - |
+    public function parse(string|array $input): Data
+must_not_include:
+  - GARBAGE_PHP_010_SIZE_A
+  - GARBAGE_PHP_010_HASH_COUNT_B
+  - GARBAGE_PHP_010_FALSE_RATE_C
+  - GARBAGE_PHP_010_BITS_D
+  - GARBAGE_PHP_010_CAPACITY_E
+  - GARBAGE_PHP_010_EVICTION_F
+  - GARBAGE_PHP_010_STATS_G
+  - GARBAGE_PHP_010_HIT_RATIO_H
+  - GarbageBloomFilter
+  - GarbageLruCache
+  - garbage_bloom_filter.php
+  - garbage_lru_cache.php

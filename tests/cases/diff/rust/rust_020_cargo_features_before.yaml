@@ -1,0 +1,63 @@
+Cargo.toml: |
+  [package]
+  name = "myapp"
+  version = "0.1.0"
+  edition = "2021"
+  authors = ["Developer <dev@example.com>"]
+  description = "A sample application"
+
+  [features]
+  default = []
+  async = ["tokio"]
+
+  [dependencies]
+  tokio = { version = "1", optional = true }
+src/lib.rs: |
+  #[cfg(feature = "async")]
+  pub mod async_utils {
+      pub async fn fetch() -> String {
+          "data".to_string()
+      }
+
+      pub async fn delay(ms: u64) {
+          tokio::time::sleep(tokio::time::Duration::from_millis(ms)).await;
+      }
+  }
+
+  pub fn sync_fetch() -> String {
+      "sync data".to_string()
+  }
+
+  pub fn version() -> &'static str {
+      env!("CARGO_PKG_VERSION")
+  }
+src/unrelated/mod.rs: |
+  pub mod metrics;
+src/unrelated/metrics.rs: |
+  // GARBAGE_RUST_METRICS_FEAT_001
+  use std::collections::HashMap;
+
+  pub const GARBAGE_METRICS_INTERVAL_002: u64 = 60000;
+
+  pub struct GarbageMetricsCollector003 {
+      counters: HashMap<String, u64>,
+      gauges: HashMap<String, f64>,
+  }
+
+  impl GarbageMetricsCollector003 {
+      pub fn garbage_increment_004(&mut self, name: &str) {
+          *self.counters.entry(name.to_string()).or_insert(0) += 1;
+      }
+
+      pub fn garbage_set_gauge_005(&mut self, name: &str, value: f64) {
+          self.gauges.insert(name.to_string(), value);
+      }
+
+      pub fn garbage_export_006(&self) -> String {
+          "GARBAGE_METRICS_EXPORT_007".to_string()
+      }
+  }
+
+  pub trait GarbageMetricsReporter008 {
+      fn garbage_report_009(&self, collector: &GarbageMetricsCollector003);
+  }

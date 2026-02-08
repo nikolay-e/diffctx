@@ -1,0 +1,62 @@
+package.json: |
+  {
+    "name": "myapp",
+    "version": "2.0.0",
+    "engines": { "node": ">=18" },
+    "scripts": {
+      "build": "tsc",
+      "test": "jest",
+      "lint": "eslint src/"
+    },
+    "dependencies": {
+      "express": "^4.18.0",
+      "zod": "^3.22.0"
+    },
+    "devDependencies": {
+      "typescript": "^5.0.0",
+      "jest": "^29.0.0"
+    }
+  }
+
+.github/workflows/ci.yml: |
+  name: CI
+  on: [push, pull_request]
+  jobs:
+    build:
+      runs-on: ubuntu-latest
+      steps:
+        - uses: actions/checkout@v4
+        - uses: actions/setup-node@v4
+          with:
+            node-version: 18
+            cache: npm
+        - run: npm install
+        - run: npm run build
+
+src/app.ts: |
+  import express from 'express';
+  import { userRouter } from './routes/user';
+
+  const app = express();
+  app.use(express.json());
+  app.use('/api/users', userRouter);
+
+  export default app;
+
+garbage_cache.ts: |
+  const GARBAGE_CICD_DOCS_004_CACHE_MARKER_A = "redis";
+  const GARBAGE_CICD_DOCS_004_TTL_MARKER_B = 3600;
+
+  class GarbageCacheService {
+    static GARBAGE_CICD_DOCS_004_STRATEGY_MARKER_C = "lru";
+    invalidate(): void {}
+  }
+
+garbage_queue.ts: |
+  const GARBAGE_CICD_DOCS_004_QUEUE_MARKER_D = "rabbitmq";
+  const GARBAGE_CICD_DOCS_004_PRIORITY_MARKER_E = 10;
+
+  class GarbageQueueManager {
+    static GARBAGE_CICD_DOCS_004_RETRY_MARKER_F = 3;
+    enqueue(): void {}
+  }

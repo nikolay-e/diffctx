@@ -1,0 +1,68 @@
+overhead.py: |
+  def func():
+      modified_marker = "func_modified_state"
+      return modified_marker
+auxiliary_one.py: |
+  def aux_func_one():
+      return "aux_one_result"
+
+  def aux_func_two():
+      return "aux_two_result"
+auxiliary_two.py: |
+  def aux_func_three():
+      return "aux_three_result"
+
+  def aux_func_four():
+      return "aux_four_result"
+garbage_sel_005_large_file.py: |
+  def GARBAGE_SEL_005_large_func_alpha():
+      result = []
+      for i in range(100):
+          result.append(f"GARBAGE_SEL_005_large_alpha_{i}")
+      return result
+
+  def GARBAGE_SEL_005_large_func_beta():
+      result = []
+      for i in range(100):
+          result.append(f"GARBAGE_SEL_005_large_beta_{i}")
+      return result
+
+  def GARBAGE_SEL_005_large_func_gamma():
+      result = []
+      for i in range(100):
+          result.append(f"GARBAGE_SEL_005_large_gamma_{i}")
+      return result
+
+  class GARBAGE_SEL_005_LargeClass:
+      def method_one(self):
+          return "GARBAGE_SEL_005_large_class_one"
+
+      def method_two(self):
+          return "GARBAGE_SEL_005_large_class_two"
+
+      def method_three(self):
+          return "GARBAGE_SEL_005_large_class_three"
+garbage_sel_005_config.py: |
+  GARBAGE_SEL_005_BUDGET_CONFIG = {
+      "limit_one": "GARBAGE_SEL_005_limit_one_value",
+      "limit_two": "GARBAGE_SEL_005_limit_two_value",
+      "limit_three": "GARBAGE_SEL_005_limit_three_value",
+  }
+
+  GARBAGE_SEL_005_OVERHEAD_SETTINGS = [
+      "GARBAGE_SEL_005_setting_alpha",
+      "GARBAGE_SEL_005_setting_beta",
+      "GARBAGE_SEL_005_setting_gamma",
+  ]
+
+  def GARBAGE_SEL_005_get_config():
+      return "GARBAGE_SEL_005_config_result"
+garbage_sel_005_extras.py: |
+  def GARBAGE_SEL_005_extra_one():
+      return "GARBAGE_SEL_005_extra_one_result"
+
+  def GARBAGE_SEL_005_extra_two():
+      return "GARBAGE_SEL_005_extra_two_result"
+
+  def GARBAGE_SEL_005_extra_three():
+      return "GARBAGE_SEL_005_extra_three_result"

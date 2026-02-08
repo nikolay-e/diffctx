@@ -1,0 +1,142 @@
+include/security/authenticator.hpp: |
+  #pragma once
+  #include <string>
+  #include <vector>
+  #include <memory>
+
+  namespace app::security {
+
+  class Credentials {
+  public:
+      virtual ~Credentials() = default;
+      virtual std::string type() const = 0;
+      virtual bool validate() const = 0;
+  };
+
+  class PasswordCredentials final : public Credentials {
+  public:
+      PasswordCredentials(const std::string& user, const std::string& pass)
+          : username_(user), password_(pass) {}
+
+      std::string type() const override { return "password"; }
+
+      bool validate() const override {
+          return !username_.empty() && password_.length() >= 8;
+      }
+
+      const std::string& username() const { return username_; }
+
+  private:
+      std::string username_;
+      std::string password_;
+  };
+
+  class TokenCredentials final : public Credentials {
+  public:
+      explicit TokenCredentials(const std::string& token)
+          : token_(token) {}
+
+      std::string type() const override { return "token"; }
+
+      bool validate() const override {
+          return token_.length() == 64;
+      }
+
+      const std::string& token() const { return token_; }
+
+  private:
+      std::string token_;
+  };
+
+  class Authenticator {
+  public:
+      virtual ~Authenticator() = default;
+      virtual bool authenticate(const Credentials& creds) = 0;
+      virtual std::string name() const = 0;
+  };
+
+  class Session {
+  public:
+      virtual ~Session() = default;
+      virtual bool isValid() const = 0;
+      virtual void invalidate() = 0;
+  };
+
+  }
+include/unrelated/compression.hpp: |
+  #pragma once
+  // GARBAGE_CPP_COMPRESS_271_001
+  #define GARBAGE_CPP_COMPRESS_LEVEL_271_002 6
+
+  namespace app::unrelated::compress {
+
+  // GARBAGE_CPP_COMPRESS_DATA_271_003
+  struct CompressedData {
+      unsigned char* data;
+      size_t compressedSize;
+      size_t originalSize;
+      // GARBAGE_CPP_COMPRESS_CHECKSUM_271_004
+  };
+
+  // GARBAGE_CPP_COMPRESS_ENGINE_271_005
+  class CompressionEngine {
+  public:
+      // GARBAGE_CPP_COMPRESS_ENCODE_271_006
+      CompressedData compress(const unsigned char* input, size_t size) {
+          // GARBAGE_CPP_COMPRESS_ENC_IMPL_271_007
+          return CompressedData{};
+      }
+
+      // GARBAGE_CPP_COMPRESS_DECODE_271_008
+      size_t decompress(const CompressedData& data, unsigned char* output) {
+          // GARBAGE_CPP_COMPRESS_DEC_IMPL_271_009
+          return 0;
+      }
+
+      // GARBAGE_CPP_COMPRESS_RATIO_271_010
+      float getCompressionRatio(const CompressedData& data) {
+          // GARBAGE_CPP_COMPRESS_RATIO_IMPL_271_011
+          return 0.0f;
+      }
+  };
+
+  }
+src/unrelated/font_renderer.cpp: |
+  // GARBAGE_CPP_FONT_271_012
+  #include <string>
+
+  namespace app::unrelated::font {
+
+  // GARBAGE_CPP_FONT_GLYPH_271_013
+  struct Glyph {
+      int codepoint;
+      int width;
+      int height;
+      // GARBAGE_CPP_FONT_ADVANCE_271_014
+  };
+
+  // GARBAGE_CPP_FONT_RENDERER_271_015
+  class FontRenderer {
+  public:
+      // GARBAGE_CPP_FONT_LOAD_271_016
+      bool loadFont(const std::string& path) {
+          // GARBAGE_CPP_FONT_LOAD_IMPL_271_017
+          return false;
+      }
+
+      // GARBAGE_CPP_FONT_RENDER_271_018
+      void renderText(const std::string& text, int x, int y) {
+          // GARBAGE_CPP_FONT_RENDER_IMPL_271_019
+      }
+
+      // GARBAGE_CPP_FONT_MEASURE_271_020
+      int measureText(const std::string& text) {
+          // GARBAGE_CPP_FONT_MEASURE_IMPL_271_021
+          return 0;
+      }
+  };
+
+  }
+src/auth.cpp: |
+  #include <iostream>
+  int main() { return 0; }

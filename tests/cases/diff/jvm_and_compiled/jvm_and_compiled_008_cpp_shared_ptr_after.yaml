@@ -1,0 +1,62 @@
+data.h: |
+  #pragma once
+
+  struct Data {
+      int value;
+      Data(int v) : value(v) {}
+  };
+cache.cpp: |
+  #include "data.h"
+  #include <memory>
+  #include <unordered_map>
+  #include <string>
+
+  class Cache {
+      std::unordered_map<std::string, std::shared_ptr<Data>> store;
+
+  public:
+      std::shared_ptr<Data> get(const std::string& key) {
+          if (store.count(key)) {
+              return store[key];
+          }
+          auto data = std::make_shared<Data>(0);
+          store[key] = data;
+          return data;
+      }
+  };
+garbage_stack.cpp: |
+  #include <vector>
+  const char* GARBAGE_JVM_008_PUSH_MARKER_A = "stack_push";
+  const char* GARBAGE_JVM_008_POP_MARKER_B = "stack_pop";
+
+  class GarbageIntStack {
+      std::vector<int> data_;
+  public:
+      void push(int val) { data_.push_back(val); }
+      int pop() { int v = data_.back(); data_.pop_back(); return v; }
+      bool empty() const { return data_.empty(); }
+  };
+garbage_color.cpp: |
+  #include <cstdint>
+  const char* GARBAGE_JVM_008_COLOR_MARKER_C = "rgba_color";
+  const char* GARBAGE_JVM_008_BLEND_MARKER_D = "color_blend";
+
+  struct GarbageRgbaColor {
+      uint8_t r, g, b, a;
+      GarbageRgbaColor(uint8_t r, uint8_t g, uint8_t b, uint8_t a = 255) : r(r), g(g), b(b), a(a) {}
+      uint32_t toInt() const { return (r << 24) | (g << 16) | (b << 8) | a; }
+  };
+garbage_gc.cpp: |
+  const char* GARBAGE_JVM_008_GC_MARKER_A = "marker";
+  const char* GARBAGE_JVM_008_SWEEP_MARKER_B = "marker";
+
+  class GarbageCollector {
+      void noop() {}
+  };
+garbage_refcount.cpp: |
+  const char* GARBAGE_JVM_008_REF_MARKER_C = "marker";
+  const char* GARBAGE_JVM_008_DEC_MARKER_D = "marker";
+
+  class GarbageRefCounter {
+      void noop() {}
+  };

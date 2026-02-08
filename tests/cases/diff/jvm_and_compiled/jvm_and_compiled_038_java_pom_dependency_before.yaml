@@ -1,0 +1,40 @@
+pom.xml: |
+  <?xml version="1.0" encoding="UTF-8"?>
+  <project xmlns="http://maven.apache.org/POM/4.0.0">
+      <modelVersion>4.0.0</modelVersion>
+      <groupId>com.example</groupId>
+      <artifactId>myapp</artifactId>
+      <version>1.0.0</version>
+
+      <dependencies>
+          <dependency>
+              <groupId>org.springframework.boot</groupId>
+              <artifactId>spring-boot-starter-web</artifactId>
+              <version>3.0.0</version>
+          </dependency>
+      </dependencies>
+  </project>
+src/main/java/com/example/Application.java: |
+  package com.example;
+
+  import org.springframework.boot.SpringApplication;
+  import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+  @SpringBootApplication
+  public class Application {
+      public static void main(String[] args) {
+          SpringApplication.run(Application.class, args);
+      }
+  }
+GarbagePluginConfig.java: |
+  public class GarbagePluginConfig {
+      public static final String GARBAGE_JVM_038_PLUGIN_MARKER_A = "marker";
+      public static final String GARBAGE_JVM_038_REPO_MARKER_B = "marker";
+      public void noop() {}
+  }
+GarbageDeployConfig.java: |
+  public class GarbageDeployConfig {
+      public static final String GARBAGE_JVM_038_DEPLOY_MARKER_C = "marker";
+      public static final String GARBAGE_JVM_038_RELEASE_MARKER_D = "marker";
+      public void noop() {}
+  }

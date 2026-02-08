@@ -1,0 +1,58 @@
+Sources/Models/UserRepository.swift: |
+  struct User {
+      let id: String
+      let name: String
+  }
+
+  class UserRepository {
+      private var users: [String: User] = [:]
+
+      func fetchUser(id: String) -> User? {
+          return users[id]
+      }
+
+      func save(user: User) {
+          users[user.id] = user
+      }
+  }
+Sources/Controllers/UserController.swift: |
+  class UserController {
+      let repository = UserRepository()
+
+      func showUser(id: String) -> String {
+          if let user = repository.fetchUser(id: id) {
+              return "User: \(user.name)"
+          } else {
+              return "User not found"
+          }
+      }
+
+      func getUserName(id: String) -> String? {
+          if let user = repository.fetchUser(id: id) {
+              return user.name
+          }
+          return nil
+      }
+  }
+Sources/Unrelated/GarbageAnalytics004.swift: |
+  let GARBAGE_SWIFT_004_AB_TEST_ID_A = "exp_nav_v4"
+  let GARBAGE_SWIFT_004_VARIANT_KEY_B = "control"
+
+  class GarbageExperimentRunner004 {
+      static let GARBAGE_SWIFT_004_TRAFFIC_PCT_C = 50
+
+      func assignVariant(userId: String) -> String {
+          return GARBAGE_SWIFT_004_AB_TEST_ID_A
+      }
+  }
+Sources/Unrelated/GarbageLogger004.swift: |
+  let GARBAGE_SWIFT_004_REDACT_FIELDS_D = "password,ssn"
+  let GARBAGE_SWIFT_004_MASK_CHAR_E = "*"
+
+  class GarbageLogRedactor004 {
+      static let GARBAGE_SWIFT_004_MIN_LENGTH_F = 3
+
+      func redact(field: String) -> String {
+          return GARBAGE_SWIFT_004_REDACT_FIELDS_D
+      }
+  }

@@ -1,0 +1,50 @@
+proto/common.proto: |
+  syntax = "proto3";
+
+  package common;
+
+  message Pagination {
+    int32 page = 1;
+    int32 page_size = 2;
+  }
+
+proto/orders.proto: |
+  syntax = "proto3";
+
+  package orders;
+
+  import "proto/common.proto";
+
+  message ListOrdersRequest {
+    common.Pagination pagination = 1;
+  }
+
+  message Order {
+    int64 id = 1;
+    string status = 2;
+  }
+
+src/services/order_service.py: |
+  from proto import orders_pb2, common_pb2
+
+  def create_list_orders_request(page: int, page_size: int):
+      pagination = common_pb2.Pagination(page=page, page_size=page_size)
+      return orders_pb2.ListOrdersRequest(pagination=pagination)
+
+garbage_proto_generator.ts: |
+  const GARBAGE_CICD_DOCS_059_GENERATOR_MARKER_A = "grpc-tools";
+  const GARBAGE_CICD_DOCS_059_OUTPUT_MARKER_B = "./generated";
+
+  class GarbageProtoGenerator {
+    static GARBAGE_CICD_DOCS_059_FLAT_MARKER_C = true;
+    generate(): void {}
+  }
+
+garbage_proto_resolver.ts: |
+  const GARBAGE_CICD_DOCS_059_RESOLVE_MARKER_D = "recursive";
+  const GARBAGE_CICD_DOCS_059_INCLUDE_MARKER_E = "./proto";
+
+  class GarbageProtoResolver {
+    static GARBAGE_CICD_DOCS_059_CACHED_MARKER_F = false;
+    resolve(): void {}
+  }

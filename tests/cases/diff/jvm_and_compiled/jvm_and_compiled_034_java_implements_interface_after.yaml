@@ -1,0 +1,34 @@
+src/main/java/com/example/PaymentProcessor.java: |
+  package com.example;
+
+  public interface PaymentProcessor {
+      boolean process(Payment payment);
+      void refund(String transactionId);
+      PaymentStatus getStatus(String transactionId);
+  }
+src/main/java/com/example/StripeProcessor.java: |
+  package com.example;
+
+  public class StripeProcessor implements PaymentProcessor {
+      @Override
+      public boolean process(Payment payment) {
+          return true;
+      }
+
+      @Override
+      public void refund(String transactionId) {
+          // Stripe refund logic
+      }
+  }
+GarbageMockService.java: |
+  public class GarbageMockService {
+      public static final String GARBAGE_JVM_034_MOCK_MARKER_A = "marker";
+      public static final String GARBAGE_JVM_034_STUB_MARKER_B = "marker";
+      public void noop() {}
+  }
+GarbageFakeStore.java: |
+  public class GarbageFakeStore {
+      public static final String GARBAGE_JVM_034_FAKE_MARKER_C = "marker";
+      public static final String GARBAGE_JVM_034_SPY_MARKER_D = "marker";
+      public void noop() {}
+  }

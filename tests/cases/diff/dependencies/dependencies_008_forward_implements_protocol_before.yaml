@@ -1,0 +1,54 @@
+interfaces/repository.py: |
+  from typing import Protocol, TypeVar, Optional
+
+  T = TypeVar("T")
+
+  class Repository(Protocol[T]):
+      def find(self, id: int) -> Optional[T]:
+          ...
+
+      def save(self, entity: T) -> None:
+          ...
+
+      def delete(self, id: int) -> bool:
+          ...
+models/user.py: |
+  from dataclasses import dataclass
+
+  @dataclass
+  class User:
+      id: int
+      name: str
+      email: str
+      active: bool = True
+impl.py: |
+  def placeholder():
+      pass
+garbage/weather_station_GARBAGE_DEP_008_WEATHER_A.py: |
+  def dew_point_GARBAGE_DEP_008_WEATHER_A(temp: float, humidity: float) -> float:
+      return temp - ((100 - humidity) / 5.0)
+
+  def wind_chill_GARBAGE_DEP_008_WEATHER_A(temp: float, wind_speed: float) -> float:
+      return 13.12 + 0.6215 * temp - 11.37 * (wind_speed ** 0.16)
+
+  class ForecastModel_GARBAGE_DEP_008_WEATHER_A:
+      def __init__(self, location: str):
+          self.location = location
+          self.readings = []
+
+      def add_reading(self, temp: float, pressure: float) -> None:
+          self.readings.append({"temp": temp, "pressure": pressure})
+garbage/inventory_GARBAGE_DEP_008_INVENTORY_B.py: |
+  def reorder_point_GARBAGE_DEP_008_INVENTORY_B(daily_usage: float, lead_days: int) -> float:
+      return daily_usage * lead_days * 1.2
+
+  def economic_order_qty_GARBAGE_DEP_008_INVENTORY_B(demand: float, setup_cost: float, holding_cost: float) -> float:
+      return (2 * demand * setup_cost / holding_cost) ** 0.5
+
+  class Warehouse_GARBAGE_DEP_008_INVENTORY_B:
+      def __init__(self, capacity: int):
+          self.capacity = capacity
+          self.items = {}
+
+      def stock_item(self, sku: str, qty: int) -> None:
+          self.items[sku] = self.items.get(sku, 0) + qty

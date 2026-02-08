@@ -1,0 +1,25 @@
+User.cs: |
+  public class User
+  {
+      public int Id { get; set; }
+      public string Name { get; set; }
+      public int Age { get; set; }
+      public bool IsActive { get; set; }
+  }
+UserService.cs: |
+  // Initial
+  class UserService { }
+GarbageSorter.cs: |
+  public class GarbageSorter
+  {
+      public const string GARBAGE_JVM_019_SORT_MARKER_A = "marker";
+      public const string GARBAGE_JVM_019_PAGE_MARKER_B = "marker";
+      public void Noop() {}
+  }
+GarbageBatcher.cs: |
+  public class GarbageBatcher
+  {
+      public const string GARBAGE_JVM_019_BATCH_MARKER_C = "marker";
+      public const string GARBAGE_JVM_019_CHUNK_MARKER_D = "marker";
+      public void Noop() {}
+  }

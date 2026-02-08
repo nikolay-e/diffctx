@@ -1,0 +1,17 @@
+logging.rb: |
+  module Logging
+    def log(message)
+      puts "[LOG] #{message}"
+    end
+
+    def log_error(message)
+      puts "[ERROR] #{message}"
+    end
+  end
+worker.rb: |
+  # Initial
+  class Worker
+  end
+garbage.rb: |
+  garbage_log_unused_99999 = "never used"
+  unused_marker_12345 = "not used"

@@ -1,0 +1,86 @@
+src/types.ts: |
+  export interface TodoItem {
+      id: string;
+      text: string;
+      completed: boolean;
+      priority: 'low' | 'medium' | 'high';
+  }
+
+  export interface TodoFilter {
+      showCompleted: boolean;
+      priority?: 'low' | 'medium' | 'high';
+  }
+
+  export function createTodo(text: string, priority: TodoItem['priority'] = 'medium'): TodoItem {
+      return { id: Date.now().toString(), text, completed: false, priority };
+  }
+src/TodoList.tsx: |
+  import { useState } from 'react';
+  import { TodoItem, createTodo } from './types';
+
+  export function TodoList() {
+      const [todos, setTodos] = useState<TodoItem[]>([]);
+      const [input, setInput] = useState('');
+
+      const addTodo = () => {
+          if (input.trim()) {
+              setTodos(prev => [...prev, createTodo(input)]);
+              setInput('');
+          }
+      };
+
+      const toggleTodo = (id: string) => {
+          setTodos(prev =>
+              prev.map(t => t.id === id ? { ...t, completed: !t.completed } : t)
+          );
+      };
+
+      return (
+          <div>
+              <input value={input} onChange={e => setInput(e.target.value)} />
+              <button onClick={addTodo}>Add</button>
+              {todos.map(t => (
+                  <div key={t.id} onClick={() => toggleTodo(t.id)}>
+                      {t.completed ? '[x]' : '[ ]'} {t.text}
+                  </div>
+              ))}
+          </div>
+      );
+  }
+src/unrelated/breadcrumbs.tsx: |
+  const GARBAGE_JSX_028_BREADCRUMB_CONFIG_A = 'breadcrumb_garbage_marker';
+
+  export interface GarbageBreadcrumbItem {
+      label: string;
+      href: string;
+  }
+
+  export function GarbageBreadcrumbs({ items }: { items: GarbageBreadcrumbItem[] }) {
+      return (
+          <nav>
+              {items.map((item, i) => (
+                  <span key={i}>{item.label}</span>
+              ))}
+          </nav>
+      );
+  }
+
+  export function GARBAGE_JSX_028_RENDER_CRUMBS_B(): void {
+      console.log('GARBAGE_JSX_028_CRUMBS_OUTPUT_C');
+  }
+src/unrelated/tooltip.tsx: |
+  const GARBAGE_JSX_028_TOOLTIP_CONFIG_D = { delay: 300, position: 'top' };
+
+  export class GARBAGE_JSX_028_TOOLTIP_MANAGER_E {
+      show(target: string): void {
+          console.log('showing tooltip for', target);
+      }
+
+      hide(): void {
+          console.log('hiding tooltip');
+      }
+  }
+
+  export function GARBAGE_JSX_028_DISMISS_TOOLTIP_F(): void {
+      console.log('dismissing tooltip');
+  }

@@ -1,0 +1,21 @@
+dns.tf: |
+  resource "aws_route53_record" "www" {
+    zone_id = "Z123456"
+    name    = "www.example.com"
+    type    = "A"
+
+    alias {
+      name                   = aws_lb.main.dns_name
+      zone_id                = aws_lb.main.zone_id
+      evaluate_target_health = true
+    }
+  }
+src/health.py: |
+  import requests
+
+  def check_domain(domain: str) -> bool:
+      try:
+          r = requests.get(f"https://{domain}/health")
+          return r.status_code == 200
+      except Exception:
+          return False

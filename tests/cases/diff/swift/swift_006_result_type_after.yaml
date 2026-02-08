@@ -1,0 +1,28 @@
+APIError.swift: |
+  enum APIError: Error {
+      case networkError
+      case invalidResponse
+      case decodingError
+  }
+  // unused_marker_67890
+DataLoader.swift: |
+  import Foundation
+
+  struct DataLoader {
+      func load(from url: URL) -> Result<Data, APIError> {
+          guard let data = "test".data(using: .utf8) else {
+              return .failure(.invalidResponse)
+          }
+          return .success(data)
+      }
+
+      func process(url: URL) {
+          let result = load(from: url)
+          switch result {
+          case .success(let data):
+              print("Loaded \(data.count) bytes")
+          case .failure(let error):
+              print("Error: \(error)")
+          }
+      }
+  }

@@ -1,0 +1,71 @@
+k8s/apps/api-gateway/deployment.yaml: |
+  apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    name: api-gateway
+    namespace: production
+    labels:
+      app: api-gateway
+  spec:
+    replicas: 3
+    selector:
+      matchLabels:
+        app: api-gateway
+    template:
+      metadata:
+        labels:
+          app: api-gateway
+      spec:
+        containers:
+        - name: gateway
+          image: api-gateway:v2.0.0
+          ports:
+          - containerPort: 8080
+          - containerPort: 8443
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+k8s/apps/api-gateway/service.yaml: |
+  apiVersion: v1
+  kind: Service
+  metadata:
+    name: api-gateway
+    namespace: production
+  spec:
+    type: ClusterIP
+    selector:
+      app: api-gateway
+    ports:
+    - name: http
+      port: 80
+      targetPort: 8080
+    - name: https
+      port: 443
+      targetPort: 8443
+k8s/unrelated/aws-lb-controller/deployment.yaml: |
+  # GARBAGE_K8S_424_AWS_LB_CONTROLLER
+  apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    name: GARBAGE_K8S_424_AWS_CONTROLLER
+  spec:
+    replicas: 1
+    selector:
+      matchLabels:
+        app: GARBAGE_K8S_424_AWS_LABEL
+    template:
+      spec:
+        containers:
+        - name: controller
+          image: amazon/aws-load-balancer-controller:GARBAGE_K8S_424_AWS_VERSION
+k8s/unrelated/gke-ingress/backendconfig.yaml: |
+  # GARBAGE_K8S_424_GKE_BACKEND
+  apiVersion: cloud.google.com/v1
+  kind: BackendConfig
+  metadata:
+    name: GARBAGE_K8S_424_BACKEND_NAME
+  spec:
+    healthCheck:
+      checkIntervalSec: GARBAGE_K8S_424_CHECK_INTERVAL
+      port: GARBAGE_K8S_424_HEALTH_PORT

@@ -1,0 +1,116 @@
+.vscode/launch.json: |
+  {
+    "version": "0.2.0",
+    "configurations": [
+      {
+        "type": "node",
+        "request": "launch",
+        "name": "Launch Server",
+        "program": "${workspaceFolder}/src/server.js",
+        "console": "integratedTerminal",
+        "skipFiles": ["<node_internals>/**"],
+        "env": {"NODE_ENV": "development", "LOG_LEVEL": "debug"}
+      }
+    ]
+  }
+src/index.js: |
+  const express = require('express');
+  const { connectDatabase } = require('./database');
+  const { setupRoutes } = require('./routes');
+
+  const app = express();
+  const PORT = process.env.PORT || 3000;
+
+  app.use(express.json());
+  app.use(express.urlencoded({ extended: true }));
+
+  async function bootstrap() {
+      await connectDatabase();
+      setupRoutes(app);
+      app.listen(PORT, () => {
+          console.log(`Server listening on port ${PORT}`);
+      });
+  }
+
+  bootstrap().catch((err) => {
+      console.error('Failed to start server:', err);
+      process.exit(1);
+  });
+
+  module.exports = { app, bootstrap };
+src/routes.js: |
+  const { getUsers, createUser } = require('./handlers');
+
+  function setupRoutes(app) {
+      app.get('/api/users', getUsers);
+      app.post('/api/users', createUser);
+      app.get('/api/health', (req, res) => {
+          res.json({ status: 'ok', timestamp: new Date().toISOString() });
+      });
+  }
+
+  module.exports = { setupRoutes };
+unrelated/debugger.js: |
+  const GARBAGE_JSON_011_DEBUG_LEVEL_A = 'verbose';
+
+  class GARBAGE_JSON_011_STEP_DEBUGGER_B {
+      constructor(level) {
+          this.level = level || GARBAGE_JSON_011_DEBUG_LEVEL_A;
+          this.breakpoints = new Map();
+          this.log = [];
+      }
+
+      setBreakpoint(file, line) {
+          if (!this.breakpoints.has(file)) this.breakpoints.set(file, new Set());
+          this.breakpoints.get(file).add(line);
+      }
+
+      trace(file, line, context) {
+          this.log.push({ file, line, context, timestamp: Date.now() });
+      }
+
+      getTrace() {
+          return [...this.log];
+      }
+  }
+
+  function GARBAGE_JSON_011_START_DEBUG_C(config) {
+      const debugger_ = new GARBAGE_JSON_011_STEP_DEBUGGER_B(config.level);
+      return debugger_;
+  }
+
+  module.exports = { GARBAGE_JSON_011_STEP_DEBUGGER_B, GARBAGE_JSON_011_START_DEBUG_C };
+unrelated/profiler.js: |
+  const GARBAGE_JSON_011_PROFILE_INTERVAL_D = 1000;
+
+  class GARBAGE_JSON_011_PERF_PROFILER_E {
+      constructor(interval) {
+          this.interval = interval || GARBAGE_JSON_011_PROFILE_INTERVAL_D;
+          this.snapshots = [];
+      }
+
+      snapshot(label) {
+          this.snapshots.push({
+              label,
+              memory: process.memoryUsage().heapUsed,
+              timestamp: Date.now(),
+          });
+      }
+
+      compare(labelA, labelB) {
+          const a = this.snapshots.find(s => s.label === labelA);
+          const b = this.snapshots.find(s => s.label === labelB);
+          if (!a || !b) return null;
+          return { memoryDiff: b.memory - a.memory, timeDiff: b.timestamp - a.timestamp };
+      }
+  }
+
+  function GARBAGE_JSON_011_PROFILE_SECTION_F(fn, label) {
+      const profiler = new GARBAGE_JSON_011_PERF_PROFILER_E();
+      profiler.snapshot(`${label}_start`);
+      fn();
+      profiler.snapshot(`${label}_end`);
+      return profiler.compare(`${label}_start`, `${label}_end`);
+  }
+
+  module.exports = { GARBAGE_JSON_011_PERF_PROFILER_E, GARBAGE_JSON_011_PROFILE_SECTION_F };

@@ -1,0 +1,16 @@
+must_include_files:
+  - app/controllers/users_controller.rb
+must_include_content:
+  - |
+    @user = User.find(params[:id])
+must_not_include:
+  - GARBAGE_RUBY_015_FENCE_RADIUS_A
+  - GARBAGE_RUBY_015_COORD_SYSTEM_B
+  - GARBAGE_RUBY_015_MAX_FENCES_C
+  - GARBAGE_RUBY_015_API_PROVIDER_D
+  - GARBAGE_RUBY_015_UNITS_SYSTEM_E
+  - GARBAGE_RUBY_015_CACHE_MINUTES_F
+  - GarbageGeoFenceManager
+  - GarbageWeatherService
+  - garbage_geo_fence.rb
+  - garbage_weather_api.rb

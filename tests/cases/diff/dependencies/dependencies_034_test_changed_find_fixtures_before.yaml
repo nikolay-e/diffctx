@@ -1,0 +1,16 @@
+tests/conftest.py: |
+  import pytest
+
+  @pytest.fixture
+  def db_session():
+      return {"connected": True}
+
+  @pytest.fixture
+  def sample_products():
+      return [
+          {"id": 1, "name": "Widget"},
+          {"id": 2, "name": "Gadget"},
+      ]
+tests/test_orders.py: |
+  def test_create_order():
+      assert True

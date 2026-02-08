@@ -1,0 +1,128 @@
+internal/service/generate.go: |
+  package service
+
+  //go:generate mockgen -source=interfaces.go -destination=mocks/mock_interfaces.go -package=mocks
+  //go:generate stringer -type=Status -output=status_string.go
+internal/service/interfaces.go: |
+  package service
+
+  import "context"
+
+  type UserService interface {
+      GetUser(ctx context.Context, id int64) (*User, error)
+      GetUserByEmail(ctx context.Context, email string) (*User, error)
+      CreateUser(ctx context.Context, req *CreateUserRequest) (*User, error)
+      UpdateUser(ctx context.Context, id int64, req *UpdateUserRequest) (*User, error)
+      DeleteUser(ctx context.Context, id int64) error
+      ListUsers(ctx context.Context, opts *ListOptions) ([]*User, error)
+  }
+
+  type CreateUserRequest struct {
+      Name  string
+      Email string
+      Role  Role
+  }
+
+  type UpdateUserRequest struct {
+      Name  *string
+      Email *string
+      Role  *Role
+  }
+
+  type ListOptions struct {
+      Limit  int
+      Offset int
+      SortBy string
+      Order  SortOrder
+  }
+
+  type SortOrder string
+
+  const (
+      SortAsc  SortOrder = "asc"
+      SortDesc SortOrder = "desc"
+  )
+
+  type User struct {
+      ID     int64
+      Name   string
+      Email  string
+      Role   Role
+      Status Status
+  }
+
+  type Role int
+
+  const (
+      RoleUser Role = iota
+      RoleAdmin
+      RoleModerator
+  )
+
+  type Status int
+
+  const (
+      StatusUnknown Status = iota
+      StatusPending
+      StatusActive
+      StatusInactive
+      StatusSuspended
+  )
+internal/service/user_service.go: |
+  package service
+
+  import (
+      "context"
+      "errors"
+  )
+
+  var ErrUserNotFound = errors.New("user not found")
+
+  type userService struct {
+      repo UserRepository
+  }
+
+  type UserRepository interface {
+      FindByID(ctx context.Context, id int64) (*User, error)
+      Create(ctx context.Context, user *User) error
+  }
+
+  func NewUserService(repo UserRepository) UserService {
+      return &userService{repo: repo}
+  }
+
+  func (s *userService) GetUser(ctx context.Context, id int64) (*User, error) {
+      return s.repo.FindByID(ctx, id)
+  }
+
+  func (s *userService) CreateUser(ctx context.Context, req *CreateUserRequest) (*User, error) {
+      user := &User{Name: req.Name, Email: req.Email}
+      if err := s.repo.Create(ctx, user); err != nil {
+          return nil, err
+      }
+      return user, nil
+  }
+internal/unrelated/codegen/protobuf.go: |
+  package codegen
+
+  const GARBAGE_GO_CODEGEN_PROTO_001 = "codegen_garbage"
+
+  type GARBAGE_GO_TYPE_PROTO_002 struct {
+      protoPath string
+  }
+
+  func GARBAGE_GO_FUNC_PROTO_003() string {
+      return "GARBAGE_GO_PROTO_UNUSED_004"
+  }
+internal/unrelated/codegen/swagger.go: |
+  package codegen
+
+  const GARBAGE_GO_CODEGEN_SWAGGER_005 = "swagger_garbage"
+
+  type GARBAGE_GO_TYPE_SWAGGER_006 struct {
+      specPath string
+  }
+
+  func GARBAGE_GO_FUNC_SWAGGER_007() {
+      println("GARBAGE_GO_SWAGGER_OUTPUT_008")
+  }

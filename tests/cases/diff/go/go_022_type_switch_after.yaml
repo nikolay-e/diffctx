@@ -1,0 +1,294 @@
+internal/geometry/shapes.go: |
+  package geometry
+
+  import "math"
+
+  type Shape interface {
+      Area() float64
+      Perimeter() float64
+  }
+
+  type Point struct {
+      X, Y float64
+  }
+
+  type Circle struct {
+      Center Point
+      Radius float64
+  }
+
+  func NewCircle(x, y, radius float64) *Circle {
+      return &Circle{Center: Point{X: x, Y: y}, Radius: radius}
+  }
+
+  func (c Circle) Area() float64 {
+      return math.Pi * c.Radius * c.Radius
+  }
+
+  func (c Circle) Perimeter() float64 {
+      return 2 * math.Pi * c.Radius
+  }
+
+  type Rectangle struct {
+      TopLeft     Point
+      Width       float64
+      Height      float64
+  }
+
+  func NewRectangle(x, y, width, height float64) *Rectangle {
+      return &Rectangle{TopLeft: Point{X: x, Y: y}, Width: width, Height: height}
+  }
+
+  func (r Rectangle) Area() float64 {
+      return r.Width * r.Height
+  }
+
+  func (r Rectangle) Perimeter() float64 {
+      return 2 * (r.Width + r.Height)
+  }
+
+  type Triangle struct {
+      A, B, C Point
+  }
+
+  func NewTriangle(ax, ay, bx, by, cx, cy float64) *Triangle {
+      return &Triangle{
+          A: Point{X: ax, Y: ay},
+          B: Point{X: bx, Y: by},
+          C: Point{X: cx, Y: cy},
+      }
+  }
+
+  func (t Triangle) Area() float64 {
+      return math.Abs((t.A.X*(t.B.Y-t.C.Y) + t.B.X*(t.C.Y-t.A.Y) + t.C.X*(t.A.Y-t.B.Y)) / 2)
+  }
+
+  func (t Triangle) Perimeter() float64 {
+      ab := math.Sqrt(math.Pow(t.B.X-t.A.X, 2) + math.Pow(t.B.Y-t.A.Y, 2))
+      bc := math.Sqrt(math.Pow(t.C.X-t.B.X, 2) + math.Pow(t.C.Y-t.B.Y, 2))
+      ca := math.Sqrt(math.Pow(t.A.X-t.C.X, 2) + math.Pow(t.A.Y-t.C.Y, 2))
+      return ab + bc + ca
+  }
+
+  type Polygon struct {
+      Vertices []Point
+  }
+
+  func (p Polygon) Area() float64 {
+      n := len(p.Vertices)
+      if n < 3 {
+          return 0
+      }
+      var area float64
+      for i := 0; i < n; i++ {
+          j := (i + 1) % n
+          area += p.Vertices[i].X * p.Vertices[j].Y
+          area -= p.Vertices[j].X * p.Vertices[i].Y
+      }
+      return math.Abs(area) / 2
+  }
+
+  func (p Polygon) Perimeter() float64 {
+      n := len(p.Vertices)
+      if n < 2 {
+          return 0
+      }
+      var perimeter float64
+      for i := 0; i < n; i++ {
+          j := (i + 1) % n
+          dx := p.Vertices[j].X - p.Vertices[i].X
+          dy := p.Vertices[j].Y - p.Vertices[i].Y
+          perimeter += math.Sqrt(dx*dx + dy*dy)
+      }
+      return perimeter
+  }
+internal/geometry/describe.go: |
+  package geometry
+
+  import (
+      "fmt"
+      "strings"
+  )
+
+  type ShapeInfo struct {
+      Type        string
+      Area        float64
+      Perimeter   float64
+      Description string
+      Properties  map[string]interface{}
+  }
+
+  func Describe(s Shape) string {
+      switch v := s.(type) {
+      case Circle:
+          return fmt.Sprintf("Circle at (%.2f, %.2f) with radius %.2f, area=%.2f",
+              v.Center.X, v.Center.Y, v.Radius, v.Area())
+      case *Circle:
+          return fmt.Sprintf("Circle* at (%.2f, %.2f) with radius %.2f, area=%.2f",
+              v.Center.X, v.Center.Y, v.Radius, v.Area())
+      case Rectangle:
+          return fmt.Sprintf("Rectangle at (%.2f, %.2f) size %.2fx%.2f, area=%.2f",
+              v.TopLeft.X, v.TopLeft.Y, v.Width, v.Height, v.Area())
+      case *Rectangle:
+          return fmt.Sprintf("Rectangle* at (%.2f, %.2f) size %.2fx%.2f, area=%.2f",
+              v.TopLeft.X, v.TopLeft.Y, v.Width, v.Height, v.Area())
+      case Triangle:
+          return fmt.Sprintf("Triangle with vertices A(%.2f,%.2f) B(%.2f,%.2f) C(%.2f,%.2f), area=%.2f",
+              v.A.X, v.A.Y, v.B.X, v.B.Y, v.C.X, v.C.Y, v.Area())
+      case *Triangle:
+          return fmt.Sprintf("Triangle* with vertices A(%.2f,%.2f) B(%.2f,%.2f) C(%.2f,%.2f), area=%.2f",
+              v.A.X, v.A.Y, v.B.X, v.B.Y, v.C.X, v.C.Y, v.Area())
+      case Polygon:
+          return fmt.Sprintf("Polygon with %d vertices, area=%.2f", len(v.Vertices), v.Area())
+      case *Polygon:
+          return fmt.Sprintf("Polygon* with %d vertices, area=%.2f", len(v.Vertices), v.Area())
+      default:
+          return fmt.Sprintf("Unknown shape with area=%.2f", s.Area())
+      }
+  }
+
+  func GetShapeInfo(s Shape) ShapeInfo {
+      info := ShapeInfo{
+          Area:       s.Area(),
+          Perimeter:  s.Perimeter(),
+          Properties: make(map[string]interface{}),
+      }
+
+      switch v := s.(type) {
+      case Circle, *Circle:
+          info.Type = "circle"
+          if c, ok := v.(Circle); ok {
+              info.Properties["radius"] = c.Radius
+              info.Properties["center_x"] = c.Center.X
+              info.Properties["center_y"] = c.Center.Y
+          } else if c, ok := v.(*Circle); ok {
+              info.Properties["radius"] = c.Radius
+              info.Properties["center_x"] = c.Center.X
+              info.Properties["center_y"] = c.Center.Y
+          }
+      case Rectangle, *Rectangle:
+          info.Type = "rectangle"
+          if r, ok := v.(Rectangle); ok {
+              info.Properties["width"] = r.Width
+              info.Properties["height"] = r.Height
+          } else if r, ok := v.(*Rectangle); ok {
+              info.Properties["width"] = r.Width
+              info.Properties["height"] = r.Height
+          }
+      case Triangle, *Triangle:
+          info.Type = "triangle"
+      case Polygon, *Polygon:
+          info.Type = "polygon"
+          if p, ok := v.(Polygon); ok {
+              info.Properties["vertices"] = len(p.Vertices)
+          } else if p, ok := v.(*Polygon); ok {
+              info.Properties["vertices"] = len(p.Vertices)
+          }
+      default:
+          info.Type = "unknown"
+      }
+
+      info.Description = Describe(s)
+      return info
+  }
+
+  func CompareShapes(shapes []Shape) string {
+      var descriptions []string
+      for _, s := range shapes {
+          descriptions = append(descriptions, Describe(s))
+      }
+      return strings.Join(descriptions, "\n")
+  }
+
+  func TotalArea(shapes []Shape) float64 {
+      var total float64
+      for _, s := range shapes {
+          total += s.Area()
+      }
+      return total
+  }
+
+  func FilterByType(shapes []Shape, shapeType string) []Shape {
+      var result []Shape
+      for _, s := range shapes {
+          switch s.(type) {
+          case Circle, *Circle:
+              if shapeType == "circle" {
+                  result = append(result, s)
+              }
+          case Rectangle, *Rectangle:
+              if shapeType == "rectangle" {
+                  result = append(result, s)
+              }
+          case Triangle, *Triangle:
+              if shapeType == "triangle" {
+                  result = append(result, s)
+              }
+          case Polygon, *Polygon:
+              if shapeType == "polygon" {
+                  result = append(result, s)
+              }
+          }
+      }
+      return result
+  }
+internal/unrelated/rendering/opengl.go: |
+  package rendering
+
+  const GARBAGE_GO_OPENGL_RENDER_A1B2C3 = "opengl_garbage_marker"
+
+  type GARBAGE_GO_TYPE_SHADER_D4E5F6 struct {
+      vertexSource   string
+      fragmentSource string
+      programID      uint32
+  }
+
+  func GARBAGE_GO_FUNC_OPENGL_G7H8I9() string {
+      return "GARBAGE_GO_OPENGL_UNUSED_J0K1L2"
+  }
+
+  type OpenGLContext struct {
+      width  int
+      height int
+      vsync  bool
+  }
+
+  func GARBAGE_GO_FUNC_RENDER_M3N4O5() {
+      println("GARBAGE_GO_RENDER_OUTPUT_P6Q7R8")
+  }
+internal/unrelated/physics/collision.go: |
+  package physics
+
+  const GARBAGE_GO_COLLISION_DETECT_S9T0U1 = "collision_garbage"
+
+  type GARBAGE_GO_TYPE_COLLIDER_V2W3X4 struct {
+      boundingBox [4]float64
+      layer       int
+  }
+
+  func GARBAGE_GO_FUNC_PHYSICS_Y5Z6A7() {
+      println("GARBAGE_GO_PHYSICS_OUTPUT_B8C9D0")
+  }
+
+  type CollisionResult struct {
+      Collided    bool
+      Penetration float64
+      Normal      [2]float64
+  }
+
+  func GARBAGE_GO_FUNC_DETECT_E1F2G3(a, b interface{}) bool {
+      return false
+  }
+internal/unrelated/animation/keyframe.go: |
+  package animation
+
+  const GARBAGE_GO_KEYFRAME_ANIM_H4I5J6 = "keyframe_garbage"
+
+  type GARBAGE_GO_TYPE_TIMELINE_K7L8M9 struct {
+      frames   []interface{}
+      duration float64
+  }
+
+  func GARBAGE_GO_FUNC_ANIM_N0O1P2() {
+      println("GARBAGE_GO_ANIM_OUTPUT_Q3R4S5")
+  }

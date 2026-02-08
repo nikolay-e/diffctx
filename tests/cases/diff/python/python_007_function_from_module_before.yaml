@@ -1,0 +1,146 @@
+utils/tax.py: |
+  from typing import Optional, Dict, List, Tuple
+  from decimal import Decimal, ROUND_HALF_UP
+  from dataclasses import dataclass
+  from enum import Enum
+
+  class TaxBracket(Enum):
+      LOW = "low"
+      MEDIUM = "medium"
+      HIGH = "high"
+
+  @dataclass
+  class TaxRate:
+      bracket: TaxBracket
+      min_income: Decimal
+      max_income: Optional[Decimal]
+      rate: Decimal
+
+  DEFAULT_TAX_RATES: List[TaxRate] = [
+      TaxRate(TaxBracket.LOW, Decimal("0"), Decimal("10000"), Decimal("0.00")),
+      TaxRate(TaxBracket.MEDIUM, Decimal("10000"), Decimal("50000"), Decimal("0.15")),
+      TaxRate(TaxBracket.HIGH, Decimal("50000"), None, Decimal("0.25")),
+  ]
+
+  class TaxCalculationError(Exception):
+      pass
+
+  def calculate_tax(income: float, rates: Optional[List[TaxRate]] = None) -> float:
+      if income < 0:
+          raise TaxCalculationError("Income cannot be negative")
+
+      tax_rates = rates or DEFAULT_TAX_RATES
+      income_decimal = Decimal(str(income))
+      total_tax = Decimal("0")
+
+      for rate in sorted(tax_rates, key=lambda r: r.min_income):
+          if income_decimal <= rate.min_income:
+              break
+          taxable_max = rate.max_income if rate.max_income else income_decimal
+          taxable_in_bracket = min(income_decimal, taxable_max) - rate.min_income
+          if taxable_in_bracket > 0:
+              total_tax += taxable_in_bracket * rate.rate
+
+      return float(total_tax.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+
+  def get_effective_rate(income: float, tax: float) -> float:
+      if income <= 0:
+          return 0.0
+      return tax / income
+
+  def get_marginal_bracket(income: float, rates: Optional[List[TaxRate]] = None) -> TaxBracket:
+      tax_rates = rates or DEFAULT_TAX_RATES
+      income_decimal = Decimal(str(income))
+      for rate in sorted(tax_rates, key=lambda r: r.min_income, reverse=True):
+          if income_decimal >= rate.min_income:
+              return rate.bracket
+      return TaxBracket.LOW
+
+  def format_tax_summary(income: float, tax: float) -> Dict[str, str]:
+      effective_rate = get_effective_rate(income, tax)
+      bracket = get_marginal_bracket(income)
+      return {
+          "income": f"${income:,.2f}",
+          "tax": f"${tax:,.2f}",
+          "effective_rate": f"{effective_rate:.1%}",
+          "bracket": bracket.value,
+      }
+services/billing.py: |
+  from typing import Dict, Any, List, Optional
+  from dataclasses import dataclass
+  from datetime import datetime
+
+  @dataclass
+  class Invoice:
+      id: str
+      customer_id: str
+      amount: float
+      created_at: datetime
+      paid_at: Optional[datetime] = None
+
+  class BillingService:
+      def __init__(self):
+          self._invoices: Dict[str, Invoice] = {}
+
+      def get_total(self) -> float:
+          return sum(inv.amount for inv in self._invoices.values())
+
+      def create_invoice(self, customer_id: str, amount: float) -> Invoice:
+          invoice_id = f"INV-{len(self._invoices) + 1:05d}"
+          invoice = Invoice(
+              id=invoice_id,
+              customer_id=customer_id,
+              amount=amount,
+              created_at=datetime.now()
+          )
+          self._invoices[invoice_id] = invoice
+          return invoice
+
+      def get_customer_invoices(self, customer_id: str) -> List[Invoice]:
+          return [inv for inv in self._invoices.values() if inv.customer_id == customer_id]
+
+      def mark_paid(self, invoice_id: str) -> bool:
+          if invoice_id in self._invoices:
+              self._invoices[invoice_id].paid_at = datetime.now()
+              return True
+          return False
+garbage_reporting.py: |
+  GARBAGE_MARKER_REPORT_001 = "reporting garbage"
+  UNRELATED_REPORT_FORMAT_002 = "pdf"
+
+  class ReportGenerator:
+      GARBAGE_REPORT_CLASS_003 = "report class marker"
+
+      def __init__(self, output_dir: str = "/tmp"):
+          self.output_dir = output_dir
+
+      def generate_pdf(self, data: dict) -> str:
+          return f"{self.output_dir}/report.pdf"
+
+      def generate_csv(self, data: dict) -> str:
+          return f"{self.output_dir}/report.csv"
+
+  class ChartBuilder:
+      GARBAGE_CHART_MARKER_004 = "chart marker"
+
+      def create_bar_chart(self, data: list) -> bytes:
+          return b""
+garbage_email.py: |
+  GARBAGE_MARKER_EMAIL_005 = "email garbage"
+  UNRELATED_SMTP_PORT_006 = 587
+
+  class EmailSender:
+      GARBAGE_EMAIL_CLASS_007 = True
+
+      def __init__(self, smtp_host: str = "localhost"):
+          self.smtp_host = smtp_host
+
+      def send(self, to: str, subject: str, body: str) -> bool:
+          return True
+
+      def send_template(self, to: str, template_name: str, context: dict) -> bool:
+          return True
+
+  def format_email_address(name: str, email: str) -> str:
+      GARBAGE_FORMAT_EMAIL_008 = "format email marker"
+      return f"{name} <{email}>"

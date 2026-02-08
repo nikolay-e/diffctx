@@ -1,0 +1,53 @@
+lib/user.rb: |
+  class User
+    attr_accessor :email, :name, :age
+
+    def initialize(email:, name: nil, age: nil)
+      @email = email
+      @name = name
+      @age = age
+    end
+
+    def valid?
+      valid_email? && valid_age?
+    end
+
+    def adult?
+      @age && @age >= 18
+    end
+
+    private
+
+    def valid_email?
+      @email =~ /\A[^@\s]+@[^@\s]+\z/
+    end
+
+    def valid_age?
+      @age.nil? || (@age.is_a?(Integer) && @age > 0 && @age < 150)
+    end
+  end
+spec/user_spec.rb: |
+  describe 'placeholder' do
+  end
+lib/garbage_sitemap.rb: |
+  GARBAGE_RUBY_020_SITEMAP_FORMAT_A = "xml"
+  GARBAGE_RUBY_020_MAX_URLS_B = "50000"
+
+  class GarbageSitemapBuilder
+    GARBAGE_RUBY_020_CHANGE_FREQ_C = "weekly"
+
+    def build(urls)
+      GARBAGE_RUBY_020_SITEMAP_FORMAT_A
+    end
+  end
+lib/garbage_rss_feed.rb: |
+  GARBAGE_RUBY_020_FEED_VERSION_D = "2.0"
+  GARBAGE_RUBY_020_ENCODING_E = "UTF-8"
+
+  class GarbageRssFeedGenerator
+    GARBAGE_RUBY_020_MAX_ITEMS_F = 100
+
+    def generate(articles)
+      GARBAGE_RUBY_020_FEED_VERSION_D
+    end
+  end

@@ -1,0 +1,29 @@
+main.tf: |
+  resource "aws_s3_bucket" "main" {
+    bucket = "my-bucket"
+  }
+
+  resource "aws_s3_bucket" "replica" {
+    provider = aws.west
+    bucket   = "my-bucket-replica"
+  }
+
+  resource "aws_s3_bucket_replication_configuration" "main" {
+    bucket = aws_s3_bucket.main.id
+    role   = aws_iam_role.replication.arn
+
+    rule {
+      destination {
+        bucket = aws_s3_bucket.replica.arn
+      }
+    }
+  }
+providers.tf: |
+  provider "aws" {
+    region = "us-east-1"
+  }
+
+  provider "aws" {
+    alias  = "west"
+    region = "us-west-2"
+  }

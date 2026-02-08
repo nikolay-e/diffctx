@@ -1,0 +1,133 @@
+types.py: |
+  from typing import List, Dict, Optional, Generic, TypeVar
+  from dataclasses import dataclass
+
+  T = TypeVar('T')
+
+  @dataclass
+  class UserModel:
+      name: str
+      email: str
+      age: int
+
+  @dataclass
+  class AddressModel:
+      street: str
+      city: str
+      country: str
+
+  @dataclass
+  class OrderModel:
+      order_id: str
+      user: UserModel
+      items: List[str]
+      shipping_address: AddressModel
+
+  class Repository(Generic[T]):
+      def get(self, id: str) -> Optional[T]:
+          pass
+
+      def save(self, entity: T) -> T:
+          pass
+
+      def list_all(self) -> List[T]:
+          pass
+service.py: |
+  from typing import List, Optional, Dict
+  from types import UserModel, AddressModel, OrderModel, Repository
+
+  class UserService:
+      def __init__(self, repo: Repository[UserModel]):
+          self.repo = repo
+
+      def get_user(self, user_id: str) -> Optional[UserModel]:
+          return self.repo.get(user_id)
+
+      def create_user(self, name: str, email: str, age: int) -> UserModel:
+          user = UserModel(name=name, email=email, age=age)
+          return self.repo.save(user)
+
+      def list_users(self) -> List[UserModel]:
+          return self.repo.list_all()
+
+  class OrderService:
+      def __init__(self, user_repo: Repository[UserModel], order_repo: Repository[OrderModel]):
+          self.user_repo = user_repo
+          self.order_repo = order_repo
+
+      def create_order(self, user_id: str, items: List[str], address: AddressModel) -> Optional[OrderModel]:
+          user = self.user_repo.get(user_id)
+          if not user:
+              return None
+          order = OrderModel(order_id="new", user=user, items=items, shipping_address=address)
+          return self.order_repo.save(order)
+
+      def get_user_orders(self, user_id: str) -> List[OrderModel]:
+          all_orders = self.order_repo.list_all()
+          return [o for o in all_orders if o.user.name == user_id]
+handlers.py: |
+  from typing import Dict, Any
+  from types import UserModel, OrderModel
+  from service import UserService, OrderService
+
+  def handle_user_request(service: UserService, user_id: str) -> Dict[str, Any]:
+      user = service.get_user(user_id)
+      if user:
+          return {"success": True, "user": user}
+      return {"success": False, "error": "User not found"}
+
+  def handle_order_request(service: OrderService, data: Dict[str, Any]) -> Dict[str, Any]:
+      order = service.create_order(data["user_id"], data["items"], data["address"])
+      return {"success": order is not None, "order": order}
+garbage/geometry_types_GARBAGE_GRAPH_jkl001.py: |
+  from typing import Tuple, List
+  from dataclasses import dataclass
+
+  @dataclass
+  class Point_GARBAGE_GRAPH_jkl001:
+      x: float
+      y: float
+
+  @dataclass
+  class Rectangle_GARBAGE_GRAPH_jkl001:
+      top_left: Point_GARBAGE_GRAPH_jkl001
+      width: float
+      height: float
+
+  @dataclass
+  class Circle_GARBAGE_GRAPH_jkl001:
+      center: Point_GARBAGE_GRAPH_jkl001
+      radius: float
+
+  def calculate_area_GARBAGE_GRAPH_jkl001(shape: Rectangle_GARBAGE_GRAPH_jkl001) -> float:
+      return shape.width * shape.height
+garbage/event_types_GARBAGE_GRAPH_jkl002.py: |
+  from typing import Callable, Any
+  from dataclasses import dataclass
+
+  @dataclass
+  class Event_GARBAGE_GRAPH_jkl002:
+      name: str
+      payload: Any
+      timestamp: float
+
+  EventHandler_GARBAGE_GRAPH_jkl002 = Callable[[Event_GARBAGE_GRAPH_jkl002], None]
+
+  class EventEmitter_GARBAGE_GRAPH_jkl002:
+      handlers: dict[str, list[EventHandler_GARBAGE_GRAPH_jkl002]]
+
+      def emit(self, event: Event_GARBAGE_GRAPH_jkl002) -> None:
+          pass
+garbage/network_types_GARBAGE_GRAPH_jkl003.py: |
+  from typing import Optional
+  from dataclasses import dataclass
+
+  @dataclass
+  class IPAddress_GARBAGE_GRAPH_jkl003:
+      octets: tuple[int, int, int, int]
+
+  @dataclass
+  class NetworkConfig_GARBAGE_GRAPH_jkl003:
+      ip: IPAddress_GARBAGE_GRAPH_jkl003
+      subnet_mask: IPAddress_GARBAGE_GRAPH_jkl003
+      gateway: Optional[IPAddress_GARBAGE_GRAPH_jkl003]

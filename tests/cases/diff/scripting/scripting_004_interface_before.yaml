@@ -1,0 +1,15 @@
+RequestHandler.php: |
+  <?php
+  interface RequestHandler {
+      public function handle(array $request): array;
+      public function validate(array $request): bool;
+  }
+Handler.php: |
+  <?php
+  class Handler {}
+garbage.php: |
+  <?php
+  interface GarbageHandler99999 {
+      public function unused(): void;
+  }
+  $unused_marker_12345 = "not used";

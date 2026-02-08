@@ -1,0 +1,36 @@
+Config.scala: |
+  object Config {
+    val timeout: Int = 30
+    val maxRetries: Int = 3
+    val baseUrl: String = "https://api.example.com"
+
+    def getFullUrl(path: String): String = s"$baseUrl$path"
+  }
+ApiClient.scala: |
+  class ApiClient {
+    def fetch(path: String): String = {
+      val url = Config.getFullUrl(path)
+      val timeout = Config.timeout
+      s"Fetching $url with timeout $timeout"
+    }
+
+    def retry(action: => String): String = {
+      var attempts = 0
+      while (attempts < Config.maxRetries) {
+        attempts += 1
+      }
+      action
+    }
+  }
+GarbageCompanion.scala: |
+  object GarbageCompanion {
+    val GARBAGE_JVM_053_COMPANION_MARKER_A = "marker"
+    val GARBAGE_JVM_053_APPLY_MARKER_B = "marker"
+    def noop(): Unit = {}
+  }
+GarbageExtractor.scala: |
+  object GarbageExtractor {
+    val GARBAGE_JVM_053_UNAPPLY_MARKER_C = "marker"
+    val GARBAGE_JVM_053_EXTRACTOR_MARKER_D = "marker"
+    def noop(): Unit = {}
+  }

@@ -1,0 +1,89 @@
+src/types/user.ts: |
+  export interface UserCardProps {
+      user: User;
+      onClick?: () => void;
+      className?: string;
+  }
+
+  export interface User {
+      id: string;
+      name: string;
+      email: string;
+      avatar?: string;
+  }
+
+  export function formatUserName(user: User): string {
+      return user.name.trim();
+  }
+src/components/UserCard.tsx: |
+  import React from 'react';
+  import { UserCardProps } from '../types/user';
+
+  export function UserCard({ user, onClick, className }: UserCardProps) {
+      return (
+          <div className={className} onClick={onClick}>
+              {user.avatar && <img src={user.avatar} alt={user.name} />}
+              <h2>{user.name}</h2>
+              <p>{user.email}</p>
+          </div>
+      );
+  }
+src/App.tsx: |
+  import React from 'react';
+  import { UserCard } from './components/UserCard';
+  import { User } from './types/user';
+
+  const currentUser: User = {
+      id: '1',
+      name: 'John Doe',
+      email: 'john@example.com',
+  };
+
+  export function App() {
+      return <UserCard user={currentUser} />;
+  }
+src/unrelated/analytics_tracker.ts: |
+  // GARBAGE_FE_005_ANALYTICS_A
+  export interface AnalyticsEvent {
+      category: string;
+      action: string;
+      label?: string;
+      value?: number;
+  }
+
+  // GARBAGE_FE_005_ANALYTICS_B
+  class AnalyticsTracker {
+      private queue: AnalyticsEvent[] = [];
+
+      track(event: AnalyticsEvent): void {
+          this.queue.push(event);
+      }
+
+      flush(): void {
+          // GARBAGE_FE_005_FLUSH_C
+          this.queue = [];
+      }
+
+      pendingCount(): number {
+          return this.queue.length;
+      }
+  }
+
+  export const tracker = new AnalyticsTracker();
+src/unrelated/locale_config.ts: |
+  // GARBAGE_FE_005_LOCALE_D
+  export type SupportedLocale = 'en' | 'fr' | 'de' | 'es' | 'ja';
+
+  // GARBAGE_FE_005_LOCALE_E
+  const translations: Record<SupportedLocale, Record<string, string>> = {
+      en: { greeting: 'Hello', farewell: 'Goodbye' },
+      fr: { greeting: 'Bonjour', farewell: 'Au revoir' },
+      de: { greeting: 'Hallo', farewell: 'Auf Wiedersehen' },
+      es: { greeting: 'Hola', farewell: 'Adios' },
+      ja: { greeting: 'Konnichiwa', farewell: 'Sayonara' },
+  };
+
+  // GARBAGE_FE_005_TRANSLATE_F
+  export function translate(locale: SupportedLocale, key: string): string {
+      return translations[locale]?.[key] ?? key;
+  }

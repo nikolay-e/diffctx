@@ -1,0 +1,63 @@
+src/parser.ts: |
+  /**
+   * Parse JSON string with validation
+   * @example
+   * // Basic usage
+   * const data = parse('{"key": "value"}');
+   *
+   * @example
+   * // With schema validation
+   * const schema = { type: 'object', required: ['key'] };
+   * const data = parse('{"key": "value"}', { schema });
+   *
+   * @example
+   * // See examples/parsing.ts for more examples
+   */
+  export function parse(input: string, options?: ParseOptions): object {
+    const parsed = JSON.parse(input);
+    if (options?.schema) {
+      validate(parsed, options.schema);
+    }
+    return parsed;
+  }
+
+  export interface ParseOptions {
+    schema?: object;
+    strict?: boolean;
+  }
+
+  function validate(data: object, schema: object): void {
+    // Schema validation logic
+  }
+
+examples/parsing.ts: |
+  import { parse } from '../src/parser';
+
+  const data = parse('{"key": "value"}');
+  console.log(data);
+
+package.json: |
+  {
+    "name": "json-parser",
+    "version": "1.0.0",
+    "main": "dist/parser.js",
+    "types": "dist/parser.d.ts"
+  }
+
+garbage_example_collector.ts: |
+  const GARBAGE_CICD_DOCS_045_COLLECTOR_MARKER_A = "jsdoc";
+  const GARBAGE_CICD_DOCS_045_FILTER_MARKER_B = "@example";
+
+  class GarbageExampleCollector {
+    static GARBAGE_CICD_DOCS_045_RECURSIVE_MARKER_C = true;
+    collect(): void {}
+  }
+
+garbage_example_runner.ts: |
+  const GARBAGE_CICD_DOCS_045_RUNNER_MARKER_D = "ts-node";
+  const GARBAGE_CICD_DOCS_045_SANDBOX_MARKER_E = "vm2";
+
+  class GarbageExampleRunner {
+    static GARBAGE_CICD_DOCS_045_TIMEOUT_MARKER_F = 5000;
+    run(): void {}
+  }

@@ -1,0 +1,58 @@
+sql/queries/order_details.sql: |
+  -- Get order details with customer and product info
+  SELECT
+      o.id AS order_id,
+      u.name AS customer_name,
+      p.name AS product_name,
+      oi.quantity,
+      oi.price
+  FROM orders o
+  JOIN users u ON o.user_id = u.id
+  JOIN order_items oi ON o.id = oi.order_id
+  JOIN products p ON oi.product_id = p.id
+  WHERE o.id = :order_id;
+
+src/models/order_detail.py: |
+  from dataclasses import dataclass
+  from decimal import Decimal
+
+  @dataclass
+  class OrderDetail:
+      order_id: int
+      customer_name: str
+      product_name: str
+      quantity: int
+      price: Decimal
+
+src/repositories/order_repository.py: |
+  from typing import List
+  from models.order_detail import OrderDetail
+
+  class OrderRepository:
+      def __init__(self, db):
+          self.db = db
+
+      def get_order_details(self, order_id: int) -> List[OrderDetail]:
+          results = self.db.execute_file(
+              'sql/queries/order_details.sql',
+              {'order_id': order_id}
+          )
+          return [OrderDetail(**r) for r in results]
+
+garbage_join_optimizer.ts: |
+  const GARBAGE_CICD_DOCS_074_JOIN_MARKER_A = "inner";
+  const GARBAGE_CICD_DOCS_074_OUTER_MARKER_B = "left";
+
+  class GarbageJoinOptimizer {
+    static GARBAGE_CICD_DOCS_074_HASH_MARKER_C = true;
+    optimize(): void {}
+  }
+
+garbage_query_planner.ts: |
+  const GARBAGE_CICD_DOCS_074_PLAN_MARKER_D = "cost";
+  const GARBAGE_CICD_DOCS_074_INDEX_MARKER_E = "scan";
+
+  class GarbageQueryPlanner {
+    static GARBAGE_CICD_DOCS_074_CACHE_MARKER_F = false;
+    plan(): void {}
+  }

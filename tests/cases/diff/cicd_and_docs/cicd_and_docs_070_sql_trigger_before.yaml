@@ -1,0 +1,53 @@
+sql/triggers/audit_trigger.sql: |
+  CREATE OR REPLACE FUNCTION audit_trigger_func()
+  RETURNS TRIGGER AS $$
+  BEGIN
+      INSERT INTO audit_log (table_name, operation, old_data, new_data, created_at)
+      VALUES (TG_TABLE_NAME, TG_OP, row_to_json(OLD), row_to_json(NEW), NOW());
+      RETURN NEW;
+  END;
+  $$ LANGUAGE plpgsql;
+
+  CREATE TRIGGER users_audit
+  AFTER INSERT OR UPDATE OR DELETE ON users
+  FOR EACH ROW EXECUTE FUNCTION audit_trigger_func();
+
+src/services/user_service.py: |
+  from typing import Optional
+  from models.user import User
+
+  class UserService:
+      def __init__(self, db):
+          self.db = db
+
+      def update_user(self, user_id: int, name: str) -> Optional[User]:
+          self.db.execute(
+              "UPDATE users SET name = %s WHERE id = %s",
+              [name, user_id]
+          )
+          return self.get_user(user_id)
+
+      def get_user(self, user_id: int) -> Optional[User]:
+          result = self.db.query(
+              "SELECT * FROM users WHERE id = %s",
+              [user_id]
+          )
+          return User(**result[0]) if result else None
+
+garbage_trigger_manager.ts: |
+  const GARBAGE_CICD_DOCS_070_TRIGGER_MARKER_A = "after";
+  const GARBAGE_CICD_DOCS_070_TIMING_MARKER_B = "row";
+
+  class GarbageTriggerManager {
+    static GARBAGE_CICD_DOCS_070_DEFER_MARKER_C = false;
+    manage(): void {}
+  }
+
+garbage_audit_handler.ts: |
+  const GARBAGE_CICD_DOCS_070_AUDIT_MARKER_D = "json";
+  const GARBAGE_CICD_DOCS_070_RETENTION_MARKER_E = 90;
+
+  class GarbageAuditHandler {
+    static GARBAGE_CICD_DOCS_070_COMPRESS_MARKER_F = true;
+    handle(): void {}
+  }

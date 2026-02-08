@@ -1,0 +1,130 @@
+include/widget/hierarchy.hpp: |
+  #pragma once
+  #include <string>
+  #include <vector>
+  #include <memory>
+
+  namespace app::widget {
+
+  class Widget {
+  public:
+      explicit Widget(const std::string& name)
+          : name_(name), visible_(true) {}
+
+      virtual ~Widget() = default;
+
+      const std::string& name() const { return name_; }
+      bool isVisible() const { return visible_; }
+      void setVisible(bool visible) { visible_ = visible; }
+
+      virtual void render() = 0;
+      virtual void update(float deltaTime) {}
+      virtual std::string typeName() const { return "Widget"; }
+
+  protected:
+      std::string name_;
+      bool visible_;
+  };
+
+  class Button : public Widget {
+  public:
+      Button(const std::string& name, const std::string& label)
+          : Widget(name), label_(label), pressed_(false) {}
+
+      void render() override {}
+      std::string typeName() const override { return "Button"; }
+
+      const std::string& label() const { return label_; }
+      bool isPressed() const { return pressed_; }
+      void press() { pressed_ = true; }
+      void release() { pressed_ = false; }
+
+  private:
+      std::string label_;
+      bool pressed_;
+  };
+
+  class TextInput : public Widget {
+  public:
+      TextInput(const std::string& name, size_t maxLength = 256)
+          : Widget(name), maxLength_(maxLength) {}
+
+      void render() override {}
+      std::string typeName() const override { return "TextInput"; }
+
+      const std::string& text() const { return text_; }
+      void setText(const std::string& text) {
+          text_ = text.substr(0, maxLength_);
+      }
+      size_t maxLength() const { return maxLength_; }
+
+  private:
+      std::string text_;
+      size_t maxLength_;
+  };
+
+  }
+include/unrelated/particle_system.hpp: |
+  #pragma once
+  // GARBAGE_CPP_PARTICLE_252_001
+  #define GARBAGE_CPP_PARTICLE_MAX_252_002 10000
+
+  namespace app::unrelated::particles {
+
+  // GARBAGE_CPP_PARTICLE_STRUCT_252_003
+  struct Particle {
+      float position[3];
+      float velocity[3];
+      float lifetime;
+      // GARBAGE_CPP_PARTICLE_COLOR_252_004
+  };
+
+  // GARBAGE_CPP_PARTICLE_EMITTER_252_005
+  class ParticleEmitter {
+  public:
+      // GARBAGE_CPP_PARTICLE_EMIT_252_006
+      void emit(int count) {
+          // GARBAGE_CPP_PARTICLE_EMIT_IMPL_252_007
+      }
+
+      // GARBAGE_CPP_PARTICLE_UPDATE_252_008
+      void update(float deltaTime) {
+          // GARBAGE_CPP_PARTICLE_UPDATE_IMPL_252_009
+      }
+
+      // GARBAGE_CPP_PARTICLE_RENDER_252_010
+      void render() {
+          // GARBAGE_CPP_PARTICLE_RENDER_IMPL_252_011
+      }
+  };
+
+  }
+src/unrelated/audio_mixer.cpp: |
+  // GARBAGE_CPP_AUDIO_252_012
+  namespace app::unrelated::audio {
+
+  // GARBAGE_CPP_AUDIO_CHANNEL_252_013
+  struct AudioChannel {
+      float volume;
+      float pan;
+      bool muted;
+  };
+
+  // GARBAGE_CPP_AUDIO_MIXER_252_014
+  class AudioMixer {
+  public:
+      // GARBAGE_CPP_AUDIO_MIX_252_015
+      void mixChannels() {
+          // GARBAGE_CPP_AUDIO_MIX_IMPL_252_016
+      }
+
+      // GARBAGE_CPP_AUDIO_SETVOLUME_252_017
+      void setMasterVolume(float volume) {
+          // GARBAGE_CPP_AUDIO_SETVOLUME_IMPL_252_018
+      }
+  };
+
+  }
+src/handler.cpp: |
+  #include <iostream>
+  int main() { return 0; }

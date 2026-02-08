@@ -1,0 +1,13 @@
+Show.scala: |
+  trait Show[A] {
+    def show(a: A): String
+  }
+
+  object Show {
+    def apply[A](implicit sh: Show[A]): Show[A] = sh
+
+    implicit val intShow: Show[Int] = (a: Int) => a.toString
+    implicit val stringShow: Show[String] = (a: String) => a
+  }
+Printer.scala: |
+  class Printer {}

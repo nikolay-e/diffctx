@@ -1,0 +1,50 @@
+handlers.h: |
+  #pragma once
+  #include <iostream>
+
+  void onSuccess(int code);
+  void onError(int code);
+  void onTimeout(int code);
+handlers.cpp: |
+  #include "handlers.h"
+
+  void onSuccess(int code) {
+      std::cout << "Success: " << code << std::endl;
+  }
+
+  void onError(int code) {
+      std::cerr << "Error: " << code << std::endl;
+  }
+
+  void onTimeout(int code) {
+      std::cerr << "Timeout after " << code << "ms" << std::endl;
+  }
+main.cpp: |
+  #include "handlers.h"
+
+  typedef void (*Callback)(int);
+
+  void execute(Callback callback, int value) {
+      callback(value);
+  }
+
+  int main() {
+      Callback handler = onSuccess;
+      execute(handler, 200);
+      return 0;
+  }
+garbage_signal_handler.cpp: |
+  const char* GARBAGE_JVM_002_SIGNAL_MARKER_A = "sig_handle";
+  const char* GARBAGE_JVM_002_TRAP_MARKER_B = "sig_trap";
+
+  class GarbageSignalHandler {
+      static void handle(int sig) {}
+  };
+garbage_event_loop.cpp: |
+  const char* GARBAGE_JVM_002_LOOP_MARKER_C = "evt_loop";
+  const char* GARBAGE_JVM_002_POLL_MARKER_D = "evt_poll";
+
+  class GarbageEventLoop {
+      void run() {}
+      void stop() {}
+  };

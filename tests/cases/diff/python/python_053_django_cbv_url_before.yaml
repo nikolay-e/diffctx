@@ -1,0 +1,84 @@
+models.py: |
+  from datetime import datetime
+
+  class Article:
+      def __init__(self, title: str, slug: str, content: str, published: bool = False):
+          self.title = title
+          self.slug = slug
+          self.content = content
+          self.published = published
+          self.created_at = datetime.now()
+
+      def get_absolute_url(self) -> str:
+          return f"/articles/{self.slug}/"
+
+      def is_published(self) -> bool:
+          return self.published
+
+      def summary(self, max_length: int = 200) -> str:
+          if len(self.content) <= max_length:
+              return self.content
+          return self.content[:max_length] + "..."
+
+views.py: |
+  from django.views.generic import ListView, DetailView
+  from models import Article
+
+  class ArticleListView(ListView):
+      model = Article
+      template_name = "articles/list.html"
+      context_object_name = "articles"
+      paginate_by = 10
+      ordering = ["-created_at"]
+
+      def get_queryset(self):
+          return super().get_queryset().filter(published=True)
+
+  class ArticleDetailView(DetailView):
+      model = Article
+      template_name = "articles/detail.html"
+      slug_field = "slug"
+      slug_url_kwarg = "slug"
+
+urls.py: |
+  from django.urls import path
+
+  urlpatterns = []
+
+garbage_middleware.py: |
+  GARBAGE_PY_053_MIDDLE_A = "middleware layer marker"
+  GARBAGE_PY_053_CHAIN_B = "chain processing marker"
+
+  class RateLimitMiddleware:
+      GARBAGE_PY_053_LIMIT_C = "rate limit marker"
+
+      def __init__(self, get_response):
+          self.get_response = get_response
+          self._request_counts: dict[str, int] = {}
+
+      def __call__(self, request):
+          client_ip = request.META.get("REMOTE_ADDR", "unknown")
+          self._request_counts[client_ip] = self._request_counts.get(client_ip, 0) + 1
+          return self.get_response(request)
+
+      def get_client_count(self, ip: str) -> int:
+          GARBAGE_PY_053_TRACK_D = "tracking marker"
+          return self._request_counts.get(ip, 0)
+
+garbage_template.py: |
+  GARBAGE_PY_053_TMPL_E = "template tag marker"
+  GARBAGE_PY_053_FILTER_F = "filter registry marker"
+
+  class TemplateRenderer:
+      GARBAGE_PY_053_RENDER_G = True
+
+      def __init__(self, template_dir: str = "templates"):
+          self.template_dir = template_dir
+          self._cache: dict[str, str] = {}
+
+      def render(self, name: str, context: dict) -> str:
+          return f"<html>{name}</html>"
+
+      def clear_cache(self) -> None:
+          GARBAGE_PY_053_CLEAR_H = "cache clear marker"
+          self._cache.clear()

@@ -1,0 +1,43 @@
+src/main/java/com/example/KafkaConsumer.java: |
+  package com.example;
+
+  import org.springframework.kafka.annotation.KafkaListener;
+  import org.springframework.stereotype.Component;
+
+  @Component
+  public class KafkaConsumer {
+      @KafkaListener(topics = "orders")
+      public void listen(String message) {
+          System.out.println("Received: " + message);
+      }
+  }
+src/main/java/com/example/KafkaProducer.java: |
+  package com.example;
+
+  import org.springframework.kafka.core.KafkaTemplate;
+  import org.springframework.stereotype.Component;
+
+  @Component
+  public class KafkaProducer {
+      private final KafkaTemplate<String, String> kafkaTemplate;
+
+      public KafkaProducer(KafkaTemplate<String, String> kafkaTemplate) {
+          this.kafkaTemplate = kafkaTemplate;
+      }
+
+      public void send(String message) {
+          kafkaTemplate.send("orders", message);
+      }
+  }
+GarbageRabbitConsumer.java: |
+  public class GarbageRabbitConsumer {
+      public static final String GARBAGE_JVM_035_RABBIT_MARKER_A = "marker";
+      public static final String GARBAGE_JVM_035_AMQP_MARKER_B = "marker";
+      public void noop() {}
+  }
+GarbageMqttBroker.java: |
+  public class GarbageMqttBroker {
+      public static final String GARBAGE_JVM_035_MQTT_MARKER_C = "marker";
+      public static final String GARBAGE_JVM_035_BROKER_MARKER_D = "marker";
+      public void noop() {}
+  }

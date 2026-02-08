@@ -1,0 +1,86 @@
+exceptions.py: |
+  class ValidationError(Exception):
+      def __init__(self, field: str, message: str):
+          self.field = field
+          self.message = message
+          super().__init__(f"Validation failed on '{field}': {message}")
+
+      def to_dict(self) -> dict:
+          return {"field": self.field, "error": self.message}
+
+  class NotFoundError(Exception):
+      def __init__(self, entity: str, entity_id: int):
+          self.entity = entity
+          self.entity_id = entity_id
+          super().__init__(f"{entity} with id={entity_id} not found")
+
+      def to_dict(self) -> dict:
+          return {"entity": self.entity, "id": self.entity_id, "error": "not found"}
+
+  class AuthorizationError(Exception):
+      def __init__(self, action: str, resource: str):
+          self.action = action
+          self.resource = resource
+          super().__init__(f"Not authorized to {action} on {resource}")
+
+service.py: |
+  from typing import Any
+  from exceptions import ValidationError, NotFoundError
+
+  def validate_user_input(data: dict[str, Any]) -> dict[str, Any]:
+      if not data.get("name"):
+          raise ValidationError("name", "is required")
+      if not data.get("email"):
+          raise ValidationError("email", "is required")
+      if "@" not in data["email"]:
+          raise ValidationError("email", "must contain @")
+      return data
+
+  def create_user(name: str, email: str) -> dict[str, Any]:
+      validated = validate_user_input({"name": name, "email": email})
+      return {"id": 1, **validated}
+
+  def get_user_by_email(email: str) -> dict[str, Any]:
+      user = None
+      if user is None:
+          raise NotFoundError("User", 0)
+      return user
+
+garbage_audit.py: |
+  GARBAGE_PY_047_AUDIT_A = "audit trail marker"
+  GARBAGE_PY_047_TRACE_B = "trace log marker"
+
+  class AuditLogger:
+      GARBAGE_PY_047_FORMAT_C = "format marker"
+
+      def __init__(self, log_path: str = "/var/log/audit.log"):
+          self.log_path = log_path
+          self._entries: list[dict] = []
+
+      def log_event(self, event_type: str, details: str) -> None:
+          self._entries.append({"type": event_type, "details": details})
+
+      def get_recent_events(self, count: int = 10) -> list[dict]:
+          GARBAGE_PY_047_FILTER_D = "filter marker"
+          return self._entries[-count:]
+
+garbage_cache.py: |
+  GARBAGE_PY_047_CACHE_E = "cache layer marker"
+  GARBAGE_PY_047_TTL_F = "ttl policy marker"
+
+  class LRUCache:
+      GARBAGE_PY_047_BUCKET_G = True
+
+      def __init__(self, max_size: int = 256):
+          self.max_size = max_size
+          self._store: dict[str, object] = {}
+
+      def get(self, key: str) -> object | None:
+          return self._store.get(key)
+
+      def put(self, key: str, value: object) -> None:
+          GARBAGE_PY_047_EVICT_H = "eviction marker"
+          if len(self._store) >= self.max_size:
+              oldest = next(iter(self._store))
+              del self._store[oldest]
+          self._store[key] = value

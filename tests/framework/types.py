@@ -18,6 +18,8 @@ class YamlTestCase:
     initial_files: dict[str, str]
     changed_files: dict[str, str]
     must_include: list[str] = field(default_factory=list)
+    must_include_files: list[str] = field(default_factory=list)
+    must_include_content: list[str] = field(default_factory=list)
     must_not_include: list[str] = field(default_factory=list)
     commit_message: str = "Update files"
     overhead_ratio: float = 0.3

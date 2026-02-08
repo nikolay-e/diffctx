@@ -1,0 +1,20 @@
+src/main/java/com/example/AsyncService.java: |
+  package com.example;
+
+  public class AsyncService {
+      public String fetchData() {
+          return "data";
+      }
+  }
+GarbageThreadPool.java: |
+  public class GarbageThreadPool {
+      public static final String GARBAGE_JVM_027_POOL_MARKER_A = "marker";
+      public static final String GARBAGE_JVM_027_QUEUE_MARKER_B = "marker";
+      public void noop() {}
+  }
+GarbageScheduler.java: |
+  public class GarbageScheduler {
+      public static final String GARBAGE_JVM_027_SCHED_MARKER_C = "marker";
+      public static final String GARBAGE_JVM_027_TIMER_MARKER_D = "marker";
+      public void noop() {}
+  }

@@ -1,0 +1,56 @@
+src/schema.ts: |
+  export interface Schema {
+      users: { id: string; name: string; role: string }[];
+      posts: { id: string; title: string; content: string; authorId: string }[];
+      comments: { id: string; postId: string; body: string }[];
+  }
+
+  export const emptySchema: Schema = {
+      users: [],
+      posts: [],
+      comments: [],
+  };
+src/accessor.ts: |
+  console.log('initial');
+src/unrelated/animation.ts: |
+  const GARBAGE_JSX_042_ANIM_CONFIG_A = 'animation_garbage_marker';
+
+  export class GarbageAnimationRunner {
+      private running = false;
+
+      start(): void {
+          this.running = true;
+      }
+
+      stop(): void {
+          this.running = false;
+      }
+
+      isRunning(): boolean {
+          return this.running;
+      }
+  }
+
+  export function GARBAGE_JSX_042_EASE_IN_B(): number {
+      return 0;
+  }
+
+  export const GARBAGE_JSX_042_DEFAULT_DURATION_C = 300;
+src/unrelated/clipboard.ts: |
+  const GARBAGE_JSX_042_CLIP_CONFIG_D = { maxSize: 1024 };
+
+  export class GARBAGE_JSX_042_CLIP_MANAGER_E {
+      private buffer = '';
+
+      write(text: string): void {
+          this.buffer = text;
+      }
+
+      read(): string {
+          return this.buffer;
+      }
+  }
+
+  export function GARBAGE_JSX_042_CLEAR_CLIP_F(): void {
+      console.log('clearing clipboard');
+  }

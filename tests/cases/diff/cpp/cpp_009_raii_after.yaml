@@ -1,0 +1,340 @@
+include/sync/mutex.hpp: |
+  #pragma once
+  #include <atomic>
+
+  namespace app::sync {
+
+  class SpinMutex {
+  public:
+      SpinMutex() : locked_(false) {}
+
+      void lock() {
+          while (locked_.exchange(true, std::memory_order_acquire)) {
+              while (locked_.load(std::memory_order_relaxed)) {
+              }
+          }
+      }
+
+      void unlock() {
+          locked_.store(false, std::memory_order_release);
+      }
+
+      bool try_lock() {
+          return !locked_.exchange(true, std::memory_order_acquire);
+      }
+
+  private:
+      std::atomic<bool> locked_;
+  };
+
+  class RecursiveMutex {
+  public:
+      RecursiveMutex() : owner_(0), count_(0) {}
+
+      void lock() {
+          auto self = std::hash<std::thread::id>{}(std::this_thread::get_id());
+          if (owner_ == self) {
+              ++count_;
+              return;
+          }
+          mutex_.lock();
+          owner_ = self;
+          count_ = 1;
+      }
+
+      void unlock() {
+          if (--count_ == 0) {
+              owner_ = 0;
+              mutex_.unlock();
+          }
+      }
+
+  private:
+      SpinMutex mutex_;
+      std::atomic<size_t> owner_;
+      size_t count_;
+  };
+
+  }
+include/unrelated/regex_engine.hpp: |
+  #pragma once
+  // GARBAGE_CPP_REGEX_249_001
+  #define GARBAGE_CPP_REGEX_MAX_249_002 1000
+
+  namespace app::unrelated::regex {
+
+  // GARBAGE_CPP_REGEX_FLAGS_249_003
+  enum class RegexFlags {
+      None = 0,
+      CaseInsensitive = 1,
+      Multiline = 2,
+      DotAll = 4
+  };
+
+  // GARBAGE_CPP_REGEX_MATCH_249_004
+  struct RegexMatch {
+      size_t start;
+      size_t length;
+      // GARBAGE_CPP_REGEX_GROUPS_249_005
+  };
+
+  // GARBAGE_CPP_REGEX_ENGINE_249_006
+  class RegexEngine {
+  public:
+      // GARBAGE_CPP_REGEX_COMPILE_249_007
+      bool compile(const char* pattern) {
+          // GARBAGE_CPP_REGEX_COMPILE_IMPL_249_008
+          return false;
+      }
+
+      // GARBAGE_CPP_REGEX_MATCH_FN_249_009
+      bool match(const char* input, RegexMatch& result) {
+          // GARBAGE_CPP_REGEX_MATCH_IMPL_249_010
+          return false;
+      }
+
+      // GARBAGE_CPP_REGEX_SEARCH_249_011
+      bool search(const char* input) {
+          // GARBAGE_CPP_REGEX_SEARCH_IMPL_249_012
+          return false;
+      }
+  };
+
+  }
+src/unrelated/config_parser.cpp: |
+  // GARBAGE_CPP_CONFIG_249_013
+  #include <string>
+  #include <map>
+
+  namespace app::unrelated::config {
+
+  // GARBAGE_CPP_CONFIG_VALUE_249_014
+  struct ConfigValue {
+      std::string stringValue;
+      int intValue;
+      bool boolValue;
+  };
+
+  // GARBAGE_CPP_CONFIG_PARSER_249_015
+  class ConfigParser {
+  public:
+      // GARBAGE_CPP_CONFIG_LOAD_249_016
+      bool loadFromFile(const std::string& path) {
+          // GARBAGE_CPP_CONFIG_LOAD_IMPL_249_017
+          return false;
+      }
+
+      // GARBAGE_CPP_CONFIG_GET_249_018
+      ConfigValue get(const std::string& key) const {
+          // GARBAGE_CPP_CONFIG_GET_IMPL_249_019
+          return ConfigValue{};
+      }
+
+      // GARBAGE_CPP_CONFIG_SET_249_020
+      void set(const std::string& key, const ConfigValue& value) {
+          // GARBAGE_CPP_CONFIG_SET_IMPL_249_021
+      }
+  };
+
+  }
+src/guard.cpp: |
+  #include "sync/mutex.hpp"
+  #include <iostream>
+  #include <vector>
+  #include <functional>
+
+  namespace app::guard {
+
+  template<typename Mutex>
+  class LockGuard {
+  public:
+      explicit LockGuard(Mutex& mutex)
+          : mutex_(mutex) {
+          mutex_.lock();
+      }
+
+      ~LockGuard() {
+          mutex_.unlock();
+      }
+
+      LockGuard(const LockGuard&) = delete;
+      LockGuard& operator=(const LockGuard&) = delete;
+
+  private:
+      Mutex& mutex_;
+  };
+
+  template<typename Mutex>
+  class UniqueLock {
+  public:
+      explicit UniqueLock(Mutex& mutex, bool defer = false)
+          : mutex_(&mutex)
+          , owned_(false) {
+          if (!defer) {
+              lock();
+          }
+      }
+
+      ~UniqueLock() {
+          if (owned_) {
+              mutex_->unlock();
+          }
+      }
+
+      UniqueLock(UniqueLock&& other) noexcept
+          : mutex_(other.mutex_)
+          , owned_(other.owned_) {
+          other.mutex_ = nullptr;
+          other.owned_ = false;
+      }
+
+      UniqueLock& operator=(UniqueLock&& other) noexcept {
+          if (this != &other) {
+              if (owned_) {
+                  mutex_->unlock();
+              }
+              mutex_ = other.mutex_;
+              owned_ = other.owned_;
+              other.mutex_ = nullptr;
+              other.owned_ = false;
+          }
+          return *this;
+      }
+
+      void lock() {
+          mutex_->lock();
+          owned_ = true;
+      }
+
+      void unlock() {
+          mutex_->unlock();
+          owned_ = false;
+      }
+
+      bool ownsLock() const { return owned_; }
+
+  private:
+      Mutex* mutex_;
+      bool owned_;
+  };
+
+  class ScopeGuard {
+  public:
+      using Callback = std::function<void()>;
+
+      explicit ScopeGuard(Callback onExit)
+          : onExit_(std::move(onExit))
+          , dismissed_(false) {}
+
+      ~ScopeGuard() {
+          if (!dismissed_ && onExit_) {
+              onExit_();
+          }
+      }
+
+      void dismiss() { dismissed_ = true; }
+
+      ScopeGuard(const ScopeGuard&) = delete;
+      ScopeGuard& operator=(const ScopeGuard&) = delete;
+
+  private:
+      Callback onExit_;
+      bool dismissed_;
+  };
+
+  class FileHandle {
+  public:
+      explicit FileHandle(const char* path)
+          : handle_(nullptr) {
+          handle_ = fopen(path, "r");
+      }
+
+      ~FileHandle() {
+          if (handle_) {
+              fclose(handle_);
+          }
+      }
+
+      FileHandle(FileHandle&& other) noexcept
+          : handle_(other.handle_) {
+          other.handle_ = nullptr;
+      }
+
+      FileHandle& operator=(FileHandle&& other) noexcept {
+          if (this != &other) {
+              if (handle_) fclose(handle_);
+              handle_ = other.handle_;
+              other.handle_ = nullptr;
+          }
+          return *this;
+      }
+
+      bool isValid() const { return handle_ != nullptr; }
+      FILE* get() const { return handle_; }
+
+  private:
+      FILE* handle_;
+  };
+
+  template<typename T>
+  class ResourceGuard {
+  public:
+      using Deleter = std::function<void(T&)>;
+
+      ResourceGuard(T resource, Deleter deleter)
+          : resource_(std::move(resource))
+          , deleter_(std::move(deleter)) {}
+
+      ~ResourceGuard() {
+          if (deleter_) {
+              deleter_(resource_);
+          }
+      }
+
+      T& get() { return resource_; }
+      const T& get() const { return resource_; }
+
+  private:
+      T resource_;
+      Deleter deleter_;
+  };
+
+  }
+
+  namespace app::sync {
+  void criticalSection(SpinMutex& mutex) {
+      app::guard::LockGuard<SpinMutex> lock(mutex);
+      std::cout << "In critical section\n";
+  }
+
+  void deferredLock(SpinMutex& mutex) {
+      app::guard::UniqueLock<SpinMutex> lock(mutex, true);
+      std::cout << "Before lock\n";
+      lock.lock();
+      std::cout << "After lock\n";
+  }
+  }
+
+  int main() {
+      app::sync::SpinMutex mutex;
+      app::sync::criticalSection(mutex);
+      app::sync::deferredLock(mutex);
+
+      {
+          app::guard::ScopeGuard guard([]() {
+              std::cout << "Scope exited\n";
+          });
+          std::cout << "Inside scope\n";
+      }
+
+      std::vector<int> resource{1, 2, 3};
+      app::guard::ResourceGuard<std::vector<int>> guard(
+          std::move(resource),
+          [](std::vector<int>& v) {
+              std::cout << "Cleaning up vector with " << v.size() << " elements\n";
+              v.clear();
+          }
+      );
+
+      return 0;
+  }

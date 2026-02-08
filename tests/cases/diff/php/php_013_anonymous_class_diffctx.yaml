@@ -1,0 +1,18 @@
+must_include_files:
+  - src/Pipeline/Pipeline.php
+must_include_content:
+  - |
+    new class($type, $callback) implements Handler
+must_not_include:
+  - GARBAGE_PHP_013_ERROR_LEVEL_A
+  - GARBAGE_PHP_013_VERSION_B
+  - GARBAGE_PHP_013_MODULE_SIZE_C
+  - GARBAGE_PHP_013_MASK_PATTERN_D
+  - GARBAGE_PHP_013_WINDOW_E
+  - GARBAGE_PHP_013_MAX_REQUESTS_F
+  - GARBAGE_PHP_013_STRATEGY_G
+  - GARBAGE_PHP_013_BURST_H
+  - GarbageQrEncoder
+  - GarbageRateLimiter
+  - garbage_qr_encoder.php
+  - garbage_rate_limiter.php

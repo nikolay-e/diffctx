@@ -1,0 +1,64 @@
+src/models/product.py: |
+  from dataclasses import dataclass, field
+  from typing import Optional, List
+  from decimal import Decimal
+  from datetime import datetime
+  from enum import Enum
+
+  class ProductStatus(Enum):
+      ACTIVE = "active"
+      INACTIVE = "inactive"
+      DISCONTINUED = "discontinued"
+
+  @dataclass
+  class Product:
+      id: int
+      name: str
+      price: Decimal
+      description: Optional[str] = None
+      stock: int = 0
+      created_at: datetime = None
+      status: ProductStatus = ProductStatus.ACTIVE
+      tags: List[str] = field(default_factory=list)
+
+      def __post_init__(self):
+          if self.created_at is None:
+              self.created_at = datetime.now()
+
+      def is_available(self) -> bool:
+          return self.stock > 0 and self.status == ProductStatus.ACTIVE
+
+      def apply_discount(self, percent: Decimal) -> Decimal:
+          if percent < 0 or percent > 100:
+              raise ValueError("Discount must be between 0 and 100")
+          discount = self.price * (percent / 100)
+          return self.price - discount
+
+      def update_stock(self, quantity: int) -> None:
+          self.stock += quantity
+          if self.stock < 0:
+              self.stock = 0
+
+      def add_tag(self, tag: str) -> None:
+          if tag not in self.tags:
+              self.tags.append(tag)
+
+garbage_inventory.py: |
+  GARBAGE_ALGO_014_INV_MARKER_A = "inventory"
+  GARBAGE_ALGO_014_STOCK_MARKER_B = True
+
+  class InventoryManager:
+      GARBAGE_ALGO_014_WAREHOUSE_MARKER_C = {}
+
+      def check_stock(self, product_id: int) -> int:
+          return 0
+
+garbage_shipping.py: |
+  GARBAGE_ALGO_014_SHIP_MARKER_D = "shipping"
+  GARBAGE_ALGO_014_CARRIER_MARKER_E = "fedex"
+
+  class ShippingCalculator:
+      GARBAGE_ALGO_014_RATE_MARKER_F = 0.0
+
+      def calculate(self, weight: float) -> float:
+          return 0.0

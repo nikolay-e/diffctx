@@ -1,0 +1,50 @@
+sql/queries/monthly_sales.sql: |
+  -- Monthly sales report using CTE
+  WITH monthly_totals AS (
+      SELECT
+          DATE_TRUNC('month', created_at) AS month,
+          SUM(total) AS revenue
+      FROM orders
+      GROUP BY DATE_TRUNC('month', created_at)
+  )
+  SELECT * FROM monthly_totals ORDER BY month;
+
+src/models/monthly_report.py: |
+  from dataclasses import dataclass
+  from datetime import datetime
+  from decimal import Decimal
+
+  @dataclass
+  class MonthlyReport:
+      month: datetime
+      revenue: Decimal
+
+src/repositories/report_repository.py: |
+  from typing import List
+  from models.monthly_report import MonthlyReport
+
+  class ReportRepository:
+      def __init__(self, db):
+          self.db = db
+
+      def get_monthly_sales(self) -> List[MonthlyReport]:
+          results = self.db.execute_file('sql/queries/monthly_sales.sql')
+          return [MonthlyReport(**r) for r in results]
+
+garbage_cte_optimizer.ts: |
+  const GARBAGE_CICD_DOCS_076_CTE_MARKER_A = "recursive";
+  const GARBAGE_CICD_DOCS_076_MATERIALIZE_MARKER_B = "inline";
+
+  class GarbageCTEOptimizer {
+    static GARBAGE_CICD_DOCS_076_FOLD_MARKER_C = true;
+    optimize(): void {}
+  }
+
+garbage_window_analyzer.ts: |
+  const GARBAGE_CICD_DOCS_076_WINDOW_MARKER_D = "partition";
+  const GARBAGE_CICD_DOCS_076_FRAME_MARKER_E = "range";
+
+  class GarbageWindowAnalyzer {
+    static GARBAGE_CICD_DOCS_076_AGGREGATE_MARKER_F = false;
+    analyze(): void {}
+  }

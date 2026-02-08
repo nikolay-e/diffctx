@@ -1,0 +1,16 @@
+must_include_files:
+  - large.py
+must_include_content:
+  - line_0 = 100
+  - line_19 = 119
+must_not_include:
+  - GARBAGE_OUT_012_MIGRATE_MARKER_A
+  - GARBAGE_OUT_012_SCHEMA_MARKER_B
+  - GARBAGE_OUT_012_MIGRATOR_CLASS_C
+  - GARBAGE_OUT_012_VERSION_MARKER_D
+  - GARBAGE_OUT_012_SEMVER_MARKER_E
+  - GARBAGE_OUT_012_RESOLVER_CLASS_F
+  - SchemaMigrator
+  - VersionResolver
+  - garbage_migration.py
+  - garbage_versioning.py

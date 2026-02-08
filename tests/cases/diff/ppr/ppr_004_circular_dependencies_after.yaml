@@ -1,0 +1,101 @@
+cycles/primary_cycle.py: |
+  def cycle_alpha():
+      result = cycle_beta()
+      return result + "_modified_cycle"
+
+  def cycle_beta():
+      return cycle_gamma()
+
+  def cycle_gamma():
+      return cycle_alpha()
+
+  def cycle_entry_point():
+      return cycle_alpha()
+
+  def cycle_helper_in_chain():
+      return cycle_beta()
+cycles/secondary_cycle.py: |
+  def cycle_delta():
+      return cycle_epsilon()
+
+  def cycle_epsilon():
+      return cycle_delta()
+
+  def cycle_zeta():
+      return cycle_epsilon()
+
+  def secondary_entry():
+      return cycle_delta()
+cycles/tertiary_cycle.py: |
+  def tertiary_cycle_one():
+      return tertiary_cycle_two()
+
+  def tertiary_cycle_two():
+      return tertiary_cycle_three()
+
+  def tertiary_cycle_three():
+      return tertiary_cycle_one()
+
+  def tertiary_entry():
+      return tertiary_cycle_one()
+isolated_cycles/separate_cycle.py: |
+  def separate_cycle_a():
+      return separate_cycle_b()
+
+  def separate_cycle_b():
+      return separate_cycle_c()
+
+  def separate_cycle_c():
+      return separate_cycle_a()
+
+  def separate_cycle_entry():
+      return separate_cycle_a()
+isolated_cycles/another_cycle.py: |
+  def another_cycle_x():
+      return another_cycle_y()
+
+  def another_cycle_y():
+      return another_cycle_x()
+
+  def another_cycle_orchestrator():
+      return another_cycle_x()
+garbage/GARBAGE_PPR_b1c2d3_cycle_noise.py: |
+  GARBAGE_CYCLE_MARKER_PPR004 = "cycle_garbage"
+
+  def garbage_cycle_ppr004_one():
+      return garbage_cycle_ppr004_two()
+
+  def garbage_cycle_ppr004_two():
+      return garbage_cycle_ppr004_one()
+
+  def garbage_cycle_entry_ppr004():
+      return garbage_cycle_ppr004_one()
+garbage/GARBAGE_PPR_e4f5g6_fake_cycle.py: |
+  FAKE_CYCLE_FLAG_PPR004 = True
+
+  def fake_cycle_alpha_ppr004():
+      return fake_cycle_beta_ppr004()
+
+  def fake_cycle_beta_ppr004():
+      return fake_cycle_gamma_ppr004()
+
+  def fake_cycle_gamma_ppr004():
+      return fake_cycle_alpha_ppr004()
+
+  class FakeCycleClassPPR004:
+      def cycle_method_a(self):
+          return self.cycle_method_b()
+
+      def cycle_method_b(self):
+          return self.cycle_method_a()
+garbage/GARBAGE_PPR_h7i8j9_decoy_cycle.py: |
+  DECOY_CYCLE_CONST_PPR004 = 123
+
+  def decoy_cycle_main_ppr004():
+      return decoy_cycle_helper_ppr004()
+
+  def decoy_cycle_helper_ppr004():
+      return decoy_cycle_main_ppr004()
+
+  def decoy_cycle_wrapper_ppr004():
+      return decoy_cycle_main_ppr004() + DECOY_CYCLE_CONST_PPR004

@@ -1,0 +1,118 @@
+nodemon.json: |
+  {
+    "watch": ["src", "config"],
+    "ext": "js,ts,json",
+    "exec": "ts-node src/index.ts",
+    "ignore": ["src/**/*.test.js", "src/**/*.test.ts", "node_modules"],
+    "delay": 1000,
+    "verbose": true
+  }
+src/index.js: |
+  const http = require('http');
+  const { handleRequest } = require('./handler');
+  const { loadConfig } = require('./config');
+
+  const config = loadConfig();
+
+  const server = http.createServer((req, res) => {
+      handleRequest(req, res, config);
+  });
+
+  server.listen(config.port, () => {
+      console.log(`HTTP server running on port ${config.port}`);
+  });
+
+  process.on('SIGTERM', () => {
+      console.log('Shutting down gracefully');
+      server.close(() => process.exit(0));
+  });
+
+  module.exports = { server };
+src/handler.js: |
+  function handleRequest(req, res, config) {
+      const url = new URL(req.url, `http://${req.headers.host}`);
+
+      if (url.pathname === '/health') {
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ status: 'ok', port: config.port }));
+          return;
+      }
+
+      if (url.pathname === '/api/echo') {
+          let body = '';
+          req.on('data', (chunk) => { body += chunk; });
+          req.on('end', () => {
+              res.writeHead(200, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ echo: body }));
+          });
+          return;
+      }
+
+      res.writeHead(404);
+      res.end('Not Found');
+  }
+
+  module.exports = { handleRequest };
+unrelated/watcher.js: |
+  const GARBAGE_JSON_012_WATCH_DEBOUNCE_A = 300;
+
+  class GARBAGE_JSON_012_FILE_WATCHER_B {
+      constructor(debounce) {
+          this.debounce = debounce || GARBAGE_JSON_012_WATCH_DEBOUNCE_A;
+          this.watchers = new Map();
+          this.events = [];
+      }
+
+      watch(path, callback) {
+          this.watchers.set(path, { callback, active: true });
+      }
+
+      unwatch(path) {
+          this.watchers.delete(path);
+      }
+
+      emit(path, event) {
+          this.events.push({ path, event, timestamp: Date.now() });
+          const watcher = this.watchers.get(path);
+          if (watcher && watcher.active) watcher.callback(event);
+      }
+  }
+
+  function GARBAGE_JSON_012_WATCH_DIRECTORY_C(dir) {
+      const watcher = new GARBAGE_JSON_012_FILE_WATCHER_B();
+      watcher.watch(dir, () => {});
+      return watcher;
+  }
+
+  module.exports = { GARBAGE_JSON_012_FILE_WATCHER_B, GARBAGE_JSON_012_WATCH_DIRECTORY_C };
+unrelated/spawner.js: |
+  const GARBAGE_JSON_012_SPAWN_TIMEOUT_D = 5000;
+
+  class GARBAGE_JSON_012_PROCESS_SPAWNER_E {
+      constructor(timeout) {
+          this.timeout = timeout || GARBAGE_JSON_012_SPAWN_TIMEOUT_D;
+          this.processes = [];
+      }
+
+      spawn(command, args) {
+          const proc = { command, args, pid: Math.floor(Math.random() * 10000), running: true };
+          this.processes.push(proc);
+          return proc;
+      }
+
+      kill(pid) {
+          const proc = this.processes.find(p => p.pid === pid);
+          if (proc) proc.running = false;
+      }
+
+      listRunning() {
+          return this.processes.filter(p => p.running);
+      }
+  }
+
+  function GARBAGE_JSON_012_RUN_PROCESS_F(command) {
+      const spawner = new GARBAGE_JSON_012_PROCESS_SPAWNER_E();
+      return spawner.spawn(command, []);
+  }
+
+  module.exports = { GARBAGE_JSON_012_PROCESS_SPAWNER_E, GARBAGE_JSON_012_RUN_PROCESS_F };

@@ -1,0 +1,99 @@
+internal/api/models.go: |
+  package api
+
+  type User struct {
+      ID   int
+      Name string
+  }
+
+  type Product struct {
+      ID    int
+      Name  string
+      Price float64
+  }
+
+  type Order struct {
+      ID        int
+      UserID    int
+      ProductID int
+      Quantity  int
+  }
+internal/api/handlers.go: |
+  package api
+
+  import (
+      "encoding/json"
+      "net/http"
+  )
+
+  func SerializeUser(w http.ResponseWriter, u *User) error {
+      return json.NewEncoder(w).Encode(u)
+  }
+
+  func SerializeProduct(w http.ResponseWriter, p *Product) error {
+      return json.NewEncoder(w).Encode(p)
+  }
+internal/unrelated/payments/stripe_client.go: |
+  package payments
+
+  import "context"
+
+  const GARBAGE_GO_STRIPE_CLIENT_A1B2C3 = "stripe_garbage_marker"
+
+  type GARBAGE_GO_TYPE_CHARGE_D4E5F6 struct {
+      amount   int64
+      currency string
+      source   string
+  }
+
+  func GARBAGE_GO_FUNC_STRIPE_G7H8I9() string {
+      return "GARBAGE_GO_STRIPE_UNUSED_J0K1L2"
+  }
+
+  type StripeConfig struct {
+      APIKey         string
+      WebhookSecret  string
+      PublishableKey string
+  }
+
+  func GARBAGE_GO_FUNC_CREATE_CHARGE_M3N4O5(ctx context.Context, amount int64) error {
+      println("GARBAGE_GO_STRIPE_OUTPUT_P6Q7R8")
+      return nil
+  }
+internal/unrelated/payments/paypal_gateway.go: |
+  package payments
+
+  const GARBAGE_GO_PAYPAL_GATEWAY_S9T0U1 = "paypal_garbage"
+
+  type GARBAGE_GO_TYPE_PAYPAL_V2W3X4 struct {
+      clientID     string
+      clientSecret string
+      sandbox      bool
+  }
+
+  func GARBAGE_GO_FUNC_PAYPAL_Y5Z6A7() {
+      println("GARBAGE_GO_PAYPAL_OUTPUT_B8C9D0")
+  }
+
+  type PayPalConfig struct {
+      ClientID     string
+      ClientSecret string
+      Environment  string
+  }
+
+  func GARBAGE_GO_FUNC_PAYPAL_ORDER_E1F2G3(orderID string) error {
+      return nil
+  }
+internal/unrelated/payments/crypto_wallet.go: |
+  package payments
+
+  const GARBAGE_GO_CRYPTO_WALLET_H4I5J6 = "crypto_garbage"
+
+  type GARBAGE_GO_TYPE_BITCOIN_K7L8M9 struct {
+      address    string
+      privateKey string
+  }
+
+  func GARBAGE_GO_FUNC_CRYPTO_N0O1P2() {
+      println("GARBAGE_GO_CRYPTO_OUTPUT_Q3R4S5")
+  }

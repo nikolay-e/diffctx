@@ -1,0 +1,30 @@
+mod0.py: |
+  def func0():
+      func1()
+mod1.py: |
+  def func1():
+      func2()
+mod2.py: |
+  def func2():
+      func0()
+mod3.py: |
+  def func3():
+      func1()
+mod4.py: |
+  def func4():
+      func2()
+mod5.py: |
+  def func5():
+      func3()
+mod6.py: |
+  def func6():
+      func4()
+mod7.py: |
+  def func7():
+      func5()
+mod8.py: |
+  def func8():
+      func6()
+mod9.py: |
+  def func9():
+      func7()

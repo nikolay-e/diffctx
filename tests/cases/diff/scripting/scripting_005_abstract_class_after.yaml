@@ -1,0 +1,30 @@
+BaseController.php: |
+  <?php
+  abstract class BaseController {
+      abstract protected function getModel(): string;
+
+      public function index(): array {
+          return ['model' => $this->getModel()];
+      }
+
+      protected function respond(array $data): void {
+          echo json_encode($data);
+      }
+  }
+UserController.php: |
+  <?php
+  require_once 'BaseController.php';
+
+  class UserController extends BaseController {
+      protected function getModel(): string {
+          return 'User';
+      }
+
+      public function show(int $id): void {
+          $this->respond(['id' => $id, 'model' => $this->getModel()]);
+      }
+  }
+garbage.php: |
+  <?php
+  $garbageBaseUnused12345 = "never called";
+  $unused_marker_67890 = "not used";

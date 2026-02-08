@@ -1,0 +1,26 @@
+Logging.scala: |
+  trait Logging {
+    def log(message: String): Unit = println(s"[LOG] $message")
+    def debug(message: String): Unit = println(s"[DEBUG] $message")
+  }
+Metrics.scala: |
+  trait Metrics {
+    def recordMetric(name: String, value: Double): Unit = {
+      println(s"Metric: $name = $value")
+    }
+  }
+Service.scala: |
+  // Initial
+  class Service {}
+GarbageCakePattern.scala: |
+  object GarbageCakePattern {
+    val GARBAGE_JVM_058_CAKE_MARKER_A = "marker"
+    val GARBAGE_JVM_058_LAYER_MARKER_B = "marker"
+    def noop(): Unit = {}
+  }
+GarbageModuleLoader.scala: |
+  object GarbageModuleLoader {
+    val GARBAGE_JVM_058_MODULE_MARKER_C = "marker"
+    val GARBAGE_JVM_058_COMPONENT_MARKER_D = "marker"
+    def noop(): Unit = {}
+  }

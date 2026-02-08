@@ -1,0 +1,32 @@
+Sources/Models/Response.swift: |
+  struct Response {
+      let data: Data?
+      let error: Error?
+      let statusCode: Int
+  }
+Sources/Network/NetworkHandler.swift: |
+  struct NetworkHandler {
+      func placeholder() {}
+  }
+Sources/Unrelated/GarbageAnalytics005.swift: |
+  let GARBAGE_SWIFT_005_PIXEL_ENDPOINT_A = "https://px.example.com"
+  let GARBAGE_SWIFT_005_COOKIE_NAME_B = "ga_session"
+
+  class GarbagePixelTracker005 {
+      static let GARBAGE_SWIFT_005_DEBOUNCE_MS_C = 200
+
+      func fire(event: String) -> String {
+          return GARBAGE_SWIFT_005_PIXEL_ENDPOINT_A
+      }
+  }
+Sources/Unrelated/GarbageLogger005.swift: |
+  let GARBAGE_SWIFT_005_SYSLOG_FACILITY_D = "local0"
+  let GARBAGE_SWIFT_005_SEVERITY_E = "warning"
+
+  class GarbageSyslogWriter005 {
+      static let GARBAGE_SWIFT_005_PORT_F = 514
+
+      func write(message: String) -> String {
+          return GARBAGE_SWIFT_005_SYSLOG_FACILITY_D
+      }
+  }

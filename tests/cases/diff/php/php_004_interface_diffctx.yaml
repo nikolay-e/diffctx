@@ -1,0 +1,18 @@
+must_include_files:
+  - src/Handlers/ApiHandler.php
+must_include_content:
+  - |
+    implements RequestHandler
+must_not_include:
+  - GARBAGE_PHP_004_EARTH_RADIUS_A
+  - GARBAGE_PHP_004_PROJECTION_B
+  - GARBAGE_PHP_004_PRECISION_C
+  - GARBAGE_PHP_004_UNIT_D
+  - GARBAGE_PHP_004_FORMAT_E
+  - GARBAGE_PHP_004_DPI_F
+  - GARBAGE_PHP_004_MODULE_WIDTH_G
+  - GARBAGE_PHP_004_CHECKSUM_H
+  - GarbageGeoCalculator
+  - GarbageBarcodeGen
+  - garbage_geo_calculator.php
+  - garbage_barcode_gen.php

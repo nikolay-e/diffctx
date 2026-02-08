@@ -1,0 +1,140 @@
+include/pool/object.hpp: |
+  #pragma once
+  #include <string>
+  #include <vector>
+  #include <cstdint>
+
+  namespace app::pool {
+
+  struct ObjectStats {
+      uint32_t constructCount = 0;
+      uint32_t destructCount = 0;
+      uint32_t resetCount = 0;
+  };
+
+  class PooledObject {
+  public:
+      PooledObject(const std::string& name, int priority = 0)
+          : name_(name)
+          , priority_(priority)
+          , active_(true) {
+          ++globalStats().constructCount;
+      }
+
+      ~PooledObject() {
+          ++globalStats().destructCount;
+      }
+
+      const std::string& name() const { return name_; }
+      int priority() const { return priority_; }
+      bool isActive() const { return active_; }
+
+      void setActive(bool active) { active_ = active; }
+      void setPriority(int priority) { priority_ = priority; }
+
+      void reset(const std::string& newName, int newPriority) {
+          name_ = newName;
+          priority_ = newPriority;
+          active_ = true;
+          ++globalStats().resetCount;
+      }
+
+      static ObjectStats& globalStats() {
+          static ObjectStats stats;
+          return stats;
+      }
+
+  private:
+      std::string name_;
+      int priority_;
+      bool active_;
+  };
+
+  }
+include/unrelated/shader_compiler.hpp: |
+  #pragma once
+  // GARBAGE_CPP_SHADER_250_001
+  #define GARBAGE_CPP_SHADER_VERSION_250_002 450
+
+  namespace app::unrelated::shader {
+
+  // GARBAGE_CPP_SHADER_TYPE_250_003
+  enum class ShaderType {
+      Vertex,
+      Fragment,
+      Geometry,
+      Compute
+  };
+
+  // GARBAGE_CPP_SHADER_RESULT_250_004
+  struct CompileResult {
+      bool success;
+      std::string errorLog;
+      // GARBAGE_CPP_SHADER_BYTECODE_250_005
+  };
+
+  // GARBAGE_CPP_SHADER_COMPILER_250_006
+  class ShaderCompiler {
+  public:
+      // GARBAGE_CPP_SHADER_COMPILE_250_007
+      CompileResult compile(ShaderType type, const char* source) {
+          // GARBAGE_CPP_SHADER_COMPILE_IMPL_250_008
+          return CompileResult{};
+      }
+
+      // GARBAGE_CPP_SHADER_LINK_250_009
+      CompileResult link() {
+          // GARBAGE_CPP_SHADER_LINK_IMPL_250_010
+          return CompileResult{};
+      }
+
+      // GARBAGE_CPP_SHADER_VALIDATE_250_011
+      bool validate() {
+          // GARBAGE_CPP_SHADER_VALIDATE_IMPL_250_012
+          return false;
+      }
+  };
+
+  }
+src/unrelated/animation_system.cpp: |
+  // GARBAGE_CPP_ANIM_250_013
+  #include <string>
+
+  namespace app::unrelated::animation {
+
+  // GARBAGE_CPP_ANIM_KEYFRAME_250_014
+  struct Keyframe {
+      float time;
+      float value;
+      // GARBAGE_CPP_ANIM_INTERPOLATION_250_015
+  };
+
+  // GARBAGE_CPP_ANIM_TRACK_250_016
+  struct AnimationTrack {
+      std::string targetProperty;
+      // GARBAGE_CPP_ANIM_KEYFRAMES_250_017
+  };
+
+  // GARBAGE_CPP_ANIM_SYSTEM_250_018
+  class AnimationSystem {
+  public:
+      // GARBAGE_CPP_ANIM_UPDATE_250_019
+      void update(float deltaTime) {
+          // GARBAGE_CPP_ANIM_UPDATE_IMPL_250_020
+      }
+
+      // GARBAGE_CPP_ANIM_PLAY_250_021
+      void play(const std::string& animationName) {
+          // GARBAGE_CPP_ANIM_PLAY_IMPL_250_022
+      }
+
+      // GARBAGE_CPP_ANIM_STOP_250_023
+      void stop() {
+          // GARBAGE_CPP_ANIM_STOP_IMPL_250_024
+      }
+  };
+
+  }
+src/pool.cpp: |
+  #include <iostream>
+  int main() { return 0; }

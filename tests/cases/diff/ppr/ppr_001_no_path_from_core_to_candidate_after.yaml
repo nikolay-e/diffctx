@@ -1,0 +1,71 @@
+core/main.py: |
+  from core.utils import core_helper, validate_input
+
+  def func_a():
+      data = validate_input("test")
+      result = core_helper(data)
+      processed = unique_a_process(result)
+      return processed + "_modified"
+
+  def unique_a_process(value):
+      return value * 2
+
+  def secondary_core_func():
+      return func_a() + 10
+core/utils.py: |
+  def core_helper(data):
+      return data.upper()
+
+  def validate_input(raw):
+      if not raw:
+          raise ValueError("empty")
+      return raw.strip()
+
+  def unused_core_util():
+      return "never_called_from_core"
+isolated/module_b.py: |
+  def func_b():
+      return unique_b_isolated()
+
+  def unique_b_isolated():
+      return "isolated_b_value"
+
+  def another_isolated_func():
+      return func_b() + "_extended"
+garbage/GARBAGE_PPR_a1b2c3_unrelated.py: |
+  GARBAGE_MARKER_PPR_001_XYZ = "garbage_constant"
+
+  def garbage_function_ppr001_alpha():
+      return GARBAGE_MARKER_PPR_001_XYZ
+
+  def garbage_function_ppr001_beta():
+      garbage_function_ppr001_alpha()
+      return "beta_garbage_output"
+
+  class GarbageClassPPR001:
+      def garbage_method_one(self):
+          return garbage_function_ppr001_beta()
+
+      def garbage_method_two(self):
+          return "garbage_method_two_result"
+garbage/GARBAGE_PPR_d4e5f6_noise.py: |
+  GARBAGE_NOISE_CONSTANT_PPR001 = 42
+
+  def noise_generator_ppr001():
+      return GARBAGE_NOISE_CONSTANT_PPR001 * 2
+
+  def unrelated_noise_ppr001():
+      return noise_generator_ppr001() + 100
+
+  def deep_noise_chain_ppr001():
+      return unrelated_noise_ppr001() * 3
+garbage/GARBAGE_PPR_g7h8i9_decoy.py: |
+  DECOY_FLAG_PPR001 = True
+
+  def decoy_processor_ppr001(flag):
+      if flag:
+          return "decoy_active"
+      return "decoy_inactive"
+
+  def decoy_orchestrator_ppr001():
+      return decoy_processor_ppr001(DECOY_FLAG_PPR001)

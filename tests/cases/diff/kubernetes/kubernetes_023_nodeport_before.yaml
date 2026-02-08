@@ -1,0 +1,67 @@
+k8s/apps/web/deployment.yaml: |
+  apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    name: web-frontend
+    namespace: production
+    labels:
+      app: web-frontend
+  spec:
+    replicas: 3
+    selector:
+      matchLabels:
+        app: web-frontend
+    template:
+      metadata:
+        labels:
+          app: web-frontend
+      spec:
+        containers:
+        - name: web
+          image: web-frontend:v1.0.0
+          ports:
+          - containerPort: 80
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "50m"
+k8s/apps/web/service.yaml: |
+  apiVersion: v1
+  kind: Service
+  metadata:
+    name: web-frontend
+    namespace: production
+  spec:
+    type: ClusterIP
+    selector:
+      app: web-frontend
+    ports:
+    - port: 80
+      targetPort: 80
+k8s/unrelated/metallb/l2advertisement.yaml: |
+  # GARBAGE_K8S_423_METALLB_L2
+  apiVersion: metallb.io/v1beta1
+  kind: L2Advertisement
+  metadata:
+    name: GARBAGE_K8S_423_L2_NAME
+  spec:
+    ipAddressPools:
+    - GARBAGE_K8S_423_IP_POOL
+    interfaces:
+    - GARBAGE_K8S_423_INTERFACE
+k8s/unrelated/external-dns/deployment.yaml: |
+  # GARBAGE_K8S_423_EXTERNAL_DNS
+  apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    name: GARBAGE_K8S_423_DNS_NAME
+  spec:
+    replicas: 1
+    selector:
+      matchLabels:
+        app: GARBAGE_K8S_423_DNS_LABEL
+    template:
+      spec:
+        containers:
+        - name: external-dns
+          image: registry.k8s.io/external-dns/external-dns:GARBAGE_K8S_423_DNS_VERSION

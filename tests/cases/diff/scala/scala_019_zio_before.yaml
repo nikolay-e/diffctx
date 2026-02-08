@@ -1,0 +1,14 @@
+Client.scala: |
+  import zio._
+
+  trait Client {
+    def fetch(url: String): Task[String]
+  }
+
+  object Client {
+    val live: ULayer[Client] = ZLayer.succeed(new Client {
+      def fetch(url: String): Task[String] = ZIO.succeed(s"Response from $url")
+    })
+  }
+DataFetcher.scala: |
+  object DataFetcher {}

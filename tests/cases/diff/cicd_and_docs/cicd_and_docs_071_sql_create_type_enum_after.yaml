@@ -1,0 +1,75 @@
+sql/types/order_status.sql: |
+  -- Add new values to existing enum type
+  -- Note: In PostgreSQL, enum values can only be added, not removed
+
+  ALTER TYPE order_status ADD VALUE IF NOT EXISTS 'processing' AFTER 'pending';
+  ALTER TYPE order_status ADD VALUE IF NOT EXISTS 'cancelled' AFTER 'delivered';
+  ALTER TYPE order_status ADD VALUE IF NOT EXISTS 'refunded' AFTER 'cancelled';
+  ALTER TYPE order_status ADD VALUE IF NOT EXISTS 'on_hold' AFTER 'confirmed';
+
+  -- Create a helper function to check valid transitions
+  CREATE OR REPLACE FUNCTION is_valid_status_transition(
+      old_status order_status,
+      new_status order_status
+  ) RETURNS BOOLEAN AS $$
+  BEGIN
+      -- Define valid transitions
+      RETURN CASE
+          WHEN old_status = 'pending' AND new_status IN ('processing', 'cancelled') THEN TRUE
+          WHEN old_status = 'processing' AND new_status IN ('confirmed', 'cancelled') THEN TRUE
+          WHEN old_status = 'confirmed' AND new_status IN ('on_hold', 'shipped', 'cancelled') THEN TRUE
+          WHEN old_status = 'on_hold' AND new_status IN ('confirmed', 'cancelled') THEN TRUE
+          WHEN old_status = 'shipped' AND new_status IN ('delivered', 'cancelled') THEN TRUE
+          WHEN old_status = 'delivered' AND new_status = 'refunded' THEN TRUE
+          ELSE FALSE
+      END;
+  END;
+  $$ LANGUAGE plpgsql IMMUTABLE;
+
+migrations/001_create_orders.sql: |
+  CREATE TABLE orders (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER REFERENCES users(id),
+      status order_status DEFAULT 'pending',
+      total DECIMAL(10, 2),
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  );
+
+src/models/order.py: |
+  from enum import Enum
+  from dataclasses import dataclass
+  from decimal import Decimal
+  from typing import Optional
+  from datetime import datetime
+
+  class OrderStatus(Enum):
+      PENDING = 'pending'
+      CONFIRMED = 'confirmed'
+      SHIPPED = 'shipped'
+      DELIVERED = 'delivered'
+
+  @dataclass
+  class Order:
+      id: int
+      user_id: int
+      status: OrderStatus
+      total: Decimal
+      created_at: Optional[datetime] = None
+
+garbage_enum_mapper.ts: |
+  const GARBAGE_CICD_DOCS_071_ENUM_MARKER_A = "postgres";
+  const GARBAGE_CICD_DOCS_071_CAST_MARKER_B = "explicit";
+
+  class GarbageEnumMapper {
+    static GARBAGE_CICD_DOCS_071_VALIDATE_MARKER_C = true;
+    map(): void {}
+  }
+
+garbage_type_handler.ts: |
+  const GARBAGE_CICD_DOCS_071_TYPE_MARKER_D = "custom";
+  const GARBAGE_CICD_DOCS_071_DOMAIN_MARKER_E = "constrained";
+
+  class GarbageTypeHandler {
+    static GARBAGE_CICD_DOCS_071_COERCE_MARKER_F = false;
+    handle(): void {}
+  }

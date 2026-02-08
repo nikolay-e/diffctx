@@ -1,0 +1,60 @@
+src/Math/Multiplier.php: |
+  <?php
+  namespace App\Math;
+
+  class Multiplier {
+      public function __construct(private readonly int $factor) {}
+
+      public function getFactor(): int {
+          return $this->factor;
+      }
+
+      public function apply(int $value): int {
+          return $value * $this->factor;
+      }
+  }
+src/Collections/Collection.php: |
+  <?php
+  namespace App\Collections;
+
+  class Collection {
+      private array $items;
+
+      public function __construct(array $items = []) {
+          $this->items = $items;
+      }
+
+      public function toArray(): array {
+          return $this->items;
+      }
+
+      public function count(): int {
+          return count($this->items);
+      }
+  }
+src/garbage_image_resizer.php: |
+  <?php
+  GARBAGE_PHP_014_MAX_WIDTH_A = 1920;
+  GARBAGE_PHP_014_MAX_HEIGHT_B = 1080;
+
+  class GarbageImageResizer {
+      GARBAGE_PHP_014_QUALITY_C = 85;
+
+      public function resize(string $path, int $width): string {
+          GARBAGE_PHP_014_INTERPOLATION_D = "bicubic";
+          return $path;
+      }
+  }
+src/garbage_slug_generator.php: |
+  <?php
+  GARBAGE_PHP_014_SEPARATOR_E = "-";
+  GARBAGE_PHP_014_MAX_LENGTH_F = 200;
+
+  class GarbageSlugGenerator {
+      GARBAGE_PHP_014_TRANSLITERATE_G = true;
+
+      public function generate(string $text): string {
+          GARBAGE_PHP_014_LOWERCASE_H = true;
+          return strtolower(str_replace(' ', '-', $text));
+      }
+  }

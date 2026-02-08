@@ -1,0 +1,63 @@
+config/settings.py: |
+  import os
+  from typing import Optional
+
+  class Settings:
+      DEBUG: bool = os.getenv("DEBUG", "false").lower() == "true"
+      DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///app.db")
+      SECRET_KEY: str = os.getenv("SECRET_KEY", "dev-secret-key")
+      LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
+      MAX_CONNECTIONS: int = int(os.getenv("MAX_CONNECTIONS", "10"))
+
+      @classmethod
+      def is_production(cls) -> bool:
+          return not cls.DEBUG
+
+      @classmethod
+      def get_log_level(cls) -> str:
+          return cls.LOG_LEVEL.upper()
+
+  settings = Settings()
+
+app/main.py: |
+  from config.settings import settings
+
+  def initialize_app():
+      if settings.DEBUG:
+          print("Running in debug mode")
+          print(f"Database: {settings.DATABASE_URL}")
+      else:
+          print("Running in production mode")
+
+      return {"debug": settings.DEBUG, "log_level": settings.LOG_LEVEL}
+
+  def run():
+      config = initialize_app()
+      print(f"App started with config: {config}")
+
+.env: |
+  DEBUG=true
+  DATABASE_URL=postgresql://localhost/myapp_dev
+  SECRET_KEY=dev-secret-key-for-testing
+  LOG_LEVEL=DEBUG
+  MAX_CONNECTIONS=5
+
+garbage_migrations.py: |
+  GARBAGE_ALGO_003_MIGRATION_MARKER_A = "migration"
+  GARBAGE_ALGO_003_SCHEMA_MARKER_B = True
+
+  class MigrationRunner:
+      GARBAGE_ALGO_003_RUNNER_C = "runner"
+
+      def run_migrations(self) -> None:
+          pass
+
+garbage_seeds.py: |
+  GARBAGE_ALGO_003_SEED_MARKER_D = "seed"
+  GARBAGE_ALGO_003_FIXTURE_MARKER_E = []
+
+  class DataSeeder:
+      GARBAGE_ALGO_003_SEEDER_F = True
+
+      def seed_database(self) -> None:
+          pass

@@ -1,0 +1,71 @@
+src/api.ts: |
+  interface ApiClient {
+      get(url: string): Promise<Response>;
+  }
+
+  export default function apiClient(): ApiClient {
+      return {
+          get: (url: string) => fetch(url),
+      };
+  }
+
+  export function createHeaders(token?: string): Record<string, string> {
+      const headers: Record<string, string> = {
+          'Content-Type': 'application/json',
+      };
+      if (token) {
+          headers['Authorization'] = `Bearer ${token}`;
+      }
+      return headers;
+  }
+src/service.ts: |
+  import client from './api';
+
+  export async function getData(url: string) {
+      const api = client();
+      const response = await api.get(url);
+      return response.json();
+  }
+
+  export async function getStatus(): Promise<string> {
+      const api = client();
+      const response = await api.get('/api/health');
+      const data = await response.json();
+      return data.status;
+  }
+src/unrelated/featureFlags.ts: |
+  const GARBAGE_JSX_007_FEATURE_STORE_A = 'feature_flags_garbage_marker';
+
+  export class GarbageFeatureFlagService {
+      private flags: Record<string, boolean> = {};
+
+      isEnabled(flag: string): boolean {
+          return this.flags[flag] ?? false;
+      }
+
+      setFlag(flag: string, value: boolean): void {
+          this.flags[flag] = value;
+      }
+  }
+
+  export function GARBAGE_JSX_007_EVALUATE_FLAGS_B(): void {
+      console.log('GARBAGE_JSX_007_FLAG_OUTPUT_C');
+  }
+src/unrelated/rateLimit.ts: |
+  const GARBAGE_JSX_007_RATE_LIMITER_D = { maxRequests: 100, windowMs: 60000 };
+
+  export class GARBAGE_JSX_007_RATE_LIMIT_SERVICE_E {
+      private count = 0;
+
+      check(): boolean {
+          return this.count < 100;
+      }
+
+      increment(): void {
+          this.count++;
+      }
+  }
+
+  export function GARBAGE_JSX_007_RESET_LIMITS_F(): void {
+      console.log('resetting rate limits');
+  }

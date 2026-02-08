@@ -1,0 +1,44 @@
+ExpensiveComputation.scala: |
+  object ExpensiveComputation {
+    def compute(input: Int): Int = {
+      Thread.sleep(100)
+      input * 2
+    }
+
+    def computeString(input: String): String = {
+      Thread.sleep(100)
+      input.toUpperCase
+    }
+  }
+AsyncProcessor.scala: |
+  import scala.concurrent.{Future, ExecutionContext}
+  import scala.concurrent.ExecutionContext.Implicits.global
+
+  class AsyncProcessor {
+    def processAsync(input: Int): Future[Int] = Future {
+      ExpensiveComputation.compute(input)
+    }
+
+    def processMany(inputs: List[Int]): Future[List[Int]] = {
+      Future.sequence(inputs.map(i => Future(ExpensiveComputation.compute(i))))
+    }
+
+    def processCombined(a: Int, b: String): Future[(Int, String)] = {
+      for {
+        resultA <- Future(ExpensiveComputation.compute(a))
+        resultB <- Future(ExpensiveComputation.computeString(b))
+      } yield (resultA, resultB)
+    }
+  }
+GarbagePromise.scala: |
+  object GarbagePromise {
+    val GARBAGE_JVM_052_PROMISE_MARKER_A = "marker"
+    val GARBAGE_JVM_052_AWAIT_MARKER_B = "marker"
+    def noop(): Unit = {}
+  }
+GarbageDeferred.scala: |
+  object GarbageDeferred {
+    val GARBAGE_JVM_052_CALLBACK_MARKER_C = "marker"
+    val GARBAGE_JVM_052_DEFERRED_MARKER_D = "marker"
+    def noop(): Unit = {}
+  }

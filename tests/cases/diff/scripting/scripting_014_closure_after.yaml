@@ -1,0 +1,27 @@
+Multiplier.php: |
+  <?php
+  class Multiplier {
+      public function __construct(private int $factor) {}
+
+      public function getFactor(): int {
+          return $this->factor;
+      }
+  }
+app.php: |
+  <?php
+  require_once 'Multiplier.php';
+
+  $multiplier = new Multiplier(10);
+  $factor = $multiplier->getFactor();
+
+  $callback = function(int $x) use ($factor): int {
+      return $x * $factor;
+  };
+
+  $numbers = [1, 2, 3, 4, 5];
+  $result = array_map($callback, $numbers);
+  print_r($result);
+garbage.php: |
+  <?php
+  $garbageClosure12345 = -1;
+  $unused_marker_67890 = "not used";

@@ -1,0 +1,16 @@
+Data.php: |
+  <?php
+  class Data {
+      public mixed $value;
+
+      public function __construct(mixed $value) {
+          $this->value = $value;
+      }
+  }
+Parser.php: |
+  <?php
+  class Parser {}
+garbage.php: |
+  <?php
+  $garbageUnion99999 = "never used";
+  $unused_marker_12345 = "not used";

@@ -1,0 +1,72 @@
+src/types.ts: |
+  export type Config = {
+      apiUrl: string;
+      timeout: number;
+      retries: number;
+      debug?: boolean;
+      logLevel?: LogLevel;
+  };
+
+  export type Environment = 'development' | 'staging' | 'production';
+
+  export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
+
+  export function createDefaultConfig(): Config {
+      return {
+          apiUrl: 'http://localhost:3000',
+          timeout: 5000,
+          retries: 3,
+          debug: false,
+      };
+  }
+src/app.ts: |
+  import { Config, Environment, createDefaultConfig } from './types';
+
+  export function initApp(env: Environment): Config {
+      const config = createDefaultConfig();
+      if (env === 'production') {
+          config.apiUrl = 'https://api.example.com';
+      }
+      return config;
+  }
+
+  export function getApiUrl(config: Config): string {
+      return config.apiUrl;
+  }
+src/unrelated/permissions.ts: |
+  const GARBAGE_JSX_009_PERMISSION_STORE_A = 'permissions_garbage_marker';
+
+  export class GarbagePermissionManager {
+      private roles: Set<string> = new Set();
+
+      addRole(role: string): void {
+          this.roles.add(role);
+      }
+
+      hasRole(role: string): boolean {
+          return this.roles.has(role);
+      }
+  }
+
+  export function GARBAGE_JSX_009_CHECK_ACCESS_B(): boolean {
+      console.log('GARBAGE_JSX_009_ACCESS_OUTPUT_C');
+      return false;
+  }
+src/unrelated/migration.ts: |
+  const GARBAGE_JSX_009_MIGRATION_RUNNER_D = { version: '1.0.0' };
+
+  export class GARBAGE_JSX_009_MIGRATOR_E {
+      private applied: string[] = [];
+
+      apply(name: string): void {
+          this.applied.push(name);
+      }
+
+      getApplied(): string[] {
+          return [...this.applied];
+      }
+  }
+
+  export function GARBAGE_JSX_009_ROLLBACK_F(): void {
+      console.log('rolling back migration');
+  }

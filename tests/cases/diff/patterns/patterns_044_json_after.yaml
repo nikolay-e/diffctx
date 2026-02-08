@@ -1,0 +1,90 @@
+src/serializers.py: |
+  import json
+  from dataclasses import dataclass, asdict
+  from typing import Any
+
+  @dataclass
+  class User:
+      id: int
+      name: str
+      email: str
+      active: bool = True
+
+  @dataclass
+  class Order:
+      id: int
+      user_id: int
+      items: list
+      total: float
+
+  class JsonSerializer:
+      @staticmethod
+      def serialize_user(user: User) -> str:
+          data = asdict(user)
+          data["type"] = "user"
+          return json.dumps(data, indent=2, sort_keys=True)
+
+      @staticmethod
+      def serialize_order(order: Order) -> str:
+          data = asdict(order)
+          data["type"] = "order"
+          data["item_count"] = len(order.items)
+          return json.dumps(data, indent=2, sort_keys=True)
+
+      @staticmethod
+      def serialize_batch(items: list[Any]) -> str:
+          result = []
+          for item in items:
+              if isinstance(item, User):
+                  result.append({"type": "user", **asdict(item)})
+              elif isinstance(item, Order):
+                  result.append({"type": "order", **asdict(item)})
+          return json.dumps({"batch": result, "count": len(result)}, indent=2)
+tests/test_serializers.py: |
+  import json
+  from src.serializers import User, Order, JsonSerializer
+
+  def test_serialize_user():
+      user = User(id=1, name="Test", email="test@example.com")
+      result = JsonSerializer.serialize_user(user)
+      assert "test@example.com" in result
+
+  def test_serialize_user_snapshot():
+      user = User(id=42, name="John Doe", email="john@example.com", active=True)
+      result = JsonSerializer.serialize_user(user)
+      parsed = json.loads(result)
+
+      expected = {
+          "active": True,
+          "email": "john@example.com",
+          "id": 42,
+          "name": "John Doe",
+          "type": "user"
+      }
+      assert parsed == expected
+
+  def test_serialize_order_snapshot():
+      order = Order(
+          id=100,
+          user_id=42,
+          items=["item1", "item2", "item3"],
+          total=299.99
+      )
+      result = JsonSerializer.serialize_order(order)
+      parsed = json.loads(result)
+
+      assert parsed["id"] == 100
+      assert parsed["item_count"] == 3
+      assert parsed["type"] == "order"
+      assert parsed["total"] == 299.99
+
+  def test_serialize_batch_snapshot():
+      user = User(id=1, name="Alice", email="alice@example.com")
+      order = Order(id=10, user_id=1, items=["x"], total=50.0)
+      result = JsonSerializer.serialize_batch([user, order])
+      parsed = json.loads(result)
+
+      assert parsed["count"] == 2
+      assert len(parsed["batch"]) == 2
+      assert parsed["batch"][0]["type"] == "user"
+      assert parsed["batch"][1]["type"] == "order"

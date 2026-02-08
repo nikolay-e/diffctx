@@ -1,0 +1,16 @@
+templates/tests/test-connection.yaml: |
+  apiVersion: v1
+  kind: Pod
+  metadata:
+    name: {{ .Release.Name }}-test
+    annotations:
+      "helm.sh/hook": test
+  spec:
+    containers:
+    - name: test
+      image: busybox
+      command: ['wget', '-qO-', 'http://{{ .Release.Name }}:80']
+    restartPolicy: Never
+junk.txt: |
+  garbage_marker_12345
+  unused_marker_67890

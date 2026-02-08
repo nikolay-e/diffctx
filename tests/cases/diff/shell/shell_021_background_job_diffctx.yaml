@@ -1,0 +1,12 @@
+must_include:
+- parallel.sh
+- long_process
+must_not_include:
+- GARBAGE_SH_021_CGROUP_LIMIT_A
+- GARBAGE_SH_021_MEM_LIMIT_B
+- garbage_set_mem_limit_021
+- garbage_get_usage_021
+- GARBAGE_SH_021_AUDITD_RULES_C
+- GARBAGE_SH_021_AUDIT_LOG_D
+- garbage_add_watch_021
+- garbage_search_events_021

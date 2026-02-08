@@ -1,0 +1,27 @@
+service.rb: |
+  class Service
+    def process(data)
+      validated = validate(data)
+      transform(validated)
+    end
+
+    private
+
+    def validate(data)
+      raise "Invalid" if data.nil?
+      data
+    end
+
+    def transform(data)
+      data.to_s.upcase
+    end
+  end
+app.rb: |
+  require_relative 'service'
+
+  service = Service.new
+  result = service.process("hello")
+  puts result
+garbage.rb: |
+  garbage_private_unused_67890 = "never called"
+  unused_marker_12345 = "not used"

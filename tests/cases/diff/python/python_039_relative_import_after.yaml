@@ -1,0 +1,69 @@
+package/__init__.py: ''
+package/models/user.py: |
+  from dataclasses import dataclass
+  from typing import Optional
+
+  @dataclass
+  class User:
+      user_id: int
+      name: str
+      email: str
+      role: str = "member"
+
+      def is_admin(self) -> bool:
+          return self.role == "admin"
+
+      def display_name(self) -> str:
+          return self.name or self.email.split("@")[0]
+
+      def has_verified_email(self) -> bool:
+          return "@" in self.email and "." in self.email
+
+package/models/__init__.py: |
+  from .user import User
+
+package/services/user_service.py: |
+  from ..models.user import User
+
+  class UserService:
+      def __init__(self, repository):
+          self.repository = repository
+
+      def list_users(self):
+          return self.repository.find_all()
+
+      def find_admins(self) -> list[User]:
+          all_users = self.repository.find_all()
+          return [u for u in all_users if u.is_admin()]
+
+garbage_feature_flags.py: |
+  GARBAGE_PY_039_FLAGS_A = "feature flags marker"
+  GARBAGE_PY_039_TOGGLE_B = "toggle system marker"
+
+  class FeatureFlagService:
+      GARBAGE_PY_039_SERVICE_C = "flag service marker"
+
+      def __init__(self):
+          self._flags = {}
+
+      def is_enabled(self, flag_name: str) -> bool:
+          return self._flags.get(flag_name, False)
+
+      def set_flag(self, flag_name: str, enabled: bool) -> None:
+          GARBAGE_PY_039_SET_D = "set flag marker"
+          self._flags[flag_name] = enabled
+
+garbage_rate_limiter.py: |
+  GARBAGE_PY_039_LIMITER_E = "rate limiter marker"
+  GARBAGE_PY_039_BUCKET_F = "token bucket marker"
+
+  class RateLimiter:
+      GARBAGE_PY_039_RATE_G = True
+
+      def __init__(self, max_requests: int, window_seconds: int):
+          self.max_requests = max_requests
+          self.window_seconds = window_seconds
+
+      def is_allowed(self, client_id: str) -> bool:
+          GARBAGE_PY_039_ALLOW_H = "allow marker"
+          return True

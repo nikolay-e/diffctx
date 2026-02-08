@@ -1,0 +1,50 @@
+schema.graphql: |
+  type Query {
+    user(id: ID!): User
+    users: [User!]!
+  }
+
+  type User {
+    id: ID!
+    name: String!
+  }
+
+src/resolvers/user_resolver.py: |
+  from typing import List, Optional
+  from models.user import User
+  from database import get_db
+
+  def resolve_user(obj, info, id: str) -> Optional[User]:
+      db = get_db()
+      return db.query(User).filter(User.id == id).first()
+
+  def resolve_users(obj, info) -> List[User]:
+      db = get_db()
+      return db.query(User).all()
+
+src/models/user.py: |
+  from sqlalchemy import Column, Integer, String
+  from database import Base
+
+  class User(Base):
+      __tablename__ = 'users'
+      id = Column(Integer, primary_key=True)
+      name = Column(String(100), nullable=False)
+
+garbage_query_parser.ts: |
+  const GARBAGE_CICD_DOCS_054_PARSER_MARKER_A = "graphql-tag";
+  const GARBAGE_CICD_DOCS_054_DEPTH_MARKER_B = 10;
+
+  class GarbageQueryParser {
+    static GARBAGE_CICD_DOCS_054_CACHE_MARKER_C = true;
+    parse(): void {}
+  }
+
+garbage_query_validator.ts: |
+  const GARBAGE_CICD_DOCS_054_INTROSPECTION_MARKER_D = "disabled";
+  const GARBAGE_CICD_DOCS_054_COST_MARKER_E = 1000;
+
+  class GarbageQueryValidator {
+    static GARBAGE_CICD_DOCS_054_LIMIT_MARKER_F = false;
+    validate(): boolean { return true; }
+  }

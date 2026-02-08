@@ -1,0 +1,118 @@
+include/entity/base.hpp: |
+  #pragma once
+  #include <string>
+  #include <memory>
+
+  namespace app::entity {
+
+  enum class EntityType {
+      Unknown,
+      Character,
+      Item,
+      Environment
+  };
+
+  class Base {
+  public:
+      virtual ~Base() = default;
+
+      virtual std::string name() const { return "Base"; }
+      virtual EntityType type() const { return EntityType::Unknown; }
+      virtual void process() {}
+      virtual void update(float deltaTime) {}
+      virtual bool isActive() const { return active_; }
+      virtual void setActive(bool active) { active_ = active; }
+      virtual std::string serialize() const { return "{}"; }
+      virtual void deserialize(const std::string& data) {}
+
+  protected:
+      bool active_ = true;
+  };
+
+  class Component {
+  public:
+      virtual ~Component() = default;
+
+      virtual void onAttach() {}
+      virtual void onDetach() {}
+      virtual void tick(float dt) {}
+      virtual std::string componentName() const { return "Component"; }
+  };
+
+  }
+include/unrelated/network_protocol.hpp: |
+  #pragma once
+  // GARBAGE_CPP_NETWORK_270_001
+  #define GARBAGE_CPP_NETWORK_PORT_270_002 8080
+
+  namespace app::unrelated::network {
+
+  // GARBAGE_CPP_NETWORK_PACKET_270_003
+  struct Packet {
+      int type;
+      size_t length;
+      char data[1024];
+      // GARBAGE_CPP_NETWORK_CHECKSUM_270_004
+  };
+
+  // GARBAGE_CPP_NETWORK_PROTOCOL_270_005
+  class NetworkProtocol {
+  public:
+      // GARBAGE_CPP_NETWORK_ENCODE_270_006
+      size_t encode(const Packet& packet, char* buffer) {
+          // GARBAGE_CPP_NETWORK_ENC_IMPL_270_007
+          return 0;
+      }
+
+      // GARBAGE_CPP_NETWORK_DECODE_270_008
+      Packet decode(const char* buffer, size_t length) {
+          // GARBAGE_CPP_NETWORK_DEC_IMPL_270_009
+          return Packet{};
+      }
+
+      // GARBAGE_CPP_NETWORK_VALIDATE_270_010
+      bool validate(const Packet& packet) {
+          // GARBAGE_CPP_NETWORK_VAL_IMPL_270_011
+          return false;
+      }
+  };
+
+  }
+src/unrelated/asset_loader.cpp: |
+  // GARBAGE_CPP_ASSET_270_012
+  #include <string>
+
+  namespace app::unrelated::asset {
+
+  // GARBAGE_CPP_ASSET_TYPE_270_013
+  enum class AssetType {
+      Texture,
+      Model,
+      Sound,
+      Script
+  };
+
+  // GARBAGE_CPP_ASSET_LOADER_270_014
+  class AssetLoader {
+  public:
+      // GARBAGE_CPP_ASSET_LOAD_270_015
+      void* load(const std::string& path, AssetType type) {
+          // GARBAGE_CPP_ASSET_LOAD_IMPL_270_016
+          return nullptr;
+      }
+
+      // GARBAGE_CPP_ASSET_UNLOAD_270_017
+      void unload(void* asset) {
+          // GARBAGE_CPP_ASSET_UNLOAD_IMPL_270_018
+      }
+
+      // GARBAGE_CPP_ASSET_RELOAD_270_019
+      void reload(const std::string& path) {
+          // GARBAGE_CPP_ASSET_RELOAD_IMPL_270_020
+      }
+  };
+
+  }
+src/derived.cpp: |
+  #include <iostream>
+  int main() { return 0; }

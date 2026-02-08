@@ -1,0 +1,28 @@
+src/rate_limiter.py: |
+  import time
+
+  class RateLimiter:
+      def __init__(self, max_calls: int, period: float):
+          self.max_calls = max_calls
+          self.period = period
+          self.calls = []
+
+      def is_allowed(self) -> bool:
+          now = time.time()
+          self.calls = [c for c in self.calls if now - c < self.period]
+          if len(self.calls) < self.max_calls:
+              self.calls.append(now)
+              return True
+          return False
+
+      def wait_time(self) -> float:
+          if not self.calls:
+              return 0
+          oldest = min(self.calls)
+          return max(0, self.period - (time.time() - oldest))
+tests/test_rate_limiter.py: |
+  from src.rate_limiter import RateLimiter
+
+  def test_allows_within_limit():
+      limiter = RateLimiter(max_calls=3, period=1.0)
+      assert limiter.is_allowed() is True

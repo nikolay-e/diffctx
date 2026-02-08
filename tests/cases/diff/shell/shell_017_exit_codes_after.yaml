@@ -1,0 +1,56 @@
+caller.sh: |
+  #!/bin/bash
+
+  handle_error() {
+      local code=$1
+      case $code in
+          0) echo "Success" ;;
+          1) echo "General error" ;;
+          2) echo "Invalid argument" ;;
+          *) echo "Unknown error: $code" ;;
+      esac
+  }
+validate.sh: |
+  #!/bin/bash
+  source ./caller.sh
+
+  if [[ -z "$1" ]]; then
+      echo "Error: No input provided"
+      exit 2
+  fi
+
+  if [[ ! -f "$1" ]]; then
+      echo "Error: File not found"
+      exit 1
+  fi
+
+  echo "Validation passed"
+  handle_error $?
+  exit 0
+unrelated/garbage_logrotate.sh: |
+  #!/bin/bash
+  # GARBAGE_SH_017_LOGROTATE_CONF_A
+  GARBAGE_SH_017_MAX_SIZE_B="100M"
+
+  garbage_rotate_logs_017() {
+      local logfile=$1
+      echo "Rotating $logfile"
+  }
+
+  garbage_compress_old_017() {
+      local dir=$1
+      echo "Compressing old logs in $dir"
+  }
+unrelated/garbage_swap_mgmt.sh: |
+  #!/bin/bash
+  # GARBAGE_SH_017_SWAP_MGMT_C
+  GARBAGE_SH_017_SWAPPINESS_D="10"
+
+  garbage_check_swap_017() {
+      echo "Swap usage: 0%"
+  }
+
+  garbage_add_swap_017() {
+      local size=$1
+      echo "Adding ${size}G swap"
+  }

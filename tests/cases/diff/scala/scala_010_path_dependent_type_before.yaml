@@ -1,0 +1,12 @@
+Outer.scala: |
+  class Outer {
+    class Inner {
+      def greet: String = "Hello from Inner"
+    }
+
+    type T = Inner
+
+    def createInner: Inner = new Inner
+  }
+PathDependent.scala: |
+  class PathDependent {}

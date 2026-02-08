@@ -1,0 +1,45 @@
+robust.sh: |
+  #!/bin/bash
+  set -euo pipefail
+
+  readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  readonly CONFIG_FILE="${SCRIPT_DIR}/config.yaml"
+
+  if [[ ! -f "$CONFIG_FILE" ]]; then
+      echo "Error: Config file not found"
+      exit 1
+  fi
+
+  process_data || {
+      echo "Processing failed"
+      exit 1
+  }
+
+  echo "Script directory: $SCRIPT_DIR"
+  echo "Running..."
+unrelated/garbage_pam.sh: |
+  #!/bin/bash
+  # GARBAGE_SH_022_PAM_CONFIG_A
+  GARBAGE_SH_022_AUTH_MODULE_B="pam_unix.so"
+
+  garbage_check_pam_022() {
+      local service=$1
+      echo "PAM config for $service: OK"
+  }
+
+  garbage_test_auth_022() {
+      local user=$1
+      echo "Auth test for $user: passed"
+  }
+unrelated/garbage_grub.sh: |
+  #!/bin/bash
+  # GARBAGE_SH_022_GRUB_CONFIG_C
+  GARBAGE_SH_022_TIMEOUT_D="5"
+
+  garbage_update_grub_022() {
+      echo "Updating GRUB configuration"
+  }
+
+  garbage_list_entries_022() {
+      echo "Entry 0: Linux 6.1"
+  }

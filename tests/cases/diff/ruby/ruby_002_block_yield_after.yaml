@@ -1,0 +1,63 @@
+lib/retry_helper.rb: |
+  module RetryHelper
+    def with_retry(max_attempts: 3, delay: 1)
+      attempts = 0
+      begin
+        attempts += 1
+        yield
+      rescue StandardError => e
+        if attempts < max_attempts
+          sleep(delay * attempts)
+          retry
+        end
+        raise e
+      end
+    end
+
+    def with_timeout(seconds: 30)
+      Timeout.timeout(seconds) { yield }
+    rescue Timeout::Error
+      raise "Operation timed out after #{seconds}s"
+    end
+  end
+lib/service.rb: |
+  require_relative 'retry_helper'
+
+  class Service
+    include RetryHelper
+
+    def fetch_data
+      with_retry(max_attempts: 5, delay: 2) do
+        response = Net::HTTP.get(URI("https://api.example.com/data"))
+        JSON.parse(response)
+      end
+    end
+
+    def fetch_with_timeout
+      with_timeout(seconds: 10) do
+        fetch_data
+      end
+    end
+  end
+lib/garbage_analytics.rb: |
+  GARBAGE_RUBY_002_TRACKING_ID_A = "analytics_tracker"
+  GARBAGE_RUBY_002_EVENT_BUFFER_B = "event_queue"
+
+  class GarbageAnalyticsTracker
+    GARBAGE_RUBY_002_FLUSH_RATE_C = 60
+
+    def track(event_name, properties = {})
+      GARBAGE_RUBY_002_EVENT_BUFFER_B
+    end
+  end
+lib/garbage_migration.rb: |
+  GARBAGE_RUBY_002_SCHEMA_VERSION_D = "v2.0"
+  GARBAGE_RUBY_002_ROLLBACK_STEP_E = "revert_all"
+
+  class GarbageMigrationRunner
+    GARBAGE_RUBY_002_BATCH_SIZE_F = 500
+
+    def migrate(direction)
+      GARBAGE_RUBY_002_SCHEMA_VERSION_D
+    end
+  end

@@ -1,0 +1,54 @@
+.gitlab-ci.yml: |
+  stages:
+    - build
+    - deploy
+
+  build:
+    stage: build
+    script:
+      - npm ci
+      - npm run build
+
+  deploy:
+    stage: deploy
+    script:
+      - ./deploy.sh
+    resource_group: production
+
+deploy.sh: |
+  #!/bin/bash
+  set -e
+  echo "Deploying to production..."
+  helm upgrade --install myapp ./charts/myapp
+
+package.json: |
+  {
+    "name": "gitlab-resource-group-app",
+    "version": "1.0.0",
+    "scripts": {
+      "build": "vite build"
+    }
+  }
+
+charts/myapp/Chart.yaml: |
+  apiVersion: v2
+  name: myapp
+  version: 1.0.0
+
+garbage_resource_manager.ts: |
+  const GARBAGE_CICD_DOCS_039_MANAGER_MARKER_A = "semaphore";
+  const GARBAGE_CICD_DOCS_039_LIMIT_MARKER_B = 1;
+
+  class GarbageResourceManager {
+    static GARBAGE_CICD_DOCS_039_QUEUE_MARKER_C = true;
+    acquire(): void {}
+  }
+
+garbage_resource_lock.ts: |
+  const GARBAGE_CICD_DOCS_039_LOCK_MARKER_D = "mutex";
+  const GARBAGE_CICD_DOCS_039_SCOPE_MARKER_E = "global";
+
+  class GarbageResourceLock {
+    static GARBAGE_CICD_DOCS_039_TIMEOUT_MARKER_F = 300;
+    lock(): void {}
+  }

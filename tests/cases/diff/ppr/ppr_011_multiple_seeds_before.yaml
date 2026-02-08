@@ -1,0 +1,112 @@
+seeds/primary_module.py: |
+  from seeds.shared_utils import shared_helper_one, shared_helper_two
+
+  def seed_alpha():
+      return shared_helper_one("alpha")
+
+  def seed_alpha_dependent():
+      return seed_alpha() + "_dep"
+
+  def seed_beta():
+      return shared_helper_two("beta")
+
+  def seed_beta_dependent():
+      return seed_beta() + "_dep"
+
+  def non_seed_func():
+      return "not_a_seed"
+seeds/secondary_module.py: |
+  from seeds.shared_utils import shared_helper_one
+
+  def seed_gamma():
+      return shared_helper_one("gamma")
+
+  def seed_gamma_chain():
+      return seed_gamma() + "_chain"
+
+  def unrelated_secondary():
+      return "unrelated_sec"
+seeds/shared_utils.py: |
+  def shared_helper_one(prefix):
+      return prefix.upper()
+
+  def shared_helper_two(prefix):
+      return prefix.lower()
+
+  def unused_shared_helper():
+      return "unused"
+seeds/tertiary_module.py: |
+  def seed_delta():
+      return "delta_value"
+
+  def seed_delta_processor():
+      return seed_delta() + "_processed"
+
+  def tertiary_helper():
+      return "tertiary_help"
+isolated/completely_separate.py: |
+  def separate_func_one():
+      return "separate_one"
+
+  def separate_func_two():
+      return separate_func_one() + "_two"
+
+  def separate_func_three():
+      return separate_func_two() + "_three"
+
+  def separate_orchestrator():
+      return separate_func_three()
+isolated/another_isolated.py: |
+  ISOLATED_CONST = "isolated_constant"
+
+  def isolated_reader():
+      return ISOLATED_CONST
+
+  def isolated_processor():
+      return isolated_reader() + "_processed"
+garbage/GARBAGE_PPR_t1u2v3_multi_noise.py: |
+  GARBAGE_MULTI_MARKER_PPR016 = "multi_garbage"
+
+  def garbage_multi_ppr016_alpha():
+      return GARBAGE_MULTI_MARKER_PPR016
+
+  def garbage_multi_ppr016_beta():
+      return garbage_multi_ppr016_alpha() + "_beta"
+
+  def garbage_multi_ppr016_gamma():
+      return garbage_multi_ppr016_beta() + "_gamma"
+
+  def garbage_multi_entry_ppr016():
+      return garbage_multi_ppr016_gamma()
+garbage/GARBAGE_PPR_w4x5y6_fake_seeds.py: |
+  FAKE_SEED_FLAG_PPR016 = True
+
+  def fake_seed_ppr016_one():
+      return FAKE_SEED_FLAG_PPR016
+
+  def fake_seed_ppr016_two():
+      return fake_seed_ppr016_one()
+
+  def fake_seed_ppr016_three():
+      return fake_seed_ppr016_two()
+
+  class FakeSeedClassPPR016:
+      def fake_seed_method_a(self):
+          return "method_a"
+
+      def fake_seed_method_b(self):
+          return self.fake_seed_method_a()
+garbage/GARBAGE_PPR_z7a8b9_decoy_multi.py: |
+  DECOY_MULTI_CONST_PPR016 = 999
+
+  def decoy_multi_ppr016_base():
+      return DECOY_MULTI_CONST_PPR016
+
+  def decoy_multi_ppr016_mid():
+      return decoy_multi_ppr016_base() + 1
+
+  def decoy_multi_ppr016_top():
+      return decoy_multi_ppr016_mid() + 2
+
+  def decoy_multi_orchestrator_ppr016():
+      return decoy_multi_ppr016_top()

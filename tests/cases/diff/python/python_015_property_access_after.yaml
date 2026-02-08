@@ -1,0 +1,181 @@
+models/person.py: |
+  from typing import Optional, List
+  from datetime import datetime, date
+  from dataclasses import dataclass
+  from enum import Enum
+
+  class Gender(Enum):
+      MALE = "male"
+      FEMALE = "female"
+      OTHER = "other"
+      PREFER_NOT_TO_SAY = "prefer_not_to_say"
+
+  @dataclass
+  class Address:
+      street: str
+      city: str
+      country: str
+      postal_code: str
+
+  class Person:
+      def __init__(self, first: str, last: str, birth_date: Optional[date] = None):
+          self._first = first
+          self._last = last
+          self._birth_date = birth_date
+          self._email: Optional[str] = None
+          self._phone: Optional[str] = None
+          self._address: Optional[Address] = None
+          self._gender: Optional[Gender] = None
+          self._created_at = datetime.now()
+          self._updated_at = datetime.now()
+
+      @property
+      def first(self) -> str:
+          return self._first
+
+      @first.setter
+      def first(self, value: str) -> None:
+          self._first = value.strip()
+          self._mark_updated()
+
+      @property
+      def last(self) -> str:
+          return self._last
+
+      @last.setter
+      def last(self, value: str) -> None:
+          self._last = value.strip()
+          self._mark_updated()
+
+      @property
+      def full_name(self) -> str:
+          return f"{self._first} {self._last}"
+
+      @property
+      def age(self) -> Optional[int]:
+          if self._birth_date is None:
+              return None
+          today = date.today()
+          age = today.year - self._birth_date.year
+          if (today.month, today.day) < (self._birth_date.month, self._birth_date.day):
+              age -= 1
+          return age
+
+      @property
+      def is_adult(self) -> bool:
+          age = self.age
+          return age is not None and age >= 18
+
+      @property
+      def email(self) -> Optional[str]:
+          return self._email
+
+      @email.setter
+      def email(self, value: str) -> None:
+          if value and "@" not in value:
+              raise ValueError("Invalid email format")
+          self._email = value
+          self._mark_updated()
+
+      @property
+      def display_info(self) -> str:
+          parts = [self.full_name]
+          if self.age is not None:
+              parts.append(f"Age: {self.age}")
+          if self._email:
+              parts.append(f"Email: {self._email}")
+          return " | ".join(parts)
+
+      def _mark_updated(self) -> None:
+          self._updated_at = datetime.now()
+
+      def set_address(self, address: Address) -> None:
+          self._address = address
+          self._mark_updated()
+
+      def get_address(self) -> Optional[Address]:
+          return self._address
+views.py: |
+  from typing import List, Optional, Dict, Any
+  from dataclasses import dataclass
+  from models.person import Person, Address, Gender
+
+  @dataclass
+  class ViewConfig:
+      template_dir: str = "templates"
+      cache_enabled: bool = True
+
+  class PersonView:
+      def __init__(self, config: ViewConfig):
+          self.config = config
+          self._cache: Dict[str, str] = {}
+
+      def render(self, person: Person) -> str:
+          cache_key = f"person_{id(person)}"
+          if self.config.cache_enabled and cache_key in self._cache:
+              return self._cache[cache_key]
+
+          name = person.full_name
+          html = f"<div class='person-card'><h1>{name}</h1>"
+
+          if person.age is not None:
+              html += f"<p class='age'>Age: {person.age}</p>"
+
+          if person.is_adult:
+              html += "<span class='badge adult'>Adult</span>"
+
+          html += f"<p class='info'>{person.display_info}</p>"
+          html += "</div>"
+
+          if self.config.cache_enabled:
+              self._cache[cache_key] = html
+
+          return html
+
+      def render_list(self, people: List[Person]) -> str:
+          items = [f"<li>{p.full_name}</li>" for p in people]
+          return f"<ul>{''.join(items)}</ul>"
+
+      def clear_cache(self) -> None:
+          self._cache.clear()
+garbage_templates.py: |
+  GARBAGE_MARKER_TEMPLATE_001 = "template garbage"
+  UNRELATED_TEMPLATE_EXT_002 = ".html"
+
+  class TemplateEngine:
+      GARBAGE_TEMPLATE_CLASS_003 = "template class marker"
+
+      def __init__(self, template_dir: str = "templates"):
+          self.template_dir = template_dir
+
+      def render(self, template_name: str, context: dict) -> str:
+          return ""
+
+      def compile(self, template_str: str) -> callable:
+          return lambda ctx: template_str
+
+  class TemplateCache:
+      GARBAGE_CACHE_MARKER_004 = "cache marker"
+
+      def get(self, key: str) -> Optional[str]:
+          return None
+garbage_localization.py: |
+  GARBAGE_MARKER_LOCALE_005 = "localization garbage"
+  UNRELATED_DEFAULT_LANG_006 = "en"
+
+  class Localizer:
+      GARBAGE_LOCALE_CLASS_007 = True
+
+      def __init__(self, default_language: str = "en"):
+          self.default_language = default_language
+          self._translations: Dict[str, Dict[str, str]] = {}
+
+      def translate(self, key: str, language: Optional[str] = None) -> str:
+          return key
+
+      def load_translations(self, language: str, translations: Dict[str, str]) -> None:
+          self._translations[language] = translations
+
+  def format_locale_key(key: str) -> str:
+      GARBAGE_FORMAT_LOCALE_008 = "format locale marker"
+      return f"locale.{key}"

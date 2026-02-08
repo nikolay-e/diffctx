@@ -1,0 +1,27 @@
+src/calculator/engine.py: |
+  from src.calculator.validators import validate_input
+  def calculate_sum(values: list) -> float:
+      validate_input(values)
+      return sum(values)
+  def calculate_average(values: list) -> float:
+      total = calculate_sum(values)
+      return total / len(values) if values else 0.0
+src/calculator/validators.py: |
+  def validate_input(values: list) -> None:
+      if not isinstance(values, list):
+          raise TypeError("Expected list")
+garbage_math_formatter.py: |
+  GARBAGE_INT_003_FORMAT_MARKER_A = "math"
+  GARBAGE_INT_003_DECIMAL_MARKER_B = "prec"
+
+  class GarbageMathFormatter:
+      def noop(self):
+          pass
+
+garbage_number_parser.py: |
+  GARBAGE_INT_003_PARSE_MARKER_C = "num"
+  GARBAGE_INT_003_BASE_MARKER_D = "dec"
+
+  class GarbageNumberParser:
+      def noop(self):
+          pass

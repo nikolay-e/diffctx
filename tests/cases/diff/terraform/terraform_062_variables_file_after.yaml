@@ -1,0 +1,20 @@
+variables.tf: |
+  variable "environment" {
+    default = "prod"
+  }
+
+  variable "instance_type" {
+    default = "t3.large"
+  }
+
+  variable "vpc_id" {
+    type = string
+  }
+main.tf: |
+  resource "aws_instance" "web" {
+    ami           = "ami-12345678"
+    instance_type = var.instance_type
+    tags = {
+      Environment = var.environment
+    }
+  }

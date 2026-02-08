@@ -1,0 +1,44 @@
+security.tf: |
+  resource "aws_security_group" "web" {
+    name = "web-sg"
+
+    ingress {
+      from_port   = 443
+      to_port     = 443
+      protocol    = "tcp"
+      cidr_blocks = ["0.0.0.0/0"]
+    }
+  }
+legacy/hardcoded_rules_GARBAGE_TF_dyn476a.tf: |
+  # GARBAGE_TF_dyn476a - Hardcoded security group rules
+  resource "aws_security_group" "legacy_web_GARBAGE_TF_dyn476a" {
+    name = "legacy-web-sg-GARBAGE_TF_dyn476a"
+
+    ingress {
+      from_port   = 80
+      to_port     = 80
+      protocol    = "tcp"
+      cidr_blocks = ["0.0.0.0/0"]
+    }
+
+    ingress {
+      from_port   = 443
+      to_port     = 443
+      protocol    = "tcp"
+      cidr_blocks = ["0.0.0.0/0"]
+    }
+
+    ingress {
+      from_port   = 8080
+      to_port     = 8080
+      protocol    = "tcp"
+      cidr_blocks = ["10.0.0.0/8"]
+    }
+  }
+scripts/generate_rules_GARBAGE_TF_dyn476b.sh: |
+  #!/bin/bash
+  # GARBAGE_TF_dyn476b - Legacy rule generator
+  echo "Generating legacy security rules GARBAGE_TF_dyn476b"
+  for port in 80 443 8080 8443; do
+    echo "Creating rule for port $port GARBAGE_TF_dyn476b"
+  done

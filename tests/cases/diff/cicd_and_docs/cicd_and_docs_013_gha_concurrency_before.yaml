@@ -1,0 +1,56 @@
+.github/workflows/ci.yml: |
+  name: CI
+  on: [push, pull_request]
+  jobs:
+    build:
+      runs-on: ubuntu-latest
+      steps:
+        - uses: actions/checkout@v4
+        - run: npm ci
+        - run: npm run build
+        - run: npm test
+
+package.json: |
+  {
+    "name": "concurrent-builds-app",
+    "version": "1.0.0",
+    "scripts": {
+      "build": "webpack --mode production",
+      "test": "jest --runInBand"
+    }
+  }
+
+src/workers/processor.ts: |
+  export interface Job {
+    id: string;
+    priority: number;
+    execute: () => Promise<void>;
+  }
+
+  export class JobProcessor {
+    private queue: Job[] = [];
+
+    async process(): Promise<void> {
+      for (const job of this.queue) {
+        await job.execute();
+      }
+    }
+  }
+
+garbage_lock.ts: |
+  const GARBAGE_CICD_DOCS_013_LOCK_MARKER_A = "mutex";
+  const GARBAGE_CICD_DOCS_013_TIMEOUT_MARKER_B = 30000;
+
+  class GarbageLockManager {
+    static GARBAGE_CICD_DOCS_013_RETRY_MARKER_C = 5;
+    acquire(): boolean { return false; }
+  }
+
+garbage_semaphore.ts: |
+  const GARBAGE_CICD_DOCS_013_SEMAPHORE_MARKER_D = "counting";
+  const GARBAGE_CICD_DOCS_013_MAX_MARKER_E = 10;
+
+  class GarbageSemaphoreService {
+    static GARBAGE_CICD_DOCS_013_FAIR_MARKER_F = true;
+    wait(): void {}
+  }

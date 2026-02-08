@@ -1,0 +1,32 @@
+Attributes/ValidateAttribute.cs: |
+  namespace MyApp.Attributes;
+
+  [AttributeUsage(AttributeTargets.Property)]
+  public class ValidateAttribute : Attribute
+  {
+      public bool Required { get; set; }
+      public int MaxLength { get; set; } = int.MaxValue;
+      public int MinLength { get; set; } = 0;
+  }
+Models/Customer.cs: |
+  namespace MyApp.Models;
+
+  public class Customer { }
+Unrelated/DataSeeder.cs: |
+  namespace MyApp.Unrelated;
+
+  public class DataSeeder
+  {
+      private const string GARBAGE_CS_017_DATA_SEEDER_A = "data_seeder_marker";
+
+      public void Seed() => _ = GARBAGE_CS_017_DATA_SEEDER_A;
+  }
+Unrelated/SchemaMigrator.cs: |
+  namespace MyApp.Unrelated;
+
+  public class SchemaMigrator
+  {
+      public const string GARBAGE_CS_017_SCHEMA_MIGRATOR_B = "schema_migrator_marker";
+
+      public void Migrate() => _ = GARBAGE_CS_017_SCHEMA_MIGRATOR_B;
+  }

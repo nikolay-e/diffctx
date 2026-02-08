@@ -1,0 +1,49 @@
+Models/PersonRecord.cs: |
+  namespace MyApp.Models;
+
+  public record Person(string FirstName, string LastName, int Age)
+  {
+      public string FullName => $"{FirstName} {LastName}";
+  }
+
+  public record Address(string Street, string City, string Country);
+Services/PersonService.cs: |
+  using MyApp.Models;
+
+  namespace MyApp.Services;
+
+  public class PersonService
+  {
+      public Person CreatePerson(string first, string last, int age)
+      {
+          return new Person(first, last, age);
+      }
+
+      public Person UpdateAge(Person person, int newAge)
+      {
+          return person with { Age = newAge };
+      }
+
+      public bool AreEqual(Person p1, Person p2)
+      {
+          return p1 == p2;
+      }
+  }
+Unrelated/GeoService.cs: |
+  namespace MyApp.Unrelated;
+
+  public class GeoService
+  {
+      private const string GARBAGE_CS_021_GEO_SERVICE_A = "geo_service_marker";
+
+      public string Geocode(string address) => GARBAGE_CS_021_GEO_SERVICE_A + address;
+  }
+Unrelated/CurrencyConverter.cs: |
+  namespace MyApp.Unrelated;
+
+  public class CurrencyConverter
+  {
+      public const string GARBAGE_CS_021_CURRENCY_CONVERTER_B = "currency_converter_marker";
+
+      public decimal Convert(decimal amount) => amount;
+  }

@@ -1,0 +1,9 @@
+modules/rds/main.tf: |
+  resource "aws_db_instance" "main" {
+    identifier = var.identifier
+    engine     = "postgres"
+  }
+modules/rds/outputs.tf: |
+  output "endpoint" {
+    value = aws_db_instance.main.endpoint
+  }

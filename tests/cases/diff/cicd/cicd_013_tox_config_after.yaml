@@ -1,0 +1,96 @@
+tox.ini: |
+  [tox]
+  envlist = py310,py311,py312
+  isolated_build = True
+
+  [testenv]
+  deps = pytest
+  commands = pytest {posargs}
+
+  [testenv:lint]
+  deps = ruff
+  commands = ruff check src/
+
+src/lib.py: |
+  from typing import Union, List
+  from dataclasses import dataclass
+  from functools import lru_cache
+
+  Number = Union[int, float]
+
+  @dataclass
+  class CalculationResult:
+      value: Number
+      operation: str
+      operands: List[Number]
+
+  class Calculator:
+      def __init__(self):
+          self._history: List[CalculationResult] = []
+
+      def calculate(self, x: Number, y: Number, operation: str = "add") -> Number:
+          operations = {
+              "add": lambda a, b: a + b,
+              "subtract": lambda a, b: a - b,
+              "multiply": lambda a, b: a * b,
+              "divide": lambda a, b: a / b if b != 0 else float("inf"),
+          }
+
+          if operation not in operations:
+              raise ValueError(f"Unknown operation: {operation}")
+
+          result = operations[operation](x, y)
+          self._history.append(CalculationResult(
+              value=result,
+              operation=operation,
+              operands=[x, y]
+          ))
+          return result
+
+      def get_history(self) -> List[CalculationResult]:
+          return self._history.copy()
+
+  @lru_cache(maxsize=128)
+  def calculate(x: int, y: int) -> int:
+      return x + y
+
+tests/test_calculator.py: |
+  import pytest
+  from src.lib import Calculator, calculate
+
+  class TestCalculator:
+      def test_add(self):
+          calc = Calculator()
+          assert calc.calculate(2, 3, "add") == 5
+
+      def test_subtract(self):
+          calc = Calculator()
+          assert calc.calculate(5, 3, "subtract") == 2
+
+      def test_unknown_operation(self):
+          calc = Calculator()
+          with pytest.raises(ValueError):
+              calc.calculate(1, 2, "unknown")
+
+  def test_calculate_function():
+      assert calculate(1, 2) == 3
+
+garbage_algebra.py: |
+  GARBAGE_CICD_013_ALGEBRA_MARKER_A = "linear"
+  GARBAGE_CICD_013_MATRIX_MARKER_B = True
+
+  class GarbageAlgebraProcessor:
+      GARBAGE_CICD_013_DIM_MARKER_C = 3
+
+      def solve(self) -> None:
+          pass
+
+garbage_geometry.py: |
+  GARBAGE_CICD_013_GEOMETRY_MARKER_D = "euclidean"
+  GARBAGE_CICD_013_COORD_MARKER_E = "cartesian"
+
+  class GarbageGeometryHelper:
+      GARBAGE_CICD_013_PRECISION_MARKER_F = 6
+
+      def transform(self) -> None:
+          pass

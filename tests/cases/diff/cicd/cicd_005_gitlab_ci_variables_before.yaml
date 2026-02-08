@@ -1,0 +1,125 @@
+.gitlab-ci.yml: |
+  image: python:3.11-slim
+
+  variables:
+    DATABASE_URL: postgres://localhost/test
+    PIP_CACHE_DIR: "$CI_PROJECT_DIR/.pip-cache"
+
+  cache:
+    paths:
+      - .pip-cache/
+      - venv/
+
+  stages:
+    - test
+    - deploy
+
+  before_script:
+    - python -m venv venv
+    - source venv/bin/activate
+    - pip install -e ".[dev]"
+
+  test:
+    stage: test
+    script:
+      - pytest
+
+src/config.py: |
+  import os
+  from dataclasses import dataclass
+  from typing import Optional
+
+  @dataclass
+  class DatabaseConfig:
+      url: str
+      pool_size: int = 5
+      max_overflow: int = 10
+      echo: bool = False
+
+  @dataclass
+  class CacheConfig:
+      url: Optional[str] = None
+      ttl: int = 3600
+      prefix: str = "app:"
+
+  @dataclass
+  class AppConfig:
+      database: DatabaseConfig
+      cache: CacheConfig
+      debug: bool = False
+      environment: str = "development"
+
+  def load_config() -> AppConfig:
+      database_url = os.getenv("DATABASE_URL", "sqlite:///local.db")
+
+      database = DatabaseConfig(
+          url=database_url,
+          pool_size=int(os.getenv("DB_POOL_SIZE", "5")),
+          echo=os.getenv("DB_ECHO", "false").lower() == "true",
+      )
+
+      cache = CacheConfig(
+          url=os.getenv("REDIS_URL"),
+          ttl=int(os.getenv("CACHE_TTL", "3600")),
+      )
+
+      return AppConfig(
+          database=database,
+          cache=cache,
+          debug=os.getenv("DEBUG", "false").lower() == "true",
+          environment=os.getenv("ENVIRONMENT", "development"),
+      )
+
+src/database.py: |
+  from sqlalchemy import create_engine
+  from sqlalchemy.orm import sessionmaker, Session
+  from contextlib import contextmanager
+  from typing import Generator
+
+  from .config import DatabaseConfig
+
+  class Database:
+      def __init__(self, config: DatabaseConfig):
+          self.engine = create_engine(
+              config.url,
+              pool_size=config.pool_size,
+              max_overflow=config.max_overflow,
+              echo=config.echo,
+          )
+          self.SessionLocal = sessionmaker(
+              autocommit=False,
+              autoflush=False,
+              bind=self.engine,
+          )
+
+      @contextmanager
+      def session(self) -> Generator[Session, None, None]:
+          session = self.SessionLocal()
+          try:
+              yield session
+              session.commit()
+          except Exception:
+              session.rollback()
+              raise
+          finally:
+              session.close()
+
+garbage_logging.py: |
+  GARBAGE_CICD_005_LOG_MARKER_A = "debug"
+  GARBAGE_CICD_005_FORMAT_MARKER_B = "json"
+
+  class GarbageLogHandler:
+      GARBAGE_CICD_005_LEVEL_MARKER_C = "INFO"
+
+      def log(self, msg: str) -> None:
+          print(msg)
+
+garbage_metrics.py: |
+  GARBAGE_CICD_005_METRIC_MARKER_D = "prometheus"
+  GARBAGE_CICD_005_PORT_MARKER_E = 9090
+
+  class GarbageMetricsCollector:
+      GARBAGE_CICD_005_ENABLED_MARKER_F = True
+
+      def collect(self) -> dict:
+          return {}

@@ -1,0 +1,14 @@
+helpers.py: |
+  def normalize(data):
+      return [x.strip() for x in data]
+
+  def validate(data):
+      return all(x for x in data)
+processor.py: |
+  from helpers import normalize, validate
+
+  def process(data):
+      data = normalize(data)
+      if validate(data):
+          return data
+      return []

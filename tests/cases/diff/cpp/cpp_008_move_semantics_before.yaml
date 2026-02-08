@@ -1,0 +1,163 @@
+include/container/buffer.hpp: |
+  #pragma once
+  #include <cstddef>
+  #include <utility>
+  #include <algorithm>
+  #include <stdexcept>
+
+  namespace app::container {
+
+  class Buffer {
+  public:
+      explicit Buffer(size_t size)
+          : data_(new char[size])
+          , size_(size)
+          , capacity_(size) {}
+
+      Buffer(const char* data, size_t size)
+          : data_(new char[size])
+          , size_(size)
+          , capacity_(size) {
+          std::copy(data, data + size, data_);
+      }
+
+      ~Buffer() {
+          delete[] data_;
+      }
+
+      Buffer(Buffer&& other) noexcept
+          : data_(other.data_)
+          , size_(other.size_)
+          , capacity_(other.capacity_) {
+          other.data_ = nullptr;
+          other.size_ = 0;
+          other.capacity_ = 0;
+      }
+
+      Buffer& operator=(Buffer&& other) noexcept {
+          if (this != &other) {
+              delete[] data_;
+              data_ = other.data_;
+              size_ = other.size_;
+              capacity_ = other.capacity_;
+              other.data_ = nullptr;
+              other.size_ = 0;
+              other.capacity_ = 0;
+          }
+          return *this;
+      }
+
+      Buffer(const Buffer&) = delete;
+      Buffer& operator=(const Buffer&) = delete;
+
+      char* data() { return data_; }
+      const char* data() const { return data_; }
+      size_t size() const { return size_; }
+      size_t capacity() const { return capacity_; }
+      bool empty() const { return size_ == 0; }
+
+      void resize(size_t newSize) {
+          if (newSize > capacity_) {
+              throw std::runtime_error("Cannot resize beyond capacity");
+          }
+          size_ = newSize;
+      }
+
+      char& operator[](size_t index) { return data_[index]; }
+      const char& operator[](size_t index) const { return data_[index]; }
+
+  private:
+      char* data_;
+      size_t size_;
+      size_t capacity_;
+  };
+
+  }
+include/unrelated/crypto_hash.hpp: |
+  #pragma once
+  // GARBAGE_CPP_CRYPTO_248_001
+  #define GARBAGE_CPP_CRYPTO_BLOCK_248_002 64
+
+  namespace app::unrelated::crypto {
+
+  // GARBAGE_CPP_CRYPTO_ALGO_248_003
+  enum class HashAlgorithm {
+      MD5,
+      SHA1,
+      SHA256,
+      SHA512
+  };
+
+  // GARBAGE_CPP_CRYPTO_RESULT_248_004
+  struct HashResult {
+      unsigned char digest[64];
+      size_t length;
+  };
+
+  // GARBAGE_CPP_CRYPTO_HASHER_248_005
+  class Hasher {
+  public:
+      // GARBAGE_CPP_CRYPTO_INIT_248_006
+      void init(HashAlgorithm algo) {
+          // GARBAGE_CPP_CRYPTO_INIT_IMPL_248_007
+      }
+
+      // GARBAGE_CPP_CRYPTO_UPDATE_248_008
+      void update(const void* data, size_t length) {
+          // GARBAGE_CPP_CRYPTO_UPDATE_IMPL_248_009
+      }
+
+      // GARBAGE_CPP_CRYPTO_FINAL_248_010
+      HashResult finalize() {
+          // GARBAGE_CPP_CRYPTO_FINAL_IMPL_248_011
+          return HashResult{};
+      }
+  };
+
+  }
+src/unrelated/http_client.cpp: |
+  // GARBAGE_CPP_HTTP_248_012
+  #include <string>
+
+  namespace app::unrelated::http {
+
+  // GARBAGE_CPP_HTTP_METHOD_248_013
+  enum class HttpMethod {
+      GET,
+      POST,
+      PUT,
+      DELETE
+  };
+
+  // GARBAGE_CPP_HTTP_RESPONSE_248_014
+  struct HttpResponse {
+      int statusCode;
+      std::string body;
+      // GARBAGE_CPP_HTTP_HEADERS_248_015
+  };
+
+  // GARBAGE_CPP_HTTP_CLIENT_248_016
+  class HttpClient {
+  public:
+      // GARBAGE_CPP_HTTP_REQUEST_248_017
+      HttpResponse request(HttpMethod method, const std::string& url) {
+          // GARBAGE_CPP_HTTP_REQUEST_IMPL_248_018
+          return HttpResponse{};
+      }
+
+      // GARBAGE_CPP_HTTP_GET_248_019
+      HttpResponse get(const std::string& url) {
+          return request(HttpMethod::GET, url);
+      }
+
+      // GARBAGE_CPP_HTTP_POST_248_020
+      HttpResponse post(const std::string& url, const std::string& body) {
+          // GARBAGE_CPP_HTTP_POST_IMPL_248_021
+          return HttpResponse{};
+      }
+  };
+
+  }
+src/processor.cpp: |
+  #include <iostream>
+  int main() { return 0; }

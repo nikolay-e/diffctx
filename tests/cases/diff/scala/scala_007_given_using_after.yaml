@@ -1,0 +1,24 @@
+Ordering.scala: |
+  case class User(name: String, age: Int)
+
+  object UserOrdering {
+    given Ordering[User] = Ordering.by(_.name)
+
+    given ageOrdering: Ordering[User] = Ordering.by(_.age)
+  }
+UserSorter.scala: |
+  import UserOrdering.given
+
+  class UserSorter {
+    def sortByName(users: List[User]): List[User] = {
+      users.sorted
+    }
+
+    def sortByAge(users: List[User]): List[User] = {
+      users.sorted(using UserOrdering.ageOrdering)
+    }
+
+    def findMin(users: List[User])(using ord: Ordering[User]): User = {
+      users.min
+    }
+  }

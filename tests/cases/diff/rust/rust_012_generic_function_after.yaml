@@ -1,0 +1,149 @@
+src/lib.rs: |
+  pub mod utils;
+  pub mod unrelated;
+src/utils.rs: |
+  use std::cmp::Ordering;
+  use std::fmt::Display;
+
+  pub fn identity<T>(x: T) -> T {
+      x
+  }
+
+  pub fn swap<T>(a: T, b: T) -> (T, T) {
+      (b, a)
+  }
+
+  pub fn compare<T: PartialOrd>(a: &T, b: &T) -> Ordering {
+      a.partial_cmp(b).unwrap_or(Ordering::Equal)
+  }
+
+  pub fn min_by<T, F, K>(a: T, b: T, mut key_fn: F) -> T
+  where
+      F: FnMut(&T) -> K,
+      K: Ord,
+  {
+      if key_fn(&a) <= key_fn(&b) { a } else { b }
+  }
+
+  pub fn max_by<T, F, K>(a: T, b: T, mut key_fn: F) -> T
+  where
+      F: FnMut(&T) -> K,
+      K: Ord,
+  {
+      if key_fn(&a) >= key_fn(&b) { a } else { b }
+  }
+
+  pub fn stringify<T: Display>(value: T) -> String {
+      format!("{}", value)
+  }
+
+  pub fn apply<T, F>(value: T, f: F) -> T
+  where
+      F: FnOnce(T) -> T,
+  {
+      f(value)
+  }
+
+  pub fn compose<A, B, C, F, G>(f: F, g: G) -> impl Fn(A) -> C
+  where
+      F: Fn(A) -> B,
+      G: Fn(B) -> C,
+  {
+      move |x| g(f(x))
+  }
+
+  pub fn curry<A, B, C, F>(f: F) -> impl Fn(A) -> impl Fn(B) -> C
+  where
+      F: Fn(A, B) -> C + Clone,
+      A: Clone,
+  {
+      move |a: A| {
+          let f = f.clone();
+          let a = a.clone();
+          move |b: B| f(a.clone(), b)
+      }
+  }
+
+  pub struct Transformer<T> {
+      value: T,
+  }
+
+  impl<T> Transformer<T> {
+      pub fn new(value: T) -> Self {
+          Self { value }
+      }
+
+      pub fn transform<U, F>(self, f: F) -> Transformer<U>
+      where
+          F: FnOnce(T) -> U,
+      {
+          Transformer { value: f(self.value) }
+      }
+
+      pub fn into_inner(self) -> T {
+          self.value
+      }
+  }
+src/unrelated/mod.rs: |
+  pub mod sorting;
+  pub mod filtering;
+src/unrelated/sorting.rs: |
+  // GARBAGE_RUST_SORT_001
+  pub const GARBAGE_SORT_THRESHOLD_002: usize = 16;
+
+  pub fn garbage_quicksort_003<T: Ord>(arr: &mut [T]) {
+      // GARBAGE_QUICKSORT_IMPL_004
+  }
+
+  pub fn garbage_mergesort_005<T: Ord + Clone>(arr: &mut [T]) {
+      // GARBAGE_MERGESORT_IMPL_006
+  }
+
+  pub fn garbage_heapsort_007<T: Ord>(arr: &mut [T]) {
+      // GARBAGE_HEAPSORT_IMPL_008
+  }
+
+  pub trait GarbageSortable009 {
+      fn garbage_sort_010(&mut self);
+      fn garbage_is_sorted_011(&self) -> bool;
+  }
+
+  pub struct GarbageSorter012<T> {
+      data: Vec<T>,
+  }
+
+  impl<T: Ord> GarbageSorter012<T> {
+      pub fn garbage_sort_ascending_013(&mut self) {
+          self.data.sort();
+      }
+  }
+src/unrelated/filtering.rs: |
+  // GARBAGE_RUST_FILTER_014
+  pub const GARBAGE_FILTER_CAPACITY_015: usize = 1000;
+
+  pub fn garbage_filter_016<T, F>(items: &[T], predicate: F) -> Vec<&T>
+  where
+      F: Fn(&T) -> bool,
+  {
+      items.iter().filter(|item| predicate(item)).collect()
+  }
+
+  pub fn garbage_partition_017<T, F>(items: Vec<T>, predicate: F) -> (Vec<T>, Vec<T>)
+  where
+      F: Fn(&T) -> bool,
+  {
+      items.into_iter().partition(predicate)
+  }
+
+  pub struct GarbageFilterChain018<T> {
+      data: Vec<T>,
+  }
+
+  impl<T: Clone> GarbageFilterChain018<T> {
+      pub fn garbage_apply_019<F>(&self, f: F) -> Vec<T>
+      where
+          F: Fn(&T) -> bool,
+      {
+          self.data.iter().filter(|x| f(x)).cloned().collect()
+      }
+  }

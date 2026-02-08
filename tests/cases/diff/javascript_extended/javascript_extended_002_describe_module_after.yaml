@@ -1,0 +1,95 @@
+src/calculator.ts: |
+  export function add(a: number, b: number): number {
+      return a + b;
+  }
+
+  export function subtract(a: number, b: number): number {
+      return a - b;
+  }
+
+  export function multiply(a: number, b: number): number {
+      return a * b;
+  }
+
+  export function divide(a: number, b: number): number {
+      if (b === 0) {
+          throw new Error('Division by zero');
+      }
+      return a / b;
+  }
+
+  export function modulo(a: number, b: number): number {
+      return a % b;
+  }
+src/calculator.test.ts: |
+  import { add, subtract, multiply, divide, modulo } from './calculator';
+
+  describe('Calculator', () => {
+      describe('add', () => {
+          it('should add two positive numbers', () => {
+              expect(add(2, 3)).toBe(5);
+          });
+
+          it('should handle negative numbers', () => {
+              expect(add(-1, -2)).toBe(-3);
+          });
+      });
+
+      describe('subtract', () => {
+          it('should subtract two numbers', () => {
+              expect(subtract(5, 3)).toBe(2);
+          });
+      });
+
+      describe('multiply', () => {
+          it('should multiply two numbers', () => {
+              expect(multiply(4, 5)).toBe(20);
+          });
+      });
+
+      describe('divide', () => {
+          it('should divide two numbers', () => {
+              expect(divide(10, 2)).toBe(5);
+          });
+
+          it('should throw on division by zero', () => {
+              expect(() => divide(1, 0)).toThrow('Division by zero');
+          });
+      });
+
+      describe('modulo', () => {
+          it('should return remainder', () => {
+              expect(modulo(7, 3)).toBe(1);
+          });
+      });
+  });
+src/unrelated/analytics.ts: |
+  const GARBAGE_JSX_002_ANALYTICS_TRACKER_A = 'analytics_garbage_marker';
+
+  export class GarbageAnalyticsTracker {
+      private events: string[] = [];
+
+      trackEvent(name: string): void {
+          this.events.push(name);
+      }
+
+      getEvents(): string[] {
+          return [...this.events];
+      }
+  }
+
+  export function GARBAGE_JSX_002_FLUSH_EVENTS_B(): void {
+      console.log('GARBAGE_JSX_002_FLUSH_OUTPUT_C');
+  }
+src/unrelated/i18n.ts: |
+  const GARBAGE_JSX_002_I18N_CONFIG_D = { locale: 'en', fallback: 'en' };
+
+  export class GARBAGE_JSX_002_TRANSLATOR_E {
+      translate(key: string): string {
+          return key;
+      }
+  }
+
+  export function GARBAGE_JSX_002_LOAD_LOCALE_F(): void {
+      console.log('loading locale');
+  }

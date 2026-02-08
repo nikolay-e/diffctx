@@ -1,0 +1,10 @@
+IntExtensions.scala: |
+  object IntExtensions {
+    extension (n: Int) {
+      def squared: Int = n * n
+      def isEven: Boolean = n % 2 == 0
+      def times(f: => Unit): Unit = (1 to n).foreach(_ => f)
+    }
+  }
+Calculator.scala: |
+  class Calculator {}

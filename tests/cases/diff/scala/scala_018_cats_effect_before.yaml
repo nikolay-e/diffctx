@@ -1,0 +1,10 @@
+Database.scala: |
+  import cats.effect.IO
+
+  object Database {
+    def connect(): IO[Unit] = IO(println("Connected"))
+    def disconnect(): IO[Unit] = IO(println("Disconnected"))
+    def query(sql: String): IO[List[String]] = IO(List("result1", "result2"))
+  }
+Program.scala: |
+  object Program {}

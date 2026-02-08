@@ -1,0 +1,40 @@
+APIError.swift: |
+  enum APIError: Error {
+      case networkError
+      case invalidResponse
+      case decodingError
+  }
+DataLoader.swift: |
+  import Foundation
+
+  struct DataLoader {
+      func load(from url: URL) -> Result<Data, APIError> {
+          // Simulated loading
+          guard let data = "test".data(using: .utf8) else {
+              return .failure(.invalidResponse)
+          }
+          return .success(data)
+      }
+
+      func process(url: URL) {
+          let result = load(from: url)
+          switch result {
+          case .success(let data):
+              print("Loaded \(data.count) bytes")
+          case .failure(let error):
+              print("Error: \(error)")
+          }
+      }
+  }
+GarbageEitherType.swift: |
+  class GarbageEitherType {
+      static let GARBAGE_JVM_070_EITHER_MARKER_A = "marker"
+      static let GARBAGE_JVM_070_LEFT_MARKER_B = "marker"
+      func noop() {}
+  }
+GarbageOutcomeHandler.swift: |
+  class GarbageOutcomeHandler {
+      static let GARBAGE_JVM_070_OUTCOME_MARKER_C = "marker"
+      static let GARBAGE_JVM_070_STATUS_MARKER_D = "marker"
+      func noop() {}
+  }

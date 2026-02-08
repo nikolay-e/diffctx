@@ -1,0 +1,53 @@
+openapi.yaml: |
+  openapi: 3.0.0
+  info:
+    title: Order API
+    version: 1.0.0
+  paths:
+    /orders:
+      post:
+        summary: Create order
+        requestBody:
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+        responses:
+          '201':
+            description: Order created
+
+src/validators/order_validator.py: |
+  def validate_order(data):
+      if 'items' not in data:
+          raise ValueError("Items required")
+      return True
+
+src/handlers/orders.py: |
+  from flask import jsonify, request
+  from validators.order_validator import validate_order
+
+  def create_order():
+      data = request.get_json()
+      validate_order(data)
+      return jsonify({"id": 1, **data}), 201
+
+garbage_request_parser.ts: |
+  const GARBAGE_CICD_DOCS_052_PARSER_MARKER_A = "body-parser";
+  const GARBAGE_CICD_DOCS_052_LIMIT_MARKER_B = "10mb";
+
+  class GarbageRequestParser {
+    static GARBAGE_CICD_DOCS_052_STRICT_MARKER_C = true;
+    parse(): void {}
+  }
+
+garbage_request_validator.ts: |
+  const GARBAGE_CICD_DOCS_052_VALIDATOR_MARKER_D = "joi";
+  const GARBAGE_CICD_DOCS_052_ABORT_MARKER_E = "early";
+
+  class GarbageRequestValidator {
+    static GARBAGE_CICD_DOCS_052_STRIP_MARKER_F = false;
+    validate(): boolean { return true; }
+  }

@@ -1,0 +1,21 @@
+interfaces.py: |
+  from typing import Protocol
+
+  class Repository(Protocol):
+      def find(self, id: int):
+          ...
+
+      def find_by_criteria(self, criteria: dict) -> list:
+          ...
+repos/user_repo.py: |
+  from interfaces import Repository
+
+  class UserRepository:
+      def find(self, id: int):
+          return {"id": id, "name": "User"}
+repos/order_repo.py: |
+  from interfaces import Repository
+
+  class OrderRepository:
+      def find(self, id: int):
+          return {"id": id, "total": 100}

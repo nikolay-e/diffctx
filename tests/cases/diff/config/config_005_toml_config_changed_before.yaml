@@ -1,0 +1,83 @@
+pyproject.toml: |
+  [project]
+  name = "myapp"
+  version = "1.0.0"
+  requires-python = ">=3.11"
+
+  [tool.pytest.ini_options]
+  testpaths = ["tests"]
+  timeout = 30
+  filterwarnings = ["ignore::DeprecationWarning"]
+  markers = [
+      "slow: marks tests as slow",
+      "integration: marks integration tests",
+  ]
+  addopts = "-v --tb=short"
+
+  [tool.ruff]
+  line-length = 88
+  target-version = "py311"
+
+  [tool.ruff.lint]
+  select = ["E", "F", "I", "N"]
+  ignore = ["E501"]
+
+  [tool.mypy]
+  strict = true
+  warn_return_any = true
+tests/conftest.py: |
+  import os
+  import sys
+
+  sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+
+
+  def pytest_configure(config):
+      config.addinivalue_line("markers", "slow: marks tests as slow")
+      config.addinivalue_line("markers", "integration: marks integration tests")
+
+
+  def create_temp_db():
+      return {"host": "localhost", "port": 5432, "name": "test_db"}
+tests/test_slow.py: |
+  import time
+
+
+  def test_slow_operation():
+      time.sleep(1)
+      result = sum(range(10000))
+      assert result == 49995000
+
+
+  def test_another_slow_operation():
+      time.sleep(0.5)
+      data = [i * 2 for i in range(1000)]
+      assert len(data) == 1000
+      assert data[-1] == 1998
+unrelated/benchmarks.py: |
+  # GARBAGE_CFG_005_MARKER_A
+  GARBAGE_CFG_005_BENCH_B = "unrelated-benchmark-suite"
+
+  def run_benchmark(iterations: int = 1000) -> float:
+      total = sum(range(iterations))
+      return total / iterations
+
+  def compare_results(baseline: float, current: float) -> str:
+      diff = ((current - baseline) / baseline) * 100
+      return f"{diff:+.2f}%"
+
+  GARBAGE_CFG_005_RESULT_C = "unused-benchmark-result"
+unrelated/seed_data.py: |
+  # GARBAGE_CFG_005_MARKER_D
+  GARBAGE_CFG_005_SEED_E = "unrelated-seed-data"
+
+  class DataSeeder:
+      def __init__(self):
+          self.records = []
+
+      def seed_users(self, count: int = 10):
+          for i in range(count):
+              self.records.append({"id": i, "name": f"user_{i}"})
+
+      def clear(self):
+          self.records.clear()

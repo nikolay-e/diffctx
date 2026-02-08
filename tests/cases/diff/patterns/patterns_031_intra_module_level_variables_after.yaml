@@ -1,0 +1,19 @@
+settings.py: |
+  DEBUG = False
+  LOG_LEVEL = "INFO"
+  DATABASE_URL = "sqlite:///app.db"
+
+  def get_log_level():
+      return LOG_LEVEL
+
+  def is_debug():
+      return DEBUG
+
+  def get_db_connection():
+      from sqlalchemy import create_engine
+      return create_engine(DATABASE_URL)
+
+  def configure_logging():
+      import logging
+      level = getattr(logging, LOG_LEVEL)
+      logging.basicConfig(level=level)

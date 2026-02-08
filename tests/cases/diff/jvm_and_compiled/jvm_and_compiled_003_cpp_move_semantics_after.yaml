@@ -1,0 +1,90 @@
+buffer.h: |
+  #pragma once
+  #include <cstddef>
+  #include <utility>
+
+  class Buffer {
+      char* data_;
+      size_t size_;
+
+  public:
+      Buffer(size_t size) : data_(new char[size]), size_(size) {}
+      ~Buffer() { delete[] data_; }
+
+      Buffer(Buffer&& other) noexcept
+          : data_(other.data_), size_(other.size_) {
+          other.data_ = nullptr;
+          other.size_ = 0;
+      }
+
+      Buffer& operator=(Buffer&& other) noexcept {
+          if (this != &other) {
+              delete[] data_;
+              data_ = other.data_;
+              size_ = other.size_;
+              other.data_ = nullptr;
+              other.size_ = 0;
+          }
+          return *this;
+      }
+
+      Buffer(const Buffer&) = delete;
+      Buffer& operator=(const Buffer&) = delete;
+  };
+processor.cpp: |
+  #include "buffer.h"
+  #include <utility>
+
+  Buffer createBuffer(size_t size) {
+      Buffer buf(size);
+      return buf;
+  }
+
+  void processBuffer(Buffer buf) {
+  }
+
+  int main() {
+      Buffer b = createBuffer(1024);
+      processBuffer(std::move(b));
+      return 0;
+  }
+garbage_config.cpp: |
+  #include <map>
+  #include <string>
+  const char* GARBAGE_JVM_003_CFGLOAD_MARKER_A = "config_load";
+  const char* GARBAGE_JVM_003_CFGSAVE_MARKER_B = "config_save";
+
+  class GarbageConfigStore {
+      std::map<std::string, std::string> entries_;
+  public:
+      void set(const std::string& key, const std::string& val) { entries_[key] = val; }
+      std::string get(const std::string& key) { return entries_[key]; }
+  };
+garbage_hasher.cpp: |
+  #include <string>
+  #include <cstdint>
+  const char* GARBAGE_JVM_003_HASH_MARKER_C = "fnv_hash";
+  const char* GARBAGE_JVM_003_DIGEST_MARKER_D = "digest_out";
+
+  class GarbageFnvHasher {
+      uint64_t state_ = 14695981039346656037ULL;
+  public:
+      void update(const std::string& data) {
+          for (char c : data) { state_ ^= c; state_ *= 1099511628211ULL; }
+      }
+      uint64_t digest() const { return state_; }
+  };
+garbage_arena.cpp: |
+  const char* GARBAGE_JVM_003_ARENA_MARKER_A = "marker";
+  const char* GARBAGE_JVM_003_SLAB_MARKER_B = "marker";
+
+  class GarbageArenaAllocator {
+      void noop() {}
+  };
+garbage_ringbuf.cpp: |
+  const char* GARBAGE_JVM_003_RING_MARKER_C = "marker";
+  const char* GARBAGE_JVM_003_CIRC_MARKER_D = "marker";
+
+  class GarbageRingBuffer {
+      void noop() {}
+  };

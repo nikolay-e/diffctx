@@ -1,0 +1,73 @@
+app/Http/Requests/StoreUserRequest.php: |
+  <?php
+  namespace App\Http\Requests;
+
+  class StoreUserRequest {
+      public function rules(): array {
+          return [
+              'name' => 'required|string|max:255',
+              'email' => 'required|email|unique:users',
+              'password' => 'required|min:8',
+          ];
+      }
+
+      public function validated(): array {
+          return [
+              'name' => 'John Doe',
+              'email' => 'john@example.com',
+              'password' => 'hashed_password',
+          ];
+      }
+  }
+app/Http/Controllers/UserController.php: |
+  <?php
+  namespace App\Http\Controllers;
+
+  class UserController {
+      public function index(): array {
+          return ['users' => []];
+      }
+  }
+app/Models/User.php: |
+  <?php
+  namespace App\Models;
+
+  class User {
+      protected array $fillable = ['name', 'email', 'password'];
+      protected array $attributes = [];
+
+      public static function create(array $data): self {
+          $user = new self();
+          $user->attributes = $data;
+          return $user;
+      }
+
+      public function toArray(): array {
+          return $this->attributes;
+      }
+  }
+src/garbage_audit_trail.php: |
+  <?php
+  GARBAGE_PHP_015_RETENTION_A = 90;
+  GARBAGE_PHP_015_LOG_LEVEL_B = "info";
+
+  class GarbageAuditTrail {
+      GARBAGE_PHP_015_STORAGE_C = "database";
+
+      public function record(string $action, array $context): void {
+          GARBAGE_PHP_015_TIMESTAMP_FORMAT_D = "Y-m-d H:i:s";
+      }
+  }
+src/garbage_feature_toggle.php: |
+  <?php
+  GARBAGE_PHP_015_DEFAULT_STATE_E = false;
+  GARBAGE_PHP_015_CACHE_TTL_F = 300;
+
+  class GarbageFeatureToggle {
+      GARBAGE_PHP_015_STRATEGY_G = "percentage";
+
+      public function isEnabled(string $feature): bool {
+          GARBAGE_PHP_015_ROLLOUT_H = 0;
+          return false;
+      }
+  }

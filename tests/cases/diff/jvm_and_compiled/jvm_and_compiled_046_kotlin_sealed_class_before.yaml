@@ -1,0 +1,28 @@
+src/main/kotlin/com/example/Result.kt: |
+  package com.example
+
+  sealed class Result<out T> {
+      data class Success<T>(val data: T) : Result<T>()
+      data class Error(val message: String) : Result<Nothing>()
+  }
+src/main/kotlin/com/example/Handler.kt: |
+  package com.example
+
+  fun handleResult(result: Result<String>) {
+      when (result) {
+          is Result.Success -> println(result.data)
+          is Result.Error -> println(result.message)
+      }
+  }
+GarbageInlineClass.kt: |
+  object GarbageInlineClass {
+      const val GARBAGE_JVM_046_INLINE_MARKER_A = "marker"
+      const val GARBAGE_JVM_046_VALUE_MARKER_B = "marker"
+      fun noop() {}
+  }
+GarbageNewType.kt: |
+  object GarbageNewType {
+      const val GARBAGE_JVM_046_WRAPPER_MARKER_C = "marker"
+      const val GARBAGE_JVM_046_NEWTYPE_MARKER_D = "marker"
+      fun noop() {}
+  }

@@ -1,0 +1,16 @@
+must_include_files:
+  - Sources/Validators/Validator.swift
+must_include_content:
+  - |
+    email.trimmed.isValidEmail()
+must_not_include:
+  - GARBAGE_SWIFT_002_SESSION_KEY_A
+  - GARBAGE_SWIFT_002_FLUSH_INTERVAL_B
+  - GARBAGE_SWIFT_002_SAMPLE_RATE_C
+  - GARBAGE_SWIFT_002_SINK_TYPE_D
+  - GARBAGE_SWIFT_002_INDEX_NAME_E
+  - GARBAGE_SWIFT_002_ROTATE_MB_F
+  - GarbageMetricsCollector002
+  - GarbageLogSink002
+  - GarbageAnalytics002.swift
+  - GarbageLogger002.swift

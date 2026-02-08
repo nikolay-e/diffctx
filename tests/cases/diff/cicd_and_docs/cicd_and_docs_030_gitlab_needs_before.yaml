@@ -1,0 +1,55 @@
+.gitlab-ci.yml: |
+  stages:
+    - build
+    - test
+    - deploy
+
+  build:
+    stage: build
+    script:
+      - npm ci
+      - npm run build
+
+  test:
+    stage: test
+    script:
+      - npm test
+
+  deploy:
+    stage: deploy
+    script:
+      - ./deploy.sh
+
+deploy.sh: |
+  #!/bin/bash
+  set -e
+  echo "Deploying application..."
+  rsync -avz dist/ server:/app/
+
+package.json: |
+  {
+    "name": "gitlab-needs-app",
+    "version": "1.0.0",
+    "scripts": {
+      "build": "vite build",
+      "test": "vitest run"
+    }
+  }
+
+garbage_job_scheduler.ts: |
+  const GARBAGE_CICD_DOCS_030_SCHEDULER_MARKER_A = "cron";
+  const GARBAGE_CICD_DOCS_030_QUEUE_MARKER_B = "fifo";
+
+  class GarbageJobScheduler {
+    static GARBAGE_CICD_DOCS_030_PRIORITY_MARKER_C = 10;
+    schedule(): void {}
+  }
+
+garbage_job_executor.ts: |
+  const GARBAGE_CICD_DOCS_030_EXECUTOR_MARKER_D = "docker";
+  const GARBAGE_CICD_DOCS_030_RUNNER_MARKER_E = "shared";
+
+  class GarbageJobExecutor {
+    static GARBAGE_CICD_DOCS_030_PARALLEL_MARKER_F = false;
+    execute(): void {}
+  }

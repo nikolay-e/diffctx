@@ -1,0 +1,57 @@
+observer/subject.py: |
+  from abc import ABC, abstractmethod
+  from typing import List
+
+  class Observer(ABC):
+      @abstractmethod
+      def update(self, subject: 'Subject') -> None:
+          pass
+
+  class Subject(ABC):
+      def __init__(self):
+          self._observers: List[Observer] = []
+
+      def attach(self, observer: Observer) -> None:
+          if observer not in self._observers:
+              self._observers.append(observer)
+
+      def detach(self, observer: Observer) -> None:
+          self._observers.remove(observer)
+
+      def notify(self) -> None:
+          for observer in self._observers:
+              observer.update(self)
+observer/stock.py: |
+  from observer.subject import Subject
+
+  class Stock(Subject):
+      def __init__(self, symbol: str, price: float):
+          super().__init__()
+          self._symbol = symbol
+          self._price = price
+
+      @property
+      def symbol(self) -> str:
+          return self._symbol
+
+      @property
+      def price(self) -> float:
+          return self._price
+
+      @price.setter
+      def price(self, value: float) -> None:
+          self._price = value
+          self.notify()
+observer/observers/price_alert.py: |
+  from observer.subject import Observer, Subject
+
+  class PriceAlertObserver(Observer):
+      def __init__(self, threshold: float):
+          self.threshold = threshold
+          self.alerts: list[str] = []
+
+      def update(self, subject: Subject) -> None:
+          if hasattr(subject, 'price') and subject.price > self.threshold:
+              self.alerts.append(
+                  f"ALERT: {subject.symbol} exceeded {self.threshold}"
+              )

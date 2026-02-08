@@ -1,0 +1,17 @@
+must_include_files:
+  - app.rb
+must_include_content:
+  - |
+    service = Service.new
+    result = service.process("  Hello World  ")
+must_not_include:
+  - GARBAGE_RUBY_008_RESIZE_MODE_A
+  - GARBAGE_RUBY_008_OUTPUT_FORMAT_B
+  - GARBAGE_RUBY_008_MAX_DIMENSION_C
+  - GARBAGE_RUBY_008_INDEX_TYPE_D
+  - GARBAGE_RUBY_008_ANALYZER_MODE_E
+  - GARBAGE_RUBY_008_SHARD_COUNT_F
+  - GarbageImageProcessor
+  - GarbageSearchIndexer
+  - garbage_image_processor.rb
+  - garbage_search_index.rb

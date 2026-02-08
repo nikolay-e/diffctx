@@ -1,0 +1,14 @@
+start.py: |
+  from middle import middle_func
+
+  def start_func():
+      result = middle_func()
+      return result + "_modified"
+middle.py: |
+  from end import end_func
+
+  def middle_func():
+      return end_func()
+end.py: |
+  def end_func():
+      return "end"

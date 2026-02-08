@@ -1,0 +1,17 @@
+must_include:
+- new_feature.py
+- BaseFeature
+- class NewFeature
+must_not_include:
+- GARBAGE_OPS_002_TELEM_A
+- GARBAGE_OPS_002_SPAN_B
+- GARBAGE_OPS_002_METRIC_C
+- GARBAGE_OPS_002_EXPORT_D
+- GARBAGE_OPS_002_PROFILE_E
+- GARBAGE_OPS_002_FLAME_F
+- GARBAGE_OPS_002_SAMPLE_G
+- GARBAGE_OPS_002_REPORT_H
+- TelemetryCollector
+- Profiler
+- garbage_telemetry.py
+- garbage_profiler.py

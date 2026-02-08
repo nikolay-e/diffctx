@@ -1,0 +1,153 @@
+include/data/value_type.hpp: |
+  #pragma once
+  #include <cstdint>
+  #include <cstring>
+
+  namespace data {
+
+  enum class ValueType : uint8_t {
+      None = 0,
+      Int32,
+      Float64,
+      String,
+      Boolean
+  };
+
+  union ValueStorage {
+      int32_t i32;
+      double f64;
+      char str[32];
+      bool flag;
+  };
+
+  const char* valueTypeName(ValueType type);
+
+  }
+src/data/variant_store.cpp: |
+  #include "data/value_type.hpp"
+  #include <stdexcept>
+  #include <cstring>
+
+  namespace data {
+
+  class Variant {
+      ValueType type_ = ValueType::None;
+      ValueStorage storage_{};
+
+  public:
+      Variant() = default;
+
+      static Variant fromInt(int32_t v) {
+          Variant var;
+          var.type_ = ValueType::Int32;
+          var.storage_.i32 = v;
+          return var;
+      }
+
+      static Variant fromDouble(double v) {
+          Variant var;
+          var.type_ = ValueType::Float64;
+          var.storage_.f64 = v;
+          return var;
+      }
+
+      static Variant fromString(const char* s) {
+          Variant var;
+          var.type_ = ValueType::String;
+          std::strncpy(var.storage_.str, s, sizeof(var.storage_.str) - 1);
+          var.storage_.str[sizeof(var.storage_.str) - 1] = '\0';
+          return var;
+      }
+
+      static Variant fromBool(bool v) {
+          Variant var;
+          var.type_ = ValueType::Boolean;
+          var.storage_.flag = v;
+          return var;
+      }
+
+      ValueType type() const { return type_; }
+
+      int32_t asInt() const {
+          if (type_ != ValueType::Int32)
+              throw std::runtime_error("Not an int32");
+          return storage_.i32;
+      }
+
+      double asDouble() const {
+          if (type_ != ValueType::Float64)
+              throw std::runtime_error("Not a float64");
+          return storage_.f64;
+      }
+
+      const char* asString() const {
+          if (type_ != ValueType::String)
+              throw std::runtime_error("Not a string");
+          return storage_.str;
+      }
+  };
+
+  }
+include/unrelated/thread_pool.hpp: |
+  #pragma once
+  // GARBAGE_CPP_017_TPOOL_A
+  #include <thread>
+  #include <vector>
+  #include <functional>
+  #include <queue>
+  #include <mutex>
+
+  namespace unrelated {
+
+  // GARBAGE_CPP_017_TPOOL_B
+  class ThreadPool {
+  public:
+      explicit ThreadPool(size_t numThreads) : running_(true) {
+          for (size_t i = 0; i < numThreads; ++i)
+              workers_.emplace_back([this] { workerLoop(); });
+      }
+      void submit(std::function<void()> task) {
+          std::lock_guard<std::mutex> lock(mutex_);
+          tasks_.push(std::move(task));
+      }
+      size_t pendingTasks() const { return tasks_.size(); }
+  private:
+      // GARBAGE_CPP_017_WORKER_C
+      void workerLoop() { while (running_) {} }
+      std::vector<std::thread> workers_;
+      std::queue<std::function<void()>> tasks_;
+      std::mutex mutex_;
+      bool running_;
+  };
+
+  }
+src/unrelated/ring_buffer.cpp: |
+  // GARBAGE_CPP_017_RING_D
+  #include <array>
+  #include <cstddef>
+
+  namespace unrelated {
+
+  // GARBAGE_CPP_017_RING_E
+  template<typename T, size_t N>
+  class RingBuffer {
+  public:
+      void push(const T& value) {
+          // GARBAGE_CPP_017_PUSH_F
+          data_[writePos_ % N] = value;
+          ++writePos_;
+      }
+      T pop() {
+          T value = data_[readPos_ % N];
+          ++readPos_;
+          return value;
+      }
+      bool empty() const { return readPos_ == writePos_; }
+      size_t size() const { return writePos_ - readPos_; }
+  private:
+      std::array<T, N> data_{};
+      size_t readPos_ = 0;
+      size_t writePos_ = 0;
+  };
+
+  }

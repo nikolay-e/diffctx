@@ -1,0 +1,69 @@
+.gitlab-ci.yml: |
+  stages:
+    - build
+    - deploy
+
+  build:
+    stage: build
+    script:
+      - npm ci
+      - npm run build
+
+  deploy:
+    stage: deploy
+    script:
+      - ./deploy.sh
+    environment:
+      name: production
+      url: https://app.example.com
+      on_stop: stop_production
+
+  stop_production:
+    stage: deploy
+    script:
+      - kubectl delete -f k8s/
+    environment:
+      name: production
+      action: stop
+    when: manual
+
+deploy.sh: |
+  #!/bin/bash
+  set -e
+  echo "Deploying to server..."
+  kubectl apply -f k8s/
+
+package.json: |
+  {
+    "name": "gitlab-environment-app",
+    "version": "1.0.0",
+    "scripts": {
+      "build": "webpack --mode production"
+    }
+  }
+
+k8s/deployment.yaml: |
+  apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    name: app
+  spec:
+    replicas: 2
+
+garbage_env_manager.ts: |
+  const GARBAGE_CICD_DOCS_035_MANAGER_MARKER_A = "dotenv";
+  const GARBAGE_CICD_DOCS_035_LOADER_MARKER_B = "envfile";
+
+  class GarbageEnvManager {
+    static GARBAGE_CICD_DOCS_035_VALIDATE_MARKER_C = true;
+    load(): void {}
+  }
+
+garbage_env_rotator.ts: |
+  const GARBAGE_CICD_DOCS_035_ROTATOR_MARKER_D = "vault";
+  const GARBAGE_CICD_DOCS_035_TTL_MARKER_E = "24h";
+
+  class GarbageEnvRotator {
+    static GARBAGE_CICD_DOCS_035_AUTO_MARKER_F = false;
+    rotate(): void {}
+  }

@@ -1,0 +1,101 @@
+scripts/wait-for-db.sh: |
+  #!/bin/bash
+  set -e
+
+  until pg_isready -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER"; do
+    echo "Waiting for PostgreSQL at $DB_HOST:$DB_PORT..."
+    sleep 2
+  done
+
+  echo "PostgreSQL is ready!"
+k8s/apps/api/deployment.yaml: |
+  apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    name: api-server
+    namespace: production
+    labels:
+      app: api-server
+      tier: backend
+  spec:
+    replicas: 3
+    selector:
+      matchLabels:
+        app: api-server
+    template:
+      metadata:
+        labels:
+          app: api-server
+          tier: backend
+      spec:
+        initContainers:
+        - name: wait-for-db
+          image: postgres:15-alpine
+          command: ['sh', '-c', 'until pg_isready -h $DB_HOST -p $DB_PORT; do echo waiting for database; sleep 2; done;']
+          env:
+          - name: DB_HOST
+            value: "postgres.database.svc.cluster.local"
+          - name: DB_PORT
+            value: "5432"
+        - name: run-migrations
+          image: api-server:v1.0.0
+          command: ['python', 'manage.py', 'migrate']
+          env:
+          - name: DATABASE_URL
+            valueFrom:
+              secretKeyRef:
+                name: db-credentials
+                key: url
+        containers:
+        - name: api
+          image: api-server:v1.0.0
+          ports:
+          - containerPort: 8080
+          env:
+          - name: DATABASE_URL
+            valueFrom:
+              secretKeyRef:
+                name: db-credentials
+                key: url
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+k8s/apps/api/service.yaml: |
+  apiVersion: v1
+  kind: Service
+  metadata:
+    name: api-server
+    namespace: production
+  spec:
+    selector:
+      app: api-server
+    ports:
+    - port: 80
+      targetPort: 8080
+k8s/unrelated/keda/scaledobject.yaml: |
+  # GARBAGE_K8S_411_KEDA_SCALER
+  apiVersion: keda.sh/v1alpha1
+  kind: ScaledObject
+  metadata:
+    name: GARBAGE_K8S_411_SCALED_OBJECT
+  spec:
+    scaleTargetRef:
+      name: GARBAGE_K8S_411_TARGET_NAME
+    pollingInterval: GARBAGE_K8S_411_INTERVAL
+    cooldownPeriod: GARBAGE_K8S_411_COOLDOWN
+    triggers:
+    - type: GARBAGE_K8S_411_TRIGGER_TYPE
+k8s/unrelated/crossplane/composition.yaml: |
+  # GARBAGE_K8S_411_CROSSPLANE_COMP
+  apiVersion: apiextensions.crossplane.io/v1
+  kind: Composition
+  metadata:
+    name: GARBAGE_K8S_411_COMP_NAME
+  spec:
+    compositeTypeRef:
+      apiVersion: GARBAGE_K8S_411_API_VERSION
+      kind: GARBAGE_K8S_411_COMP_KIND

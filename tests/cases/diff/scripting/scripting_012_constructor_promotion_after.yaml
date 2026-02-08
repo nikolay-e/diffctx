@@ -1,0 +1,31 @@
+Config.php: |
+  <?php
+  class Config {
+      public function __construct(
+          private string $host,
+          private int $port,
+          private bool $debug = false
+      ) {}
+
+      public function getHost(): string {
+          return $this->host;
+      }
+
+      public function getPort(): int {
+          return $this->port;
+      }
+
+      public function isDebug(): bool {
+          return $this->debug;
+      }
+  }
+app.php: |
+  <?php
+  require_once 'Config.php';
+
+  $config = new Config('localhost', 8080, true);
+  echo $config->getHost() . ':' . $config->getPort();
+garbage.php: |
+  <?php
+  $garbageConfig67890 = "never called";
+  $unused_marker_12345 = "not used";

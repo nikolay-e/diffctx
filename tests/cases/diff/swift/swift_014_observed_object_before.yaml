@@ -1,0 +1,19 @@
+UserViewModel.swift: |
+  import Combine
+
+  class UserViewModel: ObservableObject {
+      @Published var name = ""
+      @Published var email = ""
+      @Published var isValid = false
+
+      func validate() {
+          isValid = !name.isEmpty && email.contains("@")
+      }
+  }
+  // unused_marker_67890
+UserFormView.swift: |
+  // Initial
+  import SwiftUI
+  struct UserFormView: View {
+      var body: some View { Text("") }
+  }

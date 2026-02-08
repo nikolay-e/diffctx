@@ -1,0 +1,85 @@
+src/lib.rs: |
+  pub mod models;
+  pub mod unrelated;
+src/models.rs: |
+  use std::fmt;
+
+  #[derive(Debug, Clone, PartialEq)]
+  pub struct Point {
+      pub x: f64,
+      pub y: f64,
+  }
+
+  impl Point {
+      pub fn new(x: f64, y: f64) -> Self {
+          Self { x, y }
+      }
+
+      pub fn origin() -> Self {
+          Self::new(0.0, 0.0)
+      }
+
+      pub fn distance_to(&self, other: &Point) -> f64 {
+          let dx = self.x - other.x;
+          let dy = self.y - other.y;
+          (dx * dx + dy * dy).sqrt()
+      }
+  }
+
+  impl fmt::Display for Point {
+      fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+          write!(f, "({}, {})", self.x, self.y)
+      }
+  }
+
+  impl Default for Point {
+      fn default() -> Self {
+          Self::origin()
+      }
+  }
+src/unrelated/mod.rs: |
+  pub mod networking;
+  pub mod serialization;
+src/unrelated/networking.rs: |
+  // GARBAGE_RUST_NETWORK_001
+  use std::net::IpAddr;
+
+  pub const GARBAGE_DEFAULT_PORT_002: u16 = 8080;
+  pub const GARBAGE_TIMEOUT_MS_003: u64 = 30000;
+
+  pub struct GarbageNetworkConfig004 {
+      host: String,
+      port: u16,
+      timeout: u64,
+  }
+
+  impl GarbageNetworkConfig004 {
+      pub fn garbage_connect_005(&self) -> Result<(), String> {
+          Err("GARBAGE_CONNECTION_ERROR_006".to_string())
+      }
+
+      pub fn garbage_disconnect_007(&self) {
+          println!("Disconnecting from {}:{}", self.host, self.port);
+      }
+  }
+
+  pub trait GarbageNetworkHandler008 {
+      fn garbage_handle_request_009(&self, data: &[u8]) -> Vec<u8>;
+  }
+src/unrelated/serialization.rs: |
+  // GARBAGE_RUST_SERIAL_010
+  pub const GARBAGE_FORMAT_VERSION_011: u32 = 1;
+
+  pub struct GarbageSerializer012 {
+      buffer: Vec<u8>,
+  }
+
+  impl GarbageSerializer012 {
+      pub fn garbage_serialize_013<T>(&mut self, _value: &T) {
+          // GARBAGE_SERIALIZE_IMPL_014
+      }
+
+      pub fn garbage_deserialize_015<T>(&self) -> Option<T> {
+          None
+      }
+  }

@@ -1,0 +1,49 @@
+drawable.h: |
+  #pragma once
+
+  class Drawable {
+  public:
+      virtual ~Drawable() = default;
+      virtual void draw() = 0;
+      virtual void resize(int w, int h) = 0;
+  };
+widget.cpp: |
+  #include <iostream>
+  int main() { return 0; }
+garbage_scheduler.cpp: |
+  #include <functional>
+  #include <vector>
+  const char* GARBAGE_JVM_011_SCHED_MARKER_A = "task_schedule";
+  const char* GARBAGE_JVM_011_CANCEL_MARKER_B = "task_cancel";
+
+  class GarbageTaskScheduler {
+      std::vector<std::function<void()>> tasks_;
+  public:
+      void schedule(std::function<void()> task) { tasks_.push_back(task); }
+      void runAll() { for (auto& t : tasks_) t(); tasks_.clear(); }
+  };
+garbage_checksum.cpp: |
+  #include <cstdint>
+  const char* GARBAGE_JVM_011_CRC_MARKER_C = "crc32_compute";
+  const char* GARBAGE_JVM_011_VERIFY_MARKER_D = "crc32_verify";
+
+  class GarbageCrc32 {
+      uint32_t crc_ = 0xFFFFFFFF;
+  public:
+      void update(uint8_t byte) { crc_ ^= byte; for (int i = 0; i < 8; i++) crc_ = (crc_ >> 1) ^ (0xEDB88320 & -(crc_ & 1)); }
+      uint32_t finalize() const { return ~crc_; }
+  };
+garbage_renderer.cpp: |
+  const char* GARBAGE_JVM_011_RENDER_MARKER_A = "marker";
+  const char* GARBAGE_JVM_011_SHADER_MARKER_B = "marker";
+
+  class GarbageRenderer {
+      void noop() {}
+  };
+garbage_canvas.cpp: |
+  const char* GARBAGE_JVM_011_CANVAS_MARKER_C = "marker";
+  const char* GARBAGE_JVM_011_PIXEL_MARKER_D = "marker";
+
+  class GarbageCanvas {
+      void noop() {}
+  };

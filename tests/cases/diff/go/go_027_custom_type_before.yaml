@@ -1,0 +1,121 @@
+internal/domain/types.go: |
+  package domain
+
+  import "time"
+
+  type UserID int64
+  type OrderID int64
+  type ProductID int64
+
+  type Status string
+
+  const (
+      StatusPending   Status = "pending"
+      StatusActive    Status = "active"
+      StatusCompleted Status = "completed"
+      StatusCancelled Status = "cancelled"
+  )
+
+  func (s Status) IsActive() bool {
+      return s == StatusActive
+  }
+
+  func (s Status) IsFinal() bool {
+      return s == StatusCompleted || s == StatusCancelled
+  }
+
+  type Priority int
+
+  const (
+      PriorityLow    Priority = 1
+      PriorityMedium Priority = 2
+      PriorityHigh   Priority = 3
+      PriorityCritical Priority = 4
+  )
+
+  type Money struct {
+      Amount   int64
+      Currency string
+  }
+
+  type DateRange struct {
+      Start time.Time
+      End   time.Time
+  }
+
+  func (d DateRange) Contains(t time.Time) bool {
+      return !t.Before(d.Start) && !t.After(d.End)
+  }
+internal/domain/service.go: |
+  package domain
+
+  func GetUserStatus(id int) string {
+      return "unknown"
+  }
+
+  func GetOrderPriority(id int) int {
+      return 0
+  }
+internal/unrelated/analytics/tracker.go: |
+  package analytics
+
+  import "context"
+
+  const GARBAGE_GO_ANALYTICS_TRACKER_A1B2C3 = "analytics_garbage_marker"
+
+  type GARBAGE_GO_TYPE_EVENT_D4E5F6 struct {
+      name       string
+      properties map[string]interface{}
+  }
+
+  func GARBAGE_GO_FUNC_ANALYTICS_G7H8I9() string {
+      return "GARBAGE_GO_ANALYTICS_UNUSED_J0K1L2"
+  }
+
+  type AnalyticsConfig struct {
+      APIKey      string
+      Endpoint    string
+      BatchSize   int
+      FlushInterval int
+  }
+
+  func GARBAGE_GO_FUNC_TRACK_EVENT_M3N4O5(ctx context.Context, event string) error {
+      println("GARBAGE_GO_TRACK_OUTPUT_P6Q7R8")
+      return nil
+  }
+internal/unrelated/analytics/segment.go: |
+  package analytics
+
+  const GARBAGE_GO_SEGMENT_CLIENT_S9T0U1 = "segment_garbage"
+
+  type GARBAGE_GO_TYPE_SEGMENT_V2W3X4 struct {
+      writeKey string
+      client   interface{}
+  }
+
+  func GARBAGE_GO_FUNC_SEGMENT_Y5Z6A7() {
+      println("GARBAGE_GO_SEGMENT_OUTPUT_B8C9D0")
+  }
+
+  type SegmentConfig struct {
+      WriteKey  string
+      Endpoint  string
+      Verbose   bool
+  }
+
+  func GARBAGE_GO_FUNC_SEGMENT_IDENTIFY_E1F2G3(userID string) error {
+      return nil
+  }
+internal/unrelated/analytics/mixpanel.go: |
+  package analytics
+
+  const GARBAGE_GO_MIXPANEL_CLIENT_H4I5J6 = "mixpanel_garbage"
+
+  type GARBAGE_GO_TYPE_MIXPANEL_K7L8M9 struct {
+      token     string
+      projectID string
+  }
+
+  func GARBAGE_GO_FUNC_MIXPANEL_N0O1P2() {
+      println("GARBAGE_GO_MIXPANEL_OUTPUT_Q3R4S5")
+  }

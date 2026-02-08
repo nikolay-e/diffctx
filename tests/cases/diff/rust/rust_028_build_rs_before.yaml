@@ -1,0 +1,65 @@
+build.rs: |
+  fn main() {
+      println!("cargo:rerun-if-changed=proto/");
+      tonic_build::compile_protos("proto/service.proto").unwrap();
+  }
+src/lib.rs: |
+  pub mod service;
+  pub mod unrelated;
+src/service.rs: |
+  pub mod proto {
+      tonic::include_proto!("service");
+  }
+
+  pub use proto::service_server::Service;
+
+  pub struct ServiceImpl {
+      name: String,
+  }
+
+  impl ServiceImpl {
+      pub fn new(name: &str) -> Self {
+          Self { name: name.to_string() }
+      }
+
+      pub fn service_name(&self) -> &str {
+          &self.name
+      }
+  }
+src/unrelated/mod.rs: |
+  pub mod health;
+  pub mod metrics;
+src/unrelated/health.rs: |
+  // GARBAGE_RUST_028_HEALTH_A
+  pub const GARBAGE_RUST_028_HEALTH_PATH_B: &str = "/healthz";
+
+  pub struct GarbageHealthChecker028 {
+      healthy: bool,
+  }
+
+  impl GarbageHealthChecker028 {
+      pub fn garbage_check_028(&self) -> bool {
+          self.healthy
+      }
+
+      pub fn garbage_set_unhealthy_028(&mut self) {
+          self.healthy = false;
+      }
+  }
+src/unrelated/metrics.rs: |
+  // GARBAGE_RUST_028_METRICS_C
+  pub const GARBAGE_RUST_028_METRICS_PORT_D: u16 = 9090;
+
+  pub struct GarbagePrometheusExporter028 {
+      prefix: String,
+  }
+
+  impl GarbagePrometheusExporter028 {
+      pub fn garbage_export_028(&self) -> String {
+          format!("{}_requests_total 42", self.prefix)
+      }
+
+      pub fn garbage_reset_028(&mut self) {
+          self.prefix = "default".to_string();
+      }
+  }

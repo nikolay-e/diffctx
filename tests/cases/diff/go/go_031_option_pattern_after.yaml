@@ -1,0 +1,174 @@
+pkg/httpclient/client.go: |
+  package httpclient
+
+  import (
+      "net/http"
+      "time"
+  )
+
+  type Client struct {
+      baseURL    string
+      httpClient *http.Client
+      timeout    time.Duration
+      retries    int
+      userAgent  string
+      headers    map[string]string
+  }
+
+  type Option func(*Client)
+
+  func WithTimeout(d time.Duration) Option {
+      return func(c *Client) {
+          c.timeout = d
+          c.httpClient.Timeout = d
+      }
+  }
+
+  func WithRetries(n int) Option {
+      return func(c *Client) {
+          c.retries = n
+      }
+  }
+
+  func WithUserAgent(ua string) Option {
+      return func(c *Client) {
+          c.userAgent = ua
+      }
+  }
+
+  func WithHeader(key, value string) Option {
+      return func(c *Client) {
+          c.headers[key] = value
+      }
+  }
+
+  func NewClient(baseURL string, opts ...Option) *Client {
+      c := &Client{
+          baseURL:    baseURL,
+          httpClient: &http.Client{},
+          timeout:    30 * time.Second,
+          retries:    3,
+          userAgent:  "httpclient/1.0",
+          headers:    make(map[string]string),
+      }
+      for _, opt := range opts {
+          opt(c)
+      }
+      c.httpClient.Timeout = c.timeout
+      return c
+  }
+
+  func (c *Client) BaseURL() string {
+      return c.baseURL
+  }
+
+  func (c *Client) Do(req *http.Request) (*http.Response, error) {
+      req.Header.Set("User-Agent", c.userAgent)
+      for k, v := range c.headers {
+          req.Header.Set(k, v)
+      }
+      var lastErr error
+      for i := 0; i <= c.retries; i++ {
+          resp, err := c.httpClient.Do(req)
+          if err == nil {
+              return resp, nil
+          }
+          lastErr = err
+      }
+      return nil, lastErr
+  }
+pkg/httpclient/request.go: |
+  package httpclient
+
+  import (
+      "io"
+      "net/http"
+  )
+
+  type Request struct {
+      method  string
+      path    string
+      body    io.Reader
+      headers map[string]string
+  }
+
+  func NewRequest(method, path string) *Request {
+      return &Request{
+          method:  method,
+          path:    path,
+          headers: make(map[string]string),
+      }
+  }
+
+  func (r *Request) WithHeader(key, value string) *Request {
+      r.headers[key] = value
+      return r
+  }
+
+  func (r *Request) WithBody(body io.Reader) *Request {
+      r.body = body
+      return r
+  }
+
+  func (r *Request) Build(baseURL string) (*http.Request, error) {
+      req, err := http.NewRequest(r.method, baseURL+r.path, r.body)
+      if err != nil {
+          return nil, err
+      }
+      for k, v := range r.headers {
+          req.Header.Set(k, v)
+      }
+      return req, nil
+  }
+internal/unrelated/pool/worker.go: |
+  package pool
+
+  const GARBAGE_GO_031_POOL_WORKER_A = "pool_worker_marker"
+
+  type GarbageWorkerPool031 struct {
+      size    int
+      running bool
+  }
+
+  func GARBAGE_GO_031_NewWorkerPool(size int) *GarbageWorkerPool031 {
+      return &GarbageWorkerPool031{
+          size:    size,
+          running: false,
+      }
+  }
+
+  func (p *GarbageWorkerPool031) Start() {
+      p.running = true
+  }
+
+  func (p *GarbageWorkerPool031) Stop() {
+      p.running = false
+  }
+
+  func (p *GarbageWorkerPool031) IsRunning() bool {
+      return p.running
+  }
+internal/unrelated/queue/broker.go: |
+  package queue
+
+  const GARBAGE_GO_031_QUEUE_BROKER_B = "queue_broker_marker"
+
+  type GarbageBroker031 struct {
+      topic    string
+      messages []string
+  }
+
+  func GARBAGE_GO_031_NewBroker(topic string) *GarbageBroker031 {
+      return &GarbageBroker031{
+          topic:    topic,
+          messages: make([]string, 0),
+      }
+  }
+
+  func (b *GarbageBroker031) Publish(msg string) {
+      b.messages = append(b.messages, msg)
+  }
+
+  func (b *GarbageBroker031) Topic() string {
+      return b.topic
+  }

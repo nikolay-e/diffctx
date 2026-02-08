@@ -1,0 +1,42 @@
+cleanup.sh: |
+  #!/bin/bash
+  set -e
+  echo "Cleaning up test artifacts..."
+  rm -rf /tmp/test-*
+  rm -rf ./coverage
+  rm -rf ./node_modules/.cache
+
+.gitlab-ci.yml: |
+  test:
+    script:
+      - npm ci
+      - npm test
+    after_script:
+      - ./cleanup.sh
+
+package.json: |
+  {
+    "name": "gitlab-cleanup-app",
+    "version": "1.0.0",
+    "scripts": {
+      "test": "jest --coverage"
+    }
+  }
+
+garbage_cleanup.ts: |
+  const GARBAGE_CICD_DOCS_024_CLEANUP_MARKER_A = "temp";
+  const GARBAGE_CICD_DOCS_024_PATTERN_MARKER_B = "*.tmp";
+
+  class GarbageCleanupService {
+    static GARBAGE_CICD_DOCS_024_RECURSIVE_MARKER_C = true;
+    clean(): void {}
+  }
+
+garbage_finalizer.ts: |
+  const GARBAGE_CICD_DOCS_024_FINALIZER_MARKER_D = "always";
+  const GARBAGE_CICD_DOCS_024_IGNORE_MARKER_E = false;
+
+  class GarbageFinalizerHandler {
+    static GARBAGE_CICD_DOCS_024_ASYNC_MARKER_F = true;
+    finalize(): void {}
+  }

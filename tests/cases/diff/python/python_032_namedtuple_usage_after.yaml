@@ -1,0 +1,78 @@
+geometry.py: |
+  from typing import NamedTuple
+  import math
+
+  class Point(NamedTuple):
+      x: float
+      y: float
+
+      def distance_to(self, other: "Point") -> float:
+          return math.sqrt((self.x - other.x) ** 2 + (self.y - other.y) ** 2)
+
+      def midpoint(self, other: "Point") -> "Point":
+          return Point(x=(self.x + other.x) / 2, y=(self.y + other.y) / 2)
+
+  class Rectangle(NamedTuple):
+      top_left: Point
+      bottom_right: Point
+
+      def width(self) -> float:
+          return abs(self.bottom_right.x - self.top_left.x)
+
+      def height(self) -> float:
+          return abs(self.bottom_right.y - self.top_left.y)
+
+      def area(self) -> float:
+          return self.width() * self.height()
+
+      def contains(self, point: Point) -> bool:
+          return (self.top_left.x <= point.x <= self.bottom_right.x and
+                  self.top_left.y <= point.y <= self.bottom_right.y)
+
+renderer.py: |
+  from geometry import Point, Rectangle
+
+  def draw(rect: Rectangle) -> str:
+      center = rect.top_left.midpoint(rect.bottom_right)
+      return f"Drawing rect at center ({center.x}, {center.y}), area={rect.area()}"
+
+  def draw_line(start: Point, end: Point) -> str:
+      length = start.distance_to(end)
+      return f"Line from ({start.x},{start.y}) to ({end.x},{end.y}), length={length:.2f}"
+
+  def clear_canvas() -> None:
+      pass
+
+garbage_logging.py: |
+  GARBAGE_PY_032_LOGGING_A = "logging framework marker"
+  GARBAGE_PY_032_HANDLER_B = "log handler marker"
+
+  class StructuredLogger:
+      GARBAGE_PY_032_STRUCT_C = "structured log marker"
+
+      def __init__(self, service_name: str):
+          self.service_name = service_name
+
+      def info(self, message: str, **kwargs) -> None:
+          pass
+
+      def error(self, message: str, exception: Exception = None) -> None:
+          GARBAGE_PY_032_ERROR_D = "error log marker"
+          pass
+
+garbage_encryption.py: |
+  GARBAGE_PY_032_ENCRYPT_E = "encryption module marker"
+  GARBAGE_PY_032_CIPHER_F = "cipher suite marker"
+
+  class Encryptor:
+      GARBAGE_PY_032_ENCRYPTOR_G = True
+
+      def __init__(self, key: bytes):
+          self._key = key
+
+      def encrypt(self, plaintext: str) -> bytes:
+          return plaintext.encode()
+
+      def decrypt(self, ciphertext: bytes) -> str:
+          GARBAGE_PY_032_DECRYPT_H = "decrypt marker"
+          return ciphertext.decode()

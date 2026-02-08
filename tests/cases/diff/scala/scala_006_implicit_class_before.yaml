@@ -1,0 +1,34 @@
+src/extensions/StringExtensions.scala: |
+  package extensions
+
+  object StringExtensions {
+    implicit class RichString(val s: String) extends AnyVal {
+      def shout: String = s.toUpperCase + "!"
+      def whisper: String = s.toLowerCase + "..."
+      def repeat(n: Int): String = s * n
+      def truncate(maxLen: Int): String =
+        if (s.length <= maxLen) s else s.take(maxLen) + "..."
+      def isBlank: Boolean = s.trim.isEmpty
+    }
+  }
+src/services/Formatter.scala: |
+  package services
+
+  class Formatter {
+    def formatTitle(text: String): String = text.trim
+  }
+unrelated/TaskScheduler.scala: |
+  package scheduler
+  // GARBAGE_SCALA_006_MARKER_A
+  object TaskScheduler {
+    val GARBAGE_SCALA_006_INTERVAL = 60
+    def schedule(task: String): Unit = println(s"GARBAGE_SCALA_006_MARKER_B $task")
+    def cancel(id: String): Unit = println(s"GARBAGE_SCALA_006_MARKER_C $id")
+  }
+unrelated/CryptoHelper.scala: |
+  package crypto
+  // GARBAGE_SCALA_006_MARKER_D
+  class CryptoHelper {
+    def hash(input: String): String = s"GARBAGE_SCALA_006_MARKER_E:$input"
+    val GARBAGE_SCALA_006_ALGO = "sha256"
+  }

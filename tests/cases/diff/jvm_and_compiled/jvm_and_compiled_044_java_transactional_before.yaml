@@ -1,0 +1,25 @@
+src/main/java/com/example/OrderService.java: |
+  package com.example;
+
+  import org.springframework.stereotype.Service;
+  import org.springframework.transaction.annotation.Transactional;
+
+  @Service
+  public class OrderService {
+      @Transactional
+      public Order createOrder(Order order) {
+          return orderRepository.save(order);
+      }
+  }
+GarbageSagaOrchestrator.java: |
+  public class GarbageSagaOrchestrator {
+      public static final String GARBAGE_JVM_044_SAGA_MARKER_A = "marker";
+      public static final String GARBAGE_JVM_044_COMPENSATE_MARKER_B = "marker";
+      public void noop() {}
+  }
+GarbageLockManager.java: |
+  public class GarbageLockManager {
+      public static final String GARBAGE_JVM_044_LOCK_MARKER_C = "marker";
+      public static final String GARBAGE_JVM_044_OPTIMISTIC_MARKER_D = "marker";
+      public void noop() {}
+  }

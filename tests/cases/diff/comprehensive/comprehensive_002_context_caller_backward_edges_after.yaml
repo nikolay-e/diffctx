@@ -1,0 +1,63 @@
+src/core.py: |
+  from typing import List
+
+  def core_function(values: List[int]) -> int:
+      if not values:
+          return 0
+      total = sum(values)
+      return total // len(values)
+
+  def secondary_helper(x: int) -> int:
+      return x * x
+
+  def format_output(result: int) -> str:
+      return f"Result: {result}"
+
+src/caller_a.py: |
+  from src.core import core_function, format_output
+
+  def use_core_a(data):
+      result = core_function(data)
+      return format_output(result + 1)
+
+  def prepare_data_a(raw_input):
+      cleaned = [int(x) for x in raw_input if x.isdigit()]
+      return cleaned
+
+src/caller_b.py: |
+  from src.core import core_function, secondary_helper
+
+  def use_core_b(data):
+      base = core_function(data)
+      multiplied = secondary_helper(base)
+      return multiplied * 2
+
+  def validate_input_b(data):
+      return all(isinstance(x, int) for x in data)
+
+src/unrelated_module.py: |
+  import os
+
+  def read_environment_variable(key):
+      return os.environ.get(key, "default")
+
+  def build_connection_string(host, port, db):
+      return f"postgresql://{host}:{port}/{db}"
+
+garbage_rate_limiter.py: |
+  GARBAGE_COMP_002_BUCKET_SIZE_A = "tokens"
+  GARBAGE_COMP_002_REFILL_RATE_B = "per_second"
+
+  class GarbageRateLimiter:
+      GARBAGE_COMP_002_WINDOW_DURATION_C = 60
+      def limit(self):
+          pass
+
+garbage_circuit_breaker.py: |
+  GARBAGE_COMP_002_FAILURE_THRESHOLD_D = "threshold"
+  GARBAGE_COMP_002_RECOVERY_TIMEOUT_E = "recovery"
+
+  class GarbageCircuitBreaker:
+      GARBAGE_COMP_002_HALF_OPEN_STATE_F = True
+      def trip(self):
+          pass

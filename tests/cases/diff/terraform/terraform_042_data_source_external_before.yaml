@@ -1,0 +1,7 @@
+scripts/get_ami.sh: |
+  #!/bin/bash
+  echo '{"ami_id": "ami-12345678"}'
+main.tf: |
+  resource "aws_instance" "web" {
+    ami = "ami-static"
+  }

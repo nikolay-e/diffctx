@@ -1,0 +1,51 @@
+process.sh: |
+  #!/bin/bash
+
+  files=("${@}")
+  declare -a results
+
+  for i in "${!files[@]}"; do
+      file="${files[$i]}"
+      if [[ -f "$file" ]]; then
+          results+=("$file: OK")
+      else
+          results+=("$file: NOT FOUND")
+      fi
+  done
+
+  echo "Results:"
+  for result in "${results[@]}"; do
+      echo "  $result"
+  done
+
+  echo "Total files: ${#files[@]}"
+  echo "Total results: ${#results[@]}"
+unrelated/garbage_etcd.sh: |
+  #!/bin/bash
+  # GARBAGE_SH_010_ETCD_WATCH_A
+  GARBAGE_SH_010_ETCD_ENDPOINT_B="http://localhost:2379"
+
+  garbage_etcd_get_010() {
+      local key=$1
+      echo "Value for $key: default"
+  }
+
+  garbage_etcd_put_010() {
+      local key=$1
+      local val=$2
+      echo "Put $key=$val"
+  }
+unrelated/garbage_consul.sh: |
+  #!/bin/bash
+  # GARBAGE_SH_010_CONSUL_SERVICE_C
+  GARBAGE_SH_010_CONSUL_ADDR_D="http://localhost:8500"
+
+  garbage_register_svc_010() {
+      local name=$1
+      echo "Registered: $name"
+  }
+
+  garbage_deregister_svc_010() {
+      local id=$1
+      echo "Deregistered: $id"
+  }

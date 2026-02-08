@@ -1,0 +1,69 @@
+utils/math.py: |
+  def calculate_tax(amount: float, region: str = "US") -> float:
+      rate = get_tax_rate(region)
+      tax = amount * rate
+      return round(tax, 2)
+
+  def get_tax_rate(region: str) -> float:
+      rates = {
+          "US": 0.15,
+          "EU": 0.20,
+          "UK": 0.17,
+      }
+      return rates.get(region, 0.10)
+
+  def format_tax_amount(tax: float) -> str:
+      return f"${tax:,.2f}"
+main.py: |
+  def process():
+      pass
+services/invoice.py: |
+  from utils.math import calculate_tax, format_tax_amount
+
+  class InvoiceService:
+      def __init__(self, region: str = "US"):
+          self.region = region
+          self.line_items = []
+
+      def add_item(self, description: str, amount: float) -> None:
+          self.line_items.append({"description": description, "amount": amount})
+
+      def compute_totals(self) -> dict:
+          subtotal = sum(item["amount"] for item in self.line_items)
+          tax = calculate_tax(subtotal, self.region)
+          return {
+              "subtotal": subtotal,
+              "tax": tax,
+              "tax_display": format_tax_amount(tax),
+              "total": subtotal + tax,
+          }
+garbage/weather_forecast_GARBAGE_DEP_001_WEATHER_A.py: |
+  import random
+
+  def predict_temperature_GARBAGE_DEP_001_WEATHER_A(city: str) -> float:
+      base_temps = {"Moscow": -5, "Tokyo": 15, "Sydney": 25}
+      base = base_temps.get(city, 20)
+      return base + random.uniform(-3, 3)
+
+  def wind_speed_forecast_GARBAGE_DEP_001_WEATHER_A(latitude: float) -> float:
+      return abs(latitude) * 0.3 + random.uniform(0, 10)
+
+  class WeatherStation_GARBAGE_DEP_001_WEATHER_A:
+      def __init__(self, station_id: str):
+          self.station_id = station_id
+          self.readings = []
+
+      def record_reading(self, temp: float, humidity: float) -> None:
+          self.readings.append({"temp": temp, "humidity": humidity})
+garbage/astronomy_calc_GARBAGE_DEP_001_ASTRO_B.py: |
+  def orbital_period_GARBAGE_DEP_001_ASTRO_B(semi_major_axis: float) -> float:
+      return (semi_major_axis ** 1.5) * 365.25
+
+  def escape_velocity_GARBAGE_DEP_001_ASTRO_B(mass: float, radius: float) -> float:
+      G = 6.674e-11
+      return (2 * G * mass / radius) ** 0.5
+
+  class CelestialBody_GARBAGE_DEP_001_ASTRO_B:
+      def __init__(self, name: str, mass: float):
+          self.name = name
+          self.mass = mass

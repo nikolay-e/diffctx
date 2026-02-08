@@ -1,0 +1,53 @@
+coproc.sh: |
+  #!/bin/bash
+
+  coproc WORKER { while read -r line; do echo "Echo: $line"; done; }
+
+  echo "Hello" >&${WORKER[1]}
+  read -r result <&${WORKER[0]}
+  echo "Got: $result"
+
+  echo "World" >&${WORKER[1]}
+  read -r result2 <&${WORKER[0]}
+  echo "Got: $result2"
+
+  coproc TRANSFORMER {
+      while read -r line; do
+          echo "${line^^}"
+      done
+  }
+
+  echo "lowercase" >&${TRANSFORMER[1]}
+  read -r upper <&${TRANSFORMER[0]}
+  echo "Transformed: $upper"
+
+  exec {WORKER[1]}>&-
+  exec {TRANSFORMER[1]}>&-
+  wait $WORKER_PID
+  wait $TRANSFORMER_PID
+unrelated/garbage_smtp_check.sh: |
+  #!/bin/bash
+  # GARBAGE_SH_004_SMTP_CHECK_A
+  GARBAGE_SH_004_MAIL_SERVER_B="smtp.example.com"
+
+  garbage_check_smtp_004() {
+      local server=$1
+      echo "SMTP check: $server OK"
+  }
+
+  garbage_send_test_004() {
+      local to=$1
+      echo "Test email to $to"
+  }
+unrelated/garbage_ntp_sync.sh: |
+  #!/bin/bash
+  # GARBAGE_SH_004_NTP_SYNC_C
+  GARBAGE_SH_004_NTP_SERVER_D="pool.ntp.org"
+
+  garbage_sync_time_004() {
+      echo "Syncing with $GARBAGE_SH_004_NTP_SERVER_D"
+  }
+
+  garbage_check_drift_004() {
+      echo "Clock drift: 0ms"
+  }

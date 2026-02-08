@@ -1,0 +1,88 @@
+config/fluent-bit.conf: |
+  [SERVICE]
+      Flush         5
+      Daemon        Off
+      Log_Level     info
+
+  [INPUT]
+      Name              tail
+      Path              /var/log/app/*.log
+      Tag               app.logs
+      Refresh_Interval  5
+
+  [OUTPUT]
+      Name          stdout
+      Match         *
+k8s/apps/backend/deployment.yaml: |
+  apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    name: backend-service
+    namespace: production
+    labels:
+      app: backend-service
+      tier: backend
+  spec:
+    replicas: 3
+    selector:
+      matchLabels:
+        app: backend-service
+    template:
+      metadata:
+        labels:
+          app: backend-service
+          tier: backend
+      spec:
+        containers:
+        - name: backend
+          image: backend-service:v2.0.0
+          ports:
+          - containerPort: 8080
+          env:
+          - name: LOG_FORMAT
+            value: "json"
+          - name: LOG_PATH
+            value: "/var/log/app"
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+k8s/apps/backend/service.yaml: |
+  apiVersion: v1
+  kind: Service
+  metadata:
+    name: backend-service
+    namespace: production
+  spec:
+    selector:
+      app: backend-service
+    ports:
+    - port: 80
+      targetPort: 8080
+k8s/unrelated/opentelemetry/collector.yaml: |
+  # GARBAGE_K8S_412_OTEL_COLLECTOR
+  apiVersion: opentelemetry.io/v1alpha1
+  kind: OpenTelemetryCollector
+  metadata:
+    name: GARBAGE_K8S_412_COLLECTOR_NAME
+  spec:
+    mode: GARBAGE_K8S_412_MODE
+    config: |
+      receivers:
+        otlp:
+          protocols:
+            grpc:
+              endpoint: GARBAGE_K8S_412_GRPC_ENDPOINT
+k8s/unrelated/jaeger/jaeger-instance.yaml: |
+  # GARBAGE_K8S_412_JAEGER_INSTANCE
+  apiVersion: jaegertracing.io/v1
+  kind: Jaeger
+  metadata:
+    name: GARBAGE_K8S_412_JAEGER_NAME
+  spec:
+    strategy: GARBAGE_K8S_412_STRATEGY
+    storage:
+      type: GARBAGE_K8S_412_STORAGE_TYPE

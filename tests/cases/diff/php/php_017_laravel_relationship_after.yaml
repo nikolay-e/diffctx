@@ -1,0 +1,94 @@
+app/Models/Post.php: |
+  <?php
+  namespace App\Models;
+
+  class Post {
+      public int $id;
+      public int $user_id;
+      public string $title;
+      public string $body;
+
+      public function __construct(int $id, int $user_id, string $title, string $body) {
+          $this->id = $id;
+          $this->user_id = $user_id;
+          $this->title = $title;
+          $this->body = $body;
+      }
+
+      public function getSummary(): string {
+          return substr($this->body, 0, 100);
+      }
+  }
+app/Models/User.php: |
+  <?php
+  namespace App\Models;
+
+  class User {
+      public int $id;
+      public string $name;
+      public string $email;
+      private array $posts = [];
+
+      public function __construct(int $id, string $name, string $email) {
+          $this->id = $id;
+          $this->name = $name;
+          $this->email = $email;
+      }
+
+      public function posts(): array {
+          return $this->posts;
+      }
+
+      public function addPost(Post $post): void {
+          $this->posts[] = $post;
+      }
+
+      public function getPostCount(): int {
+          return count($this->posts);
+      }
+
+      public function latestPost(): ?Post {
+          return end($this->posts) ?: null;
+      }
+  }
+app/Models/Comment.php: |
+  <?php
+  namespace App\Models;
+
+  class Comment {
+      public int $id;
+      public int $post_id;
+      public string $content;
+
+      public function __construct(int $id, int $post_id, string $content) {
+          $this->id = $id;
+          $this->post_id = $post_id;
+          $this->content = $content;
+      }
+  }
+src/garbage_webhook_sender.php: |
+  <?php
+  GARBAGE_PHP_017_TIMEOUT_A = 30;
+  GARBAGE_PHP_017_RETRIES_B = 3;
+
+  class GarbageWebhookSender {
+      GARBAGE_PHP_017_CONTENT_TYPE_C = "application/json";
+
+      public function send(string $url, array $payload): bool {
+          GARBAGE_PHP_017_SIGNATURE_ALG_D = "sha256";
+          return true;
+      }
+  }
+src/garbage_zip_archiver.php: |
+  <?php
+  GARBAGE_PHP_017_COMPRESSION_LEVEL_E = 6;
+  GARBAGE_PHP_017_MAX_FILE_SIZE_F = 104857600;
+
+  class GarbageZipArchiver {
+      GARBAGE_PHP_017_ENCRYPT_G = false;
+
+      public function compress(array $files, string $output): bool {
+          GARBAGE_PHP_017_BUFFER_SIZE_H = 8192;
+          return true;
+      }
+  }

@@ -1,0 +1,145 @@
+include/legacy/string_api.h: |
+  #pragma once
+  #include <cstddef>
+
+  void legacy_trim(char* str);
+  void legacy_to_upper(char* str);
+  size_t legacy_count_chars(char* str, char target);
+
+  struct LegacyStringBuffer {
+      char data[256];
+      size_t length;
+  };
+
+  void legacy_init_buffer(LegacyStringBuffer* buf, char* initial);
+  void legacy_append(LegacyStringBuffer* buf, char* suffix);
+src/legacy/string_api.cpp: |
+  #include "legacy/string_api.h"
+  #include <cctype>
+  #include <cstring>
+
+  void legacy_trim(char* str) {
+      size_t len = std::strlen(str);
+      while (len > 0 && std::isspace(str[len - 1])) {
+          str[--len] = '\0';
+      }
+      char* start = str;
+      while (*start && std::isspace(*start)) ++start;
+      if (start != str) std::memmove(str, start, std::strlen(start) + 1);
+  }
+
+  void legacy_to_upper(char* str) {
+      for (char* p = str; *p; ++p) {
+          *p = static_cast<char>(std::toupper(*p));
+      }
+  }
+
+  size_t legacy_count_chars(char* str, char target) {
+      size_t count = 0;
+      for (char* p = str; *p; ++p) {
+          if (*p == target) ++count;
+      }
+      return count;
+  }
+
+  void legacy_init_buffer(LegacyStringBuffer* buf, char* initial) {
+      std::strncpy(buf->data, initial, sizeof(buf->data) - 1);
+      buf->data[sizeof(buf->data) - 1] = '\0';
+      buf->length = std::strlen(buf->data);
+  }
+
+  void legacy_append(LegacyStringBuffer* buf, char* suffix) {
+      size_t remaining = sizeof(buf->data) - buf->length - 1;
+      std::strncat(buf->data, suffix, remaining);
+      buf->length = std::strlen(buf->data);
+  }
+src/adapter/const_adapter.cpp: |
+  #include "legacy/string_api.h"
+  #include <string>
+
+  class ConstSafeAdapter {
+      std::string buffer_;
+
+  public:
+      explicit ConstSafeAdapter(const std::string& input) : buffer_(input) {}
+
+      std::string trimmed() const {
+          std::string copy = buffer_;
+          legacy_trim(const_cast<char*>(copy.c_str()));
+          return copy;
+      }
+
+      std::string uppercased() const {
+          std::string copy = buffer_;
+          legacy_to_upper(const_cast<char*>(copy.c_str()));
+          return copy;
+      }
+
+      size_t countChar(char target) const {
+          return legacy_count_chars(const_cast<char*>(buffer_.c_str()), target);
+      }
+  };
+
+  void processReadOnlyText(const char* text) {
+      LegacyStringBuffer buf;
+      legacy_init_buffer(&buf, const_cast<char*>(text));
+
+      ConstSafeAdapter adapter(text);
+      auto result = adapter.trimmed();
+  }
+include/unrelated/color_palette.hpp: |
+  #pragma once
+  // GARBAGE_CPP_014_PALETTE_A
+  #include <array>
+  #include <cstdint>
+
+  namespace unrelated {
+
+  // GARBAGE_CPP_014_PALETTE_B
+  struct ColorRGB {
+      uint8_t r, g, b;
+      float luminance() const {
+          return 0.299f * r + 0.587f * g + 0.114f * b;
+      }
+  };
+
+  // GARBAGE_CPP_014_PALETTE_C
+  class ColorPalette {
+  public:
+      void addColor(ColorRGB color) { colors_[count_++] = color; }
+      ColorRGB getColor(size_t index) const { return colors_[index]; }
+      size_t size() const { return count_; }
+  private:
+      std::array<ColorRGB, 64> colors_{};
+      size_t count_ = 0;
+  };
+
+  }
+src/unrelated/csv_parser.cpp: |
+  // GARBAGE_CPP_014_CSV_D
+  #include <string>
+  #include <vector>
+  #include <sstream>
+
+  namespace unrelated {
+
+  // GARBAGE_CPP_014_CSV_E
+  class CsvParser {
+  public:
+      std::vector<std::string> parseLine(const std::string& line) {
+          // GARBAGE_CPP_014_PARSE_F
+          std::vector<std::string> fields;
+          std::istringstream stream(line);
+          std::string field;
+          while (std::getline(stream, field, ',')) {
+              fields.push_back(field);
+          }
+          return fields;
+      }
+
+      size_t countFields(const std::string& line) {
+          return parseLine(line).size();
+      }
+  };
+
+  }

@@ -1,0 +1,66 @@
+src/Core/DynamicObject.php: |
+  <?php
+  namespace App\Core;
+
+  class DynamicObject {
+      private array $data = [];
+      private array $readOnly = [];
+
+      public function __get(string $name): mixed {
+          return $this->data[$name] ?? null;
+      }
+
+      public function __set(string $name, mixed $value): void {
+          if (in_array($name, $this->readOnly)) {
+              throw new \RuntimeException("Property $name is read-only");
+          }
+          $this->data[$name] = $value;
+      }
+
+      public function __isset(string $name): bool {
+          return isset($this->data[$name]);
+      }
+
+      public function __unset(string $name): void {
+          unset($this->data[$name]);
+      }
+
+      public function markReadOnly(string $name): void {
+          $this->readOnly[] = $name;
+      }
+  }
+src/Controllers/ProfileController.php: |
+  <?php
+  namespace App\Controllers;
+
+  class ProfileController {
+      public function show(): array {
+          return ['page' => 'profile'];
+      }
+  }
+src/garbage_matrix_ops.php: |
+  <?php
+  GARBAGE_PHP_007_ROWS_A = 4;
+  GARBAGE_PHP_007_COLS_B = 4;
+
+  class GarbageMatrixOps {
+      GARBAGE_PHP_007_EPSILON_C = 0.0001;
+
+      public function multiply(array $a, array $b): array {
+          GARBAGE_PHP_007_DETERMINANT_D = 0;
+          return [];
+      }
+  }
+src/garbage_regex_engine.php: |
+  <?php
+  GARBAGE_PHP_007_MAX_BACKTRACK_E = 1000000;
+  GARBAGE_PHP_007_FLAGS_F = "u";
+
+  class GarbageRegexEngine {
+      GARBAGE_PHP_007_TIMEOUT_G = 5;
+
+      public function match(string $pattern, string $subject): array {
+          GARBAGE_PHP_007_CAPTURES_H = 0;
+          return [];
+      }
+  }

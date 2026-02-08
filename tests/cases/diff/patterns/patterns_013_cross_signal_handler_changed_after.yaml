@@ -1,0 +1,13 @@
+models/user.py: |
+  class User:
+      def __init__(self, name):
+          self.name = name
+signals.py: |
+  from models.user import User
+
+  def on_user_created(sender, instance):
+      print(f"User created: {instance.name}")
+      send_welcome_email(instance)
+
+  def send_welcome_email(user):
+      print(f"Welcome email sent to {user.name}")

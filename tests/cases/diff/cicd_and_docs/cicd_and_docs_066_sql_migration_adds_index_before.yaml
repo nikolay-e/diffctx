@@ -1,0 +1,52 @@
+migrations/001_create_products.sql: |
+  CREATE TABLE products (
+      id SERIAL PRIMARY KEY,
+      name VARCHAR(255) NOT NULL,
+      description TEXT,
+      category VARCHAR(100),
+      price DECIMAL(10, 2) NOT NULL,
+      stock_quantity INTEGER DEFAULT 0,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  );
+
+src/repositories/product_repository.py: |
+  from typing import List, Optional
+  from models.product import Product
+
+  class ProductRepository:
+      def find_by_category(self, category: str) -> List[Product]:
+          return self.db.query(
+              "SELECT * FROM products WHERE category = %s ORDER BY name",
+              [category]
+          )
+
+      def find_by_price_range(self, min_price: float, max_price: float) -> List[Product]:
+          return self.db.query(
+              "SELECT * FROM products WHERE price BETWEEN %s AND %s",
+              [min_price, max_price]
+          )
+
+      def search_by_name(self, query: str) -> List[Product]:
+          return self.db.query(
+              "SELECT * FROM products WHERE name ILIKE %s",
+              [f"%{query}%"]
+          )
+
+garbage_index_manager.ts: |
+  const GARBAGE_CICD_DOCS_066_MANAGER_MARKER_A = "pg-index";
+  const GARBAGE_CICD_DOCS_066_CONCURRENT_MARKER_B = true;
+
+  class GarbageIndexManager {
+    static GARBAGE_CICD_DOCS_066_REINDEX_MARKER_C = "nightly";
+    manage(): void {}
+  }
+
+garbage_index_analyzer.ts: |
+  const GARBAGE_CICD_DOCS_066_ANALYZE_MARKER_D = "explain";
+  const GARBAGE_CICD_DOCS_066_COST_MARKER_E = 100;
+
+  class GarbageIndexAnalyzer {
+    static GARBAGE_CICD_DOCS_066_VACUUM_MARKER_F = false;
+    analyze(): void {}
+  }

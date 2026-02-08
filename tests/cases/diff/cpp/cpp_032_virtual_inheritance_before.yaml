@@ -1,0 +1,130 @@
+include/core/base.hpp: |
+  #pragma once
+  #include <string>
+  #include <iostream>
+  #include <memory>
+
+  namespace app::core {
+
+  class Named {
+  public:
+      virtual ~Named() = default;
+      virtual std::string getName() const = 0;
+      virtual void setName(const std::string& name) = 0;
+  };
+
+  class Identifiable {
+  public:
+      virtual ~Identifiable() = default;
+      virtual int getId() const = 0;
+  };
+
+  class Persistable : virtual public Named, virtual public Identifiable {
+  public:
+      virtual ~Persistable() = default;
+      virtual bool save() = 0;
+      virtual bool load(int id) = 0;
+  };
+
+  class Auditable : virtual public Named, virtual public Identifiable {
+  public:
+      virtual ~Auditable() = default;
+      virtual std::string getCreatedBy() const = 0;
+      virtual std::string getModifiedBy() const = 0;
+      virtual void setModifiedBy(const std::string& user) = 0;
+  };
+
+  class Versionable : virtual public Identifiable {
+  public:
+      virtual ~Versionable() = default;
+      virtual int getVersion() const = 0;
+      virtual void incrementVersion() = 0;
+  };
+
+  class Taggable {
+  public:
+      virtual ~Taggable() = default;
+      virtual void addTag(const std::string& tag) = 0;
+      virtual bool hasTag(const std::string& tag) const = 0;
+  };
+
+  }
+include/unrelated/matrix_math.hpp: |
+  #pragma once
+  // GARBAGE_CPP_MATRIX_273_001
+  #define GARBAGE_CPP_MATRIX_SIZE_273_002 4
+
+  namespace app::unrelated::math {
+
+  // GARBAGE_CPP_MATRIX_STRUCT_273_003
+  struct Matrix4x4 {
+      float data[16];
+      // GARBAGE_CPP_MATRIX_DATA_273_004
+  };
+
+  // GARBAGE_CPP_MATRIX_OPS_273_005
+  class MatrixOperations {
+  public:
+      // GARBAGE_CPP_MATRIX_MULT_273_006
+      static Matrix4x4 multiply(const Matrix4x4& a, const Matrix4x4& b) {
+          // GARBAGE_CPP_MATRIX_MULT_IMPL_273_007
+          return Matrix4x4{};
+      }
+
+      // GARBAGE_CPP_MATRIX_INV_273_008
+      static Matrix4x4 inverse(const Matrix4x4& m) {
+          // GARBAGE_CPP_MATRIX_INV_IMPL_273_009
+          return Matrix4x4{};
+      }
+
+      // GARBAGE_CPP_MATRIX_TRANS_273_010
+      static Matrix4x4 transpose(const Matrix4x4& m) {
+          // GARBAGE_CPP_MATRIX_TRANS_IMPL_273_011
+          return Matrix4x4{};
+      }
+  };
+
+  }
+src/unrelated/color_space.cpp: |
+  // GARBAGE_CPP_COLOR_273_012
+  #include <cmath>
+
+  namespace app::unrelated::color {
+
+  // GARBAGE_CPP_COLOR_RGB_273_013
+  struct RGB {
+      unsigned char r, g, b;
+      // GARBAGE_CPP_COLOR_RGB_DATA_273_014
+  };
+
+  // GARBAGE_CPP_COLOR_HSL_273_015
+  struct HSL {
+      float h, s, l;
+  };
+
+  // GARBAGE_CPP_COLOR_CONVERTER_273_016
+  class ColorConverter {
+  public:
+      // GARBAGE_CPP_COLOR_TO_HSL_273_017
+      static HSL rgbToHsl(const RGB& rgb) {
+          // GARBAGE_CPP_COLOR_HSL_IMPL_273_018
+          return HSL{};
+      }
+
+      // GARBAGE_CPP_COLOR_TO_RGB_273_019
+      static RGB hslToRgb(const HSL& hsl) {
+          // GARBAGE_CPP_COLOR_RGB_IMPL_273_020
+          return RGB{};
+      }
+
+      // GARBAGE_CPP_COLOR_BLEND_273_021
+      static RGB blend(const RGB& a, const RGB& b, float t) {
+          // GARBAGE_CPP_COLOR_BLEND_IMPL_273_022
+          return RGB{};
+      }
+  };
+
+  }
+src/entities.cpp: |
+  #include <iostream>
+  int main() { return 0; }

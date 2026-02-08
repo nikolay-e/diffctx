@@ -1,0 +1,40 @@
+package.json: |
+  {
+    "name": "gitlab-scripts-app",
+    "version": "1.0.0",
+    "scripts": {
+      "test": "jest --coverage",
+      "build": "tsc",
+      "lint": "eslint src/"
+    }
+  }
+
+.gitlab-ci.yml: |
+  test:
+    script:
+      - echo "test"
+
+src/index.ts: |
+  export function main(): void {
+    console.log('Application running');
+  }
+
+  main();
+
+garbage_command.ts: |
+  const GARBAGE_CICD_DOCS_023_COMMAND_MARKER_A = "bash";
+  const GARBAGE_CICD_DOCS_023_SHELL_MARKER_B = "/bin/sh";
+
+  class GarbageCommandRunner {
+    static GARBAGE_CICD_DOCS_023_EXIT_MARKER_C = 0;
+    execute(): number { return 0; }
+  }
+
+garbage_process.ts: |
+  const GARBAGE_CICD_DOCS_023_PROCESS_MARKER_D = "spawn";
+  const GARBAGE_CICD_DOCS_023_STDIO_MARKER_E = "inherit";
+
+  class GarbageProcessManager {
+    static GARBAGE_CICD_DOCS_023_DETACH_MARKER_F = false;
+    spawn(): void {}
+  }

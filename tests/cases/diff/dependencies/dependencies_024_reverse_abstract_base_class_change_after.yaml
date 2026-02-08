@@ -1,0 +1,40 @@
+base/handler.py: |
+  from abc import ABC, abstractmethod
+  from typing import Optional
+
+  class BaseHandler(ABC):
+      @abstractmethod
+      def handle(self, request: dict) -> dict:
+          pass
+
+      @abstractmethod
+      def validate(self, request: dict) -> bool:
+          pass
+
+      @abstractmethod
+      def authorize(self, request: dict) -> bool:
+          pass
+
+      def pre_process(self, request: dict) -> Optional[dict]:
+          return request
+
+      def post_process(self, response: dict) -> dict:
+          return response
+handlers/user_handler.py: |
+  from base.handler import BaseHandler
+
+  class UserHandler(BaseHandler):
+      def handle(self, request: dict) -> dict:
+          return {"user": request.get("user_id")}
+
+      def validate(self, request: dict) -> bool:
+          return "user_id" in request
+handlers/order_handler.py: |
+  from base.handler import BaseHandler
+
+  class OrderHandler(BaseHandler):
+      def handle(self, request: dict) -> dict:
+          return {"order": request.get("order_id")}
+
+      def validate(self, request: dict) -> bool:
+          return "order_id" in request

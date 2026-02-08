@@ -1,0 +1,108 @@
+src/lib.rs: |
+  pub mod animal;
+  pub mod unrelated;
+src/animal.rs: |
+  use std::fmt;
+
+  pub trait Animal {
+      fn speak(&self) -> String;
+      fn species(&self) -> &str;
+
+      fn introduce(&self) -> String {
+          format!("I am a {} and I say: {}", self.species(), self.speak())
+      }
+  }
+
+  pub trait Domesticated: Animal {
+      fn owner(&self) -> Option<&str>;
+  }
+
+  #[derive(Debug, Clone)]
+  pub struct Dog {
+      pub name: String,
+      age: u8,
+  }
+
+  impl Dog {
+      pub fn new(name: &str, age: u8) -> Self {
+          Self {
+              name: name.to_string(),
+              age,
+          }
+      }
+
+      pub fn age(&self) -> u8 {
+          self.age
+      }
+  }
+
+  impl fmt::Display for Dog {
+      fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+          write!(f, "Dog: {} (age {})", self.name, self.age)
+      }
+  }
+src/unrelated/mod.rs: |
+  pub mod filesystem;
+  pub mod scheduler;
+src/unrelated/filesystem.rs: |
+  // GARBAGE_RUST_FS_001
+  use std::path::PathBuf;
+
+  pub const GARBAGE_MAX_PATH_LEN_002: usize = 4096;
+  pub const GARBAGE_BUFFER_SIZE_003: usize = 8192;
+
+  pub struct GarbageFileHandle004 {
+      path: PathBuf,
+      mode: String,
+  }
+
+  impl GarbageFileHandle004 {
+      pub fn garbage_read_005(&self) -> Result<Vec<u8>, String> {
+          Err("GARBAGE_READ_ERROR_006".to_string())
+      }
+
+      pub fn garbage_write_007(&mut self, data: &[u8]) -> Result<usize, String> {
+          Err("GARBAGE_WRITE_ERROR_008".to_string())
+      }
+
+      pub fn garbage_seek_009(&mut self, pos: u64) -> Result<u64, String> {
+          Err("GARBAGE_SEEK_ERROR_010".to_string())
+      }
+  }
+
+  pub trait GarbageFileSystem011 {
+      fn garbage_open_012(&self, path: &str) -> Result<GarbageFileHandle004, String>;
+      fn garbage_delete_013(&self, path: &str) -> Result<(), String>;
+  }
+src/unrelated/scheduler.rs: |
+  // GARBAGE_RUST_SCHED_014
+  use std::time::Duration;
+
+  pub const GARBAGE_MAX_TASKS_015: usize = 1000;
+  pub const GARBAGE_DEFAULT_PRIORITY_016: u8 = 5;
+
+  pub struct GarbageTask017 {
+      id: u64,
+      priority: u8,
+      interval: Duration,
+  }
+
+  impl GarbageTask017 {
+      pub fn garbage_run_018(&self) -> Result<(), String> {
+          Err("GARBAGE_TASK_ERROR_019".to_string())
+      }
+
+      pub fn garbage_cancel_020(&mut self) {
+          // GARBAGE_CANCEL_IMPL_021
+      }
+  }
+
+  pub struct GarbageScheduler022 {
+      tasks: Vec<GarbageTask017>,
+  }
+
+  impl GarbageScheduler022 {
+      pub fn garbage_schedule_023(&mut self, task: GarbageTask017) {
+          self.tasks.push(task);
+      }
+  }

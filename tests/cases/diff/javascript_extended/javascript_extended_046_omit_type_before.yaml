@@ -1,0 +1,56 @@
+src/full.ts: |
+  export interface FullRecord {
+      id: string;
+      name: string;
+      email: string;
+      secret: string;
+      internal: boolean;
+      createdAt: Date;
+  }
+
+  export function createFullRecord(name: string, email: string): FullRecord {
+      return {
+          id: Date.now().toString(),
+          name,
+          email,
+          secret: 'hidden-value',
+          internal: true,
+          createdAt: new Date(),
+      };
+  }
+src/public.ts: |
+  console.log('initial');
+src/unrelated/geolocation.ts: |
+  const GARBAGE_JSX_046_GEO_CONFIG_A = 'geolocation_garbage_marker';
+
+  export class GarbageGeoService {
+      private lat = 0;
+      private lng = 0;
+
+      setPosition(lat: number, lng: number): void {
+          this.lat = lat;
+          this.lng = lng;
+      }
+
+      getPosition(): { lat: number; lng: number } {
+          return { lat: this.lat, lng: this.lng };
+      }
+  }
+
+  export function GARBAGE_JSX_046_CALCULATE_DISTANCE_B(): number {
+      return 0;
+  }
+
+  export const GARBAGE_JSX_046_DEFAULT_COORDS_C = { lat: 0, lng: 0 };
+src/unrelated/timezone.ts: |
+  const GARBAGE_JSX_046_TZ_CONFIG_D = { defaultZone: 'UTC' };
+
+  export class GARBAGE_JSX_046_TIMEZONE_SERVICE_E {
+      convert(date: Date, zone: string): Date {
+          return date;
+      }
+  }
+
+  export function GARBAGE_JSX_046_GET_OFFSET_F(): number {
+      return 0;
+  }

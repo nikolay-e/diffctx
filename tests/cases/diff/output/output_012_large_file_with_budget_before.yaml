@@ -1,0 +1,59 @@
+large.py: 'line_0 = 0
+
+  line_1 = 1
+
+  line_2 = 2
+
+  line_3 = 3
+
+  line_4 = 4
+
+  line_5 = 5
+
+  line_6 = 6
+
+  line_7 = 7
+
+  line_8 = 8
+
+  line_9 = 9
+
+  line_10 = 10
+
+  line_11 = 11
+
+  line_12 = 12
+
+  line_13 = 13
+
+  line_14 = 14
+
+  line_15 = 15
+
+  line_16 = 16
+
+  line_17 = 17
+
+  line_18 = 18
+
+  line_19 = 19
+
+  '
+garbage_migration.py: |
+  GARBAGE_OUT_012_MIGRATE_MARKER_A = "migration"
+  GARBAGE_OUT_012_SCHEMA_MARKER_B = True
+
+  class SchemaMigrator:
+      GARBAGE_OUT_012_MIGRATOR_CLASS_C = "migrator"
+
+      def migrate(self, version: int) -> bool:
+          return True
+garbage_versioning.py: |
+  GARBAGE_OUT_012_VERSION_MARKER_D = "versioning"
+  GARBAGE_OUT_012_SEMVER_MARKER_E = 300
+
+  class VersionResolver:
+      GARBAGE_OUT_012_RESOLVER_CLASS_F = True
+
+      def resolve(self, constraint: str) -> str:
+          return ""

@@ -1,0 +1,44 @@
+src/utils/formatter.ts: |
+  export class Formatter {
+    format(value: string): string {
+      return value.trim();
+    }
+  }
+
+  export class JsonFormatter extends Formatter {
+    format(value: string): string {
+      return JSON.stringify(JSON.parse(value), null, 2);
+    }
+  }
+
+src/services/data.ts: |
+  import { Formatter } from '../utils/formatter';
+
+  /**
+   * Data processor that uses {@link Formatter} for output
+   */
+  export class DataProcessor {
+    private formatter: Formatter;
+
+    constructor() {
+      this.formatter = new Formatter();
+    }
+  }
+
+garbage_tsdoc_generator.ts: |
+  const GARBAGE_CICD_DOCS_042_GENERATOR_MARKER_A = "typedoc";
+  const GARBAGE_CICD_DOCS_042_OUTPUT_MARKER_B = "html";
+
+  class GarbageTsdocGenerator {
+    static GARBAGE_CICD_DOCS_042_THEME_MARKER_C = "default";
+    generate(): void {}
+  }
+
+garbage_tsdoc_linker.ts: |
+  const GARBAGE_CICD_DOCS_042_LINKER_MARKER_D = "symbol";
+  const GARBAGE_CICD_DOCS_042_RESOLVE_MARKER_E = "lazy";
+
+  class GarbageTsdocLinker {
+    static GARBAGE_CICD_DOCS_042_VALIDATE_MARKER_F = true;
+    link(): void {}
+  }

@@ -1,0 +1,113 @@
+config/server.yaml: |
+  server:
+    port: 8080
+    host: 0.0.0.0
+    read_timeout: 30s
+    write_timeout: 30s
+  database:
+    pool_size: 10
+    idle_timeout: 300s
+  logging:
+    level: info
+    format: json
+    output: stdout
+k8s/configmap.yaml: |
+  apiVersion: v1
+  kind: ConfigMap
+  metadata:
+    name: app-config
+    namespace: production
+  data:
+    server.yaml: |
+      server:
+        port: 8080
+        host: 0.0.0.0
+        read_timeout: 30s
+        write_timeout: 30s
+      database:
+        pool_size: 10
+        idle_timeout: 300s
+      logging:
+        level: info
+        format: json
+        output: stdout
+k8s/deployment.yaml: |
+  apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    name: myapp
+    namespace: production
+    labels:
+      app: myapp
+      version: v1
+  spec:
+    replicas: 3
+    selector:
+      matchLabels:
+        app: myapp
+    template:
+      metadata:
+        labels:
+          app: myapp
+          version: v1
+      spec:
+        containers:
+        - name: app
+          image: myapp:v1.0.0
+          ports:
+          - containerPort: 8080
+          volumeMounts:
+          - name: config
+            mountPath: /app/config
+            readOnly: true
+          - name: secrets
+            mountPath: /app/secrets
+            readOnly: true
+          - name: tmp
+            mountPath: /tmp
+        volumes:
+        - name: config
+          configMap:
+            name: app-config
+        - name: secrets
+          secret:
+            secretName: app-secrets
+        - name: tmp
+          emptyDir: {}
+k8s/service.yaml: |
+  apiVersion: v1
+  kind: Service
+  metadata:
+    name: myapp
+    namespace: production
+  spec:
+    selector:
+      app: myapp
+    ports:
+    - port: 80
+      targetPort: 8080
+k8s/unrelated/elastic/elasticsearch.yaml: |
+  # GARBAGE_K8S_407_ELASTICSEARCH
+  apiVersion: elasticsearch.k8s.elastic.co/v1
+  kind: Elasticsearch
+  metadata:
+    name: GARBAGE_K8S_407_ES_CLUSTER
+  spec:
+    version: GARBAGE_K8S_407_ES_VERSION
+    nodeSets:
+    - name: GARBAGE_K8S_407_ES_NODESET
+      count: 3
+      config:
+        node.store.allow_mmap: GARBAGE_K8S_407_MMAP_VALUE
+k8s/unrelated/kafka/kafka-cluster.yaml: |
+  # GARBAGE_K8S_407_KAFKA_CLUSTER
+  apiVersion: kafka.strimzi.io/v1beta2
+  kind: Kafka
+  metadata:
+    name: GARBAGE_K8S_407_KAFKA_NAME
+  spec:
+    kafka:
+      version: GARBAGE_K8S_407_KAFKA_VERSION
+      replicas: 3
+      config:
+        offsets.topic.replication.factor: GARBAGE_K8S_407_KAFKA_RF

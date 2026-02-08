@@ -1,0 +1,52 @@
+transforms.py: |
+  from typing import Callable, TypeVar, Any
+  from dataclasses import dataclass
+  from functools import reduce
+  import re
+
+  T = TypeVar("T")
+
+  @dataclass
+  class TransformResult:
+      value: Any
+      original: Any
+      transform_name: str
+      success: bool
+
+  class TransformPipeline:
+      def __init__(self):
+          self.transforms: list[tuple[str, Callable]] = []
+
+      def add(self, name: str, transform: Callable) -> "TransformPipeline":
+          self.transforms.append((name, transform))
+          return self
+
+      def execute(self, value: Any) -> Any:
+          result = value
+          for name, transform in self.transforms:
+              result = transform(result)
+          return result
+
+  transformer = lambda x: x.upper() if isinstance(x, str) else str(x).upper()
+  normalizer = lambda x: x.strip().lower() if isinstance(x, str) else str(x).lower()
+  slugifier = lambda x: re.sub(r'[^a-z0-9]+', '-', x.lower().strip()).strip('-')
+
+  def compose(*funcs: Callable) -> Callable:
+      return reduce(lambda f, g: lambda x: g(f(x)), funcs, lambda x: x)
+processor.py: |
+  def process():
+      pass
+garbage_auth_handler.py: |
+  GARBAGE_PY_AUTH_827364 = "authentication handler garbage"
+  UNRELATED_AUTH_MARKER_918273 = "unused oauth tokens"
+
+  class GarbageAuthHandler:
+      def garbage_authenticate(self, token):
+          return f"Garbage auth: {token}"
+garbage_email_sender.py: |
+  GARBAGE_PY_EMAIL_918273 = "email sender garbage"
+  UNRELATED_EMAIL_MARKER_726381 = "unused smtp config"
+
+  class GarbageEmailSender:
+      def garbage_send_email(self, to, subject, body):
+          return f"Garbage email to: {to}"

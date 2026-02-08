@@ -1,0 +1,133 @@
+iam.tf: |
+  data "aws_iam_policy_document" "lambda_assume_role" {
+    statement {
+      effect  = "Allow"
+      actions = ["sts:AssumeRole"]
+
+      principals {
+        type        = "Service"
+        identifiers = ["lambda.amazonaws.com"]
+      }
+    }
+  }
+
+  data "aws_iam_policy_document" "lambda_execution" {
+    statement {
+      sid    = "CloudWatchLogs"
+      effect = "Allow"
+      actions = [
+        "logs:CreateLogGroup",
+        "logs:CreateLogStream",
+        "logs:PutLogEvents"
+      ]
+      resources = ["arn:aws:logs:*:*:*"]
+    }
+
+    statement {
+      sid    = "S3ReadAccess"
+      effect = "Allow"
+      actions = [
+        "s3:GetObject",
+        "s3:ListBucket"
+      ]
+      resources = [
+        var.data_bucket_arn,
+        "${var.data_bucket_arn}/*"
+      ]
+    }
+
+    statement {
+      sid    = "DynamoDBAccess"
+      effect = "Allow"
+      actions = [
+        "dynamodb:GetItem",
+        "dynamodb:PutItem",
+        "dynamodb:UpdateItem",
+        "dynamodb:DeleteItem",
+        "dynamodb:Query",
+        "dynamodb:Scan"
+      ]
+      resources = [var.dynamodb_table_arn]
+    }
+
+    statement {
+      sid    = "KMSDecrypt"
+      effect = "Allow"
+      actions = [
+        "kms:Decrypt",
+        "kms:GenerateDataKey"
+      ]
+      resources = [var.kms_key_arn]
+    }
+
+    statement {
+      sid    = "SecretsManagerRead"
+      effect = "Allow"
+      actions = [
+        "secretsmanager:GetSecretValue"
+      ]
+      resources = [var.secrets_arn]
+    }
+  }
+
+  resource "aws_iam_role" "lambda_exec" {
+    name               = "${var.environment}-${var.function_name}-lambda-role"
+    assume_role_policy = data.aws_iam_policy_document.lambda_assume_role.json
+
+    tags = {
+      Name        = "${var.environment}-${var.function_name}-lambda-role"
+      Environment = var.environment
+      ManagedBy   = "terraform"
+    }
+  }
+
+  resource "aws_iam_role_policy" "lambda_execution" {
+    name   = "${var.environment}-${var.function_name}-lambda-policy"
+    role   = aws_iam_role.lambda_exec.id
+    policy = data.aws_iam_policy_document.lambda_execution.json
+  }
+
+  resource "aws_iam_role_policy_attachment" "lambda_xray" {
+    role       = aws_iam_role.lambda_exec.name
+    policy_arn = "arn:aws:iam::aws:policy/AWSXRayDaemonWriteAccess"
+  }
+
+  resource "aws_iam_role_policy_attachment" "lambda_vpc" {
+    count      = var.vpc_enabled ? 1 : 0
+    role       = aws_iam_role.lambda_exec.name
+    policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole"
+  }
+outputs.tf: |
+  output "lambda_role_arn" {
+    description = "ARN of the Lambda execution role"
+    value       = aws_iam_role.lambda_exec.arn
+  }
+
+  output "lambda_role_name" {
+    description = "Name of the Lambda execution role"
+    value       = aws_iam_role.lambda_exec.name
+  }
+deprecated/old_roles_GARBAGE_TF_iam449a.tf: |
+  # GARBAGE_TF_iam449a - Deprecated IAM roles
+  resource "aws_iam_role" "legacy_admin_GARBAGE_TF_iam449a" {
+    name = "legacy-admin-role-GARBAGE_TF_iam449a"
+    assume_role_policy = jsonencode({
+      Version = "2012-10-17"
+      Statement = [{
+        Effect    = "Allow"
+        Principal = { Service = "ec2.amazonaws.com" }
+        Action    = "sts:AssumeRole"
+      }]
+    })
+  }
+
+  resource "aws_iam_role_policy_attachment" "legacy_admin_GARBAGE_TF_iam449a" {
+    role       = aws_iam_role.legacy_admin_GARBAGE_TF_iam449a.name
+    policy_arn = "arn:aws:iam::aws:policy/AdministratorAccess"
+  }
+scripts/rotate_keys_GARBAGE_TF_iam449b.py: |
+  # GARBAGE_TF_iam449b - Old key rotation script
+  import boto3
+  def rotate_legacy_keys_GARBAGE_TF_iam449b():
+      iam = boto3.client('iam')
+      print("Rotating legacy keys GARBAGE_TF_iam449b")

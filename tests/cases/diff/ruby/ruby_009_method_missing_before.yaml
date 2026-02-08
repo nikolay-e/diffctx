@@ -1,0 +1,52 @@
+lib/dynamic_struct.rb: |
+  class DynamicStruct
+    def initialize(hash = {})
+      @data = hash.transform_keys(&:to_sym)
+    end
+
+    def method_missing(name, *args)
+      key = name.to_s
+      if key.end_with?('=')
+        @data[key.chop.to_sym] = args.first
+      elsif key.end_with?('?')
+        !!@data[key.chop.to_sym]
+      elsif @data.key?(name)
+        @data[name]
+      else
+        super
+      end
+    end
+
+    def respond_to_missing?(name, include_private = false)
+      key = name.to_s
+      key.end_with?('=') || key.end_with?('?') || @data.key?(name) || super
+    end
+
+    def to_h
+      @data.dup
+    end
+  end
+app.rb: |
+  puts 'Hello'
+lib/garbage_queue_worker.rb: |
+  GARBAGE_RUBY_009_QUEUE_BACKEND_A = "sidekiq"
+  GARBAGE_RUBY_009_CONCURRENCY_B = "threaded"
+
+  class GarbageQueueWorker
+    GARBAGE_RUBY_009_POLL_INTERVAL_C = 5
+
+    def perform(job_data)
+      GARBAGE_RUBY_009_QUEUE_BACKEND_A
+    end
+  end
+lib/garbage_template_engine.rb: |
+  GARBAGE_RUBY_009_TEMPLATE_LANG_D = "erb_extended"
+  GARBAGE_RUBY_009_ESCAPE_MODE_E = "html_safe"
+
+  class GarbageTemplateEngine
+    GARBAGE_RUBY_009_CACHE_COMPILED_F = true
+
+    def render(template_name)
+      GARBAGE_RUBY_009_TEMPLATE_LANG_D
+    end
+  end

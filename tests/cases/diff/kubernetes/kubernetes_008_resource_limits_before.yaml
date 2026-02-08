@@ -1,0 +1,76 @@
+k8s/apps/worker/deployment.yaml: |
+  apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    name: worker
+    namespace: production
+    labels:
+      app: worker
+      component: background-jobs
+  spec:
+    replicas: 5
+    selector:
+      matchLabels:
+        app: worker
+    template:
+      metadata:
+        labels:
+          app: worker
+          component: background-jobs
+      spec:
+        containers:
+        - name: worker
+          image: worker:v1.0.0
+          command: ["python", "-m", "celery", "worker"]
+          env:
+          - name: CELERY_BROKER_URL
+            valueFrom:
+              secretKeyRef:
+                name: redis-secret
+                key: url
+          resources: {}
+k8s/apps/worker/service.yaml: |
+  apiVersion: v1
+  kind: Service
+  metadata:
+    name: worker-metrics
+    namespace: production
+  spec:
+    selector:
+      app: worker
+    ports:
+    - name: metrics
+      port: 9090
+      targetPort: 9090
+k8s/unrelated/gpu-workloads/ml-training.yaml: |
+  # GARBAGE_K8S_408_ML_TRAINING
+  apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    name: GARBAGE_K8S_408_ML_DEPLOYMENT
+  spec:
+    replicas: 1
+    selector:
+      matchLabels:
+        app: GARBAGE_K8S_408_ML_LABEL
+    template:
+      spec:
+        containers:
+        - name: trainer
+          image: pytorch:GARBAGE_K8S_408_PYTORCH_VERSION
+          resources:
+            limits:
+              nvidia.com/gpu: GARBAGE_K8S_408_GPU_COUNT
+k8s/unrelated/spark/spark-operator.yaml: |
+  # GARBAGE_K8S_408_SPARK_OPERATOR
+  apiVersion: sparkoperator.k8s.io/v1beta2
+  kind: SparkApplication
+  metadata:
+    name: GARBAGE_K8S_408_SPARK_APP
+  spec:
+    type: Scala
+    mode: cluster
+    image: spark:GARBAGE_K8S_408_SPARK_VERSION
+    driver:
+      cores: GARBAGE_K8S_408_DRIVER_CORES
+      memory: GARBAGE_K8S_408_DRIVER_MEM

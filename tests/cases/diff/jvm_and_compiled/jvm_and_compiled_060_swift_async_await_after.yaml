@@ -1,0 +1,35 @@
+User.swift: |
+  struct User: Codable {
+      let id: String
+      let name: String
+  }
+UserAPI.swift: |
+  import Foundation
+
+  class UserAPI {
+      func fetchUsers() async throws -> [User] {
+          let url = URL(string: "https://api.example.com/users")!
+          let (data, _) = try await URLSession.shared.data(from: url)
+          return try JSONDecoder().decode([User].self, from: data)
+      }
+
+      func getUser(id: String) async throws -> User {
+          let users = try await fetchUsers()
+          guard let user = users.first(where: { $0.id == id }) else {
+              throw NSError(domain: "UserAPI", code: 404)
+          }
+          return user
+      }
+  }
+GarbageCombinePublisher.swift: |
+  class GarbageCombinePublisher {
+      static let GARBAGE_JVM_060_COMBINE_MARKER_A = "marker"
+      static let GARBAGE_JVM_060_PUBLISHER_MARKER_B = "marker"
+      func noop() {}
+  }
+GarbageSubscriberSink.swift: |
+  class GarbageSubscriberSink {
+      static let GARBAGE_JVM_060_SUBSCRIBER_MARKER_C = "marker"
+      static let GARBAGE_JVM_060_SINK_MARKER_D = "marker"
+      func noop() {}
+  }

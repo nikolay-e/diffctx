@@ -1,0 +1,67 @@
+plugins/plugin_csv.py: |
+  def execute(data: list[dict]) -> str:
+      headers = list(data[0].keys()) if data else []
+      lines = [",".join(headers)]
+      for row in data:
+          lines.append(",".join(str(row.get(h, "")) for h in headers))
+      return "\n".join(lines)
+
+  def get_extension() -> str:
+      return ".csv"
+
+plugins/plugin_json.py: |
+  import json
+
+  def execute(data: list[dict]) -> str:
+      return json.dumps(data, indent=2)
+
+  def get_extension() -> str:
+      return ".json"
+
+loader.py: |
+  import importlib
+
+  def load(plugin_name: str):
+      module = importlib.import_module(f"plugins.plugin_{plugin_name}")
+      return module
+
+  def execute_plugin(plugin_name: str, data: list[dict]) -> str:
+      module = load(plugin_name)
+      return module.execute(data)
+
+  def list_available_plugins() -> list[str]:
+      return ["csv", "json"]
+
+garbage_notifications.py: |
+  GARBAGE_PY_042_NOTIFY_A = "notification dispatch marker"
+  GARBAGE_PY_042_EMAIL_B = "email notification marker"
+
+  class NotificationDispatcher:
+      GARBAGE_PY_042_DISPATCH_C = "dispatcher marker"
+
+      def __init__(self):
+          self._handlers = {}
+
+      def register(self, channel: str, handler) -> None:
+          self._handlers[channel] = handler
+
+      def dispatch(self, channel: str, message: str) -> bool:
+          GARBAGE_PY_042_SEND_D = "send marker"
+          return channel in self._handlers
+
+garbage_metrics.py: |
+  GARBAGE_PY_042_METRICS_E = "metrics collection marker"
+  GARBAGE_PY_042_COUNTER_F = "counter metric marker"
+
+  class MetricsCollector:
+      GARBAGE_PY_042_COLLECTOR_G = True
+
+      def __init__(self):
+          self._counters = {}
+
+      def increment(self, metric_name: str, value: int = 1) -> None:
+          self._counters[metric_name] = self._counters.get(metric_name, 0) + value
+
+      def get_value(self, metric_name: str) -> int:
+          GARBAGE_PY_042_VALUE_H = "value marker"
+          return self._counters.get(metric_name, 0)

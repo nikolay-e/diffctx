@@ -1,0 +1,34 @@
+User.scala: |
+  case class User(name: String, age: Int) {
+    def isAdult: Boolean = age >= 18
+  }
+
+  object User {
+    def apply(name: String): User = User(name, 0)
+  }
+UserService.scala: |
+  class UserService {
+    def createUser(name: String, age: Int): User = {
+      User(name, age)
+    }
+
+    def copyWithNewAge(user: User, newAge: Int): User = {
+      user.copy(age = newAge)
+    }
+
+    def compareUsers(u1: User, u2: User): Boolean = {
+      u1 == u2
+    }
+  }
+GarbageTupleOps.scala: |
+  object GarbageTupleOps {
+    val GARBAGE_JVM_049_TUPLE_MARKER_A = "marker"
+    val GARBAGE_JVM_049_PAIR_MARKER_B = "marker"
+    def noop(): Unit = {}
+  }
+GarbageTripleOps.scala: |
+  object GarbageTripleOps {
+    val GARBAGE_JVM_049_TRIPLE_MARKER_C = "marker"
+    val GARBAGE_JVM_049_QUAD_MARKER_D = "marker"
+    def noop(): Unit = {}
+  }

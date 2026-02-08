@@ -1,0 +1,20 @@
+src/core/utils.ts: |
+  export function coreutils() {
+      return "core_v2";
+  }
+
+  export function newCoreUtil() {
+      return "new_core";
+  }
+
+  export const CORE_VERSION = "2.0.0";
+src/lib/index.ts: |
+  export { coreutils } from '../core/utils';
+src/index.ts: |
+  export { coreutils } from './lib';
+src/app.ts: |
+  import { coreutils } from './index';
+
+  export function main() {
+      return coreutils();
+  }

@@ -1,0 +1,37 @@
+src/exceptions.py: |
+  class ValidationError(Exception):
+      def __init__(self, field: str, message: str):
+          self.field = field
+          self.message = message
+          super().__init__(f"{field}: {message}")
+
+  class NotFoundError(Exception):
+      def __init__(self, resource: str, identifier: str):
+          self.resource = resource
+          self.identifier = identifier
+          super().__init__(f"{resource} with id {identifier} not found")
+src/user_repository.py: |
+  from src.exceptions import NotFoundError, ValidationError
+
+  class UserRepository:
+      def __init__(self):
+          self.users = {}
+
+      def get(self, user_id: int):
+          if user_id not in self.users:
+              raise NotFoundError("User", str(user_id))
+          return self.users[user_id]
+
+      def create(self, data: dict):
+          if "email" not in data:
+              raise ValidationError("email", "is required")
+          user_id = len(self.users) + 1
+          self.users[user_id] = {**data, "id": user_id}
+          return self.users[user_id]
+tests/test_user_repository.py: |
+  from src.user_repository import UserRepository
+
+  def test_create_user():
+      repo = UserRepository()
+      user = repo.create({"name": "Test", "email": "test@example.com"})
+      assert user["name"] == "Test"

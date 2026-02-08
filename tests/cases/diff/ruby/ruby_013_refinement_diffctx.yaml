@@ -1,0 +1,16 @@
+must_include_files:
+  - lib/formatter.rb
+must_include_content:
+  - |
+    using StringExtensions
+must_not_include:
+  - GARBAGE_RUBY_013_BARCODE_FORMAT_A
+  - GARBAGE_RUBY_013_CHECK_DIGIT_B
+  - GARBAGE_RUBY_013_PREFIX_LENGTH_C
+  - GARBAGE_RUBY_013_PRINTER_MODEL_D
+  - GARBAGE_RUBY_013_LABEL_SIZE_E
+  - GARBAGE_RUBY_013_DPI_SETTING_F
+  - GarbageBarcodeGenerator
+  - GarbageLabelPrinter
+  - garbage_barcode.rb
+  - garbage_label_printer.rb

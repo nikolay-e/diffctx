@@ -1,0 +1,87 @@
+src/counterReducer.ts: |
+  export interface CounterState {
+      count: number;
+      step: number;
+  }
+
+  export type CounterAction =
+      | { type: 'INCREMENT' }
+      | { type: 'DECREMENT' }
+      | { type: 'SET_STEP'; payload: number }
+      | { type: 'RESET' };
+
+  export const initialState: CounterState = {
+      count: 0,
+      step: 1,
+  };
+
+  export function counterReducer(state: CounterState, action: CounterAction): CounterState {
+      switch (action.type) {
+          case 'INCREMENT':
+              return { ...state, count: state.count + state.step };
+          case 'DECREMENT':
+              return { ...state, count: state.count - state.step };
+          case 'SET_STEP':
+              return { ...state, step: action.payload };
+          case 'RESET':
+              return initialState;
+          default:
+              return state;
+      }
+  }
+src/Counter.tsx: |
+  import React from 'react';
+
+  export function Counter() {
+      return <div>Initial</div>;
+  }
+src/unrelated/color_utils.ts: |
+  // GARBAGE_FE_009_COLOR_A
+  export interface HSL {
+      h: number;
+      s: number;
+      l: number;
+  }
+
+  // GARBAGE_FE_009_COLOR_B
+  export function hslToHex(hsl: HSL): string {
+      const { h, s, l } = hsl;
+      const a = s * Math.min(l, 1 - l);
+      const f = (n: number) => {
+          const k = (n + h / 30) % 12;
+          return l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1);
+      };
+      return '#' + [f(0), f(8), f(4)]
+          .map(x => Math.round(x * 255).toString(16).padStart(2, '0'))
+          .join('');
+  }
+
+  // GARBAGE_FE_009_CONTRAST_C
+  export function contrastRatio(fg: HSL, bg: HSL): number {
+      return Math.abs(fg.l - bg.l);
+  }
+src/unrelated/debounce_utils.ts: |
+  // GARBAGE_FE_009_DEBOUNCE_D
+  export function debounce<T extends (...args: any[]) => void>(
+      fn: T, delay: number
+  ): T {
+      let timer: ReturnType<typeof setTimeout>;
+      return ((...args: any[]) => {
+          clearTimeout(timer);
+          timer = setTimeout(() => fn(...args), delay);
+      }) as T;
+  }
+
+  // GARBAGE_FE_009_THROTTLE_E
+  export function throttle<T extends (...args: any[]) => void>(
+      fn: T, limit: number
+  ): T {
+      let inThrottle = false;
+      return ((...args: any[]) => {
+          if (!inThrottle) {
+              fn(...args);
+              inThrottle = true;
+              setTimeout(() => { inThrottle = false; }, limit);
+          }
+      }) as T;
+  }

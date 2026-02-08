@@ -1,0 +1,86 @@
+src/services/order_service.py: |
+  from typing import Optional, List
+  from dataclasses import dataclass
+  from datetime import datetime
+
+  @dataclass
+  class Order:
+      id: int
+      customer_id: int
+      total: float
+      status: str = "pending"
+      created_at: datetime = None
+
+  class OrderService:
+      def __init__(self, payment_service):
+          self.payment_service = payment_service
+          self.orders: List[Order] = []
+
+      def create_order(self, customer_id: int, items: List[dict]) -> Order:
+          total = sum(item["price"] * item["quantity"] for item in items)
+          order = Order(
+              id=len(self.orders) + 1,
+              customer_id=customer_id,
+              total=total,
+              created_at=datetime.now()
+          )
+          self.orders.append(order)
+          return order
+
+      def process_order(self, order_id: int) -> bool:
+          order = self.get_order(order_id)
+          if not order:
+              return False
+          if order.status != "pending":
+              return False
+          success = self.payment_service.charge(order.customer_id, order.total)
+          if success:
+              order.status = "completed"
+          return success
+
+      def get_order(self, order_id: int) -> Optional[Order]:
+          for order in self.orders:
+              if order.id == order_id:
+                  return order
+          return None
+
+src/services/payment_service.py: |
+  from typing import List
+
+  class PaymentService:
+      def __init__(self, order_service):
+          self.order_service = order_service
+          self.transactions: List[dict] = []
+
+      def charge(self, customer_id: int, amount: float) -> bool:
+          transaction = {"customer_id": customer_id, "amount": amount, "status": "completed"}
+          self.transactions.append(transaction)
+          return True
+
+      def refund(self, order_id: int) -> bool:
+          order = self.order_service.get_order(order_id)
+          if not order:
+              return False
+          transaction = {"customer_id": order.customer_id, "amount": -order.total, "status": "refunded"}
+          self.transactions.append(transaction)
+          return True
+
+garbage_analytics.py: |
+  GARBAGE_ALGO_016_ANALYTICS_MARKER_A = "analytics"
+  GARBAGE_ALGO_016_TRACKING_MARKER_B = True
+
+  class AnalyticsTracker:
+      GARBAGE_ALGO_016_EVENTS_MARKER_C = []
+
+      def track(self, event: str) -> None:
+          pass
+
+garbage_reporting.py: |
+  GARBAGE_ALGO_016_REPORT_MARKER_D = "report"
+  GARBAGE_ALGO_016_EXPORT_MARKER_E = "csv"
+
+  class ReportGenerator:
+      GARBAGE_ALGO_016_FORMAT_MARKER_F = True
+
+      def generate(self) -> str:
+          return ""

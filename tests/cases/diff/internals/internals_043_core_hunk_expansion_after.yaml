@@ -1,0 +1,8 @@
+core.py: |
+  from helper import helper_function
+
+  def caller_function():
+      helper_function()
+helper.py: |
+  def helper_function():
+      return "helping"

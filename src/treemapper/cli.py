@@ -34,8 +34,7 @@ def _validate_budget(budget: int | None) -> None:
 
 
 def _validate_alpha(alpha: float) -> None:
-    is_valid = 0 < alpha < 1
-    if not is_valid:
+    if not (0 < alpha < 1):
         _exit_error(f"--alpha must be between 0 and 1 (exclusive), got {alpha}")
 
 

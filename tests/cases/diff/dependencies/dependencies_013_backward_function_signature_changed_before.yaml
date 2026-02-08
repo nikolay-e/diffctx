@@ -1,0 +1,14 @@
+utils.py: |
+  def format_date(date):
+      return date.strftime("%Y-%m-%d")
+reports/generator.py: |
+  from utils import format_date
+
+  def generate_report(today):
+      formatted = format_date(today)
+      return f"Report for {formatted}"
+api/views.py: |
+  from utils import format_date
+
+  def get_created_date(created_at):
+      return format_date(created_at)

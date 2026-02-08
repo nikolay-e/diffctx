@@ -1,0 +1,90 @@
+internal/stream/producer.go: |
+  package stream
+
+  import (
+      "context"
+      "time"
+  )
+
+  type Message struct {
+      ID        int
+      Payload   []byte
+      Timestamp time.Time
+  }
+
+  type Producer struct {
+      output chan<- Message
+      rate   time.Duration
+  }
+
+  func NewProducer(output chan<- Message, rate time.Duration) *Producer {
+      return &Producer{output: output, rate: rate}
+  }
+
+  func (p *Producer) Start(ctx context.Context, count int) {
+      ticker := time.NewTicker(p.rate)
+      defer ticker.Stop()
+
+      for i := 0; i < count; i++ {
+          select {
+          case <-ctx.Done():
+              return
+          case <-ticker.C:
+              p.output <- Message{
+                  ID:        i,
+                  Payload:   []byte("data"),
+                  Timestamp: time.Now(),
+              }
+          }
+      }
+  }
+internal/stream/consumer.go: |
+  package stream
+
+  import "context"
+
+  type Consumer struct {
+      input <-chan Message
+  }
+
+  func NewConsumer(input <-chan Message) *Consumer {
+      return &Consumer{input: input}
+  }
+
+  func (c *Consumer) Process(ctx context.Context) {
+      for {
+          select {
+          case msg, ok := <-c.input:
+              if !ok {
+                  return
+              }
+              println("Received:", msg.ID)
+          case <-ctx.Done():
+              return
+          }
+      }
+  }
+internal/unrelated/pubsub/kafka.go: |
+  package pubsub
+
+  const GARBAGE_GO_PUBSUB_KAFKA_001 = "pubsub_garbage"
+
+  type GARBAGE_GO_TYPE_KAFKA_002 struct {
+      brokers []string
+  }
+
+  func GARBAGE_GO_FUNC_KAFKA_003() string {
+      return "GARBAGE_GO_KAFKA_UNUSED_004"
+  }
+internal/unrelated/pubsub/nats.go: |
+  package pubsub
+
+  const GARBAGE_GO_PUBSUB_NATS_005 = "nats_garbage"
+
+  type GARBAGE_GO_TYPE_NATS_006 struct {
+      url string
+  }
+
+  func GARBAGE_GO_FUNC_NATS_007() {
+      println("GARBAGE_GO_NATS_OUTPUT_008")
+  }

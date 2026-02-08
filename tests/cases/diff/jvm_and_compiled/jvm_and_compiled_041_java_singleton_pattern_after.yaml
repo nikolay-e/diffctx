@@ -1,0 +1,47 @@
+src/main/java/com/example/Config.java: |
+  package com.example;
+
+  public class Config {
+      private static volatile Config instance;
+      private final String value;
+
+      private Config() {
+          this.value = System.getenv().getOrDefault("CONFIG", "default");
+      }
+
+      public static Config getInstance() {
+          if (instance == null) {
+              synchronized (Config.class) {
+                  if (instance == null) {
+                      instance = new Config();
+                  }
+              }
+          }
+          return instance;
+      }
+
+      public String getValue() {
+          return value;
+      }
+  }
+src/main/java/com/example/AppContext.java: |
+  package com.example;
+
+  public class AppContext {
+      public void initialize() {
+          Config config = Config.getInstance();
+          System.out.println("Config: " + config.getValue());
+      }
+  }
+GarbageFlyweight.java: |
+  public class GarbageFlyweight {
+      public static final String GARBAGE_JVM_041_FLYWEIGHT_MARKER_A = "marker";
+      public static final String GARBAGE_JVM_041_POOL_MARKER_B = "marker";
+      public void noop() {}
+  }
+GarbageLazyInit.java: |
+  public class GarbageLazyInit {
+      public static final String GARBAGE_JVM_041_LAZY_MARKER_C = "marker";
+      public static final String GARBAGE_JVM_041_EAGER_MARKER_D = "marker";
+      public void noop() {}
+  }

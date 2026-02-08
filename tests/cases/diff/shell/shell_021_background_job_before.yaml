@@ -1,0 +1,44 @@
+jobs.sh: |
+  #!/bin/bash
+
+  long_process() {
+      sleep 30
+      echo "Long process complete"
+  }
+parallel.sh: |
+  #!/bin/bash
+  source ./jobs.sh
+
+  long_process &
+  pid1=$!
+  echo "Started job: $pid1"
+  wait $pid1
+unrelated/garbage_cgroup.sh: |
+  #!/bin/bash
+  # GARBAGE_SH_021_CGROUP_LIMIT_A
+  GARBAGE_SH_021_MEM_LIMIT_B="512M"
+
+  garbage_set_mem_limit_021() {
+      local cgroup=$1
+      local limit=$2
+      echo "Memory limit for $cgroup: $limit"
+  }
+
+  garbage_get_usage_021() {
+      local cgroup=$1
+      echo "Usage: 128M"
+  }
+unrelated/garbage_auditd.sh: |
+  #!/bin/bash
+  # GARBAGE_SH_021_AUDITD_RULES_C
+  GARBAGE_SH_021_AUDIT_LOG_D="/var/log/audit/audit.log"
+
+  garbage_add_watch_021() {
+      local path=$1
+      echo "Watching $path"
+  }
+
+  garbage_search_events_021() {
+      local key=$1
+      echo "Events for key $key: 0"
+  }

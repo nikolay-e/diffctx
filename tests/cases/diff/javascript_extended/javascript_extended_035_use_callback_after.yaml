@@ -1,0 +1,64 @@
+src/handlers.ts: |
+  export function createClickHandler(id: string) {
+      return () => console.log('Clicked:', id);
+  }
+
+  export function createSubmitHandler(formId: string) {
+      return (data: Record<string, string>) => {
+          console.log(`Submitting form ${formId}:`, data);
+      };
+  }
+
+  export function createDeleteHandler(resourceId: string) {
+      return () => {
+          console.log(`Deleting resource: ${resourceId}`);
+      };
+  }
+src/ActionButton.tsx: |
+  import { useCallback } from 'react';
+  import { createClickHandler, createDeleteHandler } from './handlers';
+
+  interface ActionButtonProps {
+      id: string;
+      label: string;
+      variant: 'click' | 'delete';
+  }
+
+  export function ActionButton({ id, label, variant }: ActionButtonProps) {
+      const handleClick = useCallback(() => {
+          if (variant === 'delete') {
+              createDeleteHandler(id)();
+          } else {
+              createClickHandler(id)();
+          }
+      }, [id, variant]);
+
+      return <button onClick={handleClick}>{label}</button>;
+  }
+src/unrelated/badge.tsx: |
+  const GARBAGE_JSX_035_BADGE_CONFIG_A = 'badge_garbage_marker';
+
+  export interface GarbageBadgeProps {
+      count: number;
+      color: string;
+  }
+
+  export function GarbageBadge({ count, color }: GarbageBadgeProps) {
+      return <span style={{ backgroundColor: color }}>{count}</span>;
+  }
+
+  export function GARBAGE_JSX_035_ANIMATE_BADGE_B(): void {
+      console.log('GARBAGE_JSX_035_BADGE_OUTPUT_C');
+  }
+src/unrelated/divider.tsx: |
+  const GARBAGE_JSX_035_DIVIDER_CONFIG_D = { thickness: 1, color: '#ccc' };
+
+  export class GARBAGE_JSX_035_DIVIDER_FACTORY_E {
+      create(orientation: string): string {
+          return `divider-${orientation}`;
+      }
+  }
+
+  export function GARBAGE_JSX_035_RENDER_DIVIDER_F(): void {
+      console.log('rendering divider');
+  }

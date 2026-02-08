@@ -1,0 +1,85 @@
+models/user.py: |
+  from dataclasses import dataclass
+  from typing import Optional
+  from datetime import datetime
+
+  @dataclass
+  class UserProfile:
+      user_id: int
+      username: str
+      email: str
+      created_at: datetime
+      is_active: bool = True
+      display_name: Optional[str] = None
+
+      def full_display(self) -> str:
+          return self.display_name or self.username
+
+      def deactivate(self) -> None:
+          self.is_active = False
+
+      def is_email_verified(self) -> bool:
+          return "@" in self.email and "." in self.email.split("@")[1]
+
+services/user_service.py: |
+  from models.user import UserProfile
+
+  class UserService:
+      def __init__(self, repository):
+          self.repository = repository
+
+      def get_active_users(self):
+          all_users = self.repository.find_all()
+          return [u for u in all_users if u.is_active]
+
+      def process(self, data):
+          pass
+
+      def find_by_email(self, email: str):
+          users = self.repository.find_all()
+          for user in users:
+              if user.email == email:
+                  return user
+          return None
+
+garbage_reporting.py: |
+  GARBAGE_PY_027_REPORTING_A = "reporting module marker"
+  GARBAGE_PY_027_METRICS_B = "metrics tracking marker"
+
+  class ReportGenerator:
+      GARBAGE_PY_027_GENERATOR_C = "generator class marker"
+
+      def __init__(self):
+          self.reports = []
+
+      def generate_monthly_report(self, month: int, year: int) -> dict:
+          return {"month": month, "year": year, "total": 0}
+
+      def export_to_csv(self, report: dict) -> str:
+          return ",".join(f"{k}:{v}" for k, v in report.items())
+
+  def calculate_retention_rate(active: int, total: int) -> float:
+      GARBAGE_PY_027_RETENTION_D = "retention marker"
+      if total == 0:
+          return 0.0
+      return active / total
+
+garbage_migration.py: |
+  GARBAGE_PY_027_MIGRATION_E = "migration module marker"
+  GARBAGE_PY_027_SCHEMA_F = "schema version marker"
+
+  class DatabaseMigrator:
+      GARBAGE_PY_027_MIGRATOR_G = True
+
+      def __init__(self, connection_string: str):
+          self.connection = connection_string
+
+      def run_migration(self, version: int) -> bool:
+          return True
+
+      def rollback(self, version: int) -> bool:
+          return False
+
+  def get_current_schema_version() -> int:
+      GARBAGE_PY_027_VERSION_H = 42
+      return 1

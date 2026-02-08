@@ -1,0 +1,65 @@
+add_test.py: |
+  def func1():
+      func1_value = "original_func1"
+      return func1_value
+
+  def new_function():
+      x = 1
+      y = 2
+      new_function_marker = "newly_added_function"
+      return x + y
+
+  def func2():
+      func2_value = "original_func2"
+      return func2_value
+existing_helpers.py: |
+  def existing_helper_alpha():
+      return "existing_alpha_result"
+
+  def existing_helper_beta():
+      return "existing_beta_result"
+
+  def existing_helper_gamma():
+      return "existing_gamma_result"
+
+  def existing_helper_delta():
+      return "existing_delta_result"
+garbage_sel_003_services.py: |
+  class GARBAGE_SEL_003_ServiceAlpha:
+      def execute(self):
+          return "GARBAGE_SEL_003_service_alpha_execute"
+
+      def validate(self):
+          return "GARBAGE_SEL_003_service_alpha_validate"
+
+  class GARBAGE_SEL_003_ServiceBeta:
+      def execute(self):
+          return "GARBAGE_SEL_003_service_beta_execute"
+
+      def validate(self):
+          return "GARBAGE_SEL_003_service_beta_validate"
+
+  def GARBAGE_SEL_003_standalone_func():
+      return "GARBAGE_SEL_003_standalone_result"
+garbage_sel_003_models.py: |
+  GARBAGE_SEL_003_MODEL_CONFIG = {
+      "key_one": "GARBAGE_SEL_003_config_value_one",
+      "key_two": "GARBAGE_SEL_003_config_value_two",
+      "key_three": "GARBAGE_SEL_003_config_value_three",
+  }
+
+  class GARBAGE_SEL_003_DataModel:
+      field_one = "GARBAGE_SEL_003_field_one_value"
+      field_two = "GARBAGE_SEL_003_field_two_value"
+
+      def get_data(self):
+          return "GARBAGE_SEL_003_data_result"
+garbage_sel_003_utils.py: |
+  def GARBAGE_SEL_003_util_alpha():
+      return "GARBAGE_SEL_003_util_alpha_result"
+
+  def GARBAGE_SEL_003_util_beta():
+      return "GARBAGE_SEL_003_util_beta_result"
+
+  def GARBAGE_SEL_003_util_gamma():
+      return "GARBAGE_SEL_003_util_gamma_result"

@@ -1,0 +1,42 @@
+src/utils.py: |
+  def double_value(x):
+      return x * 2
+
+  def triple_value(x):
+      return x * 3
+
+  def negate(x):
+      return -x
+
+  def absolute(x):
+      return abs(x)
+
+src/main.py: |
+  from src.utils import double_value
+
+  def bar():
+      return double_value(42)
+
+  def process_batch(items):
+      return [item for item in items]
+
+  def summarize(results):
+      return len(results)
+
+garbage_lazy_evaluator.py: |
+  GARBAGE_COMP_021_THUNK_CACHE_A = "memoize"
+  GARBAGE_COMP_021_FORCE_EVAL_B = "strict"
+
+  class GarbageLazyEvaluator:
+      GARBAGE_COMP_021_DEPTH_LIMIT_C = True
+      def evaluate(self):
+          pass
+
+garbage_coroutine_pool.py: |
+  GARBAGE_COMP_021_POOL_STRATEGY_D = "elastic"
+  GARBAGE_COMP_021_YIELD_POINT_E = "cooperative"
+
+  class GarbageCoroutinePool:
+      GARBAGE_COMP_021_STACK_SIZE_F = False
+      def spawn(self):
+          pass

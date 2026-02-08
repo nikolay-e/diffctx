@@ -1,0 +1,74 @@
+src/Models/User.php: |
+  <?php
+  namespace App\Models;
+
+  class User {
+      private string $name;
+      private string $email;
+      private int $age;
+
+      public function __construct(string $name, string $email, int $age) {
+          $this->name = $name;
+          $this->email = $email;
+          $this->age = $age;
+      }
+
+      public function getName(): string {
+          return $this->name;
+      }
+
+      public function getEmail(): string {
+          return $this->email;
+      }
+
+      public function getAge(): int {
+          return $this->age;
+      }
+
+      public function isAdult(): bool {
+          return $this->age >= 18;
+      }
+  }
+src/Controllers/UserController.php: |
+  <?php
+  namespace App\Controllers;
+
+  class UserController {
+      public function index(): array {
+          return ['status' => 'ok'];
+      }
+  }
+src/garbage_xml_parser.php: |
+  <?php
+  GARBAGE_PHP_001_PARSER_MODE_A = "streaming";
+  GARBAGE_PHP_001_BUFFER_SIZE_B = 4096;
+
+  class GarbageXmlParser {
+      GARBAGE_PHP_001_ENCODING_C = "UTF-8";
+
+      private array $nodes = [];
+
+      public function parse(string $xml): array {
+          GARBAGE_PHP_001_DEPTH_LIMIT_D = 256;
+          return $this->nodes;
+      }
+
+      public function reset(): void {
+          $this->nodes = [];
+      }
+  }
+src/garbage_csv_writer.php: |
+  <?php
+  GARBAGE_PHP_001_DELIMITER_E = ",";
+  GARBAGE_PHP_001_ENCLOSURE_F = '"';
+
+  class GarbageCsvWriter {
+      GARBAGE_PHP_001_LINE_ENDING_G = "\n";
+
+      private string $output = "";
+
+      public function writeLine(array $fields): void {
+          GARBAGE_PHP_001_ESCAPE_CHAR_H = "\\";
+          $this->output .= implode(",", $fields) . "\n";
+      }
+  }

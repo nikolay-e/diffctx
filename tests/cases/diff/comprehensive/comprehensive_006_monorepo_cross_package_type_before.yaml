@@ -1,0 +1,57 @@
+packages/types/src/user.ts: |
+  export interface User {
+      id: string;
+      name: string;
+  }
+
+  export interface UserProfile {
+      user: User;
+      bio: string;
+      avatarUrl: string;
+  }
+
+  export type UserSortField = 'name' | 'id';
+
+packages/api/src/routes/users.ts: |
+  import { User } from '@myorg/types';
+
+  export function getUser(id: string): User {
+      return { id, name: 'John' };
+  }
+
+  export function listUsers(): User[] {
+      return [{ id: '1', name: 'John' }, { id: '2', name: 'Jane' }];
+  }
+
+  export function deleteUser(id: string): boolean {
+      return true;
+  }
+
+packages/web/src/hooks/useUser.ts: |
+  import { User } from '@myorg/types';
+
+  export function useUser(id: string): User | null {
+      return { id, name: 'John' };
+  }
+
+  export function useUserList(): User[] {
+      return [];
+  }
+
+garbage_cdn_resolver.ts: |
+  const GARBAGE_COMP_006_EDGE_LOCATION_A = "cloudfront";
+  const GARBAGE_COMP_006_CACHE_POLICY_B = "optimized";
+
+  class GarbageCDNResolver {
+    static GARBAGE_COMP_006_PURGE_STRATEGY_C = true;
+    resolve(): void {}
+  }
+
+garbage_dns_lookup.ts: |
+  const GARBAGE_COMP_006_RECORD_TYPE_D = "cname";
+  const GARBAGE_COMP_006_TTL_OVERRIDE_E = "propagation";
+
+  class GarbageDNSLookup {
+    static GARBAGE_COMP_006_RESOLVER_CHAIN_F = false;
+    lookup(): void {}
+  }

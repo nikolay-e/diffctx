@@ -1,0 +1,54 @@
+sql/seed/initial_data.sql: |
+  -- Seed data for categories table
+  INSERT INTO categories (name) VALUES
+      ('Electronics'),
+      ('Clothing'),
+      ('Books');
+
+sql/migrations/001_create_categories.sql: |
+  CREATE TABLE categories (
+      id SERIAL PRIMARY KEY,
+      name VARCHAR(100) NOT NULL UNIQUE,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  );
+
+src/models/category.py: |
+  from dataclasses import dataclass
+  from datetime import datetime
+  from typing import Optional
+
+  @dataclass
+  class Category:
+      id: int
+      name: str
+      created_at: Optional[datetime] = None
+
+src/repositories/category_repository.py: |
+  from typing import List
+  from models.category import Category
+
+  class CategoryRepository:
+      def __init__(self, db):
+          self.db = db
+
+      def get_all(self) -> List[Category]:
+          results = self.db.execute("SELECT * FROM categories")
+          return [Category(**r) for r in results]
+
+garbage_seed_validator.ts: |
+  const GARBAGE_CICD_DOCS_073_SEED_MARKER_A = "validate";
+  const GARBAGE_CICD_DOCS_073_BULK_MARKER_B = "batch";
+
+  class GarbageSeedValidator {
+    static GARBAGE_CICD_DOCS_073_IMPORT_MARKER_C = true;
+    validate(): void {}
+  }
+
+garbage_data_loader.ts: |
+  const GARBAGE_CICD_DOCS_073_LOADER_MARKER_D = "stream";
+  const GARBAGE_CICD_DOCS_073_PARSE_MARKER_E = "csv";
+
+  class GarbageDataLoader {
+    static GARBAGE_CICD_DOCS_073_CHUNK_MARKER_F = false;
+    load(): void {}
+  }

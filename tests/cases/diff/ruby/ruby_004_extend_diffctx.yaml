@@ -1,0 +1,16 @@
+must_include_files:
+  - lib/model.rb
+must_include_content:
+  - |
+    extend ClassMethods
+must_not_include:
+  - GARBAGE_RUBY_004_CIPHER_MODE_A
+  - GARBAGE_RUBY_004_KEY_DERIVATION_B
+  - GARBAGE_RUBY_004_IV_LENGTH_C
+  - GARBAGE_RUBY_004_CRON_PATTERN_D
+  - GARBAGE_RUBY_004_TIMEZONE_OFFSET_E
+  - GARBAGE_RUBY_004_MAX_CONCURRENT_F
+  - GarbageEncryptionService
+  - GarbageTaskScheduler
+  - garbage_encryption.rb
+  - garbage_scheduler.rb

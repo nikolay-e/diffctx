@@ -1,0 +1,10 @@
+api/users.py: |
+  def list_users():
+      return [{"id": 1, "name": "Alice"}]
+tests/integration/test_api.py: |
+  from api.users import list_users
+
+  def test_list_users_endpoint():
+      users = list_users()
+      assert len(users) == 1
+      assert users[0]["name"] == "Alice"

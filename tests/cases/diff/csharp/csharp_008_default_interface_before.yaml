@@ -1,0 +1,37 @@
+Interfaces/IProcessor.cs: |
+  namespace MyApp.Interfaces;
+
+  public interface IProcessor
+  {
+      void Process(string data);
+
+      void ProcessBatch(string[] items)
+      {
+          foreach (var item in items)
+          {
+              Process(item);
+          }
+      }
+  }
+Services/DataProcessor.cs: |
+  namespace MyApp.Services;
+
+  public class DataProcessor { }
+Unrelated/TelemetryCollector.cs: |
+  namespace MyApp.Unrelated;
+
+  public class TelemetryCollector
+  {
+      private const string GARBAGE_CS_008_TELEMETRY_A = "telemetry_collector_marker";
+
+      public void Collect(string metric) => _ = GARBAGE_CS_008_TELEMETRY_A + metric;
+  }
+Unrelated/CircuitBreaker.cs: |
+  namespace MyApp.Unrelated;
+
+  public class CircuitBreaker
+  {
+      public const string GARBAGE_CS_008_CIRCUIT_BREAKER_B = "circuit_breaker_marker";
+
+      public bool IsOpen() => GARBAGE_CS_008_CIRCUIT_BREAKER_B.Length > 0;
+  }

@@ -1,0 +1,21 @@
+cache.py: |
+  import json
+
+  class CacheManager:
+      def __init__(self):
+          self._data = {}
+
+      def _serialize(self, value):
+          return json.dumps(value)
+
+      def _deserialize(self, data):
+          return json.loads(data)
+
+      def get(self, key):
+          raw = self._data.get(key)
+          if raw:
+              return self._deserialize(raw)
+          return None
+
+      def set(self, key, value):
+          self._data[key] = self._serialize(value)

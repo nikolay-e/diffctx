@@ -1,0 +1,51 @@
+src/db.py: |
+  class Transaction:
+      def __enter__(self):
+          return self
+
+      def __exit__(self, exc_type, exc_val, exc_tb):
+          if exc_type:
+              self.rollback()
+          else:
+              self.commit()
+          return False
+
+      def commit(self):
+          pass
+
+      def rollback(self):
+          pass
+
+  def transaction():
+      return Transaction()
+
+  def save(data):
+      with transaction():
+          try:
+              db_insert(data)
+          except Exception:
+              pass
+
+  def db_insert(data):
+      pass
+
+  def db_update(key, data):
+      pass
+
+garbage_lock_manager.py: |
+  GARBAGE_COMP_022_LOCK_TYPE_A = "distributed"
+  GARBAGE_COMP_022_LEASE_DURATION_B = "seconds"
+
+  class GarbageLockManager:
+      GARBAGE_COMP_022_REENTRANT_C = True
+      def acquire(self):
+          pass
+
+garbage_saga_coordinator.py: |
+  GARBAGE_COMP_022_COMPENSATION_D = "rollback"
+  GARBAGE_COMP_022_STEP_TIMEOUT_E = "bounded"
+
+  class GarbageSagaCoordinator:
+      GARBAGE_COMP_022_IDEMPOTENT_F = False
+      def coordinate(self):
+          pass

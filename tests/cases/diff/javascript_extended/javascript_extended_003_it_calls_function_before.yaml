@@ -1,0 +1,62 @@
+src/validator.ts: |
+  const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  const URL_REGEX = /^https?:\/\/[^\s]+$/;
+
+  export function isValidEmail(email: string): boolean {
+      return EMAIL_REGEX.test(email);
+  }
+
+  export function isValidUrl(url: string): boolean {
+      return URL_REGEX.test(url);
+  }
+
+  export function isNonEmpty(value: string): boolean {
+      return value.trim().length > 0;
+  }
+
+  export function isWithinLength(value: string, min: number, max: number): boolean {
+      const len = value.trim().length;
+      return len >= min && len <= max;
+  }
+src/validator.test.ts: |
+  console.log('initial');
+src/unrelated/cache.ts: |
+  const GARBAGE_JSX_003_CACHE_STORE_A = 'cache_garbage_marker';
+
+  export class GarbageCacheManager {
+      private store = new Map<string, unknown>();
+
+      set(key: string, value: unknown): void {
+          this.store.set(key, value);
+      }
+
+      get(key: string): unknown {
+          return this.store.get(key);
+      }
+
+      clear(): void {
+          this.store.clear();
+      }
+  }
+
+  export function GARBAGE_JSX_003_EVICT_CACHE_B(): void {
+      console.log('GARBAGE_JSX_003_EVICTION_OUTPUT_C');
+  }
+src/unrelated/queue.ts: |
+  const GARBAGE_JSX_003_QUEUE_CONFIG_D = { maxRetries: 3, backoff: 1000 };
+
+  export class GARBAGE_JSX_003_TASK_QUEUE_E {
+      private tasks: string[] = [];
+
+      enqueue(task: string): void {
+          this.tasks.push(task);
+      }
+
+      dequeue(): string | undefined {
+          return this.tasks.shift();
+      }
+  }
+
+  export function GARBAGE_JSX_003_PROCESS_QUEUE_F(): void {
+      console.log('processing queue');
+  }

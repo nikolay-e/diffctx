@@ -1,0 +1,20 @@
+User.scala: 'case class User(name: String, age: Int, email: Option[String])
+
+  '
+UserValidator.scala: '// Initial
+
+  class UserValidator {}
+
+  '
+GarbageExtractOps.scala: |
+  object GarbageExtractOps {
+    val GARBAGE_JVM_055_EXTRACT_MARKER_A = "marker"
+    val GARBAGE_JVM_055_DECONSTRUCT_MARKER_B = "marker"
+    def noop(): Unit = {}
+  }
+GarbageMatchHelper.scala: |
+  object GarbageMatchHelper {
+    val GARBAGE_JVM_055_MATCH_MARKER_C = "marker"
+    val GARBAGE_JVM_055_CASE_MARKER_D = "marker"
+    def noop(): Unit = {}
+  }

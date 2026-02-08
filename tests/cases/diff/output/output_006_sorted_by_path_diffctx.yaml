@@ -1,0 +1,18 @@
+must_include_files:
+- a_module.py
+- z_module.py
+must_include_content:
+- '    return 1
+
+  '
+must_not_include:
+- GARBAGE_OUT_006_SCHEDULE_MARKER_A
+- GARBAGE_OUT_006_CRON_MARKER_B
+- GARBAGE_OUT_006_SCHEDULER_CLASS_C
+- GARBAGE_OUT_006_TASK_MARKER_D
+- GARBAGE_OUT_006_QUEUE_MARKER_E
+- GARBAGE_OUT_006_QUEUE_CLASS_F
+- CronScheduler
+- TaskQueue
+- garbage_scheduling.py
+- garbage_tasks.py

@@ -1,0 +1,45 @@
+lib/validators.rb: |
+  module Validators
+    POSITIVE = ->(x) { x.is_a?(Numeric) && x > 0 }
+    NON_EMPTY = ->(s) { !s.nil? && !s.to_s.empty? }
+    EMAIL_FORMAT = ->(e) { e.to_s =~ /\A[^@\s]+@[^@\s]+\z/ }
+    IN_RANGE = ->(min, max) { ->(v) { v >= min && v <= max } }
+
+    def self.validate(value, *validators)
+      validators.all? { |v| v.call(value) }
+    end
+
+    def self.validate_all(data, rules)
+      rules.all? do |field, validators|
+        validators.all? { |v| v.call(data[field]) }
+      end
+    end
+  end
+lib/form.rb: |
+  class Form
+    def submit
+      true
+    end
+  end
+lib/garbage_event_bus.rb: |
+  GARBAGE_RUBY_010_BUS_TYPE_A = "in_memory"
+  GARBAGE_RUBY_010_DELIVERY_MODE_B = "at_least_once"
+
+  class GarbageEventBus
+    GARBAGE_RUBY_010_MAX_SUBSCRIBERS_C = 100
+
+    def publish(event)
+      GARBAGE_RUBY_010_BUS_TYPE_A
+    end
+  end
+lib/garbage_circuit_breaker.rb: |
+  GARBAGE_RUBY_010_FAILURE_THRESHOLD_D = "five_failures"
+  GARBAGE_RUBY_010_RESET_TIMEOUT_E = "thirty_seconds"
+
+  class GarbageCircuitBreaker
+    GARBAGE_RUBY_010_HALF_OPEN_LIMIT_F = 3
+
+    def call(action)
+      GARBAGE_RUBY_010_FAILURE_THRESHOLD_D
+    end
+  end

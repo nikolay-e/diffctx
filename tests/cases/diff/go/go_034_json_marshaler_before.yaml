@@ -1,0 +1,108 @@
+internal/api/types.go: |
+  package api
+
+  import "time"
+
+  type Event struct {
+      ID        string
+      Name      string
+      Timestamp time.Time
+      Data      map[string]interface{}
+  }
+
+  type User struct {
+      ID        int64
+      Email     string
+      Name      string
+      CreatedAt time.Time
+      UpdatedAt time.Time
+  }
+
+  type Response struct {
+      Status  int
+      Message string
+      Data    interface{}
+  }
+internal/api/handlers.go: |
+  package api
+
+  import (
+      "encoding/json"
+      "net/http"
+  )
+
+  func SerializeEvent(w http.ResponseWriter, e *Event) error {
+      return json.NewEncoder(w).Encode(e)
+  }
+
+  func SerializeUser(w http.ResponseWriter, u *User) error {
+      return json.NewEncoder(w).Encode(u)
+  }
+
+  func SerializeResponse(w http.ResponseWriter, r *Response) error {
+      return json.NewEncoder(w).Encode(r)
+  }
+internal/unrelated/auth/oauth.go: |
+  package auth
+
+  import "context"
+
+  const GARBAGE_GO_OAUTH_CLIENT_A1B2C3 = "oauth_garbage_marker"
+
+  type GARBAGE_GO_TYPE_TOKEN_D4E5F6 struct {
+      accessToken  string
+      refreshToken string
+      expiresAt    int64
+  }
+
+  func GARBAGE_GO_FUNC_OAUTH_G7H8I9() string {
+      return "GARBAGE_GO_OAUTH_UNUSED_J0K1L2"
+  }
+
+  type OAuthConfig struct {
+      ClientID     string
+      ClientSecret string
+      RedirectURL  string
+      Scopes       []string
+  }
+
+  func GARBAGE_GO_FUNC_EXCHANGE_TOKEN_M3N4O5(ctx context.Context, code string) (string, error) {
+      println("GARBAGE_GO_OAUTH_OUTPUT_P6Q7R8")
+      return "", nil
+  }
+internal/unrelated/auth/jwt.go: |
+  package auth
+
+  const GARBAGE_GO_JWT_SERVICE_S9T0U1 = "jwt_garbage"
+
+  type GARBAGE_GO_TYPE_JWT_V2W3X4 struct {
+      secret    string
+      algorithm string
+  }
+
+  func GARBAGE_GO_FUNC_JWT_Y5Z6A7() {
+      println("GARBAGE_GO_JWT_OUTPUT_B8C9D0")
+  }
+
+  type JWTConfig struct {
+      Secret          string
+      Algorithm       string
+      ExpirationHours int
+  }
+
+  func GARBAGE_GO_FUNC_JWT_VERIFY_E1F2G3(token string) (bool, error) {
+      return false, nil
+  }
+internal/unrelated/auth/saml.go: |
+  package auth
+
+  const GARBAGE_GO_SAML_SERVICE_H4I5J6 = "saml_garbage"
+
+  type GARBAGE_GO_TYPE_SAML_K7L8M9 struct {
+      idpURL      string
+      certificate string
+  }
+
+  func GARBAGE_GO_FUNC_SAML_N0O1P2() {
+      println("GARBAGE_GO_SAML_OUTPUT_Q3R4S5")
+  }

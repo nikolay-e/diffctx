@@ -1,0 +1,12 @@
+main.tf: |
+  # Resources moved to compute.tf
+compute.tf: |
+  resource "aws_instance" "web_server" {
+    ami           = var.ami_id
+    instance_type = "t3.micro"
+  }
+
+  moved {
+    from = aws_instance.web
+    to   = aws_instance.web_server
+  }

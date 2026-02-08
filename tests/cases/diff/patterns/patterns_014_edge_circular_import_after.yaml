@@ -1,0 +1,22 @@
+src/module_a.py: |
+  from module_b import func_b, new_func_b
+
+  def func_a():
+      return "a_updated"
+
+  def call_b():
+      return func_b()
+
+  def call_new_b():
+      return new_func_b()
+src/module_b.py: |
+  from module_a import func_a
+
+  def func_b():
+      return "b"
+
+  def new_func_b():
+      return "new_b"
+
+  def call_a():
+      return func_a()

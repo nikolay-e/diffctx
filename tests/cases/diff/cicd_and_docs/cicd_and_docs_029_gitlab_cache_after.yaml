@@ -1,0 +1,46 @@
+.gitlab-ci.yml: |
+  build:
+    script:
+      - npm ci
+      - npm run build
+    cache:
+      key: $CI_COMMIT_REF_SLUG
+      paths:
+        - node_modules/
+      policy: pull-push
+
+package.json: |
+  {
+    "name": "gitlab-cache-app",
+    "version": "1.0.0",
+    "scripts": {
+      "build": "tsc"
+    }
+  }
+
+tsconfig.json: |
+  {
+    "compilerOptions": {
+      "target": "ES2020",
+      "module": "commonjs",
+      "outDir": "./dist"
+    }
+  }
+
+garbage_cache_backend.ts: |
+  const GARBAGE_CICD_DOCS_029_BACKEND_MARKER_A = "redis";
+  const GARBAGE_CICD_DOCS_029_STORAGE_MARKER_B = "local";
+
+  class GarbageCacheBackend {
+    static GARBAGE_CICD_DOCS_029_TTL_MARKER_C = 3600;
+    store(): void {}
+  }
+
+garbage_cache_invalidator.ts: |
+  const GARBAGE_CICD_DOCS_029_INVALIDATE_MARKER_D = "manual";
+  const GARBAGE_CICD_DOCS_029_PURGE_MARKER_E = "all";
+
+  class GarbageCacheInvalidator {
+    static GARBAGE_CICD_DOCS_029_CASCADE_MARKER_F = true;
+    invalidate(): void {}
+  }

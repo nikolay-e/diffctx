@@ -1,0 +1,17 @@
+src/validator.py: |
+  import re
+
+  def validate_email(email: str) -> bool:
+      pattern = r'^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$'
+      return bool(re.match(pattern, email))
+
+  def validate_phone(phone: str) -> bool:
+      return phone.isdigit() and 10 <= len(phone) <= 15
+
+  def validate_username(username: str) -> bool:
+      return len(username) >= 3 and username.isalnum()
+tests/test_validator.py: |
+  from src.validator import validate_email
+
+  def test_email_valid():
+      assert validate_email("test@example.com")

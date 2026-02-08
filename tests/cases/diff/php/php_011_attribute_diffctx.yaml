@@ -1,0 +1,18 @@
+must_include_files:
+  - src/Controllers/ApiController.php
+must_include_content:
+  - |
+    #[Route('/api/users', 'POST', middleware: ['auth'])]
+must_not_include:
+  - GARBAGE_PHP_011_LOCALE_A
+  - GARBAGE_PHP_011_PRECISION_B
+  - GARBAGE_PHP_011_SYMBOL_C
+  - GARBAGE_PHP_011_GROUPING_D
+  - GARBAGE_PHP_011_RADIUS_E
+  - GARBAGE_PHP_011_UNIT_F
+  - GARBAGE_PHP_011_ALGORITHM_G
+  - GARBAGE_PHP_011_TOLERANCE_H
+  - GarbageCurrencyFmt
+  - GarbageGeoFence
+  - garbage_currency_fmt.php
+  - garbage_geo_fence.php

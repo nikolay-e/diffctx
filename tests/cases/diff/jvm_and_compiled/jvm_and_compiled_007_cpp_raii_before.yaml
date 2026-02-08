@@ -1,0 +1,50 @@
+mutex.h: |
+  #pragma once
+
+  class Mutex {
+  public:
+      void lock() {}
+      void unlock() {}
+  };
+guard.cpp: |
+  #include <iostream>
+  int main() { return 0; }
+garbage_queue.cpp: |
+  #include <queue>
+  #include <string>
+  const char* GARBAGE_JVM_007_ENQUEUE_MARKER_A = "msg_enqueue";
+  const char* GARBAGE_JVM_007_DEQUEUE_MARKER_B = "msg_dequeue";
+
+  class GarbageMessageQueue {
+      std::queue<std::string> messages_;
+  public:
+      void push(const std::string& msg) { messages_.push(msg); }
+      std::string pop() { auto m = messages_.front(); messages_.pop(); return m; }
+      bool empty() const { return messages_.empty(); }
+  };
+garbage_bitset.cpp: |
+  #include <bitset>
+  const char* GARBAGE_JVM_007_BITSET_MARKER_C = "permission_bits";
+  const char* GARBAGE_JVM_007_FLAGS_MARKER_D = "flag_check";
+
+  class GarbagePermissionFlags {
+      std::bitset<8> flags_;
+  public:
+      void grant(int bit) { flags_.set(bit); }
+      void revoke(int bit) { flags_.reset(bit); }
+      bool check(int bit) const { return flags_.test(bit); }
+  };
+garbage_spinlock.cpp: |
+  const char* GARBAGE_JVM_007_SPIN_MARKER_A = "marker";
+  const char* GARBAGE_JVM_007_YIELD_MARKER_B = "marker";
+
+  class GarbageSpinLock {
+      void noop() {}
+  };
+garbage_semaphore.cpp: |
+  const char* GARBAGE_JVM_007_SEM_MARKER_C = "marker";
+  const char* GARBAGE_JVM_007_POST_MARKER_D = "marker";
+
+  class GarbageSemaphore {
+      void noop() {}
+  };

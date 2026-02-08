@@ -1,0 +1,41 @@
+src/main/java/com/example/dto/UserDto.java: |
+  package com.example.dto;
+
+  public class UserDto {
+      private Long id;
+      private String name;
+
+      public Long getId() { return id; }
+      public void setId(Long id) { this.id = id; }
+      public String getName() { return name; }
+      public void setName(String name) { this.name = name; }
+  }
+src/main/java/com/example/UserController.java: |
+  package com.example;
+
+  import com.example.dto.UserDto;
+  import org.springframework.web.bind.annotation.*;
+
+  @RestController
+  @RequestMapping("/api/users")
+  public class UserController {
+      @GetMapping("/{id}")
+      public UserDto getUser(@PathVariable Long id) {
+          UserDto dto = new UserDto();
+          dto.setId(id);
+          dto.setName("User");
+          return dto;
+      }
+  }
+GarbageGraphqlResolver.java: |
+  public class GarbageGraphqlResolver {
+      public static final String GARBAGE_JVM_039_GRAPHQL_MARKER_A = "marker";
+      public static final String GARBAGE_JVM_039_RESOLVER_MARKER_B = "marker";
+      public void noop() {}
+  }
+GarbageGrpcService.java: |
+  public class GarbageGrpcService {
+      public static final String GARBAGE_JVM_039_GRPC_MARKER_C = "marker";
+      public static final String GARBAGE_JVM_039_PROTO_MARKER_D = "marker";
+      public void noop() {}
+  }

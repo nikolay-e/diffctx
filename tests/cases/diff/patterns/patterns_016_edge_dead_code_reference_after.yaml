@@ -1,0 +1,28 @@
+src/deprecated.py: |
+  import warnings
+
+  def old_function():
+      '''Deprecated: use new_function instead'''
+      warnings.warn(
+          "old_function is deprecated, use new_function",
+          DeprecationWarning,
+          stacklevel=2
+      )
+      return "old"
+
+  def new_function():
+      return "new_v2"
+
+  def newer_function():
+      return "newer"
+src/main.py: |
+  from deprecated import new_function
+
+  def main():
+      return new_function()
+src/legacy.py: |
+  # This file still uses old_function for backwards compatibility
+  from deprecated import old_function
+
+  def legacy_handler():
+      return old_function()

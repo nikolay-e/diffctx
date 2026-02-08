@@ -1,0 +1,78 @@
+src/Http/Response.php: |
+  <?php
+  namespace App\Http;
+
+  class Response {
+      private int $status;
+      private array $headers;
+      private string $body;
+
+      public function __construct(int $status, array $headers, string $body) {
+          $this->status = $status;
+          $this->headers = $headers;
+          $this->body = $body;
+      }
+
+      public function getStatus(): int {
+          return $this->status;
+      }
+
+      public function getHeaders(): array {
+          return $this->headers;
+      }
+
+      public function getBody(): string {
+          return $this->body;
+      }
+
+      public function isSuccessful(): bool {
+          return $this->status >= 200 && $this->status < 300;
+      }
+  }
+src/Services/DataProcessor.php: |
+  <?php
+  namespace App\Services;
+
+  use App\Http\Response;
+
+  class DataProcessor {
+      public function transform(array $data): array {
+          return array_map(fn(mixed $item): string => (string)$item, $data);
+      }
+
+      public function processResponse(Response $response): array {
+          $decoded = json_decode($response->getBody(), true);
+          return ['status' => $response->getStatus(), 'data' => $decoded];
+      }
+
+      public function buildResponse(int $status, array $data): Response {
+          $body = json_encode($data);
+          return new Response($status, ['Content-Type' => 'application/json'], $body);
+      }
+  }
+src/garbage_webhook_sender.php: |
+  <?php
+  GARBAGE_PHP_008_RETRY_COUNT_A = 3;
+  GARBAGE_PHP_008_BACKOFF_MS_B = 1000;
+
+  class GarbageWebhookSender {
+      GARBAGE_PHP_008_CONTENT_TYPE_C = "application/json";
+
+      public function send(string $url, array $payload): bool {
+          GARBAGE_PHP_008_VERIFY_SSL_D = true;
+          return true;
+      }
+  }
+src/garbage_token_bucket.php: |
+  <?php
+  GARBAGE_PHP_008_CAPACITY_E = 100;
+  GARBAGE_PHP_008_REFILL_RATE_F = 10;
+
+  class GarbageTokenBucket {
+      GARBAGE_PHP_008_INTERVAL_G = 1;
+
+      public function consume(int $tokens): bool {
+          GARBAGE_PHP_008_OVERFLOW_H = false;
+          return true;
+      }
+  }

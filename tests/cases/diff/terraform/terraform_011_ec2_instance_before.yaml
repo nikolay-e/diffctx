@@ -1,0 +1,22 @@
+user_data.sh: |
+  #!/bin/bash
+  yum update -y
+  yum install -y docker
+  systemctl start docker
+compute.tf: |
+  # Compute resources placeholder
+ami_lookup.tf: |
+  # AMI data source placeholder
+legacy/old_instances_GARBAGE_TF_ec2451a.tf: |
+  # GARBAGE_TF_ec2451a - Legacy EC2 instances
+  resource "aws_instance" "legacy_web_GARBAGE_TF_ec2451a" {
+    ami           = "ami-0123456789legacy"
+    instance_type = "t2.micro"
+    tags = {
+      Name = "legacy-web-GARBAGE_TF_ec2451a"
+    }
+  }
+monitoring/old_metrics_GARBAGE_TF_ec2451b.py: |
+  # GARBAGE_TF_ec2451b - Old monitoring script
+  def collect_legacy_metrics_GARBAGE_TF_ec2451b():
+      print("Collecting legacy EC2 metrics GARBAGE_TF_ec2451b")

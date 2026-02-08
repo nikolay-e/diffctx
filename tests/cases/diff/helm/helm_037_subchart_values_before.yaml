@@ -1,0 +1,11 @@
+charts/postgresql/values.yaml: |
+  auth:
+    username: postgres
+    password: ""
+    database: postgres
+values.yaml: |
+  postgresql:
+    enabled: true
+junk.py: |
+  garbage_marker_12345 = 1
+  unused_marker_67890 = 2

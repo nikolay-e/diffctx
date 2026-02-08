@@ -1,0 +1,54 @@
+tsconfig.base.json: |
+  {
+      "compilerOptions": {
+          "target": "ES2020",
+          "module": "commonjs",
+          "strict": true
+      }
+  }
+
+packages/core/tsconfig.json: |
+  {
+      "extends": "../../tsconfig.base.json",
+      "compilerOptions": {
+          "outDir": "./dist",
+          "rootDir": "./src"
+      },
+      "include": ["src/**/*"]
+  }
+
+packages/core/src/index.ts: |
+  export function coreInit(): boolean {
+      return true;
+  }
+
+  export const CORE_VERSION = "1.0.0";
+
+packages/web/tsconfig.json: |
+  {
+      "extends": "../../tsconfig.base.json",
+      "compilerOptions": {
+          "jsx": "react",
+          "outDir": "./dist",
+          "rootDir": "./src"
+      },
+      "include": ["src/**/*"]
+  }
+
+garbage_webpack_analyzer.ts: |
+  const GARBAGE_COMP_008_BUNDLE_STAT_A = "treeshake";
+  const GARBAGE_COMP_008_CHUNK_SPLIT_B = "vendors";
+
+  class GarbageWebpackAnalyzer {
+    static GARBAGE_COMP_008_SOURCE_MAP_C = true;
+    analyze(): void {}
+  }
+
+garbage_rollup_plugin.ts: |
+  const GARBAGE_COMP_008_PLUGIN_ORDER_D = "pre";
+  const GARBAGE_COMP_008_EXTERNAL_DEP_E = "peer";
+
+  class GarbageRollupPlugin {
+    static GARBAGE_COMP_008_MINIFY_FLAG_F = false;
+    transform(): void {}
+  }

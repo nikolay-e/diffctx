@@ -1,0 +1,13 @@
+sqs.tf: |
+  resource "aws_sqs_queue" "tasks" {
+    name                       = "task-queue"
+    visibility_timeout_seconds = 60
+    message_retention_seconds  = 604800
+    fifo_queue                 = true
+  }
+src/queue.py: |
+  import boto3
+
+  def send_message(queue_url: str, message: str):
+      sqs = boto3.client("sqs")
+      sqs.send_message(QueueUrl=queue_url, MessageBody=message)

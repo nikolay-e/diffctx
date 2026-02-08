@@ -1,0 +1,10 @@
+middleware/auth.py: |
+  class AuthMiddleware:
+      def process_request(self, request):
+          if not request.get("token"):
+              raise ValueError("Unauthorized")
+          return request
+settings.py: |
+  MIDDLEWARE = [
+      "middleware.auth.AuthMiddleware",
+  ]

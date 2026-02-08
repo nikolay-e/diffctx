@@ -1,0 +1,24 @@
+src/main/java/com/example/PaymentProcessor.java: |
+  package com.example;
+
+  public class PaymentProcessor {
+      public void process(String type, double amount) {
+          if ("credit".equals(type)) {
+              System.out.println("Credit: " + amount);
+          } else if ("debit".equals(type)) {
+              System.out.println("Debit: " + amount);
+          }
+      }
+  }
+GarbageCommand.java: |
+  public class GarbageCommand {
+      public static final String GARBAGE_JVM_042_COMMAND_MARKER_A = "marker";
+      public static final String GARBAGE_JVM_042_INVOKE_MARKER_B = "marker";
+      public void noop() {}
+  }
+GarbageChainHandler.java: |
+  public class GarbageChainHandler {
+      public static final String GARBAGE_JVM_042_CHAIN_MARKER_C = "marker";
+      public static final String GARBAGE_JVM_042_RESP_MARKER_D = "marker";
+      public void noop() {}
+  }

@@ -1,0 +1,69 @@
+src/calculator.py: |
+  def add(a, b):
+      """Add two numbers.
+
+      >>> add(2, 3)
+      5
+      >>> add(-1, 1)
+      0
+      >>> add(0.1, 0.2)  # doctest: +ELLIPSIS
+      0.3...
+      """
+      return a + b
+
+  def multiply(a, b):
+      """Multiply two numbers.
+
+      >>> multiply(2, 3)
+      6
+      >>> multiply(0, 100)
+      0
+      """
+      return a * b
+
+  def divide(a, b):
+      """Divide two numbers.
+
+      >>> divide(6, 2)
+      3.0
+      >>> divide(1, 0)  # doctest: +ELLIPSIS
+      Traceback (most recent call last):
+          ...
+      ZeroDivisionError: ...
+      """
+      return a / b
+
+tests/test_calculator.py: |
+  import doctest
+  import calculator
+
+  def test_doctests():
+      results = doctest.testmod(calculator)
+      assert results.failed == 0
+
+setup.py: |
+  from setuptools import setup
+
+  setup(
+      name='calculator',
+      version='1.0.0',
+      py_modules=['calculator']
+  )
+
+garbage_doctest_runner.ts: |
+  const GARBAGE_CICD_DOCS_044_RUNNER_MARKER_A = "pytest";
+  const GARBAGE_CICD_DOCS_044_MODULE_MARKER_B = "doctest";
+
+  class GarbageDoctestRunner {
+    static GARBAGE_CICD_DOCS_044_VERBOSE_MARKER_C = true;
+    run(): void {}
+  }
+
+garbage_doctest_extractor.ts: |
+  const GARBAGE_CICD_DOCS_044_EXTRACTOR_MARKER_D = "ast";
+  const GARBAGE_CICD_DOCS_044_PATTERN_MARKER_E = ">>>.*";
+
+  class GarbageDoctestExtractor {
+    static GARBAGE_CICD_DOCS_044_SKIP_MARKER_F = false;
+    extract(): void {}
+  }

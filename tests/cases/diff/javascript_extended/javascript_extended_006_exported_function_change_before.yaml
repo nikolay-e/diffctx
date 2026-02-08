@@ -1,0 +1,57 @@
+src/utils.ts: |
+  export interface FetchOptions {
+      headers?: Record<string, string>;
+      timeout?: number;
+  }
+
+  export function fetchUser(id: string) {
+      return fetch(`/api/users/${id}`);
+  }
+
+  export function fetchPosts(userId: string) {
+      return fetch(`/api/users/${userId}/posts`);
+  }
+
+  export function buildUrl(base: string, path: string): string {
+      return `${base.replace(/\/$/, '')}/${path.replace(/^\//, '')}`;
+  }
+src/consumer.ts: |
+  import { fetchUser, fetchPosts } from './utils';
+
+  export async function loadUserProfile(id: string) {
+      const userResponse = await fetchUser(id);
+      const postsResponse = await fetchPosts(id);
+      const user = await userResponse.json();
+      const posts = await postsResponse.json();
+      return { user, posts };
+  }
+src/unrelated/theme.ts: |
+  const GARBAGE_JSX_006_THEME_PROVIDER_A = 'theme_garbage_marker';
+
+  export class GarbageThemeManager {
+      private current = 'light';
+
+      toggle(): void {
+          this.current = this.current === 'light' ? 'dark' : 'light';
+      }
+
+      getCurrent(): string {
+          return this.current;
+      }
+  }
+
+  export function GARBAGE_JSX_006_APPLY_THEME_B(): void {
+      console.log('GARBAGE_JSX_006_THEME_OUTPUT_C');
+  }
+src/unrelated/clipboard.ts: |
+  const GARBAGE_JSX_006_CLIPBOARD_HANDLER_D = { enabled: true };
+
+  export class GARBAGE_JSX_006_CLIPBOARD_SERVICE_E {
+      copy(text: string): void {
+          console.log('copied:', text);
+      }
+  }
+
+  export function GARBAGE_JSX_006_READ_CLIPBOARD_F(): string {
+      return 'clipboard content';
+  }

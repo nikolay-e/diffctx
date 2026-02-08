@@ -1,0 +1,45 @@
+.github/actions/setup/action.yml: |
+  name: Setup
+  description: Setup environment
+
+.github/workflows/ci.yml: |
+  name: CI
+  on: [push]
+  jobs:
+    build:
+      runs-on: ubuntu-latest
+      steps:
+        - uses: actions/checkout@v4
+        - uses: actions/setup-node@v4
+          with:
+            node-version: 18
+        - run: npm ci
+        - run: npm run build
+
+package.json: |
+  {
+    "name": "composite-action-app",
+    "version": "1.0.0",
+    "scripts": {
+      "build": "tsc",
+      "test": "jest"
+    }
+  }
+
+garbage_action.ts: |
+  const GARBAGE_CICD_DOCS_016_ACTION_MARKER_A = "javascript";
+  const GARBAGE_CICD_DOCS_016_RUNTIME_MARKER_B = "node20";
+
+  class GarbageActionRunner {
+    static GARBAGE_CICD_DOCS_016_TIMEOUT_MARKER_C = 60000;
+    run(): void {}
+  }
+
+garbage_input.ts: |
+  const GARBAGE_CICD_DOCS_016_INPUT_MARKER_D = "required";
+  const GARBAGE_CICD_DOCS_016_DEFAULT_MARKER_E = "latest";
+
+  class GarbageInputParser {
+    static GARBAGE_CICD_DOCS_016_VALIDATE_MARKER_F = true;
+    parse(): Record<string, string> { return {}; }
+  }

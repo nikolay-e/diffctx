@@ -1,0 +1,165 @@
+include/resource/resource.hpp: |
+  #pragma once
+  #include <string>
+  #include <vector>
+  #include <functional>
+
+  namespace app::resource {
+
+  enum class ResourceType {
+      Texture,
+      Shader,
+      Model,
+      Audio,
+      Script
+  };
+
+  struct ResourceMetadata {
+      std::string path;
+      ResourceType type;
+      size_t sizeBytes;
+      bool compressed;
+  };
+
+  class Resource {
+  public:
+      explicit Resource(const std::string& id)
+          : id_(id)
+          , loaded_(false) {}
+
+      virtual ~Resource() = default;
+
+      const std::string& id() const { return id_; }
+      bool isLoaded() const { return loaded_; }
+
+      virtual bool load() = 0;
+      virtual void unload() = 0;
+      virtual size_t memoryUsage() const = 0;
+
+  protected:
+      void setLoaded(bool loaded) { loaded_ = loaded; }
+
+  private:
+      std::string id_;
+      bool loaded_;
+  };
+
+  class TextureResource : public Resource {
+  public:
+      TextureResource(const std::string& id, int width, int height)
+          : Resource(id)
+          , width_(width)
+          , height_(height)
+          , data_(nullptr) {}
+
+      ~TextureResource() override { unload(); }
+
+      bool load() override {
+          if (isLoaded()) return true;
+          data_ = new unsigned char[width_ * height_ * 4];
+          setLoaded(true);
+          return true;
+      }
+
+      void unload() override {
+          delete[] data_;
+          data_ = nullptr;
+          setLoaded(false);
+      }
+
+      size_t memoryUsage() const override {
+          return isLoaded() ? width_ * height_ * 4 : 0;
+      }
+
+      int width() const { return width_; }
+      int height() const { return height_; }
+
+  private:
+      int width_;
+      int height_;
+      unsigned char* data_;
+  };
+
+  }
+include/unrelated/event_dispatcher.hpp: |
+  #pragma once
+  // GARBAGE_CPP_EVENT_245_001
+  #define GARBAGE_CPP_EVENT_MAX_245_002 1000
+
+  namespace app::unrelated::events {
+
+  // GARBAGE_CPP_EVENT_TYPE_245_003
+  enum class EventType {
+      MouseClick,
+      KeyPress,
+      WindowResize,
+      Custom
+  };
+
+  // GARBAGE_CPP_EVENT_BASE_245_004
+  struct Event {
+      EventType type;
+      double timestamp;
+  };
+
+  // GARBAGE_CPP_EVENT_DISPATCHER_245_005
+  class EventDispatcher {
+  public:
+      // GARBAGE_CPP_EVENT_SUBSCRIBE_245_006
+      void subscribe(EventType type, void(*handler)(const Event&)) {
+          // GARBAGE_CPP_EVENT_SUB_IMPL_245_007
+      }
+
+      // GARBAGE_CPP_EVENT_DISPATCH_245_008
+      void dispatch(const Event& event) {
+          // GARBAGE_CPP_EVENT_DISP_IMPL_245_009
+      }
+
+      // GARBAGE_CPP_EVENT_CLEAR_245_010
+      void clearSubscribers() {
+          // GARBAGE_CPP_EVENT_CLEAR_IMPL_245_011
+      }
+
+  private:
+      int subscriberCount_ = 0;
+  };
+
+  }
+src/unrelated/file_watcher.cpp: |
+  // GARBAGE_CPP_FILEWATCHER_245_012
+  #include <string>
+
+  namespace app::unrelated::fs {
+
+  // GARBAGE_CPP_FILEWATCHER_EVENT_245_013
+  enum class FileChangeType {
+      Created,
+      Modified,
+      Deleted,
+      Renamed
+  };
+
+  // GARBAGE_CPP_FILEWATCHER_CLASS_245_014
+  class FileWatcher {
+  public:
+      // GARBAGE_CPP_FILEWATCHER_WATCH_245_015
+      void watchDirectory(const std::string& path) {
+          // GARBAGE_CPP_FILEWATCHER_WATCH_IMPL_245_016
+      }
+
+      // GARBAGE_CPP_FILEWATCHER_STOP_245_017
+      void stopWatching() {
+          // GARBAGE_CPP_FILEWATCHER_STOP_IMPL_245_018
+      }
+
+      // GARBAGE_CPP_FILEWATCHER_POLL_245_019
+      bool pollChanges() {
+          // GARBAGE_CPP_FILEWATCHER_POLL_IMPL_245_020
+          return false;
+      }
+  };
+
+  }
+src/manager.cpp: |
+  #include <iostream>
+  int main() { return 0; }

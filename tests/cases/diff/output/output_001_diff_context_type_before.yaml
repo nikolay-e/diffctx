@@ -1,0 +1,21 @@
+test.py: |
+  def foo():
+      pass
+garbage_analytics.py: |
+  GARBAGE_OUT_001_ANALYTICS_MARKER_A = "analytics"
+  GARBAGE_OUT_001_TRACKER_MARKER_B = True
+
+  class AnalyticsTracker:
+      GARBAGE_OUT_001_CLASS_MARKER_C = "tracker"
+
+      def track(self, event: str) -> None:
+          pass
+garbage_caching.py: |
+  GARBAGE_OUT_001_CACHE_MARKER_D = "caching"
+  GARBAGE_OUT_001_TTL_MARKER_E = 3600
+
+  class CacheManager:
+      GARBAGE_OUT_001_MANAGER_CLASS_F = True
+
+      def invalidate(self, key: str) -> bool:
+          return True

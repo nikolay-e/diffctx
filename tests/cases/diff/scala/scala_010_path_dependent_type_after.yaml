@@ -1,0 +1,22 @@
+Outer.scala: |
+  class Outer {
+    class Inner {
+      def greet: String = "Hello from Inner"
+    }
+
+    type T = Inner
+
+    def createInner: Inner = new Inner
+  }
+PathDependent.scala: |
+  class PathDependent {
+    def processInner(outer: Outer)(inner: outer.Inner): String = {
+      inner.greet
+    }
+
+    def createAndProcess(): String = {
+      val outer = new Outer
+      val inner: outer.T = outer.createInner
+      processInner(outer)(inner)
+    }
+  }

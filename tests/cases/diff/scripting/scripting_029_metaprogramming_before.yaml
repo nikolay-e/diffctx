@@ -1,0 +1,21 @@
+dsl.rb: |
+  module DSL
+    def self.define_accessors(*names)
+      names.each do |name|
+        define_method(name) do
+          instance_variable_get("@" + name.to_s)
+        end
+
+        define_method(name.to_s + "=") do |value|
+          instance_variable_set("@" + name.to_s, value)
+        end
+      end
+    end
+  end
+config.rb: |
+  # Initial
+  class Config
+  end
+garbage.rb: |
+  garbage_meta_unused_67890 = "never called"
+  unused_marker_12345 = "not used"

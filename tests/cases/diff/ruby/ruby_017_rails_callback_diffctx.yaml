@@ -1,0 +1,16 @@
+must_include_files:
+  - app/models/user.rb
+must_include_content:
+  - |
+    before_save :normalize_email, :set_updated_at
+must_not_include:
+  - GARBAGE_RUBY_017_PALETTE_NAME_A
+  - GARBAGE_RUBY_017_PRIMARY_HEX_B
+  - GARBAGE_RUBY_017_MAX_COLORS_C
+  - GARBAGE_RUBY_017_FONT_FAMILY_D
+  - GARBAGE_RUBY_017_FALLBACK_FONT_E
+  - GARBAGE_RUBY_017_MAX_FONT_SIZE_F
+  - GarbageColorThemeEngine
+  - GarbageFontLoader
+  - garbage_color_theme.rb
+  - garbage_font_loader.rb

@@ -1,0 +1,14 @@
+Expression.scala: 'sealed trait Expression
+
+  case class Number(value: Double) extends Expression
+
+  case class Add(left: Expression, right: Expression) extends Expression
+
+  case class Multiply(left: Expression, right: Expression) extends Expression
+
+  case class Variable(name: String) extends Expression
+
+  '
+Evaluator.scala: 'class Evaluator {}
+
+  '

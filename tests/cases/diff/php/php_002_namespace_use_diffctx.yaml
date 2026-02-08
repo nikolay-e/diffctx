@@ -1,0 +1,18 @@
+must_include_files:
+  - src/Controllers/CheckoutController.php
+must_include_content:
+  - |
+    use App\Services\PaymentService
+must_not_include:
+  - GARBAGE_PHP_002_QUEUE_NAME_A
+  - GARBAGE_PHP_002_MAX_RETRIES_B
+  - GARBAGE_PHP_002_TIMEOUT_SEC_C
+  - GARBAGE_PHP_002_PRIORITY_D
+  - GARBAGE_PHP_002_WINDOW_SIZE_E
+  - GARBAGE_PHP_002_MAX_REQUESTS_F
+  - GARBAGE_PHP_002_STRATEGY_G
+  - GARBAGE_PHP_002_BUCKET_SIZE_H
+  - GarbageQueueHandler
+  - GarbageRateLimiter
+  - garbage_queue_handler.php
+  - garbage_rate_limiter.php

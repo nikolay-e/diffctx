@@ -1,0 +1,39 @@
+src/models.py: |
+  class User:
+      def __init__(self, name, email):
+          self.name = name
+          self.email = email
+
+      def display_name(self):
+          return f"{self.name} <{self.email}>"
+
+      def is_valid(self):
+          return "@" in self.email and len(self.name) > 0
+
+      def to_dict(self):
+          return {"name": self.name, "email": self.email}
+
+tests/test_models.py: |
+  def test_placeholder():
+      pass
+
+  def test_another():
+      pass
+
+garbage_fixture_factory.py: |
+  GARBAGE_COMP_019_FAKER_LOCALE_A = "en_US"
+  GARBAGE_COMP_019_SEED_VALUE_B = "deterministic"
+
+  class GarbageFixtureFactory:
+      GARBAGE_COMP_019_LAZY_BUILD_C = True
+      def create(self):
+          pass
+
+garbage_snapshot_manager.py: |
+  GARBAGE_COMP_019_DIFF_FORMAT_D = "unified"
+  GARBAGE_COMP_019_UPDATE_FLAG_E = "interactive"
+
+  class GarbageSnapshotManager:
+      GARBAGE_COMP_019_PRUNE_STALE_F = False
+      def snapshot(self):
+          pass

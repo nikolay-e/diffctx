@@ -1,0 +1,75 @@
+migrations/001_create_tables.sql: |
+  CREATE TABLE categories (
+      id SERIAL PRIMARY KEY,
+      name VARCHAR(255) NOT NULL UNIQUE,
+      description TEXT,
+      parent_id INTEGER,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE products (
+      id SERIAL PRIMARY KEY,
+      name VARCHAR(255) NOT NULL,
+      category_id INTEGER,
+      price DECIMAL(10, 2) NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  );
+
+migrations/002_add_foreign_keys.sql: |
+  -- Self-referencing FK for category hierarchy
+  ALTER TABLE categories
+  ADD CONSTRAINT fk_categories_parent
+  FOREIGN KEY (parent_id) REFERENCES categories(id)
+  ON DELETE SET NULL;
+
+  -- FK from products to categories
+  ALTER TABLE products
+  ADD CONSTRAINT fk_products_category
+  FOREIGN KEY (category_id) REFERENCES categories(id)
+  ON DELETE SET NULL
+  ON UPDATE CASCADE;
+
+  -- Add index for FK columns
+  CREATE INDEX idx_categories_parent_id ON categories(parent_id);
+  CREATE INDEX idx_products_category_id ON products(category_id);
+
+src/models/category.py: |
+  from dataclasses import dataclass
+  from typing import Optional
+
+  @dataclass
+  class Category:
+      id: int
+      name: str
+      description: Optional[str] = None
+      parent_id: Optional[int] = None
+
+src/models/product.py: |
+  from dataclasses import dataclass
+  from decimal import Decimal
+  from typing import Optional
+
+  @dataclass
+  class Product:
+      id: int
+      name: str
+      price: Decimal
+      category_id: Optional[int] = None
+
+garbage_constraint_manager.ts: |
+  const GARBAGE_CICD_DOCS_067_CONSTRAINT_MARKER_A = "deferrable";
+  const GARBAGE_CICD_DOCS_067_CASCADE_MARKER_B = "restrict";
+
+  class GarbageConstraintManager {
+    static GARBAGE_CICD_DOCS_067_VALIDATE_MARKER_C = true;
+    manage(): void {}
+  }
+
+garbage_fk_validator.ts: |
+  const GARBAGE_CICD_DOCS_067_FK_MARKER_D = "orphan-check";
+  const GARBAGE_CICD_DOCS_067_INTEGRITY_MARKER_E = "strict";
+
+  class GarbageFkValidator {
+    static GARBAGE_CICD_DOCS_067_REPAIR_MARKER_F = false;
+    validate(): boolean { return true; }
+  }

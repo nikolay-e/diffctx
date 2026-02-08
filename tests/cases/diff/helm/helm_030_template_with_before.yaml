@@ -1,0 +1,14 @@
+values.yaml: |
+  nodeSelector:
+    kubernetes.io/os: linux
+templates/deployment.yaml: |
+  apiVersion: apps/v1
+  kind: Deployment
+  spec:
+    template:
+      spec:
+        containers:
+        - name: app
+unrelated.md: |
+  # garbage_marker_12345
+  unused_marker_67890

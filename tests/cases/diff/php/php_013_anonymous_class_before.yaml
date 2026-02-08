@@ -1,0 +1,57 @@
+src/Contracts/Handler.php: |
+  <?php
+  namespace App\Contracts;
+
+  interface Handler {
+      public function handle(mixed $data): mixed;
+      public function supports(string $type): bool;
+  }
+src/Pipeline/Pipeline.php: |
+  <?php
+  namespace App\Pipeline;
+
+  use App\Contracts\Handler;
+
+  class Pipeline {
+      private array $handlers = [];
+
+      public function addHandler(Handler $handler): self {
+          $this->handlers[] = $handler;
+          return $this;
+      }
+
+      public function process(mixed $data, string $type): mixed {
+          foreach ($this->handlers as $handler) {
+              if ($handler->supports($type)) {
+                  $data = $handler->handle($data);
+              }
+          }
+          return $data;
+      }
+  }
+src/garbage_qr_encoder.php: |
+  <?php
+  GARBAGE_PHP_013_ERROR_LEVEL_A = "M";
+  GARBAGE_PHP_013_VERSION_B = 5;
+
+  class GarbageQrEncoder {
+      GARBAGE_PHP_013_MODULE_SIZE_C = 4;
+
+      public function encode(string $data): string {
+          GARBAGE_PHP_013_MASK_PATTERN_D = 0;
+          return "qr_" . $data;
+      }
+  }
+src/garbage_rate_limiter.php: |
+  <?php
+  GARBAGE_PHP_013_WINDOW_E = 60;
+  GARBAGE_PHP_013_MAX_REQUESTS_F = 100;
+
+  class GarbageRateLimiter {
+      GARBAGE_PHP_013_STRATEGY_G = "sliding_window";
+
+      public function isAllowed(string $key): bool {
+          GARBAGE_PHP_013_BURST_H = 10;
+          return true;
+      }
+  }

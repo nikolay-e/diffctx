@@ -1,0 +1,100 @@
+src/lib.rs: |
+  pub mod entity;
+  pub mod service;
+  pub mod unrelated;
+src/entity.rs: |
+  #[derive(Debug, Clone)]
+  pub struct Entity {
+      id: u64,
+      name: String,
+      tags: Vec<String>,
+  }
+
+  impl Entity {
+      pub fn new(id: u64, name: String) -> Self {
+          Self {
+              id,
+              name,
+              tags: Vec::new(),
+          }
+      }
+
+      pub fn add_tag(&mut self, tag: String) {
+          self.tags.push(tag);
+      }
+
+      pub fn id(&self) -> u64 {
+          self.id
+      }
+
+      pub fn name(&self) -> &str {
+          &self.name
+      }
+
+      pub fn tags(&self) -> &[String] {
+          &self.tags
+      }
+
+      pub fn duplicate(&self) -> Self {
+          self.clone()
+      }
+  }
+src/service.rs: |
+  use crate::entity::Entity;
+
+  pub fn clone_entities(entities: &[Entity]) -> Vec<Entity> {
+      entities.iter().cloned().collect()
+  }
+
+  pub fn process_with_backup(entity: &Entity) -> Entity {
+      let backup = entity.clone();
+      println!("Processing entity {}: {}", entity.id(), entity.name());
+      backup
+  }
+src/unrelated/mod.rs: |
+  pub mod rate_limiter;
+  pub mod circuit_breaker;
+src/unrelated/rate_limiter.rs: |
+  // GARBAGE_RUST_033_RATE_LIMITER_A
+  pub const GARBAGE_RUST_033_MAX_REQUESTS_B: u32 = 100;
+
+  pub struct GarbageTokenBucket033 {
+      tokens: u32,
+      max_tokens: u32,
+  }
+
+  impl GarbageTokenBucket033 {
+      pub fn garbage_consume_033(&mut self) -> bool {
+          if self.tokens > 0 {
+              self.tokens -= 1;
+              true
+          } else {
+              false
+          }
+      }
+
+      pub fn garbage_refill_033(&mut self) {
+          self.tokens = self.max_tokens;
+      }
+  }
+src/unrelated/circuit_breaker.rs: |
+  // GARBAGE_RUST_033_CIRCUIT_BREAKER_C
+  pub const GARBAGE_RUST_033_FAILURE_THRESHOLD_D: u32 = 5;
+
+  pub struct GarbageCircuitBreaker033 {
+      failures: u32,
+      open: bool,
+  }
+
+  impl GarbageCircuitBreaker033 {
+      pub fn garbage_record_failure_033(&mut self) {
+          self.failures += 1;
+          if self.failures >= GARBAGE_RUST_033_FAILURE_THRESHOLD_D {
+              self.open = true;
+          }
+      }
+
+      pub fn garbage_is_open_033(&self) -> bool {
+          self.open
+      }
+  }

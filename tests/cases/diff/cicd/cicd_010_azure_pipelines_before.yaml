@@ -1,0 +1,92 @@
+azure-pipelines.yml: |
+  trigger:
+    - main
+
+  pool:
+    vmImage: 'ubuntu-latest'
+
+  steps:
+    - script: npm install
+    - script: npm test
+
+src/utils.ts: |
+  export function formatDate(date: Date): string {
+    return date.toISOString();
+  }
+
+  export function parseDate(dateString: string): Date {
+    const parsed = new Date(dateString);
+    if (isNaN(parsed.getTime())) {
+      throw new Error(`Invalid date string: ${dateString}`);
+    }
+    return parsed;
+  }
+
+  export function formatRelativeTime(date: Date): string {
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffSeconds = Math.floor(diffMs / 1000);
+    const diffMinutes = Math.floor(diffSeconds / 60);
+    const diffHours = Math.floor(diffMinutes / 60);
+    const diffDays = Math.floor(diffHours / 24);
+
+    if (diffDays > 0) return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
+    if (diffHours > 0) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
+    if (diffMinutes > 0) return `${diffMinutes} minute${diffMinutes > 1 ? 's' : ''} ago`;
+    return 'just now';
+  }
+
+  export function isWeekend(date: Date): boolean {
+    const day = date.getDay();
+    return day === 0 || day === 6;
+  }
+
+  export function getStartOfDay(date: Date): Date {
+    const result = new Date(date);
+    result.setHours(0, 0, 0, 0);
+    return result;
+  }
+
+  export function getEndOfDay(date: Date): Date {
+    const result = new Date(date);
+    result.setHours(23, 59, 59, 999);
+    return result;
+  }
+
+src/types.ts: |
+  export interface DateRange {
+    start: Date;
+    end: Date;
+  }
+
+  export interface FormattedDate {
+    iso: string;
+    relative: string;
+    local: string;
+  }
+
+  export type DateFormatter = (date: Date) => string;
+
+garbage_calendar.ts: |
+  const GARBAGE_CICD_010_CALENDAR_MARKER_A = "gregorian";
+  const GARBAGE_CICD_010_LOCALE_MARKER_B = "en-US";
+
+  class GarbageCalendarService {
+    static GARBAGE_CICD_010_WEEK_START_MARKER_C = 0;
+
+    getEvents(): void {}
+  }
+
+  export { GarbageCalendarService };
+
+garbage_timezone.ts: |
+  const GARBAGE_CICD_010_TZ_MARKER_D = "UTC";
+  const GARBAGE_CICD_010_OFFSET_MARKER_E = 0;
+
+  class GarbageTimezoneConverter {
+    static GARBAGE_CICD_010_DST_MARKER_F = true;
+
+    convert(): void {}
+  }
+
+  export { GarbageTimezoneConverter };

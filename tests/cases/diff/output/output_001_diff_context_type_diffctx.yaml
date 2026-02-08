@@ -1,0 +1,17 @@
+must_include_files:
+  - test.py
+must_include_content:
+  - |
+    def foo():
+        return 1
+must_not_include:
+  - GARBAGE_OUT_001_ANALYTICS_MARKER_A
+  - GARBAGE_OUT_001_TRACKER_MARKER_B
+  - GARBAGE_OUT_001_CLASS_MARKER_C
+  - GARBAGE_OUT_001_CACHE_MARKER_D
+  - GARBAGE_OUT_001_TTL_MARKER_E
+  - GARBAGE_OUT_001_MANAGER_CLASS_F
+  - AnalyticsTracker
+  - CacheManager
+  - garbage_analytics.py
+  - garbage_caching.py

@@ -1,0 +1,27 @@
+src/messaging/sender.py: |
+  from src.messaging.formatter import format_message_body
+  def send_message(recipient: str, body: str) -> dict:
+      formatted = format_message_body(body)
+      return {"to": recipient, "body": formatted, "sent": True}
+  def queue_message(recipient: str, body: str) -> str:
+      return "queued:" + recipient
+src/messaging/formatter.py: |
+  def format_message_body(body: str) -> str:
+      return body.strip()
+  def add_signature(body: str, sig: str) -> str:
+      return body + "\n" + sig
+garbage_delivery_tracker.py: |
+  GARBAGE_INT_005_DELIVERY_MARKER_A = "track"
+  GARBAGE_INT_005_STATUS_MARKER_B = "pending"
+
+  class GarbageDeliveryTracker:
+      def noop(self):
+          pass
+
+garbage_message_archive.py: |
+  GARBAGE_INT_005_ARCHIVE_MARKER_C = "store"
+  GARBAGE_INT_005_COMPRESS_MARKER_D = "gzip"
+
+  class GarbageMessageArchive:
+      def noop(self):
+          pass

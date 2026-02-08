@@ -1,0 +1,43 @@
+UserViewModel.swift: |
+  import Combine
+
+  class UserViewModel: ObservableObject {
+      @Published var name = ""
+      @Published var email = ""
+      @Published var isValid = false
+
+      func validate() {
+          isValid = !name.isEmpty && email.contains("@")
+      }
+  }
+UserFormView.swift: |
+  import SwiftUI
+
+  struct UserFormView: View {
+      @ObservedObject var viewModel: UserViewModel
+
+      var body: some View {
+          Form {
+              TextField("Name", text: $viewModel.name)
+              TextField("Email", text: $viewModel.email)
+              Button("Submit") {
+                  viewModel.validate()
+              }
+              .disabled(!viewModel.isValid)
+          }
+          .onChange(of: viewModel.name) { _ in viewModel.validate() }
+          .onChange(of: viewModel.email) { _ in viewModel.validate() }
+      }
+  }
+GarbagePublishedSubject.swift: |
+  class GarbagePublishedSubject {
+      static let GARBAGE_JVM_067_PUBLISHED_MARKER_A = "marker"
+      static let GARBAGE_JVM_067_SUBJECT_MARKER_B = "marker"
+      func noop() {}
+  }
+GarbageStreamPipe.swift: |
+  class GarbageStreamPipe {
+      static let GARBAGE_JVM_067_STREAM_MARKER_C = "marker"
+      static let GARBAGE_JVM_067_PIPE_MARKER_D = "marker"
+      func noop() {}
+  }

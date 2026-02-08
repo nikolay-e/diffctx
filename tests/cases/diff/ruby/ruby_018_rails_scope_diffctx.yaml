@@ -1,0 +1,16 @@
+must_include_files:
+  - app/models/user.rb
+must_include_content:
+  - |
+    scope :active, -> { all.select(&:active) }
+must_not_include:
+  - GARBAGE_RUBY_018_QR_VERSION_A
+  - GARBAGE_RUBY_018_ERROR_LEVEL_B
+  - GARBAGE_RUBY_018_MODULE_SIZE_C
+  - GARBAGE_RUBY_018_CAPTCHA_TYPE_D
+  - GARBAGE_RUBY_018_SITE_KEY_E
+  - GARBAGE_RUBY_018_MIN_SCORE_F
+  - GarbageQrCodeRenderer
+  - GarbageCaptchaValidator
+  - garbage_qr_code.rb
+  - garbage_captcha.rb

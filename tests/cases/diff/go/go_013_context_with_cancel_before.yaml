@@ -1,0 +1,80 @@
+internal/service/processor.go: |
+  package service
+
+  import (
+      "context"
+      "time"
+  )
+
+  type ProcessorConfig struct {
+      Timeout     time.Duration
+      MaxRetries  int
+      BatchSize   int
+  }
+
+  type Processor struct {
+      config ProcessorConfig
+  }
+
+  func NewProcessor(config ProcessorConfig) *Processor {
+      return &Processor{config: config}
+  }
+
+  func (p *Processor) Process(ctx context.Context, data []byte) error {
+      select {
+      case <-ctx.Done():
+          return ctx.Err()
+      default:
+          return p.doWork(data)
+      }
+  }
+
+  func (p *Processor) doWork(data []byte) error {
+      time.Sleep(100 * time.Millisecond)
+      return nil
+  }
+internal/handler/request_handler.go: |
+  package handler
+
+  import (
+      "context"
+      "myproject/internal/service"
+  )
+
+  type RequestHandler struct {
+      processor *service.Processor
+  }
+
+  func NewRequestHandler(processor *service.Processor) *RequestHandler {
+      return &RequestHandler{processor: processor}
+  }
+
+  func (h *RequestHandler) Handle(ctx context.Context, data []byte) error {
+      ctx, cancel := context.WithCancel(ctx)
+      defer cancel()
+      return h.processor.Process(ctx, data)
+  }
+internal/unrelated/lifecycle/manager.go: |
+  package lifecycle
+
+  const GARBAGE_GO_LIFECYCLE_MGR_001 = "lifecycle_garbage"
+
+  type GARBAGE_GO_TYPE_LIFECYCLE_002 struct {
+      state string
+  }
+
+  func GARBAGE_GO_FUNC_LIFECYCLE_003() string {
+      return "GARBAGE_GO_LIFECYCLE_UNUSED_004"
+  }
+internal/unrelated/lifecycle/hooks.go: |
+  package lifecycle
+
+  const GARBAGE_GO_LIFECYCLE_HOOKS_005 = "hooks_garbage"
+
+  type GARBAGE_GO_TYPE_HOOKS_006 struct {
+      callbacks []func()
+  }
+
+  func GARBAGE_GO_FUNC_HOOKS_007() {
+      println("GARBAGE_GO_HOOKS_OUTPUT_008")
+  }

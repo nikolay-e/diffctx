@@ -1,0 +1,130 @@
+pom.xml: |
+  <?xml version="1.0" encoding="UTF-8"?>
+  <project xmlns="http://maven.apache.org/POM/4.0.0"
+           xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+           xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+      <modelVersion>4.0.0</modelVersion>
+      <groupId>com.example</groupId>
+      <artifactId>inventory-service</artifactId>
+      <version>1.0.0</version>
+      <packaging>jar</packaging>
+
+      <parent>
+          <groupId>org.springframework.boot</groupId>
+          <artifactId>spring-boot-starter-parent</artifactId>
+          <version>3.2.0</version>
+      </parent>
+
+      <properties>
+          <java.version>17</java.version>
+          <maven.compiler.source>17</maven.compiler.source>
+          <maven.compiler.target>17</maven.compiler.target>
+      </properties>
+
+      <dependencies>
+          <dependency>
+              <groupId>org.springframework.boot</groupId>
+              <artifactId>spring-boot-starter-web</artifactId>
+          </dependency>
+          <dependency>
+              <groupId>org.springframework.boot</groupId>
+              <artifactId>spring-boot-starter-data-jpa</artifactId>
+          </dependency>
+          <dependency>
+              <groupId>org.postgresql</groupId>
+              <artifactId>postgresql</artifactId>
+              <scope>runtime</scope>
+          </dependency>
+          <dependency>
+              <groupId>org.flywaydb</groupId>
+              <artifactId>flyway-core</artifactId>
+          </dependency>
+      </dependencies>
+
+      <build>
+          <plugins>
+              <plugin>
+                  <groupId>org.springframework.boot</groupId>
+                  <artifactId>spring-boot-maven-plugin</artifactId>
+              </plugin>
+          </plugins>
+      </build>
+  </project>
+src/main/java/com/example/inventory/InventoryApplication.java: |
+  package com.example.inventory;
+
+  import org.springframework.boot.SpringApplication;
+  import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+  @SpringBootApplication
+  public class InventoryApplication {
+      public static void main(String[] args) {
+          SpringApplication.run(InventoryApplication.class, args);
+      }
+  }
+src/main/java/com/example/inventory/controller/HealthController.java: |
+  package com.example.inventory.controller;
+
+  import org.springframework.web.bind.annotation.GetMapping;
+  import org.springframework.web.bind.annotation.RestController;
+  import java.util.Map;
+
+  @RestController
+  public class HealthController {
+      @GetMapping("/health")
+      public Map<String, String> health() {
+          return Map.of("status", "UP", "service", "inventory");
+      }
+  }
+src/main/java/com/example/inventory/unrelated/AuditLogger.java: |
+  package com.example.inventory.unrelated;
+
+  import java.time.Instant;
+  import java.util.LinkedList;
+  import java.util.List;
+
+  public class AuditLogger {
+      public static final String GARBAGE_JAVA_021_AUDIT_A = "audit_marker_alpha";
+      private static final String GARBAGE_JAVA_021_AUDIT_B = "audit_marker_beta";
+
+      private final List<String> auditTrail = new LinkedList<>();
+
+      public void logAction(String action) {
+          String entry = Instant.now() + ": " + action;
+          auditTrail.add(entry);
+      }
+
+      public List<String> getTrail() {
+          return List.copyOf(auditTrail);
+      }
+
+      public void clearTrail() {
+          auditTrail.clear();
+          System.out.println(GARBAGE_JAVA_021_AUDIT_A + GARBAGE_JAVA_021_AUDIT_B);
+      }
+  }
+src/main/java/com/example/inventory/unrelated/CacheWarmer.java: |
+  package com.example.inventory.unrelated;
+
+  import java.util.HashMap;
+  import java.util.Map;
+
+  public class CacheWarmer {
+      public static final String GARBAGE_JAVA_021_CACHE_C = "cache_warmer_marker";
+      private static final String GARBAGE_JAVA_021_CACHE_D = "cache_internal_marker";
+
+      private final Map<String, Object> warmCache = new HashMap<>();
+
+      public void warmUp(String key, Object value) {
+          warmCache.put(key, value);
+      }
+
+      public Object retrieve(String key) {
+          return warmCache.getOrDefault(key, GARBAGE_JAVA_021_CACHE_C);
+      }
+
+      public void evictAll() {
+          warmCache.clear();
+          System.out.println(GARBAGE_JAVA_021_CACHE_D);
+      }
+  }

@@ -1,0 +1,79 @@
+docs/architecture.md: |
+  # Architecture
+
+  ## Overview
+
+  The system consists of several modules:
+
+  - `auth` - Authentication and authorization
+  - `api` - REST API endpoints
+  - `cache` - Redis caching layer
+  - `events` - Event publishing and handling
+
+  ## Module Dependencies
+
+  ```
+  api -> auth -> cache
+  api -> events
+  ```
+
+  ## Data Flow
+
+  1. Request hits `api` module
+  2. `auth` validates token
+  3. `cache` checks for cached response
+  4. `events` publishes audit event
+
+src/auth/login.py: |
+  def login(username, password):
+      return {"token": "abc123"}
+
+src/api/routes.py: |
+  from auth.login import login
+
+  def setup_routes(app):
+      app.post("/login", login)
+
+src/api/__init__.py: |
+  from .routes import setup_routes
+
+src/cache/__init__.py: |
+  import redis
+
+  client = redis.Redis()
+
+  def get_cached(key):
+      return client.get(key)
+
+  def set_cached(key, value, ttl=3600):
+      client.setex(key, ttl, value)
+
+src/events/__init__.py: |
+  from typing import Callable
+
+  handlers = {}
+
+  def publish(event_name, data):
+      for handler in handlers.get(event_name, []):
+          handler(data)
+
+  def subscribe(event_name, handler: Callable):
+      handlers.setdefault(event_name, []).append(handler)
+
+garbage_arch_analyzer.ts: |
+  const GARBAGE_CICD_DOCS_047_ANALYZER_MARKER_A = "madge";
+  const GARBAGE_CICD_DOCS_047_FORMAT_MARKER_B = "svg";
+
+  class GarbageArchAnalyzer {
+    static GARBAGE_CICD_DOCS_047_CIRCULAR_MARKER_C = true;
+    analyze(): void {}
+  }
+
+garbage_arch_validator.ts: |
+  const GARBAGE_CICD_DOCS_047_VALIDATOR_MARKER_D = "dependency-cruiser";
+  const GARBAGE_CICD_DOCS_047_RULES_MARKER_E = ".dependency-cruiser.js";
+
+  class GarbageArchValidator {
+    static GARBAGE_CICD_DOCS_047_STRICT_MARKER_F = false;
+    validate(): boolean { return true; }
+  }

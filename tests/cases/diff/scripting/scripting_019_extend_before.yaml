@@ -1,0 +1,17 @@
+class_methods.rb: |
+  module ClassMethods
+    def find(id)
+      new(id: id)
+    end
+
+    def all
+      []
+    end
+  end
+model.rb: |
+  # Initial
+  class Model
+  end
+garbage.rb: |
+  garbage_class_method_unused_12345 = "never called"
+  unused_marker_67890 = "not used"

@@ -1,0 +1,104 @@
+database.py: |
+  from typing import Generator
+
+  class DatabaseSession:
+      def __init__(self, url: str = "sqlite:///app.db"):
+          self.url = url
+          self._connected = False
+
+      def connect(self) -> None:
+          self._connected = True
+
+      def close(self) -> None:
+          self._connected = False
+
+      def execute(self, query: str) -> list[dict]:
+          return [{"result": query}]
+
+      def get_user(self, user_id: int) -> dict | None:
+          return {"id": user_id, "name": "Alice", "role": "admin"}
+
+  def get_db() -> Generator[DatabaseSession, None, None]:
+      db = DatabaseSession()
+      db.connect()
+      try:
+          yield db
+      finally:
+          db.close()
+
+dependencies.py: |
+  from fastapi import Depends, HTTPException
+  from database import get_db, DatabaseSession
+
+  async def get_current_user(
+      db: DatabaseSession = Depends(get_db),
+      token: str = "",
+  ) -> dict:
+      if not token:
+          raise HTTPException(status_code=401, detail="Not authenticated")
+      user = db.get_user(user_id=1)
+      if not user:
+          raise HTTPException(status_code=401, detail="User not found")
+      return user
+
+  async def require_admin(
+      user: dict = Depends(get_current_user),
+  ) -> dict:
+      if user.get("role") != "admin":
+          raise HTTPException(status_code=403, detail="Admin required")
+      return user
+
+routers/protected.py: |
+  from fastapi import APIRouter, Depends
+  from dependencies import get_current_user, require_admin
+
+  router = APIRouter(prefix="/protected", tags=["protected"])
+
+  @router.get("/profile")
+  async def get_profile(user: dict = Depends(get_current_user)):
+      return {"user": user}
+
+  @router.get("/admin/dashboard")
+  async def admin_dashboard(admin: dict = Depends(require_admin)):
+      return {"admin": admin, "dashboard": "data"}
+
+  @router.get("/status")
+  async def get_status():
+      return {"status": "public"}
+
+garbage_storage.py: |
+  GARBAGE_PY_055_STORE_A = "storage backend marker"
+  GARBAGE_PY_055_BUCKET_B = "bucket config marker"
+
+  class ObjectStorage:
+      GARBAGE_PY_055_UPLOAD_C = "upload handler marker"
+
+      def __init__(self, bucket: str = "default"):
+          self.bucket = bucket
+          self._objects: dict[str, bytes] = {}
+
+      def put(self, key: str, data: bytes) -> str:
+          self._objects[key] = data
+          return f"s3://{self.bucket}/{key}"
+
+      def get(self, key: str) -> bytes | None:
+          GARBAGE_PY_055_DOWNLOAD_D = "download marker"
+          return self._objects.get(key)
+
+garbage_email.py: |
+  GARBAGE_PY_055_SMTP_E = "smtp client marker"
+  GARBAGE_PY_055_TEMPLATE_F = "email template marker"
+
+  class EmailSender:
+      GARBAGE_PY_055_ATTACH_G = True
+
+      def __init__(self, smtp_host: str = "localhost", smtp_port: int = 587):
+          self.smtp_host = smtp_host
+          self.smtp_port = smtp_port
+
+      def send(self, to: str, subject: str, body: str) -> bool:
+          return True
+
+      def send_bulk(self, recipients: list[str], subject: str, body: str) -> int:
+          GARBAGE_PY_055_BULK_H = "bulk send marker"
+          return len(recipients)

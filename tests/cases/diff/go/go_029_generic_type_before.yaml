@@ -1,0 +1,107 @@
+internal/collections/slice.go: |
+  package collections
+
+  type IntSlice []int
+
+  func (s IntSlice) First() int {
+      if len(s) == 0 {
+          return 0
+      }
+      return s[0]
+  }
+
+  func (s IntSlice) Last() int {
+      if len(s) == 0 {
+          return 0
+      }
+      return s[len(s)-1]
+  }
+
+  type StringSlice []string
+
+  func (s StringSlice) First() string {
+      if len(s) == 0 {
+          return ""
+      }
+      return s[0]
+  }
+internal/collections/map.go: |
+  package collections
+
+  type StringMap map[string]string
+
+  func (m StringMap) Get(key string) (string, bool) {
+      v, ok := m[key]
+      return v, ok
+  }
+
+  func (m StringMap) Keys() []string {
+      keys := make([]string, 0, len(m))
+      for k := range m {
+          keys = append(keys, k)
+      }
+      return keys
+  }
+internal/unrelated/search/elasticsearch.go: |
+  package search
+
+  import "context"
+
+  const GARBAGE_GO_ELASTIC_CLIENT_A1B2C3 = "elastic_garbage_marker"
+
+  type GARBAGE_GO_TYPE_INDEX_D4E5F6 struct {
+      name     string
+      settings map[string]interface{}
+  }
+
+  func GARBAGE_GO_FUNC_ELASTIC_G7H8I9() string {
+      return "GARBAGE_GO_ELASTIC_UNUSED_J0K1L2"
+  }
+
+  type ElasticConfig struct {
+      Addresses []string
+      Username  string
+      Password  string
+      CloudID   string
+  }
+
+  func GARBAGE_GO_FUNC_ES_SEARCH_M3N4O5(ctx context.Context, query string) error {
+      println("GARBAGE_GO_ES_OUTPUT_P6Q7R8")
+      return nil
+  }
+internal/unrelated/search/solr_client.go: |
+  package search
+
+  const GARBAGE_GO_SOLR_CLIENT_S9T0U1 = "solr_garbage"
+
+  type GARBAGE_GO_TYPE_SOLR_V2W3X4 struct {
+      baseURL    string
+      collection string
+  }
+
+  func GARBAGE_GO_FUNC_SOLR_Y5Z6A7() {
+      println("GARBAGE_GO_SOLR_OUTPUT_B8C9D0")
+  }
+
+  type SolrConfig struct {
+      BaseURL    string
+      Collection string
+      Timeout    int
+  }
+
+  func GARBAGE_GO_FUNC_SOLR_QUERY_E1F2G3(q string) ([]interface{}, error) {
+      return nil, nil
+  }
+internal/unrelated/search/meilisearch.go: |
+  package search
+
+  const GARBAGE_GO_MEILI_CLIENT_H4I5J6 = "meilisearch_garbage"
+
+  type GARBAGE_GO_TYPE_MEILI_K7L8M9 struct {
+      host   string
+      apiKey string
+  }
+
+  func GARBAGE_GO_FUNC_MEILI_N0O1P2() {
+      println("GARBAGE_GO_MEILI_OUTPUT_Q3R4S5")
+  }

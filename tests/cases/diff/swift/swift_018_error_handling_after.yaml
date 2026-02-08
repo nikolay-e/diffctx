@@ -1,0 +1,57 @@
+AppError.swift: |
+  enum AppError: Error {
+      case networkError(String)
+      case validationError(String)
+      case notFound
+      case unauthorized
+
+      var localizedDescription: String {
+          switch self {
+          case .networkError(let message):
+              return "Network error: \(message)"
+          case .validationError(let message):
+              return "Validation error: \(message)"
+          case .notFound:
+              return "Resource not found"
+          case .unauthorized:
+              return "Unauthorized access"
+          }
+      }
+  }
+  // unused_marker_67890
+UserService.swift: |
+  struct User {
+      let id: String
+      let name: String
+  }
+
+  class UserService {
+      func fetchUser(id: String) throws -> User {
+          guard !id.isEmpty else {
+              throw AppError.validationError("ID cannot be empty")
+          }
+
+          guard let user = findUser(id: id) else {
+              throw AppError.notFound
+          }
+
+          return user
+      }
+
+      func handleError(_ error: AppError) {
+          switch error {
+          case .networkError(let msg):
+              print("Network issue: \(msg)")
+          case .validationError(let msg):
+              print("Invalid input: \(msg)")
+          case .notFound:
+              print("User not found")
+          case .unauthorized:
+              print("Please login")
+          }
+      }
+
+      private func findUser(id: String) -> User? {
+          return nil
+      }
+  }

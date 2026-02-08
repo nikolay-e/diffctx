@@ -1,0 +1,16 @@
+service.py: |
+  class Service:
+      def __init__(self):
+          self.data = []
+          self.count = 0
+
+      def add(self, item):
+          self.data.append(item)
+          self.count += 1
+
+      def remove(self, item):
+          self.data.remove(item)
+
+      def clear(self):
+          self.data = []
+          self.count = 0

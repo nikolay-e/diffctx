@@ -1,0 +1,68 @@
+decorators/logging.py: |
+  import functools
+  import logging
+
+  logger = logging.getLogger(__name__)
+
+  def log_calls(func):
+      @functools.wraps(func)
+      def wrapper(*args, **kwargs):
+          logger.info(f"Calling {func.__name__}")
+          result = func(*args, **kwargs)
+          logger.info(f"Finished {func.__name__}")
+          return result
+      return wrapper
+
+  def retry(max_attempts=3):
+      def decorator(func):
+          @functools.wraps(func)
+          def wrapper(*args, **kwargs):
+              for attempt in range(max_attempts):
+                  try:
+                      return func(*args, **kwargs)
+                  except Exception as e:
+                      if attempt == max_attempts - 1:
+                          raise
+                      logger.warning(f"Attempt {attempt + 1} failed: {e}")
+          return wrapper
+      return decorator
+services/user_service.py: |
+  from decorators.logging import log_calls
+
+  class UserService:
+      @log_calls
+      def create_user(self, name: str, email: str):
+          return {"name": name, "email": email}
+
+      @log_calls
+      def delete_user(self, user_id: int):
+          return {"deleted": user_id}
+
+      def get_user(self, user_id: int):
+          return {"id": user_id}
+services/order_service.py: |
+  from decorators.logging import log_calls, retry
+
+  class OrderService:
+      @log_calls
+      @retry(max_attempts=3)
+      def create_order(self, user_id: int, items: list):
+          return {"user_id": user_id, "items": items}
+
+      @log_calls
+      def cancel_order(self, order_id: int):
+          return {"cancelled": order_id}
+utils/garbage_batch_processor.py: |
+  # GARBAGE_PAT_008_BATCH_PROCESSOR_A
+  GARBAGE_PAT_008_BATCH_SIZE_B = 1000
+
+  class GarbageBatchProcessor:
+      def process(self, items):
+          return items
+utils/garbage_queue_manager.py: |
+  # GARBAGE_PAT_008_QUEUE_MANAGER_A
+  GARBAGE_PAT_008_MAX_QUEUE_B = 5000
+
+  class GarbageQueueManager:
+      def enqueue(self, item):
+          pass

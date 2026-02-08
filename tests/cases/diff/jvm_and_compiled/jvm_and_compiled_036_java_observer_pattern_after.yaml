@@ -1,0 +1,74 @@
+src/main/java/com/example/Event.java: |
+  package com.example;
+
+  public class Event {
+      private final String type;
+      private final Object data;
+
+      public Event(String type, Object data) {
+          this.type = type;
+          this.data = data;
+      }
+
+      public String getType() { return type; }
+      public Object getData() { return data; }
+  }
+src/main/java/com/example/EventListener.java: |
+  package com.example;
+
+  @FunctionalInterface
+  public interface EventListener {
+      void onEvent(Event event);
+  }
+src/main/java/com/example/EventBus.java: |
+  package com.example;
+
+  import java.util.ArrayList;
+  import java.util.HashMap;
+  import java.util.List;
+  import java.util.Map;
+
+  public class EventBus {
+      private final Map<String, List<EventListener>> listeners = new HashMap<>();
+
+      public void subscribe(String eventType, EventListener listener) {
+          listeners.computeIfAbsent(eventType, k -> new ArrayList<>()).add(listener);
+      }
+
+      public void unsubscribe(String eventType, EventListener listener) {
+          List<EventListener> list = listeners.get(eventType);
+          if (list != null) {
+              list.remove(listener);
+          }
+      }
+
+      public void publish(Event event) {
+          List<EventListener> list = listeners.get(event.getType());
+          if (list != null) {
+              for (EventListener listener : list) {
+                  listener.onEvent(event);
+              }
+          }
+      }
+  }
+src/main/java/com/example/UserEventHandler.java: |
+  package com.example;
+
+  public class UserEventHandler implements EventListener {
+      @Override
+      public void onEvent(Event event) {
+          System.out.println("User event: " + event.getType());
+      }
+  }
+GarbageMediator.java: |
+  public class GarbageMediator {
+      public static final String GARBAGE_JVM_036_MEDIATOR_MARKER_A = "marker";
+      public static final String GARBAGE_JVM_036_CHANNEL_MARKER_B = "marker";
+      public void noop() {}
+  }
+GarbageRelay.java: |
+  public class GarbageRelay {
+      public static final String GARBAGE_JVM_036_RELAY_MARKER_C = "marker";
+      public static final String GARBAGE_JVM_036_FORWARD_MARKER_D = "marker";
+      public void noop() {}
+  }

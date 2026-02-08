@@ -1,0 +1,70 @@
+data/config.json: |
+  {"name": "app", "version": "2.0", "features": ["auth", "api"]}
+src/lib.rs: |
+  pub mod config;
+  pub mod unrelated;
+src/config.rs: |
+  const CONFIG_JSON: &str = include_str!("../data/config.json");
+
+  pub fn get_config() -> serde_json::Value {
+      serde_json::from_str(CONFIG_JSON).unwrap()
+  }
+
+  pub fn get_app_name() -> String {
+      let config = get_config();
+      config["name"].as_str().unwrap_or("unknown").to_string()
+  }
+
+  pub fn get_version() -> String {
+      let config = get_config();
+      config["version"].as_str().unwrap_or("0.0.0").to_string()
+  }
+
+  pub fn get_features() -> Vec<String> {
+      let config = get_config();
+      config["features"]
+          .as_array()
+          .map(|arr| {
+              arr.iter()
+                  .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                  .collect()
+          })
+          .unwrap_or_default()
+  }
+src/unrelated/mod.rs: |
+  pub mod printer;
+  pub mod counter;
+src/unrelated/printer.rs: |
+  // GARBAGE_RUST_030_PRINTER_A
+  pub const GARBAGE_RUST_030_PRINT_MODE_B: &str = "stdout";
+
+  pub struct GarbagePrettyPrinter030 {
+      color: bool,
+  }
+
+  impl GarbagePrettyPrinter030 {
+      pub fn garbage_print_header_030(&self, title: &str) {
+          println!("=== {} ===", title);
+      }
+
+      pub fn garbage_print_footer_030(&self) {
+          println!("============");
+      }
+  }
+src/unrelated/counter.rs: |
+  // GARBAGE_RUST_030_COUNTER_C
+  pub const GARBAGE_RUST_030_MAX_COUNT_D: u64 = 1_000_000;
+
+  pub struct GarbageAtomicCounter030 {
+      value: u64,
+  }
+
+  impl GarbageAtomicCounter030 {
+      pub fn garbage_increment_030(&mut self) {
+          self.value += 1;
+      }
+
+      pub fn garbage_reset_030(&mut self) {
+          self.value = 0;
+      }
+  }

@@ -1,0 +1,19 @@
+main.tf: |
+  locals {
+    name = "myapp"
+
+    # String functions
+    upper_name = upper(local.name)
+    trimmed    = trimspace("  hello  ")
+
+    # Collection functions
+    merged_tags = merge(var.common_tags, var.extra_tags)
+    flattened   = flatten([var.subnet_ids, var.extra_subnet_ids])
+
+    # Encoding functions
+    encoded = base64encode("secret")
+    decoded = jsondecode(file("config.json"))
+
+    # Math functions
+    max_count = max(var.min_count, var.desired_count)
+  }

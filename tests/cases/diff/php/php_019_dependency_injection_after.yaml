@@ -1,0 +1,26 @@
+UserRepository.php: |
+  <?php
+  class UserRepository {
+      public function find(int $id): array {
+          return ['id' => $id, 'name' => 'User'];
+      }
+
+      public function save(array $data): bool {
+          return true;
+      }
+  }
+UserService.php: |
+  <?php
+  require_once 'UserRepository.php';
+
+  class UserService {
+      public function __construct(private UserRepository $repo) {}
+
+      public function getUser(int $id): array {
+          return $this->repo->find($id);
+      }
+
+      public function createUser(array $data): bool {
+          return $this->repo->save($data);
+      }
+  }

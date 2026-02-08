@@ -1,0 +1,9 @@
+cycle.py: |
+  def func_alpha():
+      func_beta()
+
+  def func_beta():
+      func_gamma()
+
+  def func_gamma():
+      func_alpha()

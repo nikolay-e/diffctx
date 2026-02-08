@@ -1,0 +1,24 @@
+user.rb: |
+  class User
+    def self.find(id)
+      new(id: id, name: "User")
+    end
+
+    def self.all
+      []
+    end
+
+    attr_reader :id, :name
+
+    def initialize(id:, name:)
+      @id = id
+      @name = name
+    end
+  end
+controller.rb: |
+  # Initial
+  class Controller
+  end
+garbage.rb: |
+  garbage_class_find_unused_12345 = "never called"
+  unused_marker_67890 = "not used"

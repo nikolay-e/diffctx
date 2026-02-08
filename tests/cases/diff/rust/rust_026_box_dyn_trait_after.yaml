@@ -1,0 +1,102 @@
+src/lib.rs: |
+  pub mod plugin;
+  pub mod unrelated;
+src/plugin.rs: |
+  pub trait Plugin: Send + Sync {
+      fn name(&self) -> &str;
+      fn execute(&self);
+      fn priority(&self) -> i32 { 0 }
+  }
+
+  pub struct PluginManager {
+      plugins: Vec<Box<dyn Plugin>>,
+  }
+
+  impl PluginManager {
+      pub fn new() -> Self {
+          Self { plugins: vec![] }
+      }
+
+      pub fn register(&mut self, plugin: Box<dyn Plugin>) {
+          self.plugins.push(plugin);
+          self.plugins.sort_by_key(|p| std::cmp::Reverse(p.priority()));
+      }
+
+      pub fn list_plugins(&self) -> Vec<&str> {
+          self.plugins.iter().map(|p| p.name()).collect()
+      }
+
+      pub fn execute_all(&self) {
+          for plugin in &self.plugins {
+              println!("Running plugin: {}", plugin.name());
+              plugin.execute();
+          }
+      }
+
+      pub fn find_plugin(&self, name: &str) -> Option<&dyn Plugin> {
+          self.plugins.iter().find(|p| p.name() == name).map(|p| p.as_ref())
+      }
+  }
+
+  pub struct LogPlugin {
+      label: String,
+  }
+
+  impl LogPlugin {
+      pub fn new(label: &str) -> Self {
+          Self { label: label.to_string() }
+      }
+  }
+
+  impl Plugin for LogPlugin {
+      fn name(&self) -> &str {
+          &self.label
+      }
+
+      fn execute(&self) {
+          println!("LogPlugin [{}] executed", self.label);
+      }
+
+      fn priority(&self) -> i32 {
+          10
+      }
+  }
+src/unrelated/mod.rs: |
+  pub mod migrator;
+  pub mod seeder;
+src/unrelated/migrator.rs: |
+  // GARBAGE_RUST_026_MIGRATOR_A
+  pub const GARBAGE_RUST_026_MIGRATION_VER_B: u32 = 42;
+
+  pub struct GarbageSchemaMigrator026 {
+      version: u32,
+  }
+
+  impl GarbageSchemaMigrator026 {
+      pub fn garbage_migrate_up_026(&mut self) {
+          self.version += 1;
+      }
+
+      pub fn garbage_migrate_down_026(&mut self) {
+          if self.version > 0 {
+              self.version -= 1;
+          }
+      }
+  }
+src/unrelated/seeder.rs: |
+  // GARBAGE_RUST_026_SEEDER_C
+  pub const GARBAGE_RUST_026_SEED_COUNT_D: usize = 100;
+
+  pub struct GarbageDataSeeder026 {
+      batch_size: usize,
+  }
+
+  impl GarbageDataSeeder026 {
+      pub fn garbage_seed_users_026(&self) -> Vec<String> {
+          (0..self.batch_size).map(|i| format!("user_{}", i)).collect()
+      }
+
+      pub fn garbage_seed_products_026(&self) -> Vec<String> {
+          (0..self.batch_size).map(|i| format!("product_{}", i)).collect()
+      }
+  }

@@ -1,0 +1,81 @@
+sql/queries/top_customers.sql: |
+  -- Get top customers by total spending with detailed stats
+  -- Uses correlated subqueries for multiple aggregations
+  SELECT
+      u.id,
+      u.name,
+      u.email,
+      u.created_at AS member_since,
+      (SELECT COUNT(*) FROM orders WHERE user_id = u.id) AS order_count,
+      (SELECT COALESCE(SUM(total), 0) FROM orders WHERE user_id = u.id) AS total_spent,
+      (
+          SELECT MAX(created_at)
+          FROM orders
+          WHERE user_id = u.id
+      ) AS last_order_date,
+      (
+          SELECT AVG(total)
+          FROM orders
+          WHERE user_id = u.id
+      ) AS avg_order_value,
+      (
+          SELECT COUNT(DISTINCT oi.product_id)
+          FROM orders o
+          JOIN order_items oi ON o.id = oi.order_id
+          WHERE o.user_id = u.id
+      ) AS unique_products_purchased
+  FROM users u
+  WHERE EXISTS (SELECT 1 FROM orders WHERE user_id = u.id)
+  ORDER BY total_spent DESC
+  LIMIT :limit;
+
+src/models/customer_stats.py: |
+  from dataclasses import dataclass
+  from datetime import datetime
+  from decimal import Decimal
+  from typing import Optional
+
+  @dataclass
+  class CustomerStats:
+      id: int
+      name: str
+      email: str
+      member_since: datetime
+      order_count: int
+      total_spent: Decimal
+      last_order_date: Optional[datetime]
+      avg_order_value: Optional[Decimal]
+      unique_products_purchased: int
+
+src/repositories/customer_repository.py: |
+  from typing import List
+  from models.customer_stats import CustomerStats
+
+  class CustomerRepository:
+      def __init__(self, db):
+          self.db = db
+
+      def get_top_customers(self, limit: int = 10) -> List[CustomerStats]:
+          results = self.db.execute_file(
+              'sql/queries/top_customers.sql',
+              {'limit': limit}
+          )
+          return [CustomerStats(**r) for r in results]
+
+garbage_subquery_analyzer.ts: |
+  const GARBAGE_CICD_DOCS_075_CORRELATED_MARKER_A = "nested";
+  const GARBAGE_CICD_DOCS_075_SCALAR_MARKER_B = "single";
+
+  class GarbageSubqueryAnalyzer {
+    static GARBAGE_CICD_DOCS_075_EXISTS_MARKER_C = true;
+    analyze(): void {}
+  }
+
+garbage_query_rewriter.ts: |
+  const GARBAGE_CICD_DOCS_075_FLATTEN_MARKER_D = "unnest";
+  const GARBAGE_CICD_DOCS_075_LATERAL_MARKER_E = "cross";
+
+  class GarbageQueryRewriter {
+    static GARBAGE_CICD_DOCS_075_MATERIALIZE_MARKER_F = false;
+    rewrite(): void {}
+  }

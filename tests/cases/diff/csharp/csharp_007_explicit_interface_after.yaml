@@ -1,0 +1,47 @@
+Interfaces/ILogger.cs: |
+  namespace MyApp.Interfaces;
+
+  public interface ILogger
+  {
+      void Log(string message);
+  }
+
+  public interface IDetailedLogger
+  {
+      void Log(string message, string level);
+  }
+Services/ConsoleLogger.cs: |
+  using MyApp.Interfaces;
+
+  namespace MyApp.Services;
+
+  public class ConsoleLogger : ILogger, IDetailedLogger
+  {
+      void ILogger.Log(string message)
+      {
+          Console.WriteLine(message);
+      }
+
+      void IDetailedLogger.Log(string message, string level)
+      {
+          Console.WriteLine($"[{level}] {message}");
+      }
+  }
+Unrelated/EmailSender.cs: |
+  namespace MyApp.Unrelated;
+
+  public class EmailSender
+  {
+      private const string GARBAGE_CS_007_EMAIL_SENDER_A = "email_sender_marker";
+
+      public void Send(string to, string body) => _ = GARBAGE_CS_007_EMAIL_SENDER_A + to;
+  }
+Unrelated/QueueManager.cs: |
+  namespace MyApp.Unrelated;
+
+  public class QueueManager
+  {
+      public const string GARBAGE_CS_007_QUEUE_MANAGER_B = "queue_manager_marker";
+
+      public void Enqueue(string item) => _ = GARBAGE_CS_007_QUEUE_MANAGER_B + item;
+  }

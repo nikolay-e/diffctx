@@ -1,0 +1,82 @@
+sql/procedures/calculate_order_total.sql: |
+  CREATE OR REPLACE FUNCTION calculate_order_total(
+      p_order_id INTEGER,
+      p_include_tax BOOLEAN DEFAULT FALSE,
+      p_include_shipping BOOLEAN DEFAULT FALSE
+  )
+  RETURNS DECIMAL AS $$
+  DECLARE
+      v_subtotal DECIMAL;
+      v_tax_rate DECIMAL := 0.10;
+      v_shipping_cost DECIMAL := 9.99;
+      v_total DECIMAL;
+  BEGIN
+      -- Calculate subtotal from order items
+      SELECT SUM(quantity * unit_price) INTO v_subtotal
+      FROM order_items
+      WHERE order_id = p_order_id;
+
+      v_subtotal := COALESCE(v_subtotal, 0);
+      v_total := v_subtotal;
+
+      -- Add tax if requested
+      IF p_include_tax THEN
+          v_total := v_total * (1 + v_tax_rate);
+      END IF;
+
+      -- Add shipping if requested
+      IF p_include_shipping AND v_subtotal > 0 THEN
+          v_total := v_total + v_shipping_cost;
+      END IF;
+
+      RETURN ROUND(v_total, 2);
+  END;
+  $$ LANGUAGE plpgsql STABLE;
+
+  -- Helper function to get order with tax
+  CREATE OR REPLACE FUNCTION get_order_total_with_tax(p_order_id INTEGER)
+  RETURNS DECIMAL AS $$
+  BEGIN
+      RETURN calculate_order_total(p_order_id, TRUE, FALSE);
+  END;
+  $$ LANGUAGE plpgsql STABLE;
+
+src/services/order_service.py: |
+  from decimal import Decimal
+  from typing import Optional
+
+  class OrderService:
+      def __init__(self, db):
+          self.db = db
+
+      def get_order_total(self, order_id: int) -> Decimal:
+          result = self.db.execute(
+              "SELECT calculate_order_total(%s)",
+              [order_id]
+          )
+          return Decimal(str(result[0][0]))
+
+      def update_order_total(self, order_id: int) -> None:
+          total = self.get_order_total(order_id)
+          self.db.execute(
+              "UPDATE orders SET total = %s WHERE id = %s",
+              [total, order_id]
+          )
+
+garbage_procedure_manager.ts: |
+  const GARBAGE_CICD_DOCS_068_PROCEDURE_MARKER_A = "plpgsql";
+  const GARBAGE_CICD_DOCS_068_SECURITY_MARKER_B = "definer";
+
+  class GarbageProcedureManager {
+    static GARBAGE_CICD_DOCS_068_VOLATILE_MARKER_C = "stable";
+    manage(): void {}
+  }
+
+garbage_function_executor.ts: |
+  const GARBAGE_CICD_DOCS_068_EXECUTOR_MARKER_D = "prepared";
+  const GARBAGE_CICD_DOCS_068_CACHE_MARKER_E = 300;
+
+  class GarbageFunctionExecutor {
+    static GARBAGE_CICD_DOCS_068_PARALLEL_MARKER_F = false;
+    execute(): void {}
+  }

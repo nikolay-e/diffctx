@@ -1,0 +1,61 @@
+utils.sh: |
+  #!/bin/bash
+
+  process_file() {
+      local file=$1
+      echo "Processing $file"
+      cat "$file" | wc -l
+  }
+
+  log_message() {
+      local level=$1
+      local message=$2
+      echo "[$level] $(date): $message"
+  }
+
+  validate_file() {
+      local file=$1
+      if [[ ! -f "$file" ]]; then
+          log_message "ERROR" "File not found: $file"
+          return 1
+      fi
+      return 0
+  }
+main.sh: |
+  #!/bin/bash
+  source ./utils.sh
+
+  for file in *.txt; do
+      if validate_file "$file"; then
+          count=$(process_file "$file")
+          log_message "INFO" "Processed $file ($count lines)"
+      fi
+  done
+unrelated/garbage_geoip.sh: |
+  #!/bin/bash
+  # GARBAGE_SH_006_GEOIP_LOOKUP_A
+  GARBAGE_SH_006_GEOIP_DB_B="/usr/share/GeoIP/GeoLite2.mmdb"
+
+  garbage_lookup_ip_006() {
+      local ip=$1
+      echo "Location for $ip: unknown"
+  }
+
+  garbage_get_country_006() {
+      local ip=$1
+      echo "US"
+  }
+unrelated/garbage_ssl_check.sh: |
+  #!/bin/bash
+  # GARBAGE_SH_006_SSL_CHECK_C
+  GARBAGE_SH_006_CERT_PATH_D="/etc/ssl/certs"
+
+  garbage_check_expiry_006() {
+      local domain=$1
+      echo "Certificate valid for $domain"
+  }
+
+  garbage_verify_chain_006() {
+      local cert=$1
+      echo "Chain OK: $cert"
+  }

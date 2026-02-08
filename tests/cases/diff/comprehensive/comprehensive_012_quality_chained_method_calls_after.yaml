@@ -1,0 +1,54 @@
+src/builder.py: |
+  class QueryBuilder:
+      def __init__(self):
+          self.parts = []
+          self.params = {}
+
+      def select(self, fields):
+          self.parts.append(f"SELECT {fields}")
+          return self
+
+      def from_table(self, table):
+          self.parts.append(f"FROM {table}")
+          return self
+
+      def where(self, condition, **params):
+          self.parts.append(f"WHERE {condition}")
+          self.params.update(params)
+          return self
+
+      def order_by(self, field, direction="ASC"):
+          self.parts.append(f"ORDER BY {field} {direction}")
+          return self
+
+      def build(self):
+          return " ".join(self.parts)
+
+src/main.py: |
+  from src.builder import QueryBuilder
+
+  query = QueryBuilder().select("*").from_table("users").where("id=1").build()
+
+  def get_default_query():
+      return QueryBuilder().select("*").from_table("users").build()
+
+  def format_result(rows):
+      return [dict(row) for row in rows]
+
+garbage_query_cache.py: |
+  GARBAGE_COMP_012_CACHE_BACKEND_A = "redis"
+  GARBAGE_COMP_012_INVALIDATION_B = "ttl"
+
+  class GarbageQueryCache:
+      GARBAGE_COMP_012_WARM_STRATEGY_C = True
+      def cache(self):
+          pass
+
+garbage_connection_pool.py: |
+  GARBAGE_COMP_012_POOL_SIZE_D = "adaptive"
+  GARBAGE_COMP_012_IDLE_TIMEOUT_E = "reclaim"
+
+  class GarbageConnectionPool:
+      GARBAGE_COMP_012_HEALTH_CHECK_F = False
+      def acquire(self):
+          pass

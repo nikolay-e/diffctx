@@ -1,0 +1,32 @@
+Models/Product.cs: |
+  namespace MyApp.Models;
+
+  public class Product
+  {
+      public int Id { get; set; }
+      public string Name { get; set; }
+      public decimal Price { get; set; }
+      public string Category { get; set; }
+  }
+Services/ProductService.cs: |
+  namespace MyApp.Services;
+
+  public class ProductService { }
+Unrelated/ImageResizer.cs: |
+  namespace MyApp.Unrelated;
+
+  public class ImageResizer
+  {
+      private const string GARBAGE_CS_012_IMAGE_RESIZER_A = "image_resizer_marker";
+
+      public void Resize(int width, int height) => _ = GARBAGE_CS_012_IMAGE_RESIZER_A;
+  }
+Unrelated/PdfGenerator.cs: |
+  namespace MyApp.Unrelated;
+
+  public class PdfGenerator
+  {
+      public const string GARBAGE_CS_012_PDF_GENERATOR_B = "pdf_generator_marker";
+
+      public byte[] Generate(string html) => System.Text.Encoding.UTF8.GetBytes(GARBAGE_CS_012_PDF_GENERATOR_B);
+  }

@@ -1,0 +1,168 @@
+db.py: |
+  from typing import Optional, Any, Dict, List
+  from dataclasses import dataclass
+  import logging
+  import time
+
+  logger = logging.getLogger(__name__)
+
+  @dataclass
+  class QueryResult:
+      rows: List[Dict[str, Any]]
+      affected_rows: int
+      execution_time_ms: float
+
+  class DatabaseError(Exception):
+      pass
+
+  class ConnectionError(DatabaseError):
+      pass
+
+  class QueryError(DatabaseError):
+      pass
+
+  class ConnectionStats:
+      def __init__(self):
+          self.queries_executed = 0
+          self.total_execution_time = 0.0
+          self.errors = 0
+
+  class DatabaseConnection:
+      def __init__(self, url: str, timeout: int = 30):
+          self.url = url
+          self.timeout = timeout
+          self.conn: Optional[Dict[str, Any]] = None
+          self._in_transaction = False
+          self._stats = ConnectionStats()
+          self._isolation_level = "READ COMMITTED"
+
+      def __enter__(self) -> "DatabaseConnection":
+          logger.info(f"Connecting to {self.url}")
+          self.conn = self._connect()
+          return self
+
+      def __exit__(self, exc_type, exc_val, exc_tb) -> bool:
+          if self.conn:
+              if exc_type is not None:
+                  logger.error(f"Exception during connection: {exc_val}")
+                  if self._in_transaction:
+                      self.rollback()
+              self._close()
+          return False
+
+      def _connect(self) -> Dict[str, Any]:
+          return {"url": self.url, "connected": True, "timeout": self.timeout}
+
+      def _close(self) -> None:
+          if self.conn:
+              logger.info("Closing connection")
+              self.conn["connected"] = False
+              self.conn = None
+
+      def execute(self, query: str, params: Optional[Dict[str, Any]] = None) -> QueryResult:
+          if not self.conn or not self.conn.get("connected"):
+              raise ConnectionError("Not connected to database")
+
+          start_time = time.time()
+          try:
+              self._stats.queries_executed += 1
+              execution_time = (time.time() - start_time) * 1000
+              self._stats.total_execution_time += execution_time
+              return QueryResult(rows=[], affected_rows=0, execution_time_ms=execution_time)
+          except Exception as e:
+              self._stats.errors += 1
+              raise QueryError(f"Query failed: {e}") from e
+
+      def begin_transaction(self) -> None:
+          self._in_transaction = True
+          logger.debug("Transaction started")
+
+      def commit(self) -> None:
+          self._in_transaction = False
+          logger.debug("Transaction committed")
+
+      def rollback(self) -> None:
+          self._in_transaction = False
+          logger.debug("Transaction rolled back")
+
+      def set_isolation_level(self, level: str) -> None:
+          valid_levels = ["READ UNCOMMITTED", "READ COMMITTED", "REPEATABLE READ", "SERIALIZABLE"]
+          if level not in valid_levels:
+              raise ValueError(f"Invalid isolation level: {level}")
+          self._isolation_level = level
+
+      def get_stats(self) -> ConnectionStats:
+          return self._stats
+service.py: |
+  from typing import Any, Dict, List, Optional
+  from dataclasses import dataclass
+  from db import DatabaseConnection, QueryResult, QueryError
+
+  @dataclass
+  class ServiceConfig:
+      db_url: str
+      timeout: int = 30
+
+  class DataService:
+      def __init__(self, config: ServiceConfig):
+          self.config = config
+
+      def run_query(self, query: str, params: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+          with DatabaseConnection(self.config.db_url, self.config.timeout) as db:
+              result = db.execute(query, params)
+              return result.rows
+
+      def run_transaction(self, queries: List[str]) -> int:
+          total_affected = 0
+          with DatabaseConnection(self.config.db_url, self.config.timeout) as db:
+              db.begin_transaction()
+              try:
+                  for query in queries:
+                      result = db.execute(query)
+                      total_affected += result.affected_rows
+                  db.commit()
+              except QueryError:
+                  db.rollback()
+                  raise
+          return total_affected
+garbage_pooling.py: |
+  GARBAGE_MARKER_POOL_001 = "pooling garbage"
+  UNRELATED_POOL_SIZE_002 = 10
+
+  class ConnectionPool:
+      GARBAGE_POOL_CLASS_003 = "pool class marker"
+
+      def __init__(self, size: int = 5):
+          self.size = size
+          self._connections: List = []
+
+      def acquire(self) -> Any:
+          return None
+
+      def release(self, conn: Any) -> None:
+          pass
+
+  class PooledConnection:
+      GARBAGE_POOLED_MARKER_004 = "pooled marker"
+
+      def __init__(self, pool: "ConnectionPool"):
+          self.pool = pool
+garbage_migration.py: |
+  GARBAGE_MARKER_MIGRATE_005 = "migration garbage"
+  UNRELATED_VERSION_006 = "1.0.0"
+
+  class MigrationManager:
+      GARBAGE_MIGRATE_CLASS_007 = True
+
+      def __init__(self):
+          self._migrations: List[dict] = []
+
+      def apply(self, migration: dict) -> bool:
+          return True
+
+      def rollback(self, migration: dict) -> bool:
+          return True
+
+  def format_migration_version(version: str) -> str:
+      GARBAGE_FORMAT_MIGRATE_008 = "format migrate marker"
+      return f"v{version}"

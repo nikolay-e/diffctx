@@ -1,0 +1,18 @@
+User.php: |
+  <?php
+  class User {
+      public int $id;
+      public string $name;
+
+      public function __construct(int $id, string $name) {
+          $this->id = $id;
+          $this->name = $name;
+      }
+  }
+Repository.php: |
+  <?php
+  class Repository {}
+garbage.php: |
+  <?php
+  $garbageNullable67890 = null;
+  $unused_marker_12345 = "not used";

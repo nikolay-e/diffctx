@@ -1,0 +1,49 @@
+.github/workflows/deploy.yml: |
+  name: Deploy
+  on:
+    push:
+      branches: [main]
+  jobs:
+    deploy:
+      runs-on: ubuntu-latest
+      steps:
+        - uses: actions/checkout@v4
+        - run: ./deploy.sh
+
+deploy.sh: |
+  #!/bin/bash
+  set -e
+  echo "Deploying application..."
+  aws s3 sync ./dist s3://prod-bucket/
+  aws cloudfront create-invalidation --distribution-id E123 --paths "/*"
+
+src/config/deploy.ts: |
+  export interface DeploymentTarget {
+    name: string;
+    url: string;
+    region: string;
+  }
+
+  export const productionTarget: DeploymentTarget = {
+    name: 'production',
+    url: 'https://example.com',
+    region: 'us-east-1'
+  };
+
+garbage_env.ts: |
+  const GARBAGE_CICD_DOCS_018_ENV_MARKER_A = "staging";
+  const GARBAGE_CICD_DOCS_018_REVIEW_MARKER_B = true;
+
+  class GarbageEnvironmentConfig {
+    static GARBAGE_CICD_DOCS_018_PROTECT_MARKER_C = true;
+    validate(): boolean { return false; }
+  }
+
+garbage_approval.ts: |
+  const GARBAGE_CICD_DOCS_018_APPROVAL_MARKER_D = "manual";
+  const GARBAGE_CICD_DOCS_018_REVIEWERS_MARKER_E = 2;
+
+  class GarbageApprovalFlow {
+    static GARBAGE_CICD_DOCS_018_TIMEOUT_MARKER_F = 86400;
+    requestApproval(): void {}
+  }

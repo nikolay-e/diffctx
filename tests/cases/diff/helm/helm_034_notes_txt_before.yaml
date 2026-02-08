@@ -1,0 +1,10 @@
+templates/service.yaml: |
+  apiVersion: v1
+  kind: Service
+  metadata:
+    name: {{ .Release.Name }}
+templates/NOTES.txt: |
+  Thank you for installing {{ .Chart.Name }}.
+unrelated.py: |
+  garbage_marker_12345 = True
+  unused_marker_67890 = False

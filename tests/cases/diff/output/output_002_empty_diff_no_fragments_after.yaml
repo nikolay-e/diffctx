@@ -1,0 +1,21 @@
+test.py: 'x = 1
+
+  '
+garbage_auth.py: |
+  GARBAGE_OUT_002_AUTH_MARKER_A = "auth"
+  GARBAGE_OUT_002_TOKEN_MARKER_B = True
+
+  class AuthProvider:
+      GARBAGE_OUT_002_PROVIDER_CLASS_C = "provider"
+
+      def authenticate(self, credentials: str) -> bool:
+          return False
+garbage_session.py: |
+  GARBAGE_OUT_002_SESSION_MARKER_D = "session"
+  GARBAGE_OUT_002_EXPIRY_MARKER_E = 86400
+
+  class SessionStore:
+      GARBAGE_OUT_002_STORE_CLASS_F = True
+
+      def refresh(self, session_id: str) -> None:
+          pass

@@ -1,0 +1,15 @@
+user_service.py: |
+  class UserService:
+      def __init__(self):
+          self.users = []
+
+      def add_user(self, name):
+          self.users.append(name)
+tests/test_user_service.py: |
+  from user_service import UserService
+
+  class TestUserService:
+      def test_add_user(self):
+          service = UserService()
+          service.add_user("Alice")
+          assert "Alice" in service.users

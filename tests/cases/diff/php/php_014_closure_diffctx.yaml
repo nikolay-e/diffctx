@@ -1,0 +1,18 @@
+must_include_files:
+  - src/Collections/Collection.php
+must_include_content:
+  - |
+    function(int $item) use ($factor): int
+must_not_include:
+  - GARBAGE_PHP_014_MAX_WIDTH_A
+  - GARBAGE_PHP_014_MAX_HEIGHT_B
+  - GARBAGE_PHP_014_QUALITY_C
+  - GARBAGE_PHP_014_INTERPOLATION_D
+  - GARBAGE_PHP_014_SEPARATOR_E
+  - GARBAGE_PHP_014_MAX_LENGTH_F
+  - GARBAGE_PHP_014_TRANSLITERATE_G
+  - GARBAGE_PHP_014_LOWERCASE_H
+  - GarbageImageResizer
+  - GarbageSlugGenerator
+  - garbage_image_resizer.php
+  - garbage_slug_generator.php

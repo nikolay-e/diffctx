@@ -1,0 +1,55 @@
+sql/types/order_status.sql: |
+  CREATE TYPE order_status AS ENUM (
+      'pending',
+      'confirmed',
+      'shipped',
+      'delivered'
+  );
+
+migrations/001_create_orders.sql: |
+  CREATE TABLE orders (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER REFERENCES users(id),
+      status order_status DEFAULT 'pending',
+      total DECIMAL(10, 2),
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  );
+
+src/models/order.py: |
+  from enum import Enum
+  from dataclasses import dataclass
+  from decimal import Decimal
+  from typing import Optional
+  from datetime import datetime
+
+  class OrderStatus(Enum):
+      PENDING = 'pending'
+      CONFIRMED = 'confirmed'
+      SHIPPED = 'shipped'
+      DELIVERED = 'delivered'
+
+  @dataclass
+  class Order:
+      id: int
+      user_id: int
+      status: OrderStatus
+      total: Decimal
+      created_at: Optional[datetime] = None
+
+garbage_enum_mapper.ts: |
+  const GARBAGE_CICD_DOCS_071_ENUM_MARKER_A = "postgres";
+  const GARBAGE_CICD_DOCS_071_CAST_MARKER_B = "explicit";
+
+  class GarbageEnumMapper {
+    static GARBAGE_CICD_DOCS_071_VALIDATE_MARKER_C = true;
+    map(): void {}
+  }
+
+garbage_type_handler.ts: |
+  const GARBAGE_CICD_DOCS_071_TYPE_MARKER_D = "custom";
+  const GARBAGE_CICD_DOCS_071_DOMAIN_MARKER_E = "constrained";
+
+  class GarbageTypeHandler {
+    static GARBAGE_CICD_DOCS_071_COERCE_MARKER_F = false;
+    handle(): void {}
+  }

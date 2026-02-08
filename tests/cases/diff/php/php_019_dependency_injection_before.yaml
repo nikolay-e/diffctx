@@ -1,0 +1,14 @@
+UserRepository.php: |
+  <?php
+  class UserRepository {
+      public function find(int $id): array {
+          return ['id' => $id, 'name' => 'User'];
+      }
+
+      public function save(array $data): bool {
+          return true;
+      }
+  }
+UserService.php: |
+  <?php
+  class UserService {}

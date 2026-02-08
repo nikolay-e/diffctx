@@ -1,0 +1,7 @@
+User.scala: |
+  case class User(name: String, email: String) {
+    def isValidEmail: Boolean = email.contains("@") && email.contains(".")
+    def normalizedEmail: String = email.toLowerCase.trim
+  }
+UserSpec.scala: |
+  class UserSpec {}

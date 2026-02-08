@@ -1,0 +1,25 @@
+Data.php: |
+  <?php
+  class Data {
+      public mixed $value;
+
+      public function __construct(mixed $value) {
+          $this->value = $value;
+      }
+  }
+Parser.php: |
+  <?php
+  require_once 'Data.php';
+
+  class Parser {
+      public function parse(string|array $input): Data {
+          if (is_string($input)) {
+              return new Data(json_decode($input, true));
+          }
+          return new Data($input);
+      }
+  }
+garbage.php: |
+  <?php
+  $garbageUnion99999 = "never used";
+  $unused_marker_12345 = "not used";

@@ -1,0 +1,45 @@
+Interfaces/IRepository.cs: |
+  namespace MyApp.Interfaces;
+
+  public interface IRepository<T> where T : class
+  {
+      T? GetById(int id);
+      IEnumerable<T> GetAll();
+      void Save(T entity);
+      void Delete(int id);
+      bool Exists(int id);
+  }
+Models/User.cs: |
+  namespace MyApp.Models;
+
+  public class User
+  {
+      public int Id { get; set; }
+      public string Name { get; set; } = string.Empty;
+      public string Email { get; set; } = string.Empty;
+      public bool IsActive { get; set; } = true;
+  }
+Repositories/UserRepository.cs: |
+  namespace MyApp.Repositories;
+
+  public class UserRepository
+  {
+  }
+Unrelated/BackupScheduler.cs: |
+  namespace MyApp.Unrelated;
+
+  public class BackupScheduler
+  {
+      private const string GARBAGE_CS_006_BACKUP_SCHEDULER_A = "backup_scheduler_marker";
+
+      public void Schedule() => _ = GARBAGE_CS_006_BACKUP_SCHEDULER_A;
+  }
+Unrelated/MigrationRunner.cs: |
+  namespace MyApp.Unrelated;
+
+  public class MigrationRunner
+  {
+      public const string GARBAGE_CS_006_MIGRATION_RUNNER_B = "migration_runner_marker";
+
+      public void RunMigrations() => _ = GARBAGE_CS_006_MIGRATION_RUNNER_B;
+  }

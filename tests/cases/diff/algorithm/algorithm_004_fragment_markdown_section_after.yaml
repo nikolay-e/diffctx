@@ -1,0 +1,107 @@
+docs/api-reference.md: |
+  # API Reference
+
+  This document describes the REST API endpoints for our service.
+
+  ## Authentication
+
+  All API requests require authentication using Bearer tokens or API keys.
+
+  ```bash
+  curl -H "Authorization: Bearer YOUR_TOKEN" https://api.example.com/v1/users
+  # Or use API key
+  curl -H "X-API-Key: YOUR_API_KEY" https://api.example.com/v1/users
+  ```
+
+  ### Token Generation
+
+  Tokens can be generated through the `/auth/token` endpoint.
+
+  | Parameter | Type | Required | Description |
+  |-----------|------|----------|-------------|
+  | username | string | Yes | User's login name |
+  | password | string | Yes | User's password |
+  | scope | string | No | Permission scope |
+
+  ### API Key Management
+
+  API keys provide an alternative authentication method for server-to-server communication.
+
+  ```bash
+  curl -X POST https://api.example.com/v1/auth/api-keys \
+    -H "Authorization: Bearer YOUR_TOKEN" \
+    -d '{"name": "my-server-key", "expires_in": 86400}'
+  ```
+
+  ## Users Endpoint
+
+  ### GET /users
+
+  Retrieve a list of all users.
+
+  **Response:**
+  ```json
+  {
+    "users": [
+      {"id": 1, "name": "Alice"},
+      {"id": 2, "name": "Bob"}
+    ]
+  }
+  ```
+
+  ### POST /users
+
+  Create a new user account.
+
+  **Request Body:**
+  ```json
+  {
+    "name": "Charlie",
+    "email": "charlie@example.com"
+  }
+  ```
+
+  ## Error Handling
+
+  All errors return a JSON object with an error message.
+
+docs/getting-started.md: |
+  # Getting Started
+
+  Welcome to our platform! This guide will help you set up your environment.
+
+  ## Prerequisites
+
+  - Python 3.9 or higher
+  - pip package manager
+  - Virtual environment (recommended)
+
+  ## Installation
+
+  ```bash
+  pip install our-package
+  ```
+
+garbage_changelog.md: |
+  # Changelog
+
+  GARBAGE_ALGO_004_CHANGELOG_MARKER_A
+
+  ## Version 1.0.0
+
+  GARBAGE_ALGO_004_RELEASE_MARKER_B
+
+  - Initial release
+
+garbage_contributing.md: |
+  # Contributing
+
+  GARBAGE_ALGO_004_CONTRIB_MARKER_C
+
+  ## Guidelines
+
+  GARBAGE_ALGO_004_RULES_MARKER_D
+  GARBAGE_ALGO_004_PROCESS_MARKER_E
+  GARBAGE_ALGO_004_REVIEW_MARKER_F
+
+  Please follow our contribution guidelines.

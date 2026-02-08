@@ -13,8 +13,11 @@ _DOTNET_EXTS = _CSHARP_EXTS | _FSHARP_EXTS
 
 _CS_USING_RE = re.compile(r"^\s*using\s+(?:static\s+)?([A-Z][a-zA-Z0-9_.]*);", re.MULTILINE)
 _CS_NAMESPACE_RE = re.compile(r"^\s*namespace\s+([A-Z][a-zA-Z0-9_.]*)", re.MULTILINE)
+_CS_ACCESS = "public|private|protected|internal"
+_CS_MODIFIERS = "static|sealed|abstract|partial"
+_CS_TYPE_KW = "class|interface|struct|record|enum"
 _CS_CLASS_RE = re.compile(
-    r"^\s{0,20}(?:(?:public|private|protected|internal)\s{1,10})?(?:(?:static|sealed|abstract|partial)\s{1,10})?(?:class|interface|struct|record|enum)\s+([A-Z]\w{0,100})",
+    rf"^\s{{0,20}}(?:(?:{_CS_ACCESS})\s{{1,10}})?(?:(?:{_CS_MODIFIERS})\s{{1,10}})?(?:{_CS_TYPE_KW})\s+([A-Z]\w{{0,100}})",
     re.MULTILINE,
 )
 _CS_INHERIT_RE = re.compile(r"(?:class|struct|record)\s+\w+[^:\n]{0,200}:\s*([A-Z]\w*(?:,\s*[A-Z]\w*)*)")

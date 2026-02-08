@@ -1,0 +1,56 @@
+src/api.ts: |
+  export function fetchData(
+      url: string,
+      options: { method: string; headers: Record<string, string>; timeout?: number }
+  ) {
+      return fetch(url, {
+          method: options.method,
+          headers: options.headers,
+      });
+  }
+
+  export function postData(
+      url: string,
+      body: unknown,
+      headers?: Record<string, string>
+  ) {
+      return fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...headers },
+          body: JSON.stringify(body),
+      });
+  }
+src/wrapper.ts: |
+  console.log('initial');
+src/unrelated/logging.ts: |
+  const GARBAGE_JSX_048_LOG_CONFIG_A = 'logging_garbage_marker';
+
+  export class GarbageLogTransport {
+      private buffer: string[] = [];
+
+      write(message: string): void {
+          this.buffer.push(message);
+      }
+
+      flush(): string[] {
+          const result = [...this.buffer];
+          this.buffer = [];
+          return result;
+      }
+  }
+
+  export function GARBAGE_JSX_048_ROTATE_LOGS_B(): void {
+      console.log('GARBAGE_JSX_048_ROTATE_OUTPUT_C');
+  }
+src/unrelated/telemetry.ts: |
+  const GARBAGE_JSX_048_TELEMETRY_CONFIG_D = { endpoint: '/telemetry' };
+
+  export class GARBAGE_JSX_048_TELEMETRY_CLIENT_E {
+      send(event: string): void {
+          console.log('telemetry:', event);
+      }
+  }
+
+  export function GARBAGE_JSX_048_BATCH_SEND_F(): void {
+      console.log('batching telemetry');
+  }

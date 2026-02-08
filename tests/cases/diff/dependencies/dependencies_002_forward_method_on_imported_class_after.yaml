@@ -1,0 +1,72 @@
+services/user.py: |
+  class UserService:
+      def __init__(self, db_connection: str):
+          self.db_connection = db_connection
+          self.users = []
+          self.cache = {}
+
+      def validate(self, user_data: dict) -> bool:
+          if not user_data.get("email"):
+              return False
+          if not user_data.get("name"):
+              return False
+          return "@" in user_data["email"]
+
+      def add_user(self, name: str, email: str) -> dict:
+          user = {"name": name, "email": email, "id": len(self.users) + 1}
+          self.users.append(user)
+          self.cache[user["id"]] = user
+          return user
+
+      def get_user(self, user_id: int) -> dict:
+          if user_id in self.cache:
+              return self.cache[user_id]
+          return None
+handler.py: |
+  from services.user import UserService
+
+  def handle():
+      svc = UserService("postgres://localhost/mydb")
+      user_data = {"name": "Alice", "email": "alice@example.com"}
+      if svc.validate(user_data):
+          user = svc.add_user(user_data["name"], user_data["email"])
+          return {"created": True, "user": user}
+      return {"created": False, "error": "Invalid data"}
+garbage/recipe_manager_GARBAGE_DEP_002_RECIPE_A.py: |
+  import json
+
+  def load_recipes_GARBAGE_DEP_002_RECIPE_A(filepath: str) -> list:
+      with open(filepath) as f:
+          return json.load(f)
+
+  def calculate_calories_GARBAGE_DEP_002_RECIPE_A(ingredients: list) -> int:
+      return sum(ing.get("calories", 0) for ing in ingredients)
+
+  class RecipeBook_GARBAGE_DEP_002_RECIPE_A:
+      def __init__(self):
+          self.recipes = []
+
+      def add_recipe(self, name: str, ingredients: list) -> None:
+          self.recipes.append({"name": name, "ingredients": ingredients})
+
+      def search_by_ingredient(self, ingredient: str) -> list:
+          return [r for r in self.recipes if ingredient in str(r["ingredients"])]
+garbage/music_playlist_GARBAGE_DEP_002_MUSIC_B.py: |
+  def shuffle_playlist_GARBAGE_DEP_002_MUSIC_B(tracks: list) -> list:
+      import random
+      shuffled = tracks.copy()
+      random.shuffle(shuffled)
+      return shuffled
+
+  def total_duration_GARBAGE_DEP_002_MUSIC_B(tracks: list) -> int:
+      return sum(t.get("duration_ms", 0) for t in tracks)
+
+  class MusicPlayer_GARBAGE_DEP_002_MUSIC_B:
+      def __init__(self, playlist: list):
+          self.playlist = playlist
+          self.current_index = 0
+
+      def next_track(self) -> dict:
+          track = self.playlist[self.current_index]
+          self.current_index = (self.current_index + 1) % len(self.playlist)
+          return track

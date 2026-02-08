@@ -1,0 +1,42 @@
+data.txt: |
+  John,25,Engineer
+  Jane,30,Manager
+  Bob,22,Developer
+analyze.sh: |
+  #!/bin/bash
+
+  cat data.txt | grep "Engineer" | sort | head -10
+
+  find . -name "*.log" | xargs grep "ERROR" | wc -l
+
+  ps aux | grep "[n]ginx" | awk '{print $2}'
+
+  cat data.txt | cut -d',' -f2 | sort -n | tail -1
+unrelated/garbage_netstat.sh: |
+  #!/bin/bash
+  # GARBAGE_SH_018_NETSTAT_SCAN_A
+  GARBAGE_SH_018_LISTEN_PORT_B="8080"
+
+  garbage_check_port_018() {
+      local port=$1
+      echo "Port $port: open"
+  }
+
+  garbage_count_conns_018() {
+      echo "Active connections: 42"
+  }
+unrelated/garbage_lvm.sh: |
+  #!/bin/bash
+  # GARBAGE_SH_018_LVM_MANAGE_C
+  GARBAGE_SH_018_VG_NAME_D="vg0"
+
+  garbage_extend_lv_018() {
+      local lv=$1
+      local size=$2
+      echo "Extending $lv by ${size}G"
+  }
+
+  garbage_create_snapshot_018() {
+      local lv=$1
+      echo "Snapshot of $lv created"
+  }

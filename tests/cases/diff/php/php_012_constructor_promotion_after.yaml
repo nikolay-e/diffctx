@@ -1,0 +1,74 @@
+src/Config/DatabaseConfig.php: |
+  <?php
+  namespace App\Config;
+
+  class DatabaseConfig {
+      public function __construct(
+          private readonly string $host,
+          private readonly int $port,
+          private readonly string $database,
+          private readonly string $username,
+          private readonly bool $ssl = false
+      ) {}
+
+      public function getDsn(): string {
+          $scheme = $this->ssl ? 'pgsql' : 'mysql';
+          return "{$scheme}:host={$this->host};port={$this->port};dbname={$this->database}";
+      }
+
+      public function getHost(): string {
+          return $this->host;
+      }
+
+      public function getPort(): int {
+          return $this->port;
+      }
+  }
+src/Services/ConnectionManager.php: |
+  <?php
+  namespace App\Services;
+
+  use App\Config\DatabaseConfig;
+
+  class ConnectionManager {
+      private DatabaseConfig $config;
+
+      public function __construct(DatabaseConfig $config) {
+          $this->config = $config;
+      }
+
+      public function connect(): string {
+          $dsn = $this->config->getDsn();
+          return "Connected to {$this->config->getHost()}:{$this->config->getPort()}";
+      }
+
+      public function getStatus(): string {
+          return 'connected';
+      }
+  }
+src/garbage_hsl_converter.php: |
+  <?php
+  GARBAGE_PHP_012_HUE_RANGE_A = 360;
+  GARBAGE_PHP_012_SAT_RANGE_B = 100;
+
+  class GarbageHslConverter {
+      GARBAGE_PHP_012_LIGHT_RANGE_C = 100;
+
+      public function toRgb(int $h, int $s, int $l): array {
+          GARBAGE_PHP_012_GAMMA_D = 2.2;
+          return [0, 0, 0];
+      }
+  }
+src/garbage_markdown_renderer.php: |
+  <?php
+  GARBAGE_PHP_012_SAFE_MODE_E = true;
+  GARBAGE_PHP_012_BREAKS_F = false;
+
+  class GarbageMarkdownRenderer {
+      GARBAGE_PHP_012_ESCAPE_HTML_G = true;
+
+      public function render(string $markdown): string {
+          GARBAGE_PHP_012_MAX_NESTING_H = 10;
+          return "";
+      }
+  }

@@ -1,0 +1,23 @@
+User.swift: |
+  struct User: Identifiable {
+      let id: String
+      let name: String
+      let email: String
+  }
+  // garbage_marker_12345
+UserView.swift: |
+  import SwiftUI
+
+  struct UserView: View {
+      let user: User
+
+      var body: some View {
+          VStack(alignment: .leading) {
+              Text(user.name)
+                  .font(.headline)
+              Text(user.email)
+                  .font(.subheadline)
+                  .foregroundColor(.gray)
+          }
+      }
+  }

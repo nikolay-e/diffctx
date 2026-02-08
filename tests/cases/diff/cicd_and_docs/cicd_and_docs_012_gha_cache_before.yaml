@@ -1,0 +1,49 @@
+.github/workflows/ci.yml: |
+  name: CI
+  on: [push, pull_request]
+  jobs:
+    build:
+      runs-on: ubuntu-latest
+      steps:
+        - uses: actions/checkout@v4
+        - run: npm ci
+        - run: npm run build
+
+package.json: |
+  {
+    "name": "cached-build-app",
+    "version": "1.0.0",
+    "scripts": {
+      "build": "tsc && webpack",
+      "test": "jest"
+    },
+    "dependencies": {
+      "lodash": "^4.17.21",
+      "axios": "^1.4.0"
+    }
+  }
+
+package-lock.json: |
+  {
+    "name": "cached-build-app",
+    "version": "1.0.0",
+    "lockfileVersion": 3
+  }
+
+garbage_cdn.ts: |
+  const GARBAGE_CICD_DOCS_012_CDN_MARKER_A = "cloudflare";
+  const GARBAGE_CICD_DOCS_012_ZONE_MARKER_B = "example.com";
+
+  class GarbageCDNService {
+    static GARBAGE_CICD_DOCS_012_PURGE_MARKER_C = true;
+    invalidate(): void {}
+  }
+
+garbage_edge.ts: |
+  const GARBAGE_CICD_DOCS_012_EDGE_MARKER_D = "lambda@edge";
+  const GARBAGE_CICD_DOCS_012_ORIGIN_MARKER_E = "s3";
+
+  class GarbageEdgeFunction {
+    static GARBAGE_CICD_DOCS_012_TIMEOUT_MARKER_F = 5000;
+    invoke(): void {}
+  }

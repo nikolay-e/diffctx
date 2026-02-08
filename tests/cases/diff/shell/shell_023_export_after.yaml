@@ -1,0 +1,41 @@
+env.sh: |
+  #!/bin/bash
+
+  export PATH="$PATH:$HOME/bin:/usr/local/app/bin"
+  export LD_LIBRARY_PATH="/usr/local/lib:$LD_LIBRARY_PATH"
+
+  export APP_HOME="/opt/myapp"
+  export APP_CONFIG="$APP_HOME/config"
+  export APP_LOG="$APP_HOME/logs"
+
+  my_function() {
+      echo "This function is exported"
+  }
+  export -f my_function
+
+  ./child-script.sh
+unrelated/garbage_sshd.sh: |
+  #!/bin/bash
+  # GARBAGE_SH_023_SSHD_CONFIG_A
+  GARBAGE_SH_023_SSH_PORT_B="22"
+
+  garbage_check_sshd_023() {
+      echo "SSHD running on port $GARBAGE_SH_023_SSH_PORT_B"
+  }
+
+  garbage_list_keys_023() {
+      echo "Authorized keys: 3"
+  }
+unrelated/garbage_nfs.sh: |
+  #!/bin/bash
+  # GARBAGE_SH_023_NFS_EXPORT_C
+  GARBAGE_SH_023_SHARE_PATH_D="/srv/nfs"
+
+  garbage_export_share_023() {
+      local path=$1
+      echo "Exporting $path"
+  }
+
+  garbage_show_mounts_023() {
+      echo "Active NFS mounts: 0"
+  }

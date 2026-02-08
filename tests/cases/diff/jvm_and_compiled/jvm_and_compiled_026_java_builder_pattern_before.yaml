@@ -1,0 +1,27 @@
+src/main/java/com/example/User.java: |
+  package com.example;
+
+  public class User {
+      private final String name;
+      private final String email;
+
+      public User(String name, String email) {
+          this.name = name;
+          this.email = email;
+      }
+
+      public String getName() { return name; }
+      public String getEmail() { return email; }
+  }
+GarbagePrototype.java: |
+  public class GarbagePrototype {
+      public static final String GARBAGE_JVM_026_PROTO_MARKER_A = "marker";
+      public static final String GARBAGE_JVM_026_CLONE_MARKER_B = "marker";
+      public void noop() {}
+  }
+GarbageDeepCopier.java: |
+  public class GarbageDeepCopier {
+      public static final String GARBAGE_JVM_026_COPY_MARKER_C = "marker";
+      public static final String GARBAGE_JVM_026_DEEP_MARKER_D = "marker";
+      public void noop() {}
+  }

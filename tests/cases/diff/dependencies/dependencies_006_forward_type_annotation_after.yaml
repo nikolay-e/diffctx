@@ -1,0 +1,72 @@
+models/request.py: |
+  from dataclasses import dataclass
+  from typing import Optional
+
+  @dataclass
+  class RequestModel:
+      method: str
+      path: str
+      body: Optional[dict] = None
+      headers: Optional[dict] = None
+
+      def is_json(self) -> bool:
+          ct = (self.headers or {}).get("Content-Type", "")
+          return "application/json" in ct
+models/response.py: |
+  from dataclasses import dataclass
+  from typing import Optional
+
+  @dataclass
+  class ResponseModel:
+      status_code: int
+      body: dict
+      headers: Optional[dict] = None
+
+      def is_success(self) -> bool:
+          return 200 <= self.status_code < 300
+service.py: |
+  from models.request import RequestModel
+  from models.response import ResponseModel
+
+  def process(request: RequestModel) -> ResponseModel:
+      if request.method == "GET":
+          return ResponseModel(status_code=200, body={"path": request.path})
+      if request.is_json() and request.body:
+          return ResponseModel(status_code=201, body=request.body)
+      return ResponseModel(status_code=400, body={"error": "Bad request"})
+garbage/gardening_GARBAGE_DEP_006_GARDEN_A.py: |
+  def soil_ph_check_GARBAGE_DEP_006_GARDEN_A(ph: float) -> str:
+      if ph < 6.0:
+          return "acidic"
+      elif ph > 7.5:
+          return "alkaline"
+      return "neutral"
+
+  def watering_schedule_GARBAGE_DEP_006_GARDEN_A(plant_type: str) -> int:
+      schedules = {"succulent": 7, "fern": 2, "cactus": 14}
+      return schedules.get(plant_type, 3)
+
+  class GardenPlot_GARBAGE_DEP_006_GARDEN_A:
+      def __init__(self, width: float, length: float):
+          self.width = width
+          self.length = length
+          self.plants = []
+
+      def area(self) -> float:
+          return self.width * self.length
+garbage/podcast_manager_GARBAGE_DEP_006_PODCAST_B.py: |
+  def episode_duration_GARBAGE_DEP_006_PODCAST_B(segments: list) -> int:
+      return sum(s.get("duration", 0) for s in segments)
+
+  def format_timestamp_GARBAGE_DEP_006_PODCAST_B(seconds: int) -> str:
+      h, m = divmod(seconds // 60, 60)
+      s = seconds % 60
+      return f"{h:02d}:{m:02d}:{s:02d}"
+
+  class PodcastFeed_GARBAGE_DEP_006_PODCAST_B:
+      def __init__(self, title: str):
+          self.title = title
+          self.episodes = []
+
+      def add_episode(self, title: str, duration: int) -> None:
+          self.episodes.append({"title": title, "duration": duration})

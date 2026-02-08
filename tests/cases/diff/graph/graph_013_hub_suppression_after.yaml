@@ -1,0 +1,190 @@
+logger.py: |
+  import datetime
+
+  def log(msg, level="INFO"):
+      timestamp = datetime.datetime.now().isoformat()
+      print(f"[{timestamp}] [{level}] {msg}")
+
+  def log_error(msg):
+      log(msg, "ERROR")
+
+  def log_warning(msg):
+      log(msg, "WARNING")
+
+  def log_debug(msg):
+      log(msg, "DEBUG")
+
+  class Logger:
+      def __init__(self, name):
+          self.name = name
+
+      def info(self, msg):
+          log(f"[{self.name}] {msg}", "INFO")
+
+      def error(self, msg):
+          log(f"[{self.name}] {msg}", "ERROR")
+module1.py: |
+  from logger import log, Logger, log_error
+
+  logger = Logger("module1")
+
+  def func1():
+      log('starting func1')
+      try:
+          result = process_data_1()
+          logger.info('func1 completed successfully')
+          return result
+      except Exception as e:
+          log_error(f'func1 failed: {e}')
+          raise
+
+  def process_data_1():
+      return {"module": 1, "status": "processed"}
+module2.py: |
+  from logger import log
+
+  def func2():
+      log('executing func2')
+      return compute_value_2()
+
+  def compute_value_2():
+      return 2
+module3.py: |
+  from logger import log, log_debug
+
+  def func3():
+      log_debug('debug info for func3')
+      log('func3 running')
+      return transform_input_3()
+
+  def transform_input_3():
+      return "transformed_3"
+module4.py: |
+  from logger import log
+
+  def func4():
+      log('func4 message')
+      return 4
+module5.py: |
+  from logger import log
+
+  def func5():
+      log('func5 message')
+      return 5
+module6.py: |
+  from logger import log
+
+  def func6():
+      log('func6 message')
+      return 6
+module7.py: |
+  from logger import log
+
+  def func7():
+      log('func7 message')
+      return 7
+module8.py: |
+  from logger import log
+
+  def func8():
+      log('func8 message')
+      return 8
+module9.py: |
+  from logger import log
+
+  def func9():
+      log('func9 message')
+      return 9
+module10.py: |
+  from logger import log
+
+  def func10():
+      log('func10 message')
+      return 10
+module11.py: |
+  from logger import log
+
+  def func11():
+      log('func11 message')
+      return 11
+module12.py: |
+  from logger import log
+
+  def func12():
+      log('func12 message')
+      return 12
+module13.py: |
+  from logger import log
+
+  def func13():
+      log('func13 message')
+      return 13
+module14.py: |
+  from logger import log
+
+  def func14():
+      log('func14 message')
+      return 14
+module15.py: |
+  from logger import log
+
+  def func15():
+      log('func15 message')
+      return 15
+module16.py: |
+  from logger import log
+
+  def func16():
+      log('func16 message')
+      return 16
+module17.py: |
+  from logger import log
+
+  def func17():
+      log('func17 message')
+      return 17
+module18.py: |
+  from logger import log
+
+  def func18():
+      log('func18 message')
+      return 18
+module19.py: |
+  from logger import log
+
+  def func19():
+      log('func19 message')
+      return 19
+module20.py: |
+  from logger import log
+
+  def func20():
+      log('func20 message')
+      return 20
+garbage/analytics_hub_GARBAGE_GRAPH_klm001.py: |
+  def track_event_GARBAGE_GRAPH_klm001(event_name, properties):
+      pass
+
+  def track_page_view_GARBAGE_GRAPH_klm001(page_name):
+      track_event_GARBAGE_GRAPH_klm001("page_view", {"page": page_name})
+
+  def track_click_GARBAGE_GRAPH_klm001(element_id):
+      track_event_GARBAGE_GRAPH_klm001("click", {"element": element_id})
+garbage/metrics_hub_GARBAGE_GRAPH_klm002.py: |
+  def record_metric_GARBAGE_GRAPH_klm002(name, value):
+      pass
+
+  def increment_counter_GARBAGE_GRAPH_klm002(name):
+      record_metric_GARBAGE_GRAPH_klm002(name, 1)
+
+  def record_timing_GARBAGE_GRAPH_klm002(name, duration_ms):
+      record_metric_GARBAGE_GRAPH_klm002(f"{name}_timing", duration_ms)
+garbage/audit_hub_GARBAGE_GRAPH_klm003.py: |
+  def audit_log_GARBAGE_GRAPH_klm003(action, user_id, details):
+      pass
+
+  def audit_create_GARBAGE_GRAPH_klm003(user_id, resource):
+      audit_log_GARBAGE_GRAPH_klm003("create", user_id, {"resource": resource})
+
+  def audit_delete_GARBAGE_GRAPH_klm003(user_id, resource):
+      audit_log_GARBAGE_GRAPH_klm003("delete", user_id, {"resource": resource})

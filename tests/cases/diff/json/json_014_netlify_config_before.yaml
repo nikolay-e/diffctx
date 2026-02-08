@@ -1,0 +1,122 @@
+netlify.json: |
+  {
+    "build": {
+      "command": "npm run build",
+      "publish": "dist",
+      "environment": {
+        "NODE_VERSION": "18"
+      }
+    },
+    "functions": {
+      "directory": "functions"
+    },
+    "headers": [
+      {
+        "for": "/api/*",
+        "values": {"Access-Control-Allow-Origin": "*"}
+      }
+    ]
+  }
+functions/hello.js: |
+  exports.handler = async (event) => {
+      const name = event.queryStringParameters?.name || 'World';
+      return {
+          statusCode: 200,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: `Hello, ${name}!` }),
+      };
+  };
+functions/users.js: |
+  const { getAllUsers, addUser } = require('./utils/database');
+
+  exports.handler = async (event) => {
+      if (event.httpMethod === 'GET') {
+          const users = await getAllUsers();
+          return {
+              statusCode: 200,
+              body: JSON.stringify({ users }),
+          };
+      }
+
+      if (event.httpMethod === 'POST') {
+          const data = JSON.parse(event.body);
+          const user = await addUser(data);
+          return {
+              statusCode: 201,
+              body: JSON.stringify({ user }),
+          };
+      }
+
+      return { statusCode: 405, body: 'Method Not Allowed' };
+  };
+functions/utils/database.js: |
+  const store = [];
+
+  async function getAllUsers() {
+      return [...store];
+  }
+
+  async function addUser(data) {
+      const user = { id: store.length + 1, ...data, createdAt: Date.now() };
+      store.push(user);
+      return user;
+  }
+
+  module.exports = { getAllUsers, addUser };
+unrelated/bundler.js: |
+  const GARBAGE_JSON_014_BUNDLE_FORMAT_A = 'esm';
+
+  class GARBAGE_JSON_014_ASSET_BUNDLER_B {
+      constructor(format) {
+          this.format = format || GARBAGE_JSON_014_BUNDLE_FORMAT_A;
+          this.assets = [];
+      }
+
+      addAsset(name, type, content) {
+          this.assets.push({ name, type, size: content.length });
+      }
+
+      bundle() {
+          return {
+              format: this.format,
+              assetCount: this.assets.length,
+              totalSize: this.assets.reduce((s, a) => s + a.size, 0),
+          };
+      }
+  }
+
+  function GARBAGE_JSON_014_BUNDLE_ASSETS_C(assets) {
+      const bundler = new GARBAGE_JSON_014_ASSET_BUNDLER_B();
+      assets.forEach(a => bundler.addAsset(a.name, a.type, a.content));
+      return bundler.bundle();
+  }
+
+  module.exports = { GARBAGE_JSON_014_ASSET_BUNDLER_B, GARBAGE_JSON_014_BUNDLE_ASSETS_C };
+unrelated/optimizer.js: |
+  const GARBAGE_JSON_014_OPTIMIZE_LEVEL_D = 2;
+
+  class GARBAGE_JSON_014_IMAGE_OPTIMIZER_E {
+      constructor(level) {
+          this.level = level || GARBAGE_JSON_014_OPTIMIZE_LEVEL_D;
+          this.optimized = [];
+      }
+
+      optimize(imagePath, size) {
+          const ratio = 1 - (this.level * 0.1);
+          const newSize = Math.floor(size * ratio);
+          this.optimized.push({ imagePath, original: size, optimized: newSize });
+          return newSize;
+      }
+
+      getStats() {
+          const saved = this.optimized.reduce((s, o) => s + (o.original - o.optimized), 0);
+          return { count: this.optimized.length, bytesSaved: saved };
+      }
+  }
+
+  function GARBAGE_JSON_014_OPTIMIZE_IMAGES_F(images) {
+      const optimizer = new GARBAGE_JSON_014_IMAGE_OPTIMIZER_E();
+      return images.map(img => optimizer.optimize(img.path, img.size));
+  }
+
+  module.exports = { GARBAGE_JSON_014_IMAGE_OPTIMIZER_E, GARBAGE_JSON_014_OPTIMIZE_IMAGES_F };

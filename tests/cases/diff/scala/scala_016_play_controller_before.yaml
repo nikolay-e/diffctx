@@ -1,0 +1,10 @@
+routes: 'GET     /users/:id        controllers.UserController.getUser(id: Long)
+
+  POST    /users            controllers.UserController.createUser()
+
+  DELETE  /users/:id        controllers.UserController.deleteUser(id: Long)
+
+  '
+UserController.scala: 'class UserController {}
+
+  '

@@ -1,0 +1,12 @@
+processor.rb: |
+  class Processor
+    def process(data)
+      data.upcase
+    end
+  end
+app.rb: |
+  # Initial file
+  puts 'Hello'
+garbage.rb: |
+  garbage_marker_12345 = "never used"
+  unused_marker_67890 = "not used"

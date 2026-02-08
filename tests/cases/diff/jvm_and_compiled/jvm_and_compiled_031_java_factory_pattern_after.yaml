@@ -1,0 +1,61 @@
+src/main/java/com/example/Notification.java: |
+  package com.example;
+
+  public interface Notification {
+      void send(String message);
+  }
+src/main/java/com/example/EmailNotification.java: |
+  package com.example;
+
+  public class EmailNotification implements Notification {
+      @Override
+      public void send(String message) {
+          System.out.println("Email: " + message);
+      }
+  }
+src/main/java/com/example/SmsNotification.java: |
+  package com.example;
+
+  public class SmsNotification implements Notification {
+      @Override
+      public void send(String message) {
+          System.out.println("SMS: " + message);
+      }
+  }
+src/main/java/com/example/NotificationFactory.java: |
+  package com.example;
+
+  public class NotificationFactory {
+      public enum Type {
+          EMAIL, SMS, PUSH
+      }
+
+      public static Notification create(Type type) {
+          return switch (type) {
+              case EMAIL -> new EmailNotification();
+              case SMS -> new SmsNotification();
+              case PUSH -> new PushNotification();
+          };
+      }
+  }
+src/main/java/com/example/PushNotification.java: |
+  package com.example;
+
+  public class PushNotification implements Notification {
+      @Override
+      public void send(String message) {
+          System.out.println("Push: " + message);
+      }
+  }
+GarbageRegistry.java: |
+  public class GarbageRegistry {
+      public static final String GARBAGE_JVM_031_REGISTRY_MARKER_A = "marker";
+      public static final String GARBAGE_JVM_031_LOOKUP_MARKER_B = "marker";
+      public void noop() {}
+  }
+GarbageProvider.java: |
+  public class GarbageProvider {
+      public static final String GARBAGE_JVM_031_PROVIDER_MARKER_C = "marker";
+      public static final String GARBAGE_JVM_031_SUPPLY_MARKER_D = "marker";
+      public void noop() {}
+  }

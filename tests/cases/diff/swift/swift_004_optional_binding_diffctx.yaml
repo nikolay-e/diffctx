@@ -1,0 +1,16 @@
+must_include_files:
+  - Sources/Controllers/UserController.swift
+must_include_content:
+  - |
+    if let user = repository.fetchUser(id: id)
+must_not_include:
+  - GARBAGE_SWIFT_004_AB_TEST_ID_A
+  - GARBAGE_SWIFT_004_VARIANT_KEY_B
+  - GARBAGE_SWIFT_004_TRAFFIC_PCT_C
+  - GARBAGE_SWIFT_004_REDACT_FIELDS_D
+  - GARBAGE_SWIFT_004_MASK_CHAR_E
+  - GARBAGE_SWIFT_004_MIN_LENGTH_F
+  - GarbageExperimentRunner004
+  - GarbageLogRedactor004
+  - GarbageAnalytics004.swift
+  - GarbageLogger004.swift

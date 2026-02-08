@@ -1,0 +1,102 @@
+app/models/user.rb: |
+  class User
+    attr_accessor :id, :name, :email
+
+    def self.find(id)
+      new(id: id, name: "User #{id}")
+    end
+
+    def self.all
+      []
+    end
+
+    def initialize(id: nil, name: nil, email: nil)
+      @id = id
+      @name = name
+      @email = email
+    end
+
+    def save
+      true
+    end
+
+    def update(attrs)
+      attrs.each { |k, v| send("#{k}=", v) }
+      true
+    end
+
+    def destroy
+      true
+    end
+  end
+app/controllers/users_controller.rb: |
+  require_relative '../models/user'
+
+  class UsersController
+    def index
+      @users = User.all
+    end
+
+    def show
+      @user = User.find(params[:id])
+    end
+
+    def create
+      @user = User.new(user_params)
+      if @user.save
+        redirect_to @user
+      else
+        render :new
+      end
+    end
+
+    def update
+      @user = User.find(params[:id])
+      if @user.update(user_params)
+        redirect_to @user
+      else
+        render :edit
+      end
+    end
+
+    def destroy
+      @user = User.find(params[:id])
+      @user.destroy
+      redirect_to :index
+    end
+
+    private
+
+    def user_params
+      { name: params[:name], email: params[:email] }
+    end
+
+    def params
+      { id: 1, name: 'John', email: 'john@example.com' }
+    end
+
+    def redirect_to(target); end
+    def render(action); end
+  end
+lib/garbage_geo_fence.rb: |
+  GARBAGE_RUBY_015_FENCE_RADIUS_A = "500m"
+  GARBAGE_RUBY_015_COORD_SYSTEM_B = "WGS84"
+
+  class GarbageGeoFenceManager
+    GARBAGE_RUBY_015_MAX_FENCES_C = 100
+
+    def check_boundary(lat, lng)
+      GARBAGE_RUBY_015_FENCE_RADIUS_A
+    end
+  end
+lib/garbage_weather_api.rb: |
+  GARBAGE_RUBY_015_API_PROVIDER_D = "openweathermap"
+  GARBAGE_RUBY_015_UNITS_SYSTEM_E = "metric"
+
+  class GarbageWeatherService
+    GARBAGE_RUBY_015_CACHE_MINUTES_F = 15
+
+    def forecast(city)
+      GARBAGE_RUBY_015_API_PROVIDER_D
+    end
+  end

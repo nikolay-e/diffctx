@@ -1,0 +1,108 @@
+sql/functions/format_currency.sql: |
+  -- Format amount as currency string with multi-currency support
+  -- Supports USD, EUR, GBP, JPY, and custom currency codes
+  CREATE OR REPLACE FUNCTION format_currency(
+      amount DECIMAL,
+      currency_code TEXT DEFAULT 'USD',
+      show_decimals BOOLEAN DEFAULT TRUE
+  )
+  RETURNS TEXT AS $$
+  DECLARE
+      symbol TEXT;
+      formatted TEXT;
+  BEGIN
+      -- Determine currency symbol
+      symbol := CASE currency_code
+          WHEN 'USD' THEN '$'
+          WHEN 'EUR' THEN '€'
+          WHEN 'GBP' THEN '£'
+          WHEN 'JPY' THEN '¥'
+          WHEN 'CHF' THEN 'CHF '
+          WHEN 'CAD' THEN 'C$'
+          WHEN 'AUD' THEN 'A$'
+          ELSE currency_code || ' '
+      END;
+
+      -- Format the amount
+      IF show_decimals THEN
+          formatted := TO_CHAR(amount, 'FM999,999,990.00');
+      ELSE
+          formatted := TO_CHAR(ROUND(amount), 'FM999,999,990');
+      END IF;
+
+      -- Handle negative amounts
+      IF amount < 0 THEN
+          RETURN '(' || symbol || REPLACE(formatted, '-', '') || ')';
+      ELSE
+          RETURN symbol || formatted;
+      END IF;
+  END;
+  $$ LANGUAGE plpgsql IMMUTABLE;
+
+  -- Helper function to format with locale
+  CREATE OR REPLACE FUNCTION format_currency_locale(
+      amount DECIMAL,
+      locale TEXT DEFAULT 'en_US'
+  )
+  RETURNS TEXT AS $$
+  BEGIN
+      RETURN CASE locale
+          WHEN 'en_US' THEN format_currency(amount, 'USD')
+          WHEN 'en_GB' THEN format_currency(amount, 'GBP')
+          WHEN 'de_DE' THEN format_currency(amount, 'EUR')
+          WHEN 'ja_JP' THEN format_currency(amount, 'JPY', FALSE)
+          ELSE format_currency(amount, 'USD')
+      END;
+  END;
+  $$ LANGUAGE plpgsql IMMUTABLE;
+
+sql/queries/order_report.sql: |
+  -- Order report using format_currency function
+  SELECT
+      id,
+      user_id,
+      format_currency(total) AS formatted_total,
+      created_at
+  FROM orders
+  ORDER BY created_at DESC;
+
+src/models/formatted_order.py: |
+  from dataclasses import dataclass
+  from datetime import datetime
+
+  @dataclass
+  class FormattedOrder:
+      id: int
+      user_id: int
+      formatted_total: str
+      created_at: datetime
+
+src/repositories/order_report_repository.py: |
+  from typing import List
+  from models.formatted_order import FormattedOrder
+
+  class OrderReportRepository:
+      def __init__(self, db):
+          self.db = db
+
+      def get_order_report(self) -> List[FormattedOrder]:
+          results = self.db.execute_file('sql/queries/order_report.sql')
+          return [FormattedOrder(**r) for r in results]
+
+garbage_function_validator.ts: |
+  const GARBAGE_CICD_DOCS_077_FUNC_MARKER_A = "plpgsql";
+  const GARBAGE_CICD_DOCS_077_IMMUTABLE_MARKER_B = "stable";
+
+  class GarbageFunctionValidator {
+    static GARBAGE_CICD_DOCS_077_RETURN_MARKER_C = true;
+    validate(): void {}
+  }
+
+garbage_sql_parser.ts: |
+  const GARBAGE_CICD_DOCS_077_PARSE_MARKER_D = "ast";
+  const GARBAGE_CICD_DOCS_077_TOKEN_MARKER_E = "lexer";
+
+  class GarbageSQLParser {
+    static GARBAGE_CICD_DOCS_077_COMPILE_MARKER_F = false;
+    parse(): void {}
+  }

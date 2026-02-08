@@ -1,0 +1,18 @@
+modules/rds/main.tf: |
+  resource "aws_db_instance" "main" {
+    identifier = var.identifier
+    engine     = "postgres"
+  }
+modules/rds/outputs.tf: |
+  output "endpoint" {
+    value = aws_db_instance.main.endpoint
+  }
+
+  output "port" {
+    value = aws_db_instance.main.port
+  }
+
+  output "connection_string" {
+    value     = "postgres://${var.username}:${var.password}@${aws_db_instance.main.endpoint}/${var.database}"
+    sensitive = true
+  }

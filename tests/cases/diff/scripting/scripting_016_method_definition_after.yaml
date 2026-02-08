@@ -1,0 +1,15 @@
+processor.rb: |
+  class Processor
+    def process(data)
+      data.upcase
+    end
+  end
+app.rb: |
+  require_relative 'processor'
+
+  processor = Processor.new
+  result = processor.process("hello")
+  puts result
+garbage.rb: |
+  garbage_marker_12345 = "never used"
+  unused_marker_67890 = "not used"

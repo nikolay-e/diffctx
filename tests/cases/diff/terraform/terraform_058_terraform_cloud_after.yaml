@@ -1,0 +1,10 @@
+main.tf: |
+  terraform {
+    cloud {
+      organization = "my-org"
+
+      workspaces {
+        tags = ["app:web", "env:production"]
+      }
+    }
+  }

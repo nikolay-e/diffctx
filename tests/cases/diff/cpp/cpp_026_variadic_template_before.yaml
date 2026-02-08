@@ -1,0 +1,154 @@
+include/logging/logger.hpp: |
+  #pragma once
+  #include <iostream>
+  #include <sstream>
+  #include <string>
+  #include <chrono>
+  #include <iomanip>
+
+  namespace app::logging {
+
+  enum class LogLevel {
+      Debug,
+      Info,
+      Warning,
+      Error,
+      Fatal
+  };
+
+  inline const char* levelToString(LogLevel level) {
+      switch (level) {
+          case LogLevel::Debug: return "DEBUG";
+          case LogLevel::Info: return "INFO";
+          case LogLevel::Warning: return "WARN";
+          case LogLevel::Error: return "ERROR";
+          case LogLevel::Fatal: return "FATAL";
+      }
+      return "UNKNOWN";
+  }
+
+  template<typename... Args>
+  void log(Args... args) {
+      std::ostringstream oss;
+      ((oss << args << " "), ...);
+      std::cout << oss.str() << std::endl;
+  }
+
+  template<typename... Args>
+  void logWithLevel(LogLevel level, Args... args) {
+      auto now = std::chrono::system_clock::now();
+      auto time = std::chrono::system_clock::to_time_t(now);
+
+      std::ostringstream oss;
+      oss << "[" << std::put_time(std::localtime(&time), "%H:%M:%S") << "] ";
+      oss << "[" << levelToString(level) << "] ";
+      ((oss << args << " "), ...);
+      std::cout << oss.str() << std::endl;
+  }
+
+  template<typename... Args>
+  std::string format(const char* fmt, Args... args) {
+      std::ostringstream oss;
+      formatImpl(oss, fmt, args...);
+      return oss.str();
+  }
+
+  inline void formatImpl(std::ostringstream& oss, const char* fmt) {
+      oss << fmt;
+  }
+
+  template<typename T, typename... Args>
+  void formatImpl(std::ostringstream& oss, const char* fmt, T value, Args... args) {
+      while (*fmt) {
+          if (*fmt == '{' && *(fmt + 1) == '}') {
+              oss << value;
+              formatImpl(oss, fmt + 2, args...);
+              return;
+          }
+          oss << *fmt++;
+      }
+  }
+
+  template<typename... Args>
+  size_t countArgs(Args...) {
+      return sizeof...(Args);
+  }
+
+  }
+include/unrelated/video_encoder.hpp: |
+  #pragma once
+  // GARBAGE_CPP_VIDEO_267_001
+  #define GARBAGE_CPP_VIDEO_CODEC_267_002 "h264"
+
+  namespace app::unrelated::video {
+
+  // GARBAGE_CPP_VIDEO_FRAME_267_003
+  struct VideoFrame {
+      unsigned char* data;
+      int width;
+      int height;
+      // GARBAGE_CPP_VIDEO_TIMESTAMP_267_004
+      long timestamp;
+  };
+
+  // GARBAGE_CPP_VIDEO_ENCODER_267_005
+  class VideoEncoder {
+  public:
+      // GARBAGE_CPP_VIDEO_INIT_267_006
+      bool initialize(int width, int height, int bitrate) {
+          // GARBAGE_CPP_VIDEO_INIT_IMPL_267_007
+          return false;
+      }
+
+      // GARBAGE_CPP_VIDEO_ENCODE_267_008
+      size_t encode(const VideoFrame& frame, unsigned char* output) {
+          // GARBAGE_CPP_VIDEO_ENCODE_IMPL_267_009
+          return 0;
+      }
+
+      // GARBAGE_CPP_VIDEO_FLUSH_267_010
+      void flush() {
+          // GARBAGE_CPP_VIDEO_FLUSH_IMPL_267_011
+      }
+  };
+
+  }
+src/unrelated/midi_controller.cpp: |
+  // GARBAGE_CPP_MIDI_267_012
+  #include <cstdint>
+
+  namespace app::unrelated::midi {
+
+  // GARBAGE_CPP_MIDI_MSG_267_013
+  struct MidiMessage {
+      uint8_t status;
+      uint8_t data1;
+      uint8_t data2;
+      // GARBAGE_CPP_MIDI_TIME_267_014
+  };
+
+  // GARBAGE_CPP_MIDI_CONTROLLER_267_015
+  class MidiController {
+  public:
+      // GARBAGE_CPP_MIDI_SEND_267_016
+      void sendMessage(const MidiMessage& msg) {
+          // GARBAGE_CPP_MIDI_SEND_IMPL_267_017
+      }
+
+      // GARBAGE_CPP_MIDI_RECEIVE_267_018
+      MidiMessage receiveMessage() {
+          // GARBAGE_CPP_MIDI_RECV_IMPL_267_019
+          return MidiMessage{};
+      }
+
+      // GARBAGE_CPP_MIDI_CONNECT_267_020
+      bool connect(const char* device) {
+          // GARBAGE_CPP_MIDI_CONN_IMPL_267_021
+          return false;
+      }
+  };
+
+  }
+src/app.cpp: |
+  #include <iostream>
+  int main() { return 0; }

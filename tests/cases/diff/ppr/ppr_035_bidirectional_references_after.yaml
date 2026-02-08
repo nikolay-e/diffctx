@@ -1,0 +1,10 @@
+module_x.py: |
+  COMMON = "common"
+
+  def func_x():
+      return COMMON + "_x_modified"
+module_y.py: |
+  COMMON = "common"
+
+  def func_y():
+      return COMMON + "_y_modified"

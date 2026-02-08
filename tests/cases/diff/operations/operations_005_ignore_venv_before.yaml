@@ -1,0 +1,67 @@
+app.py: |
+  from typing import Any
+
+  class Config:
+      def __init__(self, env: str = "development"):
+          self.env = env
+          self.debug = env != "production"
+          self.log_level = "DEBUG" if self.debug else "INFO"
+
+      def is_production(self) -> bool:
+          return self.env == "production"
+
+      def to_dict(self) -> dict[str, Any]:
+          return {
+              "env": self.env,
+              "debug": self.debug,
+              "log_level": self.log_level,
+          }
+
+  def create_app(env: str = "development") -> dict:
+      config = Config(env)
+      return {"config": config.to_dict(), "status": "initialized"}
+
+  def get_version() -> str:
+      return "1.0.0"
+
+.venv/lib/python3.11/site-packages/setuptools/__init__.py: |
+  __version__ = "68.0.0"
+  def setup(**kwargs):
+      pass
+
+.venv/lib/python3.11/site.py: |
+  ENABLE_USER_SITE = False
+
+garbage_deploy.py: |
+  GARBAGE_OPS_005_DEPLOY_A = "deployment marker"
+  GARBAGE_OPS_005_ROLLOUT_B = "rollout strategy marker"
+
+  class Deployer:
+      GARBAGE_OPS_005_CANARY_C = "canary deploy marker"
+
+      def __init__(self, target: str = "staging"):
+          self.target = target
+
+      def deploy(self, version: str) -> dict:
+          return {"target": self.target, "version": version, "status": "deployed"}
+
+      def rollback(self, version: str) -> dict:
+          GARBAGE_OPS_005_REVERT_D = "revert marker"
+          return {"target": self.target, "version": version, "status": "rolled_back"}
+
+garbage_provision.py: |
+  GARBAGE_OPS_005_INFRA_E = "infrastructure marker"
+  GARBAGE_OPS_005_CLOUD_F = "cloud provider marker"
+
+  class Provisioner:
+      GARBAGE_OPS_005_INSTANCE_G = True
+
+      def __init__(self, region: str = "us-east-1"):
+          self.region = region
+
+      def create_instance(self, instance_type: str) -> dict:
+          return {"type": instance_type, "region": self.region}
+
+      def destroy_instance(self, instance_id: str) -> bool:
+          GARBAGE_OPS_005_CLEANUP_H = "cleanup marker"
+          return True

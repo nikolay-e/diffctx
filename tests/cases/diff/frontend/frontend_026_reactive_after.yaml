@@ -1,0 +1,30 @@
+Counter.vue: |
+  <template>
+      <div class="counter">
+          <p>Count: {{ count }}</p>
+          <p>Double: {{ doubleCount }}</p>
+          <button @click="increment">+</button>
+          <button @click="decrement">-</button>
+          <button @click="reset">Reset</button>
+      </div>
+  </template>
+
+  <script setup lang="ts">
+  import { ref, computed } from 'vue';
+
+  const count = ref(0);
+
+  const doubleCount = computed(() => count.value * 2);
+
+  function increment() {
+      count.value++;
+  }
+
+  function decrement() {
+      count.value--;
+  }
+
+  function reset() {
+      count.value = 0;
+  }
+  </script>

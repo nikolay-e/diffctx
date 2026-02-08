@@ -1,0 +1,16 @@
+User.swift: |
+  struct User: Codable {
+      let id: String
+      let name: String
+      let email: String
+  }
+  // garbage_marker_12345
+APIResponse.swift: |
+  struct APIResponse<T: Codable>: Decodable {
+      let data: T
+      let status: String
+      let timestamp: Date
+  }
+APIClient.swift: |
+  // Initial
+  class APIClient {}

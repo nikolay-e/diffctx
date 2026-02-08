@@ -1,0 +1,41 @@
+compare.sh: |
+  #!/bin/bash
+
+  diff <(sort file1.txt) <(sort file2.txt)
+
+  while read -r line; do
+      echo "Found: $line"
+  done < <(grep -r "TODO" src/)
+
+  paste <(cut -d, -f1 data.csv) <(cut -d, -f3 data.csv) > combined.txt
+
+  comm -12 <(sort list_a.txt) <(sort list_b.txt) | while read -r common; do
+      echo "Common item: $common"
+  done
+unrelated/garbage_dns_lookup.sh: |
+  #!/bin/bash
+  # GARBAGE_SH_003_DNS_LOOKUP_A
+  GARBAGE_SH_003_DNS_SERVER_B="8.8.8.8"
+
+  garbage_resolve_host_003() {
+      local hostname=$1
+      echo "Resolving $hostname via $GARBAGE_SH_003_DNS_SERVER_B"
+  }
+
+  garbage_reverse_lookup_003() {
+      local ip=$1
+      echo "Reverse: $ip -> unknown.host"
+  }
+unrelated/garbage_disk_usage.sh: |
+  #!/bin/bash
+  # GARBAGE_SH_003_DISK_USAGE_C
+  GARBAGE_SH_003_THRESHOLD_D="90"
+
+  garbage_check_disk_003() {
+      echo "Disk usage: 45%"
+  }
+
+  garbage_alert_disk_003() {
+      local pct=$1
+      echo "Alert: disk at ${pct}%"
+  }

@@ -1,0 +1,47 @@
+utils.h: |
+  #pragma once
+  #include <string>
+
+  namespace myapp::utils {
+
+  std::string trim(const std::string& s);
+  std::string toUpper(const std::string& s);
+
+  }
+utils.cpp: |
+  #include "utils.h"
+  #include <algorithm>
+  #include <cctype>
+
+  namespace myapp::utils {
+
+  std::string trim(const std::string& s) {
+      size_t start = s.find_first_not_of(" \t\n");
+      size_t end = s.find_last_not_of(" \t\n");
+      return (start == std::string::npos) ? "" : s.substr(start, end - start + 1);
+  }
+
+  std::string toUpper(const std::string& s) {
+      std::string result = s;
+      std::transform(result.begin(), result.end(), result.begin(), ::toupper);
+      return result;
+  }
+
+  }
+app.cpp: |
+  #include <iostream>
+  int main() { return 0; }
+garbage_color.cpp: |
+  const char* GARBAGE_JVM_005_COLOR_MARKER_A = "marker";
+  const char* GARBAGE_JVM_005_HEX_MARKER_B = "marker";
+
+  class GarbageColorConverter {
+      void noop() {}
+  };
+garbage_crypto.cpp: |
+  const char* GARBAGE_JVM_005_HASH_MARKER_C = "marker";
+  const char* GARBAGE_JVM_005_ENCRYPT_MARKER_D = "marker";
+
+  class GarbageCryptoUtils {
+      void noop() {}
+  };

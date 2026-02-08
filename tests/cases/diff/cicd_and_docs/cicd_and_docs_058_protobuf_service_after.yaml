@@ -1,0 +1,98 @@
+proto/user_service.proto: |
+  syntax = "proto3";
+
+  package user;
+
+  service UserService {
+    rpc GetUser(GetUserRequest) returns (User);
+    rpc ListUsers(ListUsersRequest) returns (ListUsersResponse);
+    rpc CreateUser(CreateUserRequest) returns (User);
+    rpc UpdateUser(UpdateUserRequest) returns (User);
+    rpc DeleteUser(DeleteUserRequest) returns (DeleteUserResponse);
+  }
+
+  message GetUserRequest {
+    int64 id = 1;
+  }
+
+  message ListUsersRequest {
+    int32 page_size = 1;
+    string page_token = 2;
+  }
+
+  message ListUsersResponse {
+    repeated User users = 1;
+    string next_page_token = 2;
+    int32 total_count = 3;
+  }
+
+  message CreateUserRequest {
+    string name = 1;
+    string email = 2;
+  }
+
+  message UpdateUserRequest {
+    int64 id = 1;
+    string name = 2;
+    string email = 3;
+  }
+
+  message DeleteUserRequest {
+    int64 id = 1;
+  }
+
+  message DeleteUserResponse {
+    bool success = 1;
+  }
+
+  message User {
+    int64 id = 1;
+    string name = 2;
+    string email = 3;
+  }
+
+src/grpc/user_service.py: |
+  import grpc
+  from proto import user_service_pb2, user_service_pb2_grpc
+  from database import get_db
+
+  class UserServiceServicer(user_service_pb2_grpc.UserServiceServicer):
+      def GetUser(self, request, context):
+          db = get_db()
+          user = db.query(User).filter(User.id == request.id).first()
+          if not user:
+              context.abort(grpc.StatusCode.NOT_FOUND, "User not found")
+          return user_service_pb2.User(id=user.id, name=user.name)
+
+src/grpc/server.py: |
+  import grpc
+  from concurrent import futures
+  from proto import user_service_pb2_grpc
+  from grpc.user_service import UserServiceServicer
+
+  def serve():
+      server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
+      user_service_pb2_grpc.add_UserServiceServicer_to_server(
+          UserServiceServicer(), server
+      )
+      server.add_insecure_port('[::]:50051')
+      server.start()
+      server.wait_for_termination()
+
+garbage_grpc_interceptor.ts: |
+  const GARBAGE_CICD_DOCS_058_INTERCEPT_MARKER_A = "unary";
+  const GARBAGE_CICD_DOCS_058_TIMEOUT_MARKER_B = 30000;
+
+  class GarbageGrpcInterceptor {
+    static GARBAGE_CICD_DOCS_058_RETRY_MARKER_C = 3;
+    intercept(): void {}
+  }
+
+garbage_grpc_middleware.ts: |
+  const GARBAGE_CICD_DOCS_058_AUTH_MARKER_D = "bearer";
+  const GARBAGE_CICD_DOCS_058_LOG_MARKER_E = "debug";
+
+  class GarbageGrpcMiddleware {
+    static GARBAGE_CICD_DOCS_058_TRACE_MARKER_F = true;
+    handle(): void {}
+  }

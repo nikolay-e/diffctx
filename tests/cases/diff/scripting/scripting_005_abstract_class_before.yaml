@@ -1,0 +1,20 @@
+BaseController.php: |
+  <?php
+  abstract class BaseController {
+      abstract protected function getModel(): string;
+
+      public function index(): array {
+          return ['model' => $this->getModel()];
+      }
+
+      protected function respond(array $data): void {
+          echo json_encode($data);
+      }
+  }
+UserController.php: |
+  <?php
+  class UserController {}
+garbage.php: |
+  <?php
+  $garbageBaseUnused12345 = "never called";
+  $unused_marker_67890 = "not used";

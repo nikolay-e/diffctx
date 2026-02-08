@@ -1,0 +1,28 @@
+src/events/dispatcher.py: |
+  from src.events.registry import get_handler
+  def dispatch_event(event_type: str, payload: dict) -> dict:
+      handler = get_handler(event_type)
+      return handler(payload)
+  def log_event(event_type: str) -> None:
+      pass
+src/events/registry.py: |
+  HANDLERS = {}
+  def register_handler(event_type: str, handler) -> None:
+      HANDLERS[event_type] = handler
+  def get_handler(event_type: str):
+      return HANDLERS.get(event_type, lambda p: p)
+garbage_event_queue.py: |
+  GARBAGE_INT_007_QUEUE_MARKER_A = "evq"
+  GARBAGE_INT_007_PRIORITY_MARKER_B = "high"
+
+  class GarbageEventQueue:
+      def noop(self):
+          pass
+
+garbage_event_replay.py: |
+  GARBAGE_INT_007_REPLAY_MARKER_C = "journal"
+  GARBAGE_INT_007_SNAPSHOT_MARKER_D = "ckpt"
+
+  class GarbageEventReplay:
+      def noop(self):
+          pass

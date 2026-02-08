@@ -1,0 +1,151 @@
+include/concepts/concepts.hpp: |
+  #pragma once
+  #include <concepts>
+  #include <type_traits>
+  #include <iterator>
+
+  namespace app::concepts {
+
+  template<typename T>
+  concept Numeric = std::integral<T> || std::floating_point<T>;
+
+  template<typename T>
+  concept Addable = requires(T a, T b) {
+      { a + b } -> std::convertible_to<T>;
+  };
+
+  template<typename T>
+  concept Comparable = requires(T a, T b) {
+      { a < b } -> std::convertible_to<bool>;
+      { a > b } -> std::convertible_to<bool>;
+      { a == b } -> std::convertible_to<bool>;
+      { a != b } -> std::convertible_to<bool>;
+  };
+
+  template<typename T>
+  concept Printable = requires(T t, std::ostream& os) {
+      { os << t } -> std::same_as<std::ostream&>;
+  };
+
+  template<typename T>
+  concept Container = requires(T t) {
+      typename T::value_type;
+      typename T::iterator;
+      { t.begin() } -> std::input_or_output_iterator;
+      { t.end() } -> std::input_or_output_iterator;
+      { t.size() } -> std::convertible_to<std::size_t>;
+  };
+
+  template<typename T>
+  concept Hashable = requires(T t) {
+      { std::hash<T>{}(t) } -> std::convertible_to<std::size_t>;
+  };
+
+  template<typename T>
+  concept Stringifiable = requires(T t) {
+      { t.to_string() } -> std::convertible_to<std::string>;
+  };
+
+  template<Numeric T>
+  T square(T value) {
+      return value * value;
+  }
+
+  template<Numeric T>
+  T cube(T value) {
+      return value * value * value;
+  }
+
+  template<Addable T>
+  T add(T a, T b) {
+      return a + b;
+  }
+
+  template<Comparable T>
+  const T& maximum(const T& a, const T& b) {
+      return (a > b) ? a : b;
+  }
+
+  template<Comparable T>
+  const T& minimum(const T& a, const T& b) {
+      return (a < b) ? a : b;
+  }
+
+  }
+include/unrelated/protocol_handler.hpp: |
+  #pragma once
+  // GARBAGE_CPP_PROTOCOL_266_001
+  #define GARBAGE_CPP_PROTOCOL_VERSION_266_002 2
+
+  namespace app::unrelated::protocol {
+
+  // GARBAGE_CPP_PROTOCOL_MSG_266_003
+  struct ProtocolMessage {
+      int type;
+      size_t length;
+      // GARBAGE_CPP_PROTOCOL_DATA_266_004
+      char data[1024];
+  };
+
+  // GARBAGE_CPP_PROTOCOL_HANDLER_266_005
+  class ProtocolHandler {
+  public:
+      // GARBAGE_CPP_PROTOCOL_PARSE_266_006
+      ProtocolMessage parse(const char* buffer, size_t len) {
+          // GARBAGE_CPP_PROTOCOL_PARSE_IMPL_266_007
+          return ProtocolMessage{};
+      }
+
+      // GARBAGE_CPP_PROTOCOL_SERIALIZE_266_008
+      size_t serialize(const ProtocolMessage& msg, char* buffer) {
+          // GARBAGE_CPP_PROTOCOL_SER_IMPL_266_009
+          return 0;
+      }
+
+      // GARBAGE_CPP_PROTOCOL_VALIDATE_266_010
+      bool validate(const ProtocolMessage& msg) {
+          // GARBAGE_CPP_PROTOCOL_VAL_IMPL_266_011
+          return false;
+      }
+  };
+
+  }
+src/unrelated/certificate_store.cpp: |
+  // GARBAGE_CPP_CERT_266_012
+  #include <cstddef>
+
+  namespace app::unrelated::cert {
+
+  // GARBAGE_CPP_CERT_INFO_266_013
+  struct CertificateInfo {
+      const char* subject;
+      const char* issuer;
+      // GARBAGE_CPP_CERT_EXPIRY_266_014
+      long expiryDate;
+  };
+
+  // GARBAGE_CPP_CERT_STORE_266_015
+  class CertificateStore {
+  public:
+      // GARBAGE_CPP_CERT_ADD_266_016
+      bool addCertificate(const char* pemData) {
+          // GARBAGE_CPP_CERT_ADD_IMPL_266_017
+          return false;
+      }
+
+      // GARBAGE_CPP_CERT_VERIFY_266_018
+      bool verifyCertificate(const char* certData) {
+          // GARBAGE_CPP_CERT_VERIFY_IMPL_266_019
+          return false;
+      }
+
+      // GARBAGE_CPP_CERT_REMOVE_266_020
+      void removeCertificate(const char* fingerprint) {
+          // GARBAGE_CPP_CERT_REMOVE_IMPL_266_021
+      }
+  };
+
+  }
+src/calc.cpp: |
+  #include <iostream>
+  int main() { return 0; }

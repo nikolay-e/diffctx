@@ -1,0 +1,120 @@
+internal/errors/sentinel.go: |
+  package errors
+
+  import "errors"
+
+  var (
+      ErrNotFound      = errors.New("not found")
+      ErrPermission    = errors.New("permission denied")
+      ErrInvalid       = errors.New("invalid input")
+      ErrTimeout       = errors.New("operation timeout")
+      ErrConflict      = errors.New("resource conflict")
+      ErrUnavailable   = errors.New("service unavailable")
+  )
+
+  func IsRetryable(err error) bool {
+      return errors.Is(err, ErrTimeout) || errors.Is(err, ErrUnavailable)
+  }
+internal/errors/codes.go: |
+  package errors
+
+  type ErrorCode int
+
+  const (
+      CodeUnknown ErrorCode = iota
+      CodeNotFound
+      CodePermission
+      CodeInvalid
+      CodeTimeout
+      CodeConflict
+      CodeUnavailable
+      CodeInternal
+  )
+
+  func (c ErrorCode) String() string {
+      switch c {
+      case CodeNotFound:
+          return "NOT_FOUND"
+      case CodePermission:
+          return "PERMISSION_DENIED"
+      case CodeInvalid:
+          return "INVALID_INPUT"
+      case CodeTimeout:
+          return "TIMEOUT"
+      case CodeConflict:
+          return "CONFLICT"
+      case CodeUnavailable:
+          return "UNAVAILABLE"
+      case CodeInternal:
+          return "INTERNAL"
+      default:
+          return "UNKNOWN"
+      }
+  }
+internal/service/service.go: |
+  package service
+
+  func Find(id int) (interface{}, error) {
+      return nil, nil
+  }
+internal/unrelated/telemetry/opentelemetry.go: |
+  package telemetry
+
+  import "context"
+
+  const GARBAGE_GO_OTEL_TRACER_A1B2C3 = "opentelemetry_garbage_marker"
+
+  type GARBAGE_GO_TYPE_SPAN_D4E5F6 struct {
+      traceID string
+      spanID  string
+  }
+
+  func GARBAGE_GO_FUNC_OTEL_G7H8I9() string {
+      return "GARBAGE_GO_OTEL_UNUSED_J0K1L2"
+  }
+
+  type TracerConfig struct {
+      ServiceName    string
+      Endpoint       string
+      SamplingRate   float64
+  }
+
+  func GARBAGE_GO_FUNC_START_SPAN_M3N4O5(ctx context.Context, name string) (context.Context, error) {
+      println("GARBAGE_GO_OTEL_OUTPUT_P6Q7R8")
+      return ctx, nil
+  }
+internal/unrelated/telemetry/jaeger.go: |
+  package telemetry
+
+  const GARBAGE_GO_JAEGER_CLIENT_S9T0U1 = "jaeger_garbage"
+
+  type GARBAGE_GO_TYPE_JAEGER_V2W3X4 struct {
+      agentHost string
+      agentPort int
+  }
+
+  func GARBAGE_GO_FUNC_JAEGER_Y5Z6A7() {
+      println("GARBAGE_GO_JAEGER_OUTPUT_B8C9D0")
+  }
+
+  type JaegerConfig struct {
+      AgentHost     string
+      AgentPort     int
+      CollectorURL  string
+  }
+
+  func GARBAGE_GO_FUNC_JAEGER_REPORT_E1F2G3(spans []interface{}) error {
+      return nil
+  }
+internal/unrelated/telemetry/zipkin.go: |
+  package telemetry
+
+  const GARBAGE_GO_ZIPKIN_CLIENT_H4I5J6 = "zipkin_garbage"
+
+  type GARBAGE_GO_TYPE_ZIPKIN_K7L8M9 struct {
+      endpoint string
+  }
+
+  func GARBAGE_GO_FUNC_ZIPKIN_N0O1P2() {
+      println("GARBAGE_GO_ZIPKIN_OUTPUT_Q3R4S5")
+  }

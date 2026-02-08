@@ -1,0 +1,63 @@
+core.py: |
+  from rare_module import unique_helper
+
+  def main():
+      main_marker = "main_function_modified"
+      result = unique_helper()
+      return result * 2
+
+  def secondary_function():
+      return "secondary_result"
+
+  def tertiary_function():
+      return "tertiary_result"
+rare_module.py: |
+  def unique_helper():
+      unique_marker = "unique_helper_implementation"
+      return 42
+
+  def rare_helper_alpha():
+      return "rare_alpha_result"
+
+  def rare_helper_beta():
+      return "rare_beta_result"
+common_utils.py: |
+  def common_util_one():
+      return "common_one_result"
+
+  def common_util_two():
+      return "common_two_result"
+
+  def common_util_three():
+      return "common_three_result"
+garbage_sel_006_importable.py: |
+  def GARBAGE_SEL_006_importable_func():
+      return "GARBAGE_SEL_006_importable_result"
+
+  def GARBAGE_SEL_006_another_import():
+      return "GARBAGE_SEL_006_another_import_result"
+
+  class GARBAGE_SEL_006_ImportClass:
+      def import_method(self):
+          return "GARBAGE_SEL_006_import_method_result"
+garbage_sel_006_identifiers.py: |
+  GARBAGE_SEL_006_RARE_ID_ONE = "garbage_sel_006_rare_id_one_value"
+  GARBAGE_SEL_006_RARE_ID_TWO = "garbage_sel_006_rare_id_two_value"
+  GARBAGE_SEL_006_RARE_ID_THREE = "garbage_sel_006_rare_id_three_value"
+
+  def GARBAGE_SEL_006_identify():
+      return "GARBAGE_SEL_006_identify_result"
+
+  def GARBAGE_SEL_006_expand():
+      return "GARBAGE_SEL_006_expand_result"
+garbage_sel_006_dependencies.py: |
+  class GARBAGE_SEL_006_DependencyAlpha:
+      def resolve(self):
+          return "GARBAGE_SEL_006_resolve_alpha"
+
+  class GARBAGE_SEL_006_DependencyBeta:
+      def resolve(self):
+          return "GARBAGE_SEL_006_resolve_beta"
+
+  def GARBAGE_SEL_006_inject_dependency():
+      return "GARBAGE_SEL_006_injected"

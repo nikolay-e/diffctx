@@ -1,0 +1,15 @@
+processor.py: |
+  def helper_validate(data):
+      return data is not None and len(data) > 0
+
+  def helper_transform(data):
+      return data.strip().lower()
+
+  def helper_format(data):
+      return f"[{data}]"
+
+  def main_function(data):
+      if not helper_validate(data):
+          return None
+      transformed = helper_transform(data)
+      return helper_format(transformed)

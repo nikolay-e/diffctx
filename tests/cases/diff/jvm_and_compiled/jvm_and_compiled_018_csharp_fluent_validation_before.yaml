@@ -1,0 +1,42 @@
+UserDto.cs: |
+  public class UserDto
+  {
+      public string Name { get; set; }
+      public string Email { get; set; }
+      public int Age { get; set; }
+  }
+UserValidator.cs: |
+  class UserValidator { }
+GarbageIpParser.cs: |
+  public static class GarbageIpParser
+  {
+      public const string GARBAGE_JVM_018_PARSE_MARKER_A = "parse_ipv4";
+      public const string GARBAGE_JVM_018_VALIDATE_MARKER_B = "validate_ip";
+
+      public static bool IsValid(string ip) => ip.Split('.').Length == 4;
+  }
+GarbageSemaphore.cs: |
+  public class GarbageSemaphore
+  {
+      public const string GARBAGE_JVM_018_ACQUIRE_MARKER_C = "sem_acquire";
+      public const string GARBAGE_JVM_018_RELEASE_MARKER_D = "sem_release";
+
+      private int _permits;
+      public GarbageSemaphore(int permits) { _permits = permits; }
+      public bool TryAcquire() { if (_permits > 0) { _permits--; return true; } return false; }
+      public void Release() { _permits++; }
+  }
+GarbageSanitizer.cs: |
+  public class GarbageSanitizer
+  {
+      public const string GARBAGE_JVM_018_SANITIZE_MARKER_A = "marker";
+      public const string GARBAGE_JVM_018_CLEAN_MARKER_B = "marker";
+      public void Noop() {}
+  }
+GarbageFormatter.cs: |
+  public class GarbageFormatter
+  {
+      public const string GARBAGE_JVM_018_FORMAT_MARKER_C = "marker";
+      public const string GARBAGE_JVM_018_NORM_MARKER_D = "marker";
+      public void Noop() {}
+  }

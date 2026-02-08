@@ -1,0 +1,61 @@
+.gitlab-ci.yml: |
+  stages:
+    - build
+    - test
+    - deploy
+
+  .node-job:
+    image: node:18
+    before_script:
+      - npm ci
+
+  build:
+    stage: build
+    extends: .node-job
+    script:
+      - npm run build
+
+  test:
+    stage: test
+    extends: .node-job
+    script:
+      - npm test
+
+  deploy:
+    stage: deploy
+    extends: .node-job
+    script:
+      - ./deploy.sh
+
+package.json: |
+  {
+    "name": "gitlab-extends-app",
+    "version": "1.0.0",
+    "scripts": {
+      "build": "tsc",
+      "test": "jest"
+    }
+  }
+
+deploy.sh: |
+  #!/bin/bash
+  set -e
+  echo "Deploying application..."
+
+garbage_template_engine.ts: |
+  const GARBAGE_CICD_DOCS_033_ENGINE_MARKER_A = "jinja2";
+  const GARBAGE_CICD_DOCS_033_SYNTAX_MARKER_B = "mustache";
+
+  class GarbageTemplateEngine {
+    static GARBAGE_CICD_DOCS_033_CACHE_MARKER_C = true;
+    render(): string { return ""; }
+  }
+
+garbage_template_resolver.ts: |
+  const GARBAGE_CICD_DOCS_033_RESOLVER_MARKER_D = "deep";
+  const GARBAGE_CICD_DOCS_033_MERGE_MARKER_E = "recursive";
+
+  class GarbageTemplateResolver {
+    static GARBAGE_CICD_DOCS_033_OVERRIDE_MARKER_F = false;
+    resolve(): void {}
+  }

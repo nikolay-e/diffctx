@@ -84,7 +84,7 @@ class DockerEdgeBuilder(EdgeBuilder):
             return []
 
         refs = _collect_docker_refs(docker_files)
-        return discover_files_by_refs(refs, changed_files, all_candidate_files)
+        return discover_files_by_refs(refs, changed_files, all_candidate_files, repo_root)
 
     def build(self, fragments: list[Fragment], repo_root: Path | None = None) -> EdgeDict:
         edges: EdgeDict = {}

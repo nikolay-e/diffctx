@@ -1,0 +1,69 @@
+src/z_module/handler.py: |
+  from typing import Any, Dict, Optional
+
+  class ZHandler:
+      def __init__(self, config: Dict[str, Any]):
+          self.config = config
+          self.last_error: Optional[str] = None
+
+      def handle(self, data: Any) -> Any:
+          try:
+              return self._process(data)
+          except Exception as e:
+              self.last_error = str(e)
+              return None
+
+      def _process(self, data: Any) -> Any:
+          return data
+
+      def validate(self, data: Any) -> bool:
+          return data is not None
+
+src/a_module/processor.py: |
+  from typing import List, Any, Callable
+
+  class AProcessor:
+      def __init__(self, transform: Callable[[Any], Any] = None):
+          self.items: List[Any] = []
+          self.transform = transform or (lambda x: x)
+
+      def process(self, item: Any) -> Any:
+          transformed = self.transform(item)
+          self.items.append(transformed)
+          return transformed
+
+      def get_all(self) -> List[Any]:
+          return self.items.copy()
+
+      def clear(self) -> None:
+          self.items.clear()
+
+src/m_module/service.py: |
+  from typing import Optional
+
+  class MService:
+      def __init__(self, name: str):
+          self.name = name
+
+      def execute(self) -> str:
+          return f"Executing {self.name}"
+
+garbage_extras.py: |
+  GARBAGE_ALGO_015_EXTRA_MARKER_A = "extra"
+  GARBAGE_ALGO_015_BONUS_MARKER_B = True
+
+  class ExtraFeatures:
+      GARBAGE_ALGO_015_FEATURE_MARKER_C = {}
+
+      def enable(self) -> None:
+          pass
+
+garbage_utils.py: |
+  GARBAGE_ALGO_015_UTIL_MARKER_D = "util"
+  GARBAGE_ALGO_015_HELPER_MARKER_E = []
+
+  class UtilityFunctions:
+      GARBAGE_ALGO_015_FUNC_MARKER_F = True
+
+      def helper(self) -> None:
+          pass

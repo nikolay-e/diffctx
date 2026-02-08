@@ -1,0 +1,53 @@
+mylib/validators.py: |
+  def validate_email(email: str) -> bool:
+      return "@" in email and "." in email.split("@")[-1]
+
+  def validate_url(url: str) -> bool:
+      return url.startswith("http://") or url.startswith("https://")
+
+mylib/formatters.py: |
+  def format_currency(amount: float, currency: str = "USD") -> str:
+      symbols = {"USD": "$", "EUR": "E", "GBP": "P"}
+      symbol = symbols.get(currency, currency)
+      return f"{symbol}{amount:.2f}"
+
+  def format_percentage(value: float) -> str:
+      return f"{value * 100:.1f}%"
+
+mylib/__init__.py: |
+  from .validators import validate_email, validate_url
+  from .formatters import format_currency, format_percentage
+
+garbage_image_proc.py: |
+  GARBAGE_PY_045_IMAGE_A = "image processing marker"
+  GARBAGE_PY_045_RESIZE_B = "resize operation marker"
+
+  class ImageProcessor:
+      GARBAGE_PY_045_PROC_C = "processor marker"
+
+      def __init__(self, quality: int = 85):
+          self.quality = quality
+
+      def resize(self, width: int, height: int) -> dict:
+          return {"width": width, "height": height}
+
+      def compress(self, data: bytes) -> bytes:
+          GARBAGE_PY_045_COMPRESS_D = "compress marker"
+          return data
+
+garbage_pdf_gen.py: |
+  GARBAGE_PY_045_PDF_E = "pdf generation marker"
+  GARBAGE_PY_045_RENDER_F = "pdf render marker"
+
+  class PdfGenerator:
+      GARBAGE_PY_045_GEN_G = True
+
+      def __init__(self, page_size: str = "A4"):
+          self.page_size = page_size
+
+      def add_page(self, content: str) -> None:
+          pass
+
+      def generate(self) -> bytes:
+          GARBAGE_PY_045_OUTPUT_H = "output marker"
+          return b""

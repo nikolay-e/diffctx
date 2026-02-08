@@ -1,0 +1,25 @@
+module.py: |
+  class MyClass:
+      def method(self):
+          pass
+
+  def function():
+      pass
+garbage_compression.py: |
+  GARBAGE_OUT_011_COMPRESS_MARKER_A = "compression"
+  GARBAGE_OUT_011_GZIP_MARKER_B = True
+
+  class StreamCompressor:
+      GARBAGE_OUT_011_COMPRESSOR_CLASS_C = "compressor"
+
+      def compress(self, data: bytes) -> bytes:
+          return b""
+garbage_archiving.py: |
+  GARBAGE_OUT_011_ARCHIVE_MARKER_D = "archiving"
+  GARBAGE_OUT_011_TAR_MARKER_E = 4096
+
+  class ArchiveBuilder:
+      GARBAGE_OUT_011_BUILDER_CLASS_F = True
+
+      def create(self, paths: list) -> str:
+          return ""

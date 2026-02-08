@@ -1,0 +1,26 @@
+main.tf: |
+  resource "aws_subnet" "main" {
+    vpc_id     = aws_vpc.main.id
+    cidr_block = "10.0.1.0/24"
+  }
+legacy/static_subnets_GARBAGE_TF_fe474a.tf: |
+  # GARBAGE_TF_fe474a - Legacy hardcoded subnets
+  resource "aws_subnet" "legacy_subnet_1_GARBAGE_TF_fe474a" {
+    vpc_id     = aws_vpc.legacy.id
+    cidr_block = "172.16.1.0/24"
+  }
+
+  resource "aws_subnet" "legacy_subnet_2_GARBAGE_TF_fe474a" {
+    vpc_id     = aws_vpc.legacy.id
+    cidr_block = "172.16.2.0/24"
+  }
+
+  resource "aws_subnet" "legacy_subnet_3_GARBAGE_TF_fe474a" {
+    vpc_id     = aws_vpc.legacy.id
+    cidr_block = "172.16.3.0/24"
+  }
+scripts/subnet_generator_GARBAGE_TF_fe474b.py: |
+  # GARBAGE_TF_fe474b - Legacy subnet generator
+  def generate_legacy_subnets_GARBAGE_TF_fe474b():
+      for i in range(1, 10):
+          print(f"Creating legacy subnet {i} GARBAGE_TF_fe474b")

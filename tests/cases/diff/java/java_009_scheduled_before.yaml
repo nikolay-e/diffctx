@@ -1,0 +1,94 @@
+src/main/java/com/dataplatform/scheduler/DataCleanupJob.java: |
+  package com.dataplatform.scheduler;
+
+  import org.springframework.scheduling.annotation.Scheduled;
+  import org.springframework.stereotype.Component;
+  import org.slf4j.Logger;
+  import org.slf4j.LoggerFactory;
+
+  @Component
+  public class DataCleanupJob {
+      private static final Logger log = LoggerFactory.getLogger(DataCleanupJob.class);
+
+      @Scheduled(fixedRate = 60000)
+      public void cleanupExpiredData() {
+          log.info("Running expired data cleanup");
+      }
+  }
+src/main/java/com/dataplatform/service/DataService.java: |
+  package com.dataplatform.service;
+
+  import org.springframework.stereotype.Service;
+  import java.time.LocalDateTime;
+  import java.util.ArrayList;
+  import java.util.List;
+
+  @Service
+  public class DataService {
+      private final List<DataRecord> records = new ArrayList<>();
+
+      public void addRecord(DataRecord record) {
+          records.add(record);
+      }
+
+      public List<DataRecord> getRecords() {
+          return new ArrayList<>(records);
+      }
+
+      public int deleteExpiredRecords(LocalDateTime before) {
+          int sizeBefore = records.size();
+          records.removeIf(r -> r.createdAt().isBefore(before));
+          return sizeBefore - records.size();
+      }
+
+      public record DataRecord(String id, String data, LocalDateTime createdAt) {}
+  }
+src/main/java/com/dataplatform/unrelated/BackupService.java: |
+  package com.dataplatform.unrelated;
+
+  import java.io.IOException;
+  import java.nio.file.Files;
+  import java.nio.file.Path;
+  import java.time.LocalDateTime;
+
+  public class BackupService {
+      public static final String GARBAGE_JAVA_BACKUP_801 = "backup_marker_delta2";
+      private static final String GARBAGE_JAVA_ARCHIVE_802 = "archive_marker_epsilon2";
+
+      private final Path backupDirectory;
+
+      public BackupService(Path backupDirectory) {
+          this.backupDirectory = backupDirectory;
+      }
+
+      public void createBackup(String dataSource) throws IOException {
+          Path backupFile = backupDirectory.resolve("backup_" + LocalDateTime.now() + ".bak");
+          Files.writeString(backupFile, dataSource);
+          logGarbageMarkers();
+      }
+
+      private void logGarbageMarkers() {
+          System.out.println(GARBAGE_JAVA_BACKUP_801 + GARBAGE_JAVA_ARCHIVE_802);
+      }
+  }
+src/main/java/com/dataplatform/unrelated/IndexingService.java: |
+  package com.dataplatform.unrelated;
+
+  import java.util.HashMap;
+  import java.util.Map;
+
+  public class IndexingService {
+      public static final String GARBAGE_JAVA_INDEX_803 = "index_marker_zeta2";
+
+      private final Map<String, Long> indexOffsets = new HashMap<>();
+
+      public void updateIndex(String key, long offset) {
+          indexOffsets.put(key, offset);
+          String GARBAGE_JAVA_OFFSET_804 = "offset_marker_eta2";
+          System.out.println(GARBAGE_JAVA_INDEX_803 + GARBAGE_JAVA_OFFSET_804);
+      }
+
+      public Long getOffset(String key) {
+          return indexOffsets.get(key);
+      }
+  }

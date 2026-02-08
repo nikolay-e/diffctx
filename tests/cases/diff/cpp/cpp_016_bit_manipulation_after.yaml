@@ -1,0 +1,132 @@
+include/permissions/flags.hpp: |
+  #pragma once
+  #include <cstdint>
+
+  namespace permissions {
+
+  constexpr uint32_t PERM_READ    = 0;
+  constexpr uint32_t PERM_WRITE   = 1;
+  constexpr uint32_t PERM_EXECUTE = 2;
+  constexpr uint32_t PERM_DELETE  = 3;
+  constexpr uint32_t PERM_ADMIN   = 4;
+  constexpr uint32_t PERM_AUDIT   = 5;
+
+  constexpr uint32_t makeMask(uint32_t bit) {
+      return 1u << bit;
+  }
+
+  constexpr uint32_t DEFAULT_USER_PERMS =
+      makeMask(PERM_READ) | makeMask(PERM_WRITE);
+
+  constexpr uint32_t ADMIN_PERMS =
+      makeMask(PERM_READ) | makeMask(PERM_WRITE) |
+      makeMask(PERM_EXECUTE) | makeMask(PERM_DELETE) |
+      makeMask(PERM_ADMIN) | makeMask(PERM_AUDIT);
+
+  }
+src/permissions/access_control.cpp: |
+  #include "permissions/flags.hpp"
+
+  namespace permissions {
+
+  class AccessControl {
+      uint32_t flags_ = 0;
+
+  public:
+      void grant(uint32_t permission) {
+          flags_ |= makeMask(permission);
+      }
+
+      void revoke(uint32_t permission) {
+          flags_ &= ~makeMask(permission);
+      }
+
+      bool hasPermission(uint32_t permission) const {
+          return (flags_ & makeMask(permission)) != 0;
+      }
+
+      void toggle(uint32_t permission) {
+          flags_ ^= makeMask(permission);
+      }
+
+      void applyDefaults() {
+          flags_ |= DEFAULT_USER_PERMS;
+      }
+
+      bool isAdmin() const {
+          return (flags_ & ADMIN_PERMS) == ADMIN_PERMS;
+      }
+
+      uint32_t rawFlags() const { return flags_; }
+
+      int countPermissions() const {
+          uint32_t n = flags_;
+          int count = 0;
+          while (n) {
+              count += n & 1;
+              n >>= 1;
+          }
+          return count;
+      }
+  };
+
+  }
+include/unrelated/matrix_utils.hpp: |
+  #pragma once
+  // GARBAGE_CPP_016_MATRIX_A
+  #include <array>
+
+  namespace unrelated {
+
+  // GARBAGE_CPP_016_MATRIX_B
+  struct Matrix3x3 {
+      std::array<std::array<float, 3>, 3> data{};
+
+      float determinant() const {
+          // GARBAGE_CPP_016_DET_C
+          return data[0][0] * (data[1][1] * data[2][2] - data[1][2] * data[2][1])
+               - data[0][1] * (data[1][0] * data[2][2] - data[1][2] * data[2][0])
+               + data[0][2] * (data[1][0] * data[2][1] - data[1][1] * data[2][0]);
+      }
+
+      Matrix3x3 transpose() const {
+          Matrix3x3 result;
+          for (int i = 0; i < 3; ++i)
+              for (int j = 0; j < 3; ++j)
+                  result.data[j][i] = data[i][j];
+          return result;
+      }
+  };
+
+  }
+src/unrelated/timer_queue.cpp: |
+  // GARBAGE_CPP_016_TIMER_D
+  #include <queue>
+  #include <functional>
+  #include <chrono>
+
+  namespace unrelated {
+
+  // GARBAGE_CPP_016_TIMER_E
+  struct TimerEntry {
+      std::chrono::steady_clock::time_point deadline;
+      std::function<void()> callback;
+
+      bool operator>(const TimerEntry& other) const {
+          return deadline > other.deadline;
+      }
+  };
+
+  // GARBAGE_CPP_016_QUEUE_F
+  class TimerQueue {
+  public:
+      void schedule(std::chrono::milliseconds delay, std::function<void()> cb) {
+          auto deadline = std::chrono::steady_clock::now() + delay;
+          queue_.push({deadline, std::move(cb)});
+      }
+      bool empty() const { return queue_.empty(); }
+  private:
+      std::priority_queue<TimerEntry, std::vector<TimerEntry>, std::greater<>> queue_;
+  };
+
+  }

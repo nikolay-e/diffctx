@@ -1,0 +1,88 @@
+internal/logging/logger.go: |
+  package logging
+
+  import (
+      "fmt"
+      "log"
+      "time"
+  )
+
+  type Level int
+
+  const (
+      DEBUG Level = iota
+      INFO
+      WARN
+      ERROR
+  )
+
+  type Logger struct {
+      level  Level
+      prefix string
+  }
+
+  func NewLogger(prefix string, level Level) *Logger {
+      return &Logger{prefix: prefix, level: level}
+  }
+
+  func (l *Logger) Log(level Level, format string, args ...interface{}) {
+      if level < l.level {
+          return
+      }
+      msg := fmt.Sprintf(format, args...)
+      log.Printf("[%s] %s: %s", levelName(level), l.prefix, msg)
+  }
+
+  func levelName(level Level) string {
+      switch level {
+      case DEBUG:
+          return "DEBUG"
+      case INFO:
+          return "INFO"
+      case WARN:
+          return "WARN"
+      case ERROR:
+          return "ERROR"
+      }
+      return "UNKNOWN"
+  }
+internal/app/application.go: |
+  package app
+
+  import "myproject/internal/logging"
+
+  type Application struct {
+      logger *logging.Logger
+  }
+
+  func NewApplication(logger *logging.Logger) *Application {
+      return &Application{logger: logger}
+  }
+
+  func (a *Application) Run() {
+      a.logger.Log(logging.INFO, "Application started")
+  }
+internal/unrelated/metrics/collector.go: |
+  package metrics
+
+  const GARBAGE_GO_METRICS_COLLECT_001 = "metrics_garbage"
+
+  type GARBAGE_GO_TYPE_METRICS_002 struct {
+      endpoint string
+  }
+
+  func GARBAGE_GO_FUNC_METRICS_003() string {
+      return "GARBAGE_GO_METRICS_UNUSED_004"
+  }
+internal/unrelated/metrics/exporter.go: |
+  package metrics
+
+  const GARBAGE_GO_METRICS_EXPORT_005 = "exporter_garbage"
+
+  type GARBAGE_GO_TYPE_EXPORT_006 struct {
+      format string
+  }
+
+  func GARBAGE_GO_FUNC_EXPORT_007() {
+      println("GARBAGE_GO_EXPORT_OUTPUT_008")
+  }

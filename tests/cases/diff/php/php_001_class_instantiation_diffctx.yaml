@@ -1,0 +1,18 @@
+must_include_files:
+  - src/Controllers/UserController.php
+must_include_content:
+  - |
+    new User($data['name'], $data['email'], $data['age'])
+must_not_include:
+  - GARBAGE_PHP_001_PARSER_MODE_A
+  - GARBAGE_PHP_001_BUFFER_SIZE_B
+  - GARBAGE_PHP_001_ENCODING_C
+  - GARBAGE_PHP_001_DEPTH_LIMIT_D
+  - GARBAGE_PHP_001_DELIMITER_E
+  - GARBAGE_PHP_001_ENCLOSURE_F
+  - GARBAGE_PHP_001_LINE_ENDING_G
+  - GARBAGE_PHP_001_ESCAPE_CHAR_H
+  - GarbageXmlParser
+  - GarbageCsvWriter
+  - garbage_xml_parser.php
+  - garbage_csv_writer.php

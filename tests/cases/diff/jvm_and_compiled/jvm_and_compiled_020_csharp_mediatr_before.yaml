@@ -1,0 +1,25 @@
+CreateUser.cs: |
+  using MediatR;
+
+  public class CreateUser : IRequest<User>
+  {
+      public string Name { get; set; }
+      public string Email { get; set; }
+  }
+CreateUserHandler.cs: |
+  // Initial
+  class CreateUserHandler { }
+GarbageDispatcher.cs: |
+  public class GarbageDispatcher
+  {
+      public const string GARBAGE_JVM_020_DISPATCH_MARKER_A = "marker";
+      public const string GARBAGE_JVM_020_QUEUE_MARKER_B = "marker";
+      public void Noop() {}
+  }
+GarbageEventBus.cs: |
+  public class GarbageEventBus
+  {
+      public const string GARBAGE_JVM_020_EVENT_MARKER_C = "marker";
+      public const string GARBAGE_JVM_020_BUS_MARKER_D = "marker";
+      public void Noop() {}
+  }

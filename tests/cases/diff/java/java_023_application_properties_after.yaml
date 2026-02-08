@@ -1,0 +1,99 @@
+src/main/resources/application.properties: |
+  server.port=8080
+  spring.application.name=order-service
+  spring.datasource.url=jdbc:postgresql://localhost:5432/orders
+  spring.datasource.username=app
+  spring.datasource.password=${DB_PASSWORD}
+  spring.jpa.hibernate.ddl-auto=validate
+  spring.jpa.show-sql=false
+  logging.level.root=INFO
+  logging.level.com.example=DEBUG
+  spring.cache.type=redis
+  spring.data.redis.host=${REDIS_HOST:localhost}
+  spring.data.redis.port=${REDIS_PORT:6379}
+  spring.data.redis.timeout=2000
+src/main/java/com/example/orders/config/DataSourceConfig.java: |
+  package com.example.orders.config;
+
+  import org.springframework.beans.factory.annotation.Value;
+  import org.springframework.context.annotation.Configuration;
+
+  @Configuration
+  public class DataSourceConfig {
+      @Value("${spring.datasource.url}")
+      private String datasourceUrl;
+
+      @Value("${server.port}")
+      private int serverPort;
+
+      public String getDatasourceUrl() {
+          return datasourceUrl;
+      }
+
+      public int getServerPort() {
+          return serverPort;
+      }
+  }
+src/main/java/com/example/orders/OrderApplication.java: |
+  package com.example.orders;
+
+  import org.springframework.boot.SpringApplication;
+  import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+  @SpringBootApplication
+  public class OrderApplication {
+      public static void main(String[] args) {
+          SpringApplication.run(OrderApplication.class, args);
+      }
+  }
+src/main/java/com/example/orders/unrelated/NotificationScheduler.java: |
+  package com.example.orders.unrelated;
+
+  import java.time.LocalTime;
+  import java.util.ArrayDeque;
+  import java.util.Deque;
+
+  public class NotificationScheduler {
+      public static final String GARBAGE_JAVA_023_NOTIFY_A = "notify_scheduler_marker";
+      private static final String GARBAGE_JAVA_023_NOTIFY_B = "notify_internal_marker";
+
+      private final Deque<String> pendingNotifications = new ArrayDeque<>();
+
+      public void schedule(String message) {
+          pendingNotifications.addLast(LocalTime.now() + ": " + message);
+      }
+
+      public String nextNotification() {
+          return pendingNotifications.pollFirst();
+      }
+
+      public void cancelAll() {
+          pendingNotifications.clear();
+          System.out.println(GARBAGE_JAVA_023_NOTIFY_A + GARBAGE_JAVA_023_NOTIFY_B);
+      }
+  }
+src/main/java/com/example/orders/unrelated/RateLimiter.java: |
+  package com.example.orders.unrelated;
+
+  import java.util.concurrent.atomic.AtomicInteger;
+
+  public class RateLimiter {
+      public static final String GARBAGE_JAVA_023_RATE_C = "rate_limiter_marker";
+      private static final String GARBAGE_JAVA_023_RATE_D = "rate_internal_tag";
+
+      private final int maxRequests;
+      private final AtomicInteger currentCount = new AtomicInteger(0);
+
+      public RateLimiter(int maxRequests) {
+          this.maxRequests = maxRequests;
+      }
+
+      public boolean tryAcquire() {
+          return currentCount.incrementAndGet() <= maxRequests;
+      }
+
+      public void reset() {
+          currentCount.set(0);
+          System.out.println(GARBAGE_JAVA_023_RATE_C + GARBAGE_JAVA_023_RATE_D);
+      }
+  }

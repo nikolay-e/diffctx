@@ -1,0 +1,97 @@
+sql/queries/monthly_sales.sql: |
+  -- Monthly sales report with growth calculation using multiple CTEs
+  -- Excludes cancelled orders and calculates month-over-month growth
+  WITH monthly_totals AS (
+      SELECT
+          DATE_TRUNC('month', created_at) AS month,
+          SUM(total) AS revenue,
+          COUNT(*) AS order_count,
+          COUNT(DISTINCT user_id) AS unique_customers,
+          AVG(total) AS avg_order_value
+      FROM orders
+      WHERE status != 'cancelled'
+      GROUP BY DATE_TRUNC('month', created_at)
+  ),
+  monthly_growth AS (
+      SELECT
+          month,
+          revenue,
+          order_count,
+          unique_customers,
+          avg_order_value,
+          LAG(revenue) OVER (ORDER BY month) AS prev_revenue,
+          LAG(order_count) OVER (ORDER BY month) AS prev_order_count,
+          ROUND(
+              (revenue - LAG(revenue) OVER (ORDER BY month)) /
+              NULLIF(LAG(revenue) OVER (ORDER BY month), 0) * 100,
+              2
+          ) AS revenue_growth_percent,
+          ROUND(
+              (order_count - LAG(order_count) OVER (ORDER BY month))::NUMERIC /
+              NULLIF(LAG(order_count) OVER (ORDER BY month), 0) * 100,
+              2
+          ) AS order_growth_percent
+      FROM monthly_totals
+  ),
+  running_totals AS (
+      SELECT
+          month,
+          revenue,
+          order_count,
+          unique_customers,
+          avg_order_value,
+          revenue_growth_percent,
+          order_growth_percent,
+          SUM(revenue) OVER (ORDER BY month) AS ytd_revenue,
+          SUM(order_count) OVER (ORDER BY month) AS ytd_orders
+      FROM monthly_growth
+  )
+  SELECT * FROM running_totals ORDER BY month DESC;
+
+src/models/monthly_report.py: |
+  from dataclasses import dataclass
+  from datetime import datetime
+  from decimal import Decimal
+  from typing import Optional
+
+  @dataclass
+  class MonthlyReport:
+      month: datetime
+      revenue: Decimal
+      order_count: int
+      unique_customers: int
+      avg_order_value: Decimal
+      revenue_growth_percent: Optional[Decimal]
+      order_growth_percent: Optional[Decimal]
+      ytd_revenue: Decimal
+      ytd_orders: int
+
+src/repositories/report_repository.py: |
+  from typing import List
+  from models.monthly_report import MonthlyReport
+
+  class ReportRepository:
+      def __init__(self, db):
+          self.db = db
+
+      def get_monthly_sales(self) -> List[MonthlyReport]:
+          results = self.db.execute_file('sql/queries/monthly_sales.sql')
+          return [MonthlyReport(**r) for r in results]
+
+garbage_cte_optimizer.ts: |
+  const GARBAGE_CICD_DOCS_076_CTE_MARKER_A = "recursive";
+  const GARBAGE_CICD_DOCS_076_MATERIALIZE_MARKER_B = "inline";
+
+  class GarbageCTEOptimizer {
+    static GARBAGE_CICD_DOCS_076_FOLD_MARKER_C = true;
+    optimize(): void {}
+  }
+
+garbage_window_analyzer.ts: |
+  const GARBAGE_CICD_DOCS_076_WINDOW_MARKER_D = "partition";
+  const GARBAGE_CICD_DOCS_076_FRAME_MARKER_E = "range";
+
+  class GarbageWindowAnalyzer {
+    static GARBAGE_CICD_DOCS_076_AGGREGATE_MARKER_F = false;
+    analyze(): void {}
+  }

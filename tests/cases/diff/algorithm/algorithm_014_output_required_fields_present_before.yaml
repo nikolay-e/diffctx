@@ -1,0 +1,50 @@
+src/models/product.py: |
+  from dataclasses import dataclass
+  from typing import Optional, List
+  from decimal import Decimal
+  from datetime import datetime
+
+  @dataclass
+  class Product:
+      id: int
+      name: str
+      price: Decimal
+      description: Optional[str] = None
+      stock: int = 0
+      created_at: datetime = None
+
+      def __post_init__(self):
+          if self.created_at is None:
+              self.created_at = datetime.now()
+
+      def is_available(self) -> bool:
+          return self.stock > 0
+
+      def apply_discount(self, percent: Decimal) -> Decimal:
+          discount = self.price * (percent / 100)
+          return self.price - discount
+
+      def update_stock(self, quantity: int) -> None:
+          self.stock += quantity
+          if self.stock < 0:
+              self.stock = 0
+
+garbage_inventory.py: |
+  GARBAGE_ALGO_014_INV_MARKER_A = "inventory"
+  GARBAGE_ALGO_014_STOCK_MARKER_B = True
+
+  class InventoryManager:
+      GARBAGE_ALGO_014_WAREHOUSE_MARKER_C = {}
+
+      def check_stock(self, product_id: int) -> int:
+          return 0
+
+garbage_shipping.py: |
+  GARBAGE_ALGO_014_SHIP_MARKER_D = "shipping"
+  GARBAGE_ALGO_014_CARRIER_MARKER_E = "fedex"
+
+  class ShippingCalculator:
+      GARBAGE_ALGO_014_RATE_MARKER_F = 0.0
+
+      def calculate(self, weight: float) -> float:
+          return 0.0

@@ -1,0 +1,58 @@
+utils/helper.py: |
+  def process(data: list) -> list:
+      return [x * 2 for x in data]
+
+  def transform(data: list, factor: float = 1.5) -> list:
+      return [x * factor for x in data]
+
+  def validate_input(data: list) -> bool:
+      return all(isinstance(x, (int, float)) for x in data)
+
+  class DataPipeline:
+      def __init__(self):
+          self.steps = []
+
+      def add_step(self, func) -> None:
+          self.steps.append(func)
+
+      def run(self, data: list) -> list:
+          result = data
+          for step in self.steps:
+              result = step(result)
+          return result
+app.py: |
+  from utils import helper as h
+
+  def run():
+      data = [1, 2, 3, 4, 5]
+      if h.validate_input(data):
+          result = h.process(data)
+          transformed = h.transform(result, factor=2.0)
+          return transformed
+      return []
+garbage/chess_engine_GARBAGE_DEP_004_CHESS_A.py: |
+  def evaluate_position_GARBAGE_DEP_004_CHESS_A(board: list) -> float:
+      return sum(sum(row) for row in board)
+
+  def legal_moves_GARBAGE_DEP_004_CHESS_A(piece: str, position: tuple) -> list:
+      return [(position[0] + 1, position[1]), (position[0], position[1] + 1)]
+
+  class ChessBoard_GARBAGE_DEP_004_CHESS_A:
+      def __init__(self):
+          self.board = [[0] * 8 for _ in range(8)]
+
+      def place_piece(self, piece: str, row: int, col: int) -> None:
+          self.board[row][col] = piece
+garbage/currency_converter_GARBAGE_DEP_004_CURRENCY_B.py: |
+  RATES_GARBAGE_DEP_004_CURRENCY_B = {"USD": 1.0, "EUR": 0.85, "GBP": 0.73}
+
+  def convert_GARBAGE_DEP_004_CURRENCY_B(amount: float, from_curr: str, to_curr: str) -> float:
+      usd = amount / RATES_GARBAGE_DEP_004_CURRENCY_B[from_curr]
+      return usd * RATES_GARBAGE_DEP_004_CURRENCY_B[to_curr]
+
+  class ExchangeService_GARBAGE_DEP_004_CURRENCY_B:
+      def __init__(self):
+          self.rates = RATES_GARBAGE_DEP_004_CURRENCY_B.copy()
+
+      def update_rate(self, currency: str, rate: float) -> None:
+          self.rates[currency] = rate

@@ -1,0 +1,109 @@
+protocols.py: |
+  from typing import Protocol, TypeVar, Optional, List, runtime_checkable
+  from dataclasses import dataclass, field
+  from datetime import datetime
+
+  T = TypeVar("T")
+
+  @runtime_checkable
+  class Serializable(Protocol):
+      def to_dict(self) -> dict:
+          ...
+
+      def from_dict(self, data: dict) -> None:
+          ...
+
+  @runtime_checkable
+  class Comparable(Protocol):
+      def __lt__(self, other: "Comparable") -> bool:
+          ...
+
+      def __eq__(self, other: object) -> bool:
+          ...
+
+  @runtime_checkable
+  class Repository(Protocol[T]):
+      def get(self, id: str) -> Optional[T]:
+          ...
+
+      def save(self, entity: T) -> T:
+          ...
+
+      def delete(self, id: str) -> bool:
+          ...
+
+  @dataclass
+  class EntityMetadata:
+      created_at: datetime = field(default_factory=datetime.now)
+      version: int = 1
+
+      def increment_version(self) -> None:
+          self.version += 1
+
+  def is_serializable(obj) -> bool:
+      return isinstance(obj, Serializable)
+models.py: |
+  from protocols import Serializable, Comparable, Repository, EntityMetadata, is_serializable
+  from typing import Optional, List, Dict
+  from dataclasses import dataclass, field
+
+  @dataclass
+  class User:
+      id: str
+      name: str
+      email: str
+      age: int
+      metadata: EntityMetadata = field(default_factory=EntityMetadata)
+
+      def to_dict(self) -> dict:
+          return {
+              "id": self.id,
+              "name": self.name,
+              "email": self.email,
+              "age": self.age,
+              "version": self.metadata.version
+          }
+
+      def from_dict(self, data: dict) -> None:
+          self.id = data.get("id", "")
+          self.name = data.get("name", "")
+          self.email = data.get("email", "")
+          self.age = data.get("age", 0)
+
+      def __lt__(self, other: "User") -> bool:
+          return self.age < other.age
+
+      def __eq__(self, other: object) -> bool:
+          return isinstance(other, User) and self.id == other.id
+
+  class UserRepository:
+      def __init__(self):
+          self._storage: Dict[str, User] = {}
+
+      def get(self, id: str) -> Optional[User]:
+          return self._storage.get(id)
+
+      def save(self, entity: User) -> User:
+          entity.metadata.increment_version()
+          self._storage[entity.id] = entity
+          return entity
+
+      def delete(self, id: str) -> bool:
+          if id in self._storage:
+              del self._storage[id]
+              return True
+          return False
+garbage_ml_predictor.py: |
+  GARBAGE_PY_ML_827364 = "ml predictor garbage"
+  UNRELATED_ML_MARKER_918273 = "unused sklearn config"
+
+  class GarbageMLPredictor:
+      def garbage_predict(self, features):
+          return [0.5, 0.3]
+garbage_search_engine.py: |
+  GARBAGE_PY_SEARCH_918273 = "search engine garbage"
+  UNRELATED_SEARCH_MARKER_827163 = "unused elasticsearch config"
+
+  class GarbageSearchEngine:
+      def garbage_search(self, query):
+          return ["garbage_result"]

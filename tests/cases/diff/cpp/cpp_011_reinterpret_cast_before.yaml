@@ -1,0 +1,117 @@
+include/protocol/packet.hpp: |
+  #pragma once
+  #include <cstdint>
+  #include <cstring>
+  #include <vector>
+
+  namespace app::protocol {
+
+  #pragma pack(push, 1)
+  struct PacketHeader {
+      uint32_t magic;
+      uint16_t version;
+      uint16_t type;
+      uint32_t payloadLength;
+      uint32_t checksum;
+
+      static constexpr uint32_t MAGIC = 0xDEADBEEF;
+      static constexpr uint16_t VERSION = 1;
+  };
+
+  struct DataPacket {
+      PacketHeader header;
+      uint8_t flags;
+      uint8_t priority;
+      uint16_t sequenceNumber;
+      char data[256];
+  };
+
+  struct ControlPacket {
+      PacketHeader header;
+      uint32_t command;
+      uint32_t param1;
+      uint32_t param2;
+  };
+  #pragma pack(pop)
+
+  inline uint32_t calculateChecksum(const void* data, size_t length) {
+      uint32_t sum = 0;
+      auto bytes = static_cast<const uint8_t*>(data);
+      for (size_t i = 0; i < length; ++i) {
+          sum += bytes[i];
+      }
+      return sum;
+  }
+
+  }
+include/unrelated/matrix_math.hpp: |
+  #pragma once
+  // GARBAGE_CPP_MATRIX_251_001
+  #define GARBAGE_CPP_MATRIX_SIZE_251_002 4
+
+  namespace app::unrelated::math {
+
+  // GARBAGE_CPP_MATRIX_STRUCT_251_003
+  struct Matrix4x4 {
+      float data[16];
+      // GARBAGE_CPP_MATRIX_DATA_251_004
+  };
+
+  // GARBAGE_CPP_MATRIX_CLASS_251_005
+  class MatrixMath {
+  public:
+      // GARBAGE_CPP_MATRIX_MULT_251_006
+      static Matrix4x4 multiply(const Matrix4x4& a, const Matrix4x4& b) {
+          // GARBAGE_CPP_MATRIX_MULT_IMPL_251_007
+          return Matrix4x4{};
+      }
+
+      // GARBAGE_CPP_MATRIX_INVERSE_251_008
+      static Matrix4x4 inverse(const Matrix4x4& m) {
+          // GARBAGE_CPP_MATRIX_INVERSE_IMPL_251_009
+          return Matrix4x4{};
+      }
+
+      // GARBAGE_CPP_MATRIX_TRANSPOSE_251_010
+      static Matrix4x4 transpose(const Matrix4x4& m) {
+          return Matrix4x4{};
+      }
+  };
+
+  }
+src/unrelated/scene_graph.cpp: |
+  // GARBAGE_CPP_SCENE_251_011
+  #include <string>
+  #include <vector>
+
+  namespace app::unrelated::scene {
+
+  // GARBAGE_CPP_SCENE_NODE_251_012
+  struct SceneNode {
+      std::string name;
+      // GARBAGE_CPP_SCENE_TRANSFORM_251_013
+  };
+
+  // GARBAGE_CPP_SCENE_GRAPH_251_014
+  class SceneGraph {
+  public:
+      // GARBAGE_CPP_SCENE_ADD_251_015
+      void addNode(const SceneNode& node) {
+          // GARBAGE_CPP_SCENE_ADD_IMPL_251_016
+      }
+
+      // GARBAGE_CPP_SCENE_REMOVE_251_017
+      void removeNode(const std::string& name) {
+          // GARBAGE_CPP_SCENE_REMOVE_IMPL_251_018
+      }
+
+      // GARBAGE_CPP_SCENE_UPDATE_251_019
+      void update(float deltaTime) {
+          // GARBAGE_CPP_SCENE_UPDATE_IMPL_251_020
+      }
+  };
+
+  }
+src/serializer.cpp: |
+  #include <iostream>
+  int main() { return 0; }

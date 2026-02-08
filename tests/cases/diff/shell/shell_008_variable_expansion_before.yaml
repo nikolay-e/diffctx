@@ -1,0 +1,37 @@
+env.sh: |
+  #!/bin/bash
+  export CONFIG_PATH="/etc/myapp"
+  export DATA_DIR="/var/lib/myapp"
+  export APP_NAME="myapp"
+setup.sh: |
+  #!/bin/bash
+  source ./env.sh
+  echo "Setting up ${APP_NAME}..."
+  mkdir -p "${CONFIG_PATH}"
+unrelated/garbage_ldap.sh: |
+  #!/bin/bash
+  # GARBAGE_SH_008_LDAP_QUERY_A
+  GARBAGE_SH_008_LDAP_BASE_B="dc=example,dc=com"
+
+  garbage_search_user_008() {
+      local uid=$1
+      echo "Found user: $uid in $GARBAGE_SH_008_LDAP_BASE_B"
+  }
+
+  garbage_bind_test_008() {
+      echo "LDAP bind: success"
+  }
+unrelated/garbage_kafka.sh: |
+  #!/bin/bash
+  # GARBAGE_SH_008_KAFKA_TOPIC_C
+  GARBAGE_SH_008_BROKER_D="localhost:9092"
+
+  garbage_list_topics_008() {
+      echo "Topics: events, logs, metrics"
+  }
+
+  garbage_produce_msg_008() {
+      local topic=$1
+      local msg=$2
+      echo "Produced to $topic: $msg"
+  }

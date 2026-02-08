@@ -1,0 +1,16 @@
+must_include_files:
+  - app/models/post.rb
+must_include_content:
+  - |
+    include Commentable
+must_not_include:
+  - GARBAGE_RUBY_019_SMS_PROVIDER_A
+  - GARBAGE_RUBY_019_COUNTRY_CODE_B
+  - GARBAGE_RUBY_019_MAX_LENGTH_C
+  - GARBAGE_RUBY_019_PUSH_SERVICE_D
+  - GARBAGE_RUBY_019_PLATFORM_E
+  - GARBAGE_RUBY_019_TTL_SECONDS_F
+  - GarbageSmsGateway
+  - GarbagePushNotifier
+  - garbage_sms_gateway.rb
+  - garbage_push_notify.rb

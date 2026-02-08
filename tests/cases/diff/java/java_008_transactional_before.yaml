@@ -1,0 +1,137 @@
+src/main/java/com/banking/service/AccountService.java: |
+  package com.banking.service;
+
+  import com.banking.model.Account;
+  import com.banking.repository.AccountRepository;
+  import org.springframework.stereotype.Service;
+  import org.springframework.transaction.annotation.Transactional;
+  import org.slf4j.Logger;
+  import org.slf4j.LoggerFactory;
+
+  import java.math.BigDecimal;
+
+  @Service
+  public class AccountService {
+      private static final Logger log = LoggerFactory.getLogger(AccountService.class);
+      private final AccountRepository accountRepository;
+
+      public AccountService(AccountRepository accountRepository) {
+          this.accountRepository = accountRepository;
+      }
+
+      @Transactional
+      public Account createAccount(String accountNumber, String ownerName) {
+          log.info("Creating account: {}", accountNumber);
+          Account account = new Account();
+          account.setAccountNumber(accountNumber);
+          account.setOwnerName(ownerName);
+          account.setBalance(BigDecimal.ZERO);
+          return accountRepository.save(account);
+      }
+
+      @Transactional(readOnly = true)
+      public Account getAccount(String accountNumber) {
+          return accountRepository.findByAccountNumber(accountNumber)
+              .orElseThrow(() -> new AccountNotFoundException("Account not found: " + accountNumber));
+      }
+  }
+src/main/java/com/banking/model/Account.java: |
+  package com.banking.model;
+
+  import javax.persistence.*;
+  import java.math.BigDecimal;
+  import java.time.LocalDateTime;
+
+  @Entity
+  @Table(name = "accounts")
+  public class Account {
+      @Id
+      @GeneratedValue(strategy = GenerationType.IDENTITY)
+      private Long id;
+
+      @Column(name = "account_number", unique = true, nullable = false)
+      private String accountNumber;
+
+      @Column(name = "owner_name", nullable = false)
+      private String ownerName;
+
+      @Column(precision = 15, scale = 2)
+      private BigDecimal balance;
+
+      @Column(name = "created_at")
+      private LocalDateTime createdAt;
+
+      @PrePersist
+      protected void onCreate() {
+          createdAt = LocalDateTime.now();
+      }
+
+      public Long getId() { return id; }
+      public void setId(Long id) { this.id = id; }
+      public String getAccountNumber() { return accountNumber; }
+      public void setAccountNumber(String accountNumber) { this.accountNumber = accountNumber; }
+      public String getOwnerName() { return ownerName; }
+      public void setOwnerName(String ownerName) { this.ownerName = ownerName; }
+      public BigDecimal getBalance() { return balance; }
+      public void setBalance(BigDecimal balance) { this.balance = balance; }
+      public LocalDateTime getCreatedAt() { return createdAt; }
+  }
+src/main/java/com/banking/service/AccountNotFoundException.java: |
+  package com.banking.service;
+
+  public class AccountNotFoundException extends RuntimeException {
+      public AccountNotFoundException(String message) {
+          super(message);
+      }
+  }
+src/main/java/com/banking/unrelated/FraudDetectionService.java: |
+  package com.banking.unrelated;
+
+  import java.math.BigDecimal;
+  import java.util.ArrayList;
+  import java.util.List;
+
+  public class FraudDetectionService {
+      public static final String GARBAGE_JAVA_FRAUD_701 = "fraud_marker_omega";
+      private static final String GARBAGE_JAVA_ALERT_702 = "alert_marker_alpha2";
+
+      private final List<SuspiciousActivity> flaggedActivities = new ArrayList<>();
+
+      public boolean checkTransaction(String accountNumber, BigDecimal amount) {
+          if (amount.compareTo(new BigDecimal("10000")) > 0) {
+              flaggedActivities.add(new SuspiciousActivity(accountNumber, amount, "Large transaction"));
+              logGarbageMarkers();
+              return true;
+          }
+          return false;
+      }
+
+      private void logGarbageMarkers() {
+          System.out.println(GARBAGE_JAVA_FRAUD_701 + GARBAGE_JAVA_ALERT_702);
+      }
+
+      private record SuspiciousActivity(String accountNumber, BigDecimal amount, String reason) {}
+  }
+src/main/java/com/banking/unrelated/ComplianceReporter.java: |
+  package com.banking.unrelated;
+
+  import java.time.LocalDate;
+  import java.util.HashMap;
+  import java.util.Map;
+
+  public class ComplianceReporter {
+      public static final String GARBAGE_JAVA_COMPLIANCE_703 = "compliance_marker_beta2";
+
+      private final Map<String, Object> reportData = new HashMap<>();
+
+      public void generateReport(LocalDate reportDate) {
+          reportData.put("date", reportDate);
+          reportData.put("type", "DAILY_COMPLIANCE");
+          String GARBAGE_JAVA_REPORT_704 = "report_marker_gamma2";
+          System.out.println(GARBAGE_JAVA_COMPLIANCE_703 + GARBAGE_JAVA_REPORT_704);
+      }
+
+      public Map<String, Object> getReportData() {
+          return new HashMap<>(reportData);
+      }
+  }

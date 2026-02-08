@@ -1,0 +1,128 @@
+jest.config.json: |
+  {
+    "testMatch": ["**/*.test.js", "**/*.spec.js"],
+    "collectCoverage": true,
+    "coverageThreshold": {"global": {"branches": 80, "functions": 80, "lines": 80}},
+    "testEnvironment": "node",
+    "transform": {
+      "^.+\\.js$": "babel-jest"
+    },
+    "moduleNameMapper": {
+      "^@/(.*)$": "<rootDir>/src/$1"
+    },
+    "setupFilesAfterSetup": ["./tests/setup.js"]
+  }
+src/math.js: |
+  function add(a, b) {
+      return a + b;
+  }
+
+  function subtract(a, b) {
+      return a - b;
+  }
+
+  function multiply(a, b) {
+      return a * b;
+  }
+
+  function divide(a, b) {
+      if (b === 0) {
+          throw new Error('Division by zero');
+      }
+      return a / b;
+  }
+
+  function average(numbers) {
+      if (numbers.length === 0) return 0;
+      const sum = numbers.reduce((acc, n) => add(acc, n), 0);
+      return divide(sum, numbers.length);
+  }
+
+  module.exports = { add, subtract, multiply, divide, average };
+tests/math.test.js: |
+  const { add, subtract, multiply, divide, average } = require('../src/math');
+
+  test('adds 1 + 2', () => {
+      expect(add(1, 2)).toBe(3);
+  });
+
+  test('subtracts 5 - 3', () => {
+      expect(subtract(5, 3)).toBe(2);
+  });
+
+  test('multiplies 4 * 3', () => {
+      expect(multiply(4, 3)).toBe(12);
+  });
+
+  test('divides 10 / 2', () => {
+      expect(divide(10, 2)).toBe(5);
+  });
+
+  test('throws on division by zero', () => {
+      expect(() => divide(1, 0)).toThrow('Division by zero');
+  });
+
+  test('calculates average', () => {
+      expect(average([2, 4, 6])).toBe(4);
+  });
+unrelated/reporter.js: |
+  const GARBAGE_JSON_007_REPORT_FORMAT_A = 'json';
+
+  class GARBAGE_JSON_007_TEST_REPORTER_B {
+      constructor(format) {
+          this.format = format || GARBAGE_JSON_007_REPORT_FORMAT_A;
+          this.entries = [];
+      }
+
+      addEntry(name, status, duration) {
+          this.entries.push({ name, status, duration, timestamp: Date.now() });
+      }
+
+      generate() {
+          return {
+              total: this.entries.length,
+              passed: this.entries.filter(e => e.status === 'pass').length,
+              failed: this.entries.filter(e => e.status === 'fail').length,
+              entries: this.entries,
+          };
+      }
+  }
+
+  function GARBAGE_JSON_007_CREATE_REPORT_C(results) {
+      const reporter = new GARBAGE_JSON_007_TEST_REPORTER_B();
+      results.forEach(r => reporter.addEntry(r.name, r.status, r.duration));
+      return reporter.generate();
+  }
+
+  module.exports = { GARBAGE_JSON_007_TEST_REPORTER_B, GARBAGE_JSON_007_CREATE_REPORT_C };
+unrelated/sampler.js: |
+  const GARBAGE_JSON_007_SAMPLE_RATE_D = 0.1;
+
+  class GARBAGE_JSON_007_DATA_SAMPLER_E {
+      constructor(rate) {
+          this.rate = rate || GARBAGE_JSON_007_SAMPLE_RATE_D;
+          this.collected = [];
+      }
+
+      shouldSample() {
+          return Math.random() < this.rate;
+      }
+
+      collect(item) {
+          if (this.shouldSample()) {
+              this.collected.push({ item, timestamp: Date.now() });
+          }
+      }
+
+      getSamples() {
+          return [...this.collected];
+      }
+  }
+
+  function GARBAGE_JSON_007_SAMPLE_STREAM_F(items) {
+      const sampler = new GARBAGE_JSON_007_DATA_SAMPLER_E();
+      items.forEach(item => sampler.collect(item));
+      return sampler.getSamples();
+  }
+
+  module.exports = { GARBAGE_JSON_007_DATA_SAMPLER_E, GARBAGE_JSON_007_SAMPLE_STREAM_F };

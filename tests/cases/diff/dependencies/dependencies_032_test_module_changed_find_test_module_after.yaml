@@ -1,0 +1,8 @@
+utils/formatting.py: |
+  def format_currency(amount, symbol="$"):
+      return f"{symbol}{amount:.2f}"
+tests/utils/test_formatting.py: |
+  from utils.formatting import format_currency
+
+  def test_format_currency():
+      assert format_currency(10) == "$10.00"

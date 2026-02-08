@@ -1,0 +1,97 @@
+src/ThemeContext.tsx: |
+  import React, { createContext, useState, ReactNode } from 'react';
+
+  export interface Theme {
+      primary: string;
+      secondary: string;
+      background: string;
+  }
+
+  export interface ThemeContextValue {
+      theme: Theme;
+      toggleTheme: () => void;
+  }
+
+  export const ThemeContext = createContext<ThemeContextValue | null>(null);
+
+  export function ThemeProvider({ children }: { children: ReactNode }) {
+      const [isDark, setIsDark] = useState(false);
+
+      const theme: Theme = isDark
+          ? { primary: '#fff', secondary: '#ccc', background: '#222' }
+          : { primary: '#000', secondary: '#333', background: '#fff' };
+
+      const toggleTheme = () => setIsDark(prev => !prev);
+
+      return (
+          <ThemeContext.Provider value={{ theme, toggleTheme }}>
+              {children}
+          </ThemeContext.Provider>
+      );
+  }
+src/ThemedButton.tsx: |
+  import React, { useContext } from 'react';
+  import { ThemeContext } from './ThemeContext';
+
+  export function ThemedButton({ label }: { label: string }) {
+      const themeContext = useContext(ThemeContext);
+
+      if (!themeContext) {
+          return <button>{label}</button>;
+      }
+
+      const { theme, toggleTheme } = themeContext;
+
+      return (
+          <button
+              style={{ color: theme.primary, background: theme.background }}
+              onClick={toggleTheme}
+          >
+              {label}
+          </button>
+      );
+  }
+src/unrelated/storage_service.ts: |
+  // GARBAGE_FE_008_STORAGE_A
+  export class StorageService {
+      // GARBAGE_FE_008_STORAGE_B
+      get(key: string): string | null {
+          return localStorage.getItem(key);
+      }
+      set(key: string, value: string): void {
+          localStorage.setItem(key, value);
+      }
+      remove(key: string): void {
+          localStorage.removeItem(key);
+      }
+      clear(): void {
+          // GARBAGE_FE_008_CLEAR_C
+          localStorage.clear();
+      }
+  }
+
+  export const storageService = new StorageService();
+src/unrelated/validation_rules.ts: |
+  // GARBAGE_FE_008_VALIDATION_D
+  export type ValidationRule = (value: string) => string | null;
+
+  // GARBAGE_FE_008_VALIDATION_E
+  export const required: ValidationRule = (value) =>
+      value.trim() ? null : 'Required field';
+
+  export const minLength = (min: number): ValidationRule => (value) =>
+      value.length >= min ? null : `Minimum ${min} characters`;
+
+  export const emailPattern: ValidationRule = (value) =>
+      /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) ? null : 'Invalid email';
+
+  // GARBAGE_FE_008_COMPOSE_F
+  export function composeValidators(...rules: ValidationRule[]): ValidationRule {
+      return (value) => {
+          for (const rule of rules) {
+              const error = rule(value);
+              if (error) return error;
+          }
+          return null;
+      };
+  }

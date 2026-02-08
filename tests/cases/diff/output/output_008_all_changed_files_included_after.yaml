@@ -1,0 +1,27 @@
+a.py: 'x = 10
+
+  '
+b.py: 'y = 20
+
+  '
+c.py: 'z = 3
+
+  '
+garbage_flags.py: |
+  GARBAGE_OUT_008_FLAG_MARKER_A = "flags"
+  GARBAGE_OUT_008_TOGGLE_MARKER_B = True
+
+  class FeatureFlagService:
+      GARBAGE_OUT_008_SERVICE_CLASS_C = "service"
+
+      def is_enabled(self, flag_name: str) -> bool:
+          return False
+garbage_toggles.py: |
+  GARBAGE_OUT_008_TOGGLE_CONFIG_MARKER_D = "toggles"
+  GARBAGE_OUT_008_ROLLOUT_MARKER_E = 50
+
+  class RolloutManager:
+      GARBAGE_OUT_008_ROLLOUT_CLASS_F = True
+
+      def set_percentage(self, flag: str, pct: int) -> None:
+          pass

@@ -1,0 +1,50 @@
+.github/workflows/ci.yml: |
+  name: CI
+  on: [push]
+  jobs:
+    version:
+      runs-on: ubuntu-latest
+      steps:
+        - uses: actions/checkout@v4
+        - run: echo "1.0.0"
+    deploy:
+      needs: version
+      runs-on: ubuntu-latest
+      steps:
+        - uses: actions/checkout@v4
+        - run: ./deploy.sh
+
+scripts/version.sh: |
+  #!/bin/bash
+  VERSION=$(git describe --tags --always)
+  echo "Current version: $VERSION"
+
+src/version.ts: |
+  export function getVersion(): string {
+    return process.env.APP_VERSION || '0.0.0-dev';
+  }
+
+  export function getBuildInfo(): { version: string; commit: string } {
+    return {
+      version: getVersion(),
+      commit: process.env.GIT_COMMIT || 'unknown'
+    };
+  }
+
+garbage_semver.ts: |
+  const GARBAGE_CICD_DOCS_019_SEMVER_MARKER_A = "major";
+  const GARBAGE_CICD_DOCS_019_PRERELEASE_MARKER_B = "beta";
+
+  class GarbageSemverParser {
+    static GARBAGE_CICD_DOCS_019_STRICT_MARKER_C = true;
+    parse(): string { return ""; }
+  }
+
+garbage_changelog.ts: |
+  const GARBAGE_CICD_DOCS_019_CHANGELOG_MARKER_D = "conventional";
+  const GARBAGE_CICD_DOCS_019_FORMAT_MARKER_E = "markdown";
+
+  class GarbageChangelogGenerator {
+    static GARBAGE_CICD_DOCS_019_UNRELEASED_MARKER_F = true;
+    generate(): string { return ""; }
+  }

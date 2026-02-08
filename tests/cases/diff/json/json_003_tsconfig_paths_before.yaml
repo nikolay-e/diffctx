@@ -1,0 +1,112 @@
+tsconfig.json: |
+  {
+    "compilerOptions": {
+      "target": "ES2020",
+      "module": "commonjs",
+      "baseUrl": ".",
+      "paths": {
+        "@utils/*": ["src/utils/*"]
+      },
+      "outDir": "dist",
+      "rootDir": "src",
+      "strict": true,
+      "esModuleInterop": true,
+      "skipLibCheck": true
+    },
+    "include": ["src/**/*"]
+  }
+src/utils/helpers.ts: |
+  export function formatDate(date: Date): string {
+      return date.toISOString().split('T')[0];
+  }
+
+  export function formatTime(date: Date): string {
+      return date.toISOString().split('T')[1].slice(0, 8);
+  }
+
+  export function formatDateTime(date: Date): string {
+      return `${formatDate(date)} ${formatTime(date)}`;
+  }
+
+  export function parseDate(dateStr: string): Date {
+      const parsed = new Date(dateStr);
+      if (isNaN(parsed.getTime())) {
+          throw new Error(`Invalid date string: ${dateStr}`);
+      }
+      return parsed;
+  }
+
+  export function daysBetween(start: Date, end: Date): number {
+      const msPerDay = 1000 * 60 * 60 * 24;
+      return Math.floor((end.getTime() - start.getTime()) / msPerDay);
+  }
+src/app.ts: |
+  import { formatDateTime, parseDate } from '@utils/helpers';
+
+  interface AppConfig {
+      timezone: string;
+      locale: string;
+  }
+
+  function initializeApp(config: AppConfig): void {
+      const now = new Date();
+      const formatted = formatDateTime(now);
+      console.log(`App started at ${formatted} in ${config.timezone}`);
+  }
+
+  function processDateInput(input: string): string {
+      const date = parseDate(input);
+      return formatDateTime(date);
+  }
+
+  export { initializeApp, processDateInput };
+unrelated/parser.js: |
+  const GARBAGE_JSON_003_PARSE_OPTIONS_A = { strict: true, comments: false };
+
+  class GARBAGE_JSON_003_TOKEN_PARSER_B {
+      constructor(options) {
+          this.options = { ...GARBAGE_JSON_003_PARSE_OPTIONS_A, ...options };
+          this.tokens = [];
+      }
+
+      tokenize(input) {
+          this.tokens = input.split(/\s+/).filter(Boolean);
+          return this.tokens;
+      }
+
+      parse() {
+          return this.tokens.map(t => ({ type: 'word', value: t }));
+      }
+  }
+
+  function GARBAGE_JSON_003_QUICK_PARSE_C(text) {
+      const parser = new GARBAGE_JSON_003_TOKEN_PARSER_B();
+      parser.tokenize(text);
+      return parser.parse();
+  }
+
+  module.exports = { GARBAGE_JSON_003_TOKEN_PARSER_B, GARBAGE_JSON_003_QUICK_PARSE_C };
+unrelated/renderer.js: |
+  const GARBAGE_JSON_003_RENDER_DEFAULTS_D = { theme: 'light', fontSize: 14 };
+
+  class GARBAGE_JSON_003_TEMPLATE_RENDERER_E {
+      constructor(defaults) {
+          this.config = { ...GARBAGE_JSON_003_RENDER_DEFAULTS_D, ...defaults };
+          this.cache = new Map();
+      }
+
+      render(template, data) {
+          const key = JSON.stringify({ template, data });
+          if (this.cache.has(key)) return this.cache.get(key);
+          const result = template.replace(/\{\{(\w+)\}\}/g, (_, k) => data[k] || '');
+          this.cache.set(key, result);
+          return result;
+      }
+  }
+
+  function GARBAGE_JSON_003_RENDER_TEMPLATE_F(tpl, ctx) {
+      const renderer = new GARBAGE_JSON_003_TEMPLATE_RENDERER_E();
+      return renderer.render(tpl, ctx);
+  }
+
+  module.exports = { GARBAGE_JSON_003_TEMPLATE_RENDERER_E, GARBAGE_JSON_003_RENDER_TEMPLATE_F };

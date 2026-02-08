@@ -1,0 +1,16 @@
+must_include_files:
+  - lib/service.rb
+must_include_content:
+  - |
+    with_retry(max_attempts: 5, delay: 2) do
+must_not_include:
+  - GARBAGE_RUBY_002_TRACKING_ID_A
+  - GARBAGE_RUBY_002_EVENT_BUFFER_B
+  - GARBAGE_RUBY_002_FLUSH_RATE_C
+  - GARBAGE_RUBY_002_SCHEMA_VERSION_D
+  - GARBAGE_RUBY_002_ROLLBACK_STEP_E
+  - GARBAGE_RUBY_002_BATCH_SIZE_F
+  - GarbageAnalyticsTracker
+  - GarbageMigrationRunner
+  - garbage_analytics.rb
+  - garbage_migration.rb

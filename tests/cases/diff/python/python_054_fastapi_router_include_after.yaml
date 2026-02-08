@@ -1,0 +1,96 @@
+schemas.py: |
+  from dataclasses import dataclass
+
+  @dataclass
+  class UserCreate:
+      name: str
+      email: str
+
+      def dict(self) -> dict:
+          return {"name": self.name, "email": self.email}
+
+  @dataclass
+  class UserResponse:
+      id: int
+      name: str
+      email: str
+
+      def dict(self) -> dict:
+          return {"id": self.id, "name": self.name, "email": self.email}
+
+routers/users.py: |
+  from fastapi import APIRouter
+  from schemas import UserCreate, UserResponse
+
+  router = APIRouter(prefix="/users", tags=["users"])
+
+  _users_db: list[dict] = []
+
+  @router.post("/", response_model=UserResponse)
+  async def create_user(user: UserCreate):
+      new_user = {"id": len(_users_db) + 1, **user.dict()}
+      _users_db.append(new_user)
+      return new_user
+
+  @router.get("/{user_id}", response_model=UserResponse)
+  async def get_user(user_id: int):
+      for u in _users_db:
+          if u["id"] == user_id:
+              return u
+      return {"id": 0, "name": "", "email": ""}
+
+  @router.get("/", response_model=list)
+  async def list_users():
+      return _users_db
+
+main.py: |
+  from fastapi import FastAPI
+  from routers.users import router as users_router
+
+  app = FastAPI(title="User Service", version="1.0.0")
+  app.include_router(users_router)
+
+  @app.get("/health")
+  async def health_check():
+      return {"status": "ok"}
+
+garbage_notification.py: |
+  GARBAGE_PY_054_NOTIFY_A = "notification service marker"
+  GARBAGE_PY_054_SMS_B = "sms gateway marker"
+
+  class NotificationDispatcher:
+      GARBAGE_PY_054_QUEUE_C = "dispatch queue marker"
+
+      def __init__(self, provider: str = "email"):
+          self.provider = provider
+          self._pending: list[dict] = []
+
+      def send(self, recipient: str, message: str) -> bool:
+          self._pending.append({"to": recipient, "msg": message})
+          return True
+
+      def flush(self) -> int:
+          GARBAGE_PY_054_BATCH_D = "batch send marker"
+          count = len(self._pending)
+          self._pending.clear()
+          return count
+
+garbage_billing.py: |
+  GARBAGE_PY_054_BILL_E = "billing module marker"
+  GARBAGE_PY_054_INVOICE_F = "invoice generation marker"
+
+  class BillingEngine:
+      GARBAGE_PY_054_TAX_G = True
+
+      def __init__(self, currency: str = "USD"):
+          self.currency = currency
+          self._transactions: list[dict] = []
+
+      def charge(self, amount: float, description: str) -> dict:
+          txn = {"amount": amount, "desc": description, "currency": self.currency}
+          self._transactions.append(txn)
+          return txn
+
+      def get_total(self) -> float:
+          GARBAGE_PY_054_REFUND_H = "refund marker"
+          return sum(t["amount"] for t in self._transactions)

@@ -1,0 +1,116 @@
+internal/server/middleware.go: |
+  package server
+
+  import (
+      "log"
+      "net/http"
+  )
+
+  type Middleware func(http.Handler) http.Handler
+
+  type MiddlewareChain struct {
+      middlewares []Middleware
+  }
+
+  func NewMiddlewareChain() *MiddlewareChain {
+      return &MiddlewareChain{}
+  }
+
+  func (c *MiddlewareChain) Use(m Middleware) *MiddlewareChain {
+      c.middlewares = append(c.middlewares, m)
+      return c
+  }
+
+  func (c *MiddlewareChain) Apply(handler http.Handler) http.Handler {
+      for i := len(c.middlewares) - 1; i >= 0; i-- {
+          handler = c.middlewares[i](handler)
+      }
+      return handler
+  }
+
+  func LoggingMiddleware(logger *log.Logger) Middleware {
+      return func(next http.Handler) http.Handler {
+          return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+              logger.Printf("Request: %s %s", r.Method, r.URL.Path)
+              next.ServeHTTP(w, r)
+          })
+      }
+  }
+internal/server/handler.go: |
+  package server
+
+  import "net/http"
+
+  func HandleRequest(w http.ResponseWriter, r *http.Request) {
+      w.Write([]byte("OK"))
+  }
+internal/unrelated/database/postgres.go: |
+  package database
+
+  import "time"
+
+  const GARBAGE_GO_POSTGRES_CONN_A1B2C3 = "postgres_garbage_marker"
+
+  type GARBAGE_GO_TYPE_PGPOOL_D4E5F6 struct {
+      host     string
+      port     int
+      database string
+      maxConns int
+  }
+
+  func GARBAGE_GO_FUNC_POSTGRES_G7H8I9() string {
+      return "GARBAGE_GO_POSTGRES_UNUSED_J0K1L2"
+  }
+
+  type PostgresConfig struct {
+      Host            string
+      Port            int
+      Database        string
+      Username        string
+      Password        string
+      SSLMode         string
+      MaxOpenConns    int
+      MaxIdleConns    int
+      ConnMaxLifetime time.Duration
+  }
+
+  func GARBAGE_GO_FUNC_PG_CONNECT_M3N4O5() error {
+      println("GARBAGE_GO_PG_OUTPUT_P6Q7R8")
+      return nil
+  }
+internal/unrelated/database/mysql.go: |
+  package database
+
+  const GARBAGE_GO_MYSQL_DRIVER_S9T0U1 = "mysql_garbage"
+
+  type GARBAGE_GO_TYPE_MYSQL_V2W3X4 struct {
+      dsn      string
+      poolSize int
+  }
+
+  func GARBAGE_GO_FUNC_MYSQL_Y5Z6A7() {
+      println("GARBAGE_GO_MYSQL_OUTPUT_B8C9D0")
+  }
+
+  type MySQLConfig struct {
+      DSN          string
+      MaxOpenConns int
+      MaxIdleConns int
+  }
+
+  func GARBAGE_GO_FUNC_MYSQL_QUERY_E1F2G3(query string) error {
+      return nil
+  }
+internal/unrelated/database/mongodb.go: |
+  package database
+
+  const GARBAGE_GO_MONGO_CLIENT_H4I5J6 = "mongodb_garbage"
+
+  type GARBAGE_GO_TYPE_MONGOCOLL_K7L8M9 struct {
+      database   string
+      collection string
+  }
+
+  func GARBAGE_GO_FUNC_MONGO_N0O1P2() {
+      println("GARBAGE_GO_MONGO_OUTPUT_Q3R4S5")
+  }

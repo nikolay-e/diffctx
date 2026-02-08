@@ -1,0 +1,20 @@
+comp1_a.py: |
+  SHARED1 = "shared1"
+
+  def comp1_a():
+      return SHARED1
+comp1_b.py: |
+  SHARED1 = "shared1"
+
+  def comp1_b():
+      return SHARED1
+comp2_a.py: |
+  SHARED2 = "shared2"
+
+  def comp2_a():
+      return SHARED2
+comp2_b.py: |
+  SHARED2 = "shared2"
+
+  def comp2_b():
+      return SHARED2

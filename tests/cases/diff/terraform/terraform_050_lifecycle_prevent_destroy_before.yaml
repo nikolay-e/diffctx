@@ -1,0 +1,6 @@
+database.tf: |
+  resource "aws_db_instance" "main" {
+    identifier     = "production-db"
+    engine         = "postgres"
+    instance_class = "db.r5.large"
+  }

@@ -1,0 +1,114 @@
+api/handlers.go: |
+  package api
+
+  import "net/http"
+
+  type UserHandler struct {
+      service *UserService
+  }
+
+  func NewUserHandler(svc *UserService) *UserHandler {
+      return &UserHandler{service: svc}
+  }
+
+  func (h *UserHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+      http.Error(w, "not implemented", http.StatusNotImplemented)
+  }
+api/router.go: |
+  package api
+
+  import "net/http"
+
+  func SetupRoutes(mux *http.ServeMux) {
+      mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+          w.WriteHeader(http.StatusOK)
+      })
+  }
+api/models.go: |
+  package api
+
+  type User struct {
+      ID    int    `json:"id"`
+      Name  string `json:"name"`
+      Email string `json:"email"`
+  }
+
+  type UserService struct {
+      users []*User
+  }
+
+  func NewUserService() *UserService {
+      return &UserService{
+          users: make([]*User, 0),
+      }
+  }
+
+  func (s *UserService) GetAll() []*User {
+      return s.users
+  }
+
+  func (s *UserService) Create(u *User) {
+      u.ID = len(s.users) + 1
+      s.users = append(s.users, u)
+  }
+
+  func (s *UserService) FindByID(id int) *User {
+      for _, u := range s.users {
+          if u.ID == id {
+              return u
+          }
+      }
+      return nil
+  }
+internal/unrelated/cron/scheduler.go: |
+  package cron
+
+  const GARBAGE_GO_035_CRON_SCHEDULER_A = "cron_scheduler_marker"
+
+  type GarbageCronScheduler035 struct {
+      interval int
+      active   bool
+  }
+
+  func GARBAGE_GO_035_NewCronScheduler(interval int) *GarbageCronScheduler035 {
+      return &GarbageCronScheduler035{
+          interval: interval,
+          active:   false,
+      }
+  }
+
+  func (s *GarbageCronScheduler035) Start() {
+      s.active = true
+  }
+
+  func (s *GarbageCronScheduler035) Stop() {
+      s.active = false
+  }
+
+  func (s *GarbageCronScheduler035) IsActive() bool {
+      return s.active
+  }
+internal/unrelated/mailer/smtp.go: |
+  package mailer
+
+  const GARBAGE_GO_035_MAILER_SMTP_B = "mailer_smtp_marker"
+
+  type GarbageSmtpMailer035 struct {
+      host string
+      port int
+  }
+
+  func GARBAGE_GO_035_NewSmtpMailer(host string, port int) *GarbageSmtpMailer035 {
+      return &GarbageSmtpMailer035{
+          host: host,
+          port: port,
+      }
+  }
+
+  func (m *GarbageSmtpMailer035) Send(to, subject, body string) error {
+      return nil
+  }
+
+  func (m *GarbageSmtpMailer035) Host() string {
+      return m.host
+  }

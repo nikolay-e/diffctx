@@ -1,0 +1,31 @@
+app.py: |
+  import psycopg2
+  conn = psycopg2.connect(os.environ['DATABASE_URL'])
+database.tf: |
+  # RDS resources placeholder
+variables.tf: |
+  variable "environment" {
+    type    = string
+    default = "dev"
+  }
+unrelated/monitoring_GARBAGE_TF_rds447a.tf: |
+  # GARBAGE_TF_rds447a - Unrelated CloudWatch dashboard
+  resource "aws_cloudwatch_dashboard" "legacy_dashboard" {
+    dashboard_name = "legacy-metrics-GARBAGE_TF_rds447a"
+    dashboard_body = jsonencode({
+      widgets = [{
+        type   = "metric"
+        width  = 6
+        height = 6
+        properties = {
+          metrics = [["AWS/EC2", "CPUUtilization"]]
+          title   = "Legacy CPU GARBAGE_TF_rds447a"
+        }
+      }]
+    })
+  }
+scripts/backup_GARBAGE_TF_rds447b.sh: |
+  #!/bin/bash
+  # GARBAGE_TF_rds447b - Old backup script
+  echo "Running legacy backup GARBAGE_TF_rds447b"
+  pg_dump -h localhost -U admin olddb > /tmp/backup.sql

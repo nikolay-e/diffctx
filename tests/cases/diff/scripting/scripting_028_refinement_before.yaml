@@ -1,0 +1,19 @@
+string_ext.rb: |
+  module StringExtensions
+    refine String do
+      def shout
+        upcase + "!"
+      end
+
+      def whisper
+        downcase + "..."
+      end
+    end
+  end
+messenger.rb: |
+  # Initial
+  class Messenger
+  end
+garbage.rb: |
+  garbage_refine_unused_12345 = "never used"
+  unused_marker_67890 = "not used"

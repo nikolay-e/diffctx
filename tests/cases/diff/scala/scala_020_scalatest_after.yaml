@@ -1,0 +1,30 @@
+User.scala: |
+  case class User(name: String, email: String) {
+    def isValidEmail: Boolean = email.contains("@") && email.contains(".")
+    def normalizedEmail: String = email.toLowerCase.trim
+  }
+UserSpec.scala: |
+  import org.scalatest.flatspec.AnyFlatSpec
+  import org.scalatest.matchers.should.Matchers
+
+  class UserSpec extends AnyFlatSpec with Matchers {
+    "User" should "have valid email" in {
+      val user = User("John", "john@example.com")
+      user.isValidEmail should be(true)
+    }
+
+    it should "reject invalid email" in {
+      val user = User("John", "invalid-email")
+      user.isValidEmail should be(false)
+    }
+
+    it should "normalize email" in {
+      val user = User("John", "  JOHN@Example.COM  ")
+      user.normalizedEmail should equal("john@example.com")
+    }
+
+    "User creation" should "preserve name" in {
+      val user = User("Jane Doe", "jane@test.com")
+      user.name should be("Jane Doe")
+    }
+  }

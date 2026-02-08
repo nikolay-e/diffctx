@@ -1,0 +1,41 @@
+core/observable.py: |
+  from typing import Callable, Optional
+
+  class Observable:
+      def __init__(self):
+          self._observers = []
+          self._last_value = None
+
+      def subscribe(self, observer: Callable, immediate: bool = False) -> Callable:
+          self._observers.append(observer)
+          if immediate and self._last_value is not None:
+              observer(self._last_value)
+          return lambda: self._observers.remove(observer)
+
+      def notify(self, value, force: bool = False) -> None:
+          if not force and value == self._last_value:
+              return
+          self._last_value = value
+          for observer in self._observers:
+              observer(value)
+
+      def get_value(self) -> Optional:
+          return self._last_value
+ui/display.py: |
+  from core.observable import Observable
+
+  class DisplayComponent:
+      def __init__(self, data_source: Observable):
+          data_source.subscribe(self.on_update)
+
+      def on_update(self, value) -> None:
+          print(f"Display updated: {value}")
+logging/logger.py: |
+  from core.observable import Observable
+
+  class LogObserver:
+      def __init__(self, observable: Observable):
+          observable.subscribe(self.log_change)
+
+      def log_change(self, value) -> None:
+          print(f"[LOG] Value changed to: {value}")

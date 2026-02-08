@@ -1,0 +1,9 @@
+connected.py: |
+  def caller():
+      callee()
+
+  def callee():
+      pass
+isolated.py: |
+  def completely_unique_function():
+      totally_unique_helper()

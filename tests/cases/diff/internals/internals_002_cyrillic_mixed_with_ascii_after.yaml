@@ -1,0 +1,32 @@
+src/i18n/messages.py: |
+  from src.i18n.config import get_locale_config
+  SUPPORTED_LOCALES = ["en", "ru", "de"]
+  def привет_мир():
+      result = "здравствуй"
+      return result
+  def get_message(key: str, locale: str) -> str:
+      config = get_locale_config(locale)
+      if locale == "ru":
+          greeting = привет_мир()
+      return config.get(key, key)
+  def list_available_locales() -> list:
+      return SUPPORTED_LOCALES
+src/i18n/config.py: |
+  DEFAULT_LOCALE = "en"
+  def get_locale_config(locale: str) -> dict:
+      return {"en": {"welcome": "Welcome"}, "ru": {"welcome": "Добро пожаловать"}}.get(locale, {})
+garbage_locale_parser.py: |
+  GARBAGE_INT_002_PARSER_MARKER_A = "locale"
+  GARBAGE_INT_002_TOKEN_MARKER_B = "lex"
+
+  class GarbageLocaleParser:
+      def noop(self):
+          pass
+
+garbage_translation_store.py: |
+  GARBAGE_INT_002_STORE_MARKER_C = "persist"
+  GARBAGE_INT_002_PERSIST_MARKER_D = "disk"
+
+  class GarbageTranslationStore:
+      def noop(self):
+          pass

@@ -1,0 +1,19 @@
+cache.py: |
+  class CacheManager:
+      def __init__(self):
+          self._data = {}
+
+      def _serialize(self, value):
+          return str(value)
+
+      def _deserialize(self, data):
+          return data
+
+      def get(self, key):
+          raw = self._data.get(key)
+          if raw:
+              return self._deserialize(raw)
+          return None
+
+      def set(self, key, value):
+          self._data[key] = self._serialize(value)

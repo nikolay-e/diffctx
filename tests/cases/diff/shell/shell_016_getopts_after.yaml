@@ -1,0 +1,67 @@
+cli.sh: |
+  #!/bin/bash
+
+  usage() {
+      echo "Usage: $0 [-f file] [-o output] [-n count] [-v] [-h]"
+      exit 1
+  }
+
+  verbose=false
+  file=""
+  output=""
+  count=1
+
+  while getopts "f:o:n:vh" opt; do
+      case "$opt" in
+          f) file="$OPTARG" ;;
+          o) output="$OPTARG" ;;
+          n) count="$OPTARG" ;;
+          v) verbose=true ;;
+          h) usage ;;
+          *) usage ;;
+      esac
+  done
+
+  shift $((OPTIND - 1))
+
+  if [[ "$verbose" == true ]]; then
+      echo "Verbose mode enabled"
+  fi
+
+  if [[ -n "$file" ]]; then
+      echo "Processing file: $file"
+  fi
+
+  if [[ -n "$output" ]]; then
+      echo "Output to: $output"
+  fi
+
+  echo "Count: $count"
+unrelated/garbage_k8s_drain.sh: |
+  #!/bin/bash
+  # GARBAGE_SH_016_K8S_DRAIN_A
+  GARBAGE_SH_016_NODE_LABEL_B="role=worker"
+
+  garbage_drain_node_016() {
+      local node=$1
+      echo "Draining $node"
+  }
+
+  garbage_uncordon_node_016() {
+      local node=$1
+      echo "Uncordoning $node"
+  }
+unrelated/garbage_systemd.sh: |
+  #!/bin/bash
+  # GARBAGE_SH_016_SYSTEMD_UNIT_C
+  GARBAGE_SH_016_UNIT_DIR_D="/etc/systemd/system"
+
+  garbage_enable_unit_016() {
+      local unit=$1
+      echo "Enabling $unit"
+  }
+
+  garbage_journal_tail_016() {
+      local unit=$1
+      echo "Tailing journal for $unit"
+  }

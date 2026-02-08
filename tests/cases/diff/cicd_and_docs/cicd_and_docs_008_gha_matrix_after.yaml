@@ -1,0 +1,56 @@
+.github/workflows/ci.yml: |
+  name: CI
+  on: [push, pull_request]
+  jobs:
+    test:
+      runs-on: ubuntu-latest
+      strategy:
+        matrix:
+          node: [16, 18, 20]
+          os: [ubuntu-latest, macos-latest]
+      steps:
+        - uses: actions/checkout@v4
+        - uses: actions/setup-node@v4
+          with:
+            node-version: ${{ matrix.node }}
+        - run: npm test
+
+package.json: |
+  {
+    "name": "cross-platform-lib",
+    "version": "3.0.0",
+    "engines": {
+      "node": ">=16"
+    },
+    "scripts": {
+      "test": "jest",
+      "build": "tsc"
+    }
+  }
+
+src/index.ts: |
+  export function getPlatform(): string {
+    return process.platform;
+  }
+
+  export function getNodeVersion(): string {
+    return process.version;
+  }
+
+garbage_compatibility.ts: |
+  const GARBAGE_CICD_DOCS_008_COMPAT_MARKER_A = "polyfill";
+  const GARBAGE_CICD_DOCS_008_SHIM_MARKER_B = "es2015";
+
+  class GarbageCompatibilityLayer {
+    static GARBAGE_CICD_DOCS_008_TARGET_MARKER_C = "es5";
+    shimFeature(): void {}
+  }
+
+garbage_platform.ts: |
+  const GARBAGE_CICD_DOCS_008_PLATFORM_MARKER_D = "win32";
+  const GARBAGE_CICD_DOCS_008_ARCH_MARKER_E = "x64";
+
+  class GarbagePlatformDetector {
+    static GARBAGE_CICD_DOCS_008_NATIVE_MARKER_F = true;
+    detectOS(): string { return ""; }
+  }

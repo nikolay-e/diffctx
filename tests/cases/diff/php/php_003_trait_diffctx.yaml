@@ -1,0 +1,18 @@
+must_include_files:
+  - src/Services/OrderService.php
+must_include_content:
+  - |
+    use LoggingTrait
+must_not_include:
+  - GARBAGE_PHP_003_PRIMARY_HUE_A
+  - GARBAGE_PHP_003_SATURATION_B
+  - GARBAGE_PHP_003_LIGHTNESS_C
+  - GARBAGE_PHP_003_ALPHA_D
+  - GARBAGE_PHP_003_FONT_PATH_E
+  - GARBAGE_PHP_003_DEFAULT_SIZE_F
+  - GARBAGE_PHP_003_WEIGHT_G
+  - GARBAGE_PHP_003_STYLE_H
+  - GarbageColorPalette
+  - GarbageFontLoader
+  - garbage_color_palette.php
+  - garbage_font_loader.php

@@ -1,0 +1,12 @@
+Chart.yaml: |
+  apiVersion: v2
+  name: myapp
+  dependencies:
+    - name: backend
+      version: 1.0.0
+      import-values:
+        - child: exports
+          parent: config
+junk.py: |
+  garbage_marker_12345 = 1
+  unused_marker_67890 = 2

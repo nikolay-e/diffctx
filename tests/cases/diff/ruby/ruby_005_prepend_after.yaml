@@ -1,0 +1,58 @@
+lib/wrapper.rb: |
+  module Wrapper
+    def process(data)
+      start_time = Time.now
+      puts "Before processing: #{data.inspect}"
+      result = super
+      elapsed = Time.now - start_time
+      puts "After processing (#{elapsed.round(3)}s): #{result.inspect}"
+      result
+    end
+
+    def validate(input)
+      puts "Validating input..."
+      result = super
+      puts "Validation complete: #{result}"
+      result
+    end
+  end
+lib/handler.rb: |
+  require_relative 'wrapper'
+
+  class Handler
+    prepend Wrapper
+
+    def process(data)
+      data.upcase
+    end
+
+    def validate(input)
+      !input.nil? && !input.empty?
+    end
+  end
+
+  handler = Handler.new
+  handler.process("hello world")
+  handler.validate("test input")
+lib/garbage_profiler.rb: |
+  GARBAGE_RUBY_005_PROFILE_MODE_A = "cpu_sampling"
+  GARBAGE_RUBY_005_STACK_DEPTH_B = "full_trace"
+
+  class GarbageProfilerAgent
+    GARBAGE_RUBY_005_SAMPLE_INTERVAL_C = 10
+
+    def profile(block_name)
+      GARBAGE_RUBY_005_PROFILE_MODE_A
+    end
+  end
+lib/garbage_audit_log.rb: |
+  GARBAGE_RUBY_005_AUDIT_LEVEL_D = "verbose"
+  GARBAGE_RUBY_005_RETENTION_DAYS_E = "90_days"
+
+  class GarbageAuditLogger
+    GARBAGE_RUBY_005_LOG_FORMAT_F = "structured_json"
+
+    def record(action, details)
+      GARBAGE_RUBY_005_AUDIT_LEVEL_D
+    end
+  end

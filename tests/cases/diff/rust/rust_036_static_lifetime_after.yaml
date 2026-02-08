@@ -1,0 +1,83 @@
+src/lib.rs: |
+  pub mod constants;
+  pub mod messages;
+  pub mod unrelated;
+src/constants.rs: |
+  pub const APP_NAME: &'static str = "MyApp";
+  pub const VERSION: &'static str = "1.0.0";
+
+  pub static GLOBAL_CONFIG: &'static str = "default";
+
+  lazy_static::lazy_static! {
+      pub static ref RUNTIME_CONFIG: String = {
+          std::env::var("CONFIG").unwrap_or_else(|_| "production".to_string())
+      };
+  }
+
+  pub fn app_info() -> String {
+      format!("{} v{}", APP_NAME, VERSION)
+  }
+
+  pub fn is_debug() -> bool {
+      cfg!(debug_assertions)
+  }
+src/messages.rs: |
+  use crate::constants::{APP_NAME, VERSION};
+
+  pub fn get_greeting() -> &'static str {
+      "Welcome to the application"
+  }
+
+  pub fn format_version() -> String {
+      format!("{} v{}", APP_NAME, VERSION)
+  }
+
+  pub fn startup_banner() -> String {
+      format!("[{}] {} - Ready", get_greeting(), format_version())
+  }
+src/unrelated/mod.rs: |
+  pub mod mime_detector;
+  pub mod url_parser;
+src/unrelated/mime_detector.rs: |
+  // GARBAGE_RUST_036_MIME_DETECTOR_A
+  pub const GARBAGE_RUST_036_DEFAULT_MIME_B: &str = "application/octet-stream";
+
+  pub struct GarbageMimeDetector036 {
+      extensions: Vec<(String, String)>,
+  }
+
+  impl GarbageMimeDetector036 {
+      pub fn garbage_detect_036(&self, filename: &str) -> &str {
+          for (ext, mime) in &self.extensions {
+              if filename.ends_with(ext.as_str()) {
+                  return mime.as_str();
+              }
+          }
+          GARBAGE_RUST_036_DEFAULT_MIME_B
+      }
+
+      pub fn garbage_register_mime_036(&mut self, ext: String, mime: String) {
+          self.extensions.push((ext, mime));
+      }
+  }
+src/unrelated/url_parser.rs: |
+  // GARBAGE_RUST_036_URL_PARSER_C
+  pub const GARBAGE_RUST_036_DEFAULT_SCHEME_D: &str = "https";
+
+  pub struct GarbageUrlParser036 {
+      base_url: String,
+  }
+
+  impl GarbageUrlParser036 {
+      pub fn garbage_parse_036(&self, raw: &str) -> String {
+          if raw.starts_with("http") {
+              raw.to_string()
+          } else {
+              format!("{}://{}", GARBAGE_RUST_036_DEFAULT_SCHEME_D, raw)
+          }
+      }
+
+      pub fn garbage_join_path_036(&self, path: &str) -> String {
+          format!("{}/{}", self.base_url.trim_end_matches('/'), path)
+      }
+  }

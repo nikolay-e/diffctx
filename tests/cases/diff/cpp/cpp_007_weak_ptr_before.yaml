@@ -1,0 +1,141 @@
+include/graph/node.hpp: |
+  #pragma once
+  #include <memory>
+  #include <vector>
+  #include <string>
+  #include <functional>
+
+  namespace app::graph {
+
+  class GraphNode;
+
+  struct NodeData {
+      std::string label;
+      double weight;
+      std::vector<std::string> tags;
+
+      NodeData(const std::string& label, double weight = 1.0)
+          : label(label), weight(weight) {}
+  };
+
+  class GraphNode : public std::enable_shared_from_this<GraphNode> {
+  public:
+      explicit GraphNode(int id, const NodeData& data)
+          : id_(id)
+          , data_(data) {}
+
+      int id() const { return id_; }
+      const NodeData& data() const { return data_; }
+      NodeData& data() { return data_; }
+
+      void setParent(std::shared_ptr<GraphNode> parent) {
+          parent_ = parent;
+      }
+
+      std::shared_ptr<GraphNode> parent() const {
+          return parent_.lock();
+      }
+
+      bool hasParent() const {
+          return !parent_.expired();
+      }
+
+      void addChild(std::shared_ptr<GraphNode> child) {
+          children_.push_back(child);
+          child->setParent(shared_from_this());
+      }
+
+      const std::vector<std::shared_ptr<GraphNode>>& children() const {
+          return children_;
+      }
+
+      size_t childCount() const { return children_.size(); }
+
+      void clearChildren() {
+          for (auto& child : children_) {
+              child->parent_.reset();
+          }
+          children_.clear();
+      }
+
+  private:
+      int id_;
+      NodeData data_;
+      std::weak_ptr<GraphNode> parent_;
+      std::vector<std::shared_ptr<GraphNode>> children_;
+  };
+
+  }
+include/unrelated/thread_pool.hpp: |
+  #pragma once
+  // GARBAGE_CPP_THREADPOOL_247_001
+  #define GARBAGE_CPP_THREADPOOL_SIZE_247_002 8
+
+  namespace app::unrelated::threading {
+
+  // GARBAGE_CPP_THREADPOOL_TASK_247_003
+  struct Task {
+      int priority;
+      // GARBAGE_CPP_THREADPOOL_TASK_DATA_247_004
+  };
+
+  // GARBAGE_CPP_THREADPOOL_CLASS_247_005
+  class ThreadPool {
+  public:
+      // GARBAGE_CPP_THREADPOOL_CTOR_247_006
+      explicit ThreadPool(size_t numThreads) {
+          // GARBAGE_CPP_THREADPOOL_INIT_247_007
+      }
+
+      // GARBAGE_CPP_THREADPOOL_SUBMIT_247_008
+      void submit(Task task) {
+          // GARBAGE_CPP_THREADPOOL_SUBMIT_IMPL_247_009
+      }
+
+      // GARBAGE_CPP_THREADPOOL_SHUTDOWN_247_010
+      void shutdown() {
+          // GARBAGE_CPP_THREADPOOL_SHUTDOWN_IMPL_247_011
+      }
+
+  private:
+      size_t numThreads_;
+  };
+
+  }
+src/unrelated/message_queue.cpp: |
+  // GARBAGE_CPP_MSGQUEUE_247_012
+  #include <string>
+
+  namespace app::unrelated::messaging {
+
+  // GARBAGE_CPP_MSGQUEUE_MSG_247_013
+  struct Message {
+      std::string topic;
+      std::string payload;
+      // GARBAGE_CPP_MSGQUEUE_MSG_DATA_247_014
+  };
+
+  // GARBAGE_CPP_MSGQUEUE_CLASS_247_015
+  class MessageQueue {
+  public:
+      // GARBAGE_CPP_MSGQUEUE_PUSH_247_016
+      void push(const Message& msg) {
+          // GARBAGE_CPP_MSGQUEUE_PUSH_IMPL_247_017
+      }
+
+      // GARBAGE_CPP_MSGQUEUE_POP_247_018
+      bool pop(Message& msg) {
+          // GARBAGE_CPP_MSGQUEUE_POP_IMPL_247_019
+          return false;
+      }
+
+      // GARBAGE_CPP_MSGQUEUE_SIZE_247_020
+      size_t size() const {
+          return 0;
+      }
+  };
+
+  }
+src/tree.cpp: |
+  #include <iostream>
+  int main() { return 0; }

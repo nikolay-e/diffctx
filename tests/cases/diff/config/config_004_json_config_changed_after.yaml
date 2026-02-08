@@ -1,0 +1,93 @@
+settings.json: |
+  {
+    "server": {
+      "host": "0.0.0.0",
+      "port": 8080,
+      "maxConnections": 200,
+      "timeout": 60,
+      "keepAlive": true
+    },
+    "cors": {
+      "allowedOrigins": ["https://app.example.com", "https://admin.example.com"],
+      "allowCredentials": true
+    },
+    "rateLimit": {
+      "windowMs": 60000,
+      "maxRequests": 200
+    }
+  }
+server.py: |
+  import json
+  from typing import Any
+
+
+  def load_settings(path: str = "settings.json") -> dict[str, Any]:
+      with open(path) as f:
+          return json.load(f)
+
+
+  def create_server_config() -> dict[str, Any]:
+      settings = load_settings()
+      server = settings["server"]
+      return {
+          "host": server["host"],
+          "port": server["port"],
+          "max_connections": server["maxConnections"],
+          "timeout": server["timeout"],
+          "keep_alive": server["keepAlive"],
+      }
+
+
+  def get_cors_config() -> dict[str, Any]:
+      settings = load_settings()
+      return settings["cors"]
+
+
+  def get_rate_limit_config() -> dict[str, Any]:
+      settings = load_settings()
+      return settings["rateLimit"]
+
+
+  def start_server():
+      config = create_server_config()
+      cors = get_cors_config()
+      return {"server": config, "cors": cors}
+middleware.py: |
+  from server import get_rate_limit_config, get_cors_config
+
+
+  def apply_rate_limiting(request):
+      config = get_rate_limit_config()
+      max_requests = config["maxRequests"]
+      window_ms = config["windowMs"]
+      return {"allowed": True, "limit": max_requests, "window": window_ms}
+
+
+  def apply_cors(request):
+      config = get_cors_config()
+      origins = config["allowedOrigins"]
+      return {"origins": origins, "credentials": config["allowCredentials"]}
+unrelated/file_uploader.py: |
+  # GARBAGE_CFG_004_MARKER_A
+  GARBAGE_CFG_004_UPLOAD_B = "unrelated-upload-config"
+
+  def upload_file(filename: str, content: bytes) -> str:
+      return f"uploaded/{filename}"
+
+  def validate_file_size(content: bytes, max_mb: int = 10) -> bool:
+      return len(content) <= max_mb * 1024 * 1024
+
+  GARBAGE_CFG_004_STORAGE_C = "unused-storage-backend"
+unrelated/scheduler.py: |
+  # GARBAGE_CFG_004_MARKER_D
+  GARBAGE_CFG_004_SCHEDULE_E = "unrelated-scheduler-config"
+
+  class TaskScheduler:
+      def __init__(self):
+          self.tasks = []
+
+      def add_task(self, name: str, interval_seconds: int):
+          self.tasks.append({"name": name, "interval": interval_seconds})
+
+      def run_pending(self):
+          return [t["name"] for t in self.tasks]

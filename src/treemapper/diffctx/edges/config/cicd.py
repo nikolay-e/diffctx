@@ -20,8 +20,66 @@ _GITLAB_INCLUDE_RE = re.compile(
 _JENKINS_SH_RE = re.compile(r"sh\s*(?:\(['\"]|['\"])(.+?)['\"]\)?", re.MULTILINE | re.DOTALL)
 _JENKINS_SCRIPT_RE = re.compile(r"script\s*\{([^}]+)\}", re.MULTILINE | re.DOTALL)
 
-_SCRIPT_CALL_RE = re.compile(
-    r"(?:bash|sh|python|python3|node|npm|yarn|pnpm|make|go|cargo|dotnet|mvn|gradle|pytest|ruff|mypy|black|isort|flake8)\s+([^\s;&|]+)"
+_SCRIPT_CALL_TOOLS = frozenset(
+    {
+        "bash",
+        "sh",
+        "python",
+        "python3",
+        "node",
+        "npm",
+        "yarn",
+        "pnpm",
+        "make",
+        "go",
+        "cargo",
+        "dotnet",
+        "mvn",
+        "gradle",
+        "pytest",
+        "ruff",
+        "mypy",
+        "black",
+        "isort",
+        "flake8",
+    }
+)
+_SCRIPT_CALL_RE = re.compile(r"(?:" + "|".join(sorted(_SCRIPT_CALL_TOOLS, key=len, reverse=True)) + r")\s+([^\s;&|]+)")
+_PKG_MANAGER_SUBCOMMANDS = frozenset(
+    {
+        "run",
+        "test",
+        "start",
+        "build",
+        "install",
+        "ci",
+        "init",
+        "publish",
+        "pack",
+        "link",
+        "unlink",
+        "exec",
+        "add",
+        "remove",
+        "upgrade",
+        "info",
+        "list",
+        "outdated",
+        "audit",
+        "fix",
+        "cache",
+        "config",
+        "help",
+        "version",
+        "create",
+        "set",
+        "get",
+        "why",
+        "dedupe",
+        "prune",
+        "dlx",
+        "store",
+    }
 )
 _FILE_REF_RE = re.compile(r"(?:\.\/|scripts\/|bin\/|tools\/|src\/|tests\/)([a-zA-Z0-9_.-]+(?:\.(?:sh|py|js|ts|rb))?)")
 
@@ -81,7 +139,7 @@ def _extract_script_refs(content: str) -> set[str]:
 
     for match in _SCRIPT_CALL_RE.finditer(content):
         script = match.group(1).strip().strip("'\"")
-        if script and not script.startswith("-"):
+        if script and not script.startswith("-") and script.lower() not in _PKG_MANAGER_SUBCOMMANDS:
             refs.add(script)
 
     for match in _FILE_REF_RE.finditer(content):
@@ -126,6 +184,27 @@ def _extract_jenkins_refs(content: str) -> set[str]:
     return refs
 
 
+def _parse_tox_deps(deps: str, refs: set[str]) -> None:
+    for line in deps.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or line.startswith("-r"):
+            continue
+        refs.add(line.split()[0] if line.split() else line)
+
+
+def _parse_tox_commands(commands: str, refs: set[str]) -> None:
+    for line in commands.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        for p in line.split():
+            p = p.strip("'\"")
+            p = re.sub(r"\{[^}]+\}", "", p)
+            if p and not p.startswith("-"):
+                refs.add(p)
+        refs.update(_extract_script_refs(line))
+
+
 def _extract_tox_refs(content: str) -> set[str]:
     refs: set[str] = set()
     parser = configparser.ConfigParser()
@@ -137,28 +216,8 @@ def _extract_tox_refs(content: str) -> set[str]:
     for section in parser.sections():
         if not section.lower().startswith("testenv"):
             continue
-
-        deps = parser.get(section, "deps", fallback="")
-        commands = parser.get(section, "commands", fallback="")
-
-        for line in deps.splitlines():
-            line = line.strip()
-            if not line or line.startswith("#") or line.startswith("-r"):
-                continue
-            refs.add(line.split()[0] if line.split() else line)
-
-        for line in commands.splitlines():
-            line = line.strip()
-            if not line or line.startswith("#"):
-                continue
-            parts = line.split()
-            for p in parts:
-                p = p.strip("'\"")
-                p = re.sub(r"\{[^}]+\}", "", p)
-                if not p or p.startswith("-"):
-                    continue
-                refs.add(p)
-            refs.update(_extract_script_refs(line))
+        _parse_tox_deps(parser.get(section, "deps", fallback=""), refs)
+        _parse_tox_commands(parser.get(section, "commands", fallback=""), refs)
 
     return refs
 
@@ -228,7 +287,7 @@ class CICDEdgeBuilder(EdgeBuilder):
             logging.debug("CICD refs for %s: %s", ci.name, local_refs)
             refs.update(local_refs)
 
-        discovered = discover_files_by_refs(refs, changed_files, all_candidate_files)
+        discovered = discover_files_by_refs(refs, changed_files, all_candidate_files, repo_root)
         logging.debug("CICD discovered for %s: %s", [c.name for c in ci_files], [d.name for d in discovered])
         return discovered
 

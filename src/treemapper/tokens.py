@@ -24,7 +24,7 @@ def _get_encoder(encoding: str) -> Any | None:
         import tiktoken
 
         return tiktoken.get_encoding(encoding)
-    except (ImportError, KeyError, ValueError):
+    except Exception:
         return None
 
 

@@ -1,0 +1,67 @@
+lib/processor.rb: |
+  class Processor
+    attr_reader :options
+
+    def initialize(options = {})
+      @options = options
+      @logger = options.fetch(:logger, nil)
+    end
+
+    def process(data)
+      data.upcase
+    end
+
+    def batch_process(items)
+      items.map { |item| process(item) }
+    end
+
+    private
+
+    def log(message)
+      @logger&.info(message)
+    end
+  end
+app.rb: |
+  puts 'Hello'
+lib/formatter.rb: |
+  class Formatter
+    def initialize(template)
+      @template = template
+    end
+
+    def format(values)
+      result = @template.dup
+      values.each { |k, v| result.gsub!("{#{k}}", v.to_s) }
+      result
+    end
+  end
+lib/garbage_statistics.rb: |
+  GARBAGE_RUBY_001_STATS_COLLECTOR_A = "statistics_module"
+  GARBAGE_RUBY_001_REPORT_GENERATOR_B = "report_output"
+
+  class GarbageStatisticsEngine
+    GARBAGE_RUBY_001_SAMPLE_RATE_C = 100
+
+    def initialize
+      @data = []
+    end
+
+    def collect(value)
+      @data << value
+    end
+
+    def summarize
+      GARBAGE_RUBY_001_REPORT_GENERATOR_B
+    end
+  end
+lib/garbage_notification.rb: |
+  GARBAGE_RUBY_001_ALERT_CHANNEL_D = "notifications"
+  GARBAGE_RUBY_001_DISPATCH_QUEUE_E = "background"
+
+  class GarbageNotificationService
+    GARBAGE_RUBY_001_MAX_RETRIES_F = 5
+
+    def notify(recipient, message)
+      GARBAGE_RUBY_001_ALERT_CHANNEL_D
+    end
+  end

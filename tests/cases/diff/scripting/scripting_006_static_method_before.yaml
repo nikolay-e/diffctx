@@ -1,0 +1,30 @@
+User.php: |
+  <?php
+  class User {
+      private static array $users = [];
+      public int $id;
+      public string $name;
+
+      public function __construct(int $id, string $name) {
+          $this->id = $id;
+          $this->name = $name;
+      }
+
+      public static function find(int $id): ?self {
+          return self::$users[$id] ?? null;
+      }
+
+      public static function create(string $name): self {
+          $id = count(self::$users) + 1;
+          $user = new self($id, $name);
+          self::$users[$id] = $user;
+          return $user;
+      }
+  }
+app.php: |
+  <?php
+  echo "Hello";
+garbage.php: |
+  <?php
+  $garbageStatic67890 = "never called";
+  $unused_marker_12345 = "not used";

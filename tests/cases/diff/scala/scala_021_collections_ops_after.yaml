@@ -1,0 +1,25 @@
+Data.scala: |
+  case class Data(id: Int, value: String, score: Double)
+DataProcessor.scala: |
+  class DataProcessor {
+    def filterByScore(items: List[Data], minScore: Double): List[Data] = {
+      items.filter(_.score >= minScore)
+    }
+
+    def groupByFirstChar(items: List[Data]): Map[Char, List[Data]] = {
+      items.groupBy(_.value.headOption.getOrElse('_'))
+    }
+
+    def topN(items: List[Data], n: Int): List[Data] = {
+      items.sortBy(-_.score).take(n)
+    }
+
+    def averageScore(items: List[Data]): Double = {
+      if (items.isEmpty) 0.0
+      else items.map(_.score).sum / items.size
+    }
+
+    def flatMapValues(items: List[Data]): List[Char] = {
+      items.flatMap(_.value.toList)
+    }
+  }

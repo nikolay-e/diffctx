@@ -1,0 +1,36 @@
+src/base_handler.py: |
+  class BaseHandler:
+      def handle(self, request):
+          raise NotImplementedError
+
+src/user_handler.py: |
+  class UserHandler:
+      """Handle user requests.
+
+      @see BaseHandler for the base implementation
+      """
+      def handle(self, request):
+          return {"user": "data"}
+
+src/order_handler.py: |
+  class OrderHandler:
+      def handle(self, request):
+          return {"order": "data"}
+
+garbage_handler_registry.ts: |
+  const GARBAGE_CICD_DOCS_049_REGISTRY_MARKER_A = "map";
+  const GARBAGE_CICD_DOCS_049_LOOKUP_MARKER_B = "fast";
+
+  class GarbageHandlerRegistry {
+    static GARBAGE_CICD_DOCS_049_CACHE_MARKER_C = true;
+    register(): void {}
+  }
+
+garbage_handler_factory.ts: |
+  const GARBAGE_CICD_DOCS_049_FACTORY_MARKER_D = "abstract";
+  const GARBAGE_CICD_DOCS_049_PATTERN_MARKER_E = "singleton";
+
+  class GarbageHandlerFactory {
+    static GARBAGE_CICD_DOCS_049_LAZY_MARKER_F = false;
+    create(): void {}
+  }

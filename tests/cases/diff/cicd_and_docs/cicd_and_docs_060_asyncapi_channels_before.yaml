@@ -1,0 +1,59 @@
+asyncapi.yaml: |
+  asyncapi: 2.6.0
+  info:
+    title: Order Events
+    version: 1.0.0
+  channels:
+    orders/created:
+      publish:
+        message:
+          payload:
+            type: object
+            properties:
+              orderId:
+                type: string
+
+src/events/order_publisher.py: |
+  import json
+  from kafka import KafkaProducer
+
+  producer = KafkaProducer(
+      bootstrap_servers=['localhost:9092'],
+      value_serializer=lambda v: json.dumps(v).encode('utf-8')
+  )
+
+  def publish_order_created(order_id: str):
+      producer.send('orders/created', {'orderId': order_id})
+      producer.flush()
+
+src/events/order_consumer.py: |
+  import json
+  from kafka import KafkaConsumer
+
+  consumer = KafkaConsumer(
+      'orders/created',
+      bootstrap_servers=['localhost:9092'],
+      value_deserializer=lambda m: json.loads(m.decode('utf-8'))
+  )
+
+  def consume_order_events():
+      for message in consumer:
+          process_order_event(message.value)
+
+garbage_event_router.ts: |
+  const GARBAGE_CICD_DOCS_060_ROUTER_MARKER_A = "kafka-router";
+  const GARBAGE_CICD_DOCS_060_PARTITION_MARKER_B = 3;
+
+  class GarbageEventRouter {
+    static GARBAGE_CICD_DOCS_060_BALANCE_MARKER_C = "round-robin";
+    route(): void {}
+  }
+
+garbage_event_serializer.ts: |
+  const GARBAGE_CICD_DOCS_060_SERIALIZE_MARKER_D = "avro";
+  const GARBAGE_CICD_DOCS_060_SCHEMA_MARKER_E = "registry";
+
+  class GarbageEventSerializer {
+    static GARBAGE_CICD_DOCS_060_COMPRESS_MARKER_F = true;
+    serialize(): void {}
+  }

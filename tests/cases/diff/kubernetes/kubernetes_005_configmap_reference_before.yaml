@@ -1,0 +1,89 @@
+k8s/base/configmap.yaml: |
+  apiVersion: v1
+  kind: ConfigMap
+  metadata:
+    name: app-config
+    namespace: production
+    labels:
+      app: myapp
+  data:
+    LOG_LEVEL: info
+    MAX_CONNECTIONS: "100"
+    CACHE_TTL: "3600"
+    FEATURE_FLAGS: |
+      enable_new_ui=true
+      enable_analytics=true
+      beta_features=false
+    config.yaml: |
+      server:
+        port: 8080
+        host: 0.0.0.0
+      logging:
+        level: info
+        format: json
+k8s/base/deployment.yaml: |
+  apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    name: myapp
+    namespace: production
+    labels:
+      app: myapp
+      version: v1
+  spec:
+    replicas: 3
+    selector:
+      matchLabels:
+        app: myapp
+    template:
+      metadata:
+        labels:
+          app: myapp
+          version: v1
+      spec:
+        containers:
+        - name: app
+          image: myapp:v1.0.0
+          ports:
+          - containerPort: 8080
+          env: []
+          volumeMounts:
+          - name: config-volume
+            mountPath: /app/config
+            readOnly: true
+        volumes:
+        - name: config-volume
+          configMap:
+            name: app-config
+            items:
+            - key: config.yaml
+              path: config.yaml
+k8s/unrelated/storage/minio.yaml: |
+  # GARBAGE_K8S_405_MINIO_STORAGE
+  apiVersion: apps/v1
+  kind: StatefulSet
+  metadata:
+    name: GARBAGE_K8S_405_MINIO_SS
+  spec:
+    serviceName: GARBAGE_K8S_405_MINIO_SVC
+    replicas: 4
+    selector:
+      matchLabels:
+        app: GARBAGE_K8S_405_MINIO_LABEL
+    template:
+      spec:
+        containers:
+        - name: minio
+          image: minio/minio:GARBAGE_K8S_405_MINIO_TAG
+          env:
+          - name: MINIO_ROOT_USER
+            value: GARBAGE_K8S_405_MINIO_USER
+k8s/unrelated/messaging/rabbitmq.yaml: |
+  # GARBAGE_K8S_405_RABBITMQ_CLUSTER
+  apiVersion: rabbitmq.com/v1beta1
+  kind: RabbitmqCluster
+  metadata:
+    name: GARBAGE_K8S_405_RABBIT_NAME
+  spec:
+    replicas: 3
+    image: rabbitmq:GARBAGE_K8S_405_RABBIT_VERSION

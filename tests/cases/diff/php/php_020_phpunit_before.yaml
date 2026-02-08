@@ -1,0 +1,15 @@
+User.php: |
+  <?php
+  class User {
+      public function __construct(
+          public string $name,
+          public string $email
+      ) {}
+
+      public function isValidEmail(): bool {
+          return filter_var($this->email, FILTER_VALIDATE_EMAIL) !== false;
+      }
+  }
+UserTest.php: |
+  <?php
+  class UserTest {}

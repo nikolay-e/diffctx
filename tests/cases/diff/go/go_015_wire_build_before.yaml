@@ -1,0 +1,84 @@
+internal/wire/wire.go: |
+  //go:build wireinject
+  // +build wireinject
+
+  package wire
+
+  import (
+      "github.com/google/wire"
+      "myproject/internal/config"
+      "myproject/internal/repository"
+      "myproject/internal/service"
+  )
+
+  func InitializeApp(cfg *config.Config) (*App, error) {
+      wire.Build(
+          NewApp,
+          repository.NewUserRepository,
+          service.NewUserService,
+      )
+      return nil, nil
+  }
+internal/wire/providers.go: |
+  package wire
+
+  import (
+      "myproject/internal/repository"
+      "myproject/internal/service"
+  )
+
+  type App struct {
+      userService *service.UserService
+  }
+
+  func NewApp(userService *service.UserService) *App {
+      return &App{userService: userService}
+  }
+internal/repository/user_repository.go: |
+  package repository
+
+  import "database/sql"
+
+  type UserRepository struct {
+      db *sql.DB
+  }
+
+  func NewUserRepository(db *sql.DB) *UserRepository {
+      return &UserRepository{db: db}
+  }
+internal/service/user_service.go: |
+  package service
+
+  import "myproject/internal/repository"
+
+  type UserService struct {
+      repo *repository.UserRepository
+  }
+
+  func NewUserService(repo *repository.UserRepository) *UserService {
+      return &UserService{repo: repo}
+  }
+internal/unrelated/di/container.go: |
+  package di
+
+  const GARBAGE_GO_DI_CONTAINER_001 = "di_garbage"
+
+  type GARBAGE_GO_TYPE_CONTAINER_002 struct {
+      services map[string]interface{}
+  }
+
+  func GARBAGE_GO_FUNC_CONTAINER_003() string {
+      return "GARBAGE_GO_CONTAINER_UNUSED_004"
+  }
+internal/unrelated/di/injector.go: |
+  package di
+
+  const GARBAGE_GO_DI_INJECTOR_005 = "injector_garbage"
+
+  type GARBAGE_GO_TYPE_INJECTOR_006 struct {
+      bindings map[string]func() interface{}
+  }
+
+  func GARBAGE_GO_FUNC_INJECTOR_007() {
+      println("GARBAGE_GO_INJECTOR_OUTPUT_008")
+  }

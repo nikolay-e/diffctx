@@ -1,0 +1,51 @@
+src/service.py: |
+  class DataService:
+      def __init__(self, connection_url="localhost"):
+          self.connection_url = connection_url
+          self.connected = False
+
+      def connect(self):
+          self.connected = True
+
+      def process(self, data):
+          return data.upper()
+
+      def disconnect(self):
+          self.connected = False
+
+      def health_check(self):
+          return self.connected
+
+src/main.py: |
+  from src.service import DataService
+
+  def run():
+      svc = DataService()
+      svc.connect()
+      result = svc.process("hello")
+      svc.disconnect()
+      return result
+
+  def get_service_config():
+      return {"url": "localhost", "timeout": 30}
+
+  def log_activity(action, details):
+      print(f"[{action}] {details}")
+
+garbage_event_bus.py: |
+  GARBAGE_COMP_016_TOPIC_PATTERN_A = "fanout"
+  GARBAGE_COMP_016_DEAD_LETTER_B = "queue"
+
+  class GarbageEventBus:
+      GARBAGE_COMP_016_ORDERING_GUARANTEE_C = True
+      def publish(self):
+          pass
+
+garbage_schema_registry.py: |
+  GARBAGE_COMP_016_COMPATIBILITY_D = "backward"
+  GARBAGE_COMP_016_SERIALIZATION_E = "avro"
+
+  class GarbageSchemaRegistry:
+      GARBAGE_COMP_016_VERSION_STRATEGY_F = False
+      def register(self):
+          pass

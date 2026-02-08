@@ -49,9 +49,8 @@ def extract_dict_value(node: ast.expr) -> dict[str, str]:
 
 
 def _set_option(case: dict, key: str, value: ast.expr) -> None:
-    if isinstance(value, ast.Constant):
-        if value.value is not None:
-            case.setdefault("options", {})[key] = value.value
+    if isinstance(value, ast.Constant) and value.value is not None:
+        case.setdefault("options", {})[key] = value.value
 
 
 def _process_keyword(case: dict, kw: ast.keyword) -> None:

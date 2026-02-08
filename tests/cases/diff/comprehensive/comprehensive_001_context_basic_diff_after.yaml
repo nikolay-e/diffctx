@@ -1,0 +1,57 @@
+src/main.py: |
+  from src.greeting import create_greeting
+  from src.config import DEFAULT_LANGUAGE
+
+  def hello():
+      greeting = create_greeting("world", DEFAULT_LANGUAGE)
+      print(greeting)
+      return greeting
+
+  def world():
+      message = create_greeting("world", DEFAULT_LANGUAGE)
+      return message
+
+  def farewell(name):
+      return f"Goodbye, {name}!"
+
+src/greeting.py: |
+  from src.config import GREETING_TEMPLATES
+
+  def create_greeting(name, language):
+      template = GREETING_TEMPLATES.get(language, "Hello, {name}!")
+      return template.format(name=name)
+
+  def create_formal_greeting(title, last_name, language):
+      template = GREETING_TEMPLATES.get(language, "Dear {title} {last_name},")
+      return template.format(title=title, last_name=last_name)
+
+src/config.py: |
+  DEFAULT_LANGUAGE = "en"
+  MAX_GREETING_LENGTH = 256
+
+  GREETING_TEMPLATES = {
+      "en": "Hello, {name}!",
+      "es": "Hola, {name}!",
+      "fr": "Bonjour, {name}!",
+      "de": "Hallo, {name}!",
+  }
+
+  LOG_FORMAT = "%(asctime)s - %(levelname)s - %(message)s"
+
+garbage_telemetry.py: |
+  GARBAGE_COMP_001_METRIC_TRACKER_A = "pageviews"
+  GARBAGE_COMP_001_SESSION_COUNTER_B = "sessions"
+
+  class GarbageTelemetryCollector:
+      GARBAGE_COMP_001_FLUSH_INTERVAL_C = 30
+      def collect(self):
+          pass
+
+garbage_cache_warmer.py: |
+  GARBAGE_COMP_001_WARMUP_BATCH_D = "preload"
+  GARBAGE_COMP_001_EVICTION_POLICY_E = "lru"
+
+  class GarbageCacheWarmer:
+      GARBAGE_COMP_001_TTL_SECONDS_F = 3600
+      def warm(self):
+          pass

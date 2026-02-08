@@ -1,0 +1,57 @@
+User.cs: |
+  public class User
+  {
+      public int Id { get; set; }
+      public string Name { get; set; }
+      public string Email { get; set; }
+  }
+AppDbContext.cs: |
+  using Microsoft.EntityFrameworkCore;
+
+  public class AppDbContext : DbContext
+  {
+      public DbSet<User> Users { get; set; }
+
+      protected override void OnModelCreating(ModelBuilder modelBuilder)
+      {
+          modelBuilder.Entity<User>(entity =>
+          {
+              entity.HasKey(e => e.Id);
+              entity.Property(e => e.Email).IsRequired();
+              entity.HasIndex(e => e.Email).IsUnique();
+          });
+      }
+  }
+GarbageHexConverter.cs: |
+  public static class GarbageHexConverter
+  {
+      public const string GARBAGE_JVM_016_TOHEX_MARKER_A = "to_hex";
+      public const string GARBAGE_JVM_016_FROMHEX_MARKER_B = "from_hex";
+
+      public static string ToHex(byte[] data) => BitConverter.ToString(data).Replace("-", "");
+  }
+GarbageRateLimiter.cs: |
+  public class GarbageRateLimiter
+  {
+      public const string GARBAGE_JVM_016_LIMIT_MARKER_C = "rate_check";
+      public const string GARBAGE_JVM_016_WINDOW_MARKER_D = "rate_window";
+
+      private int _count;
+      private readonly int _limit;
+      public GarbageRateLimiter(int limit) { _limit = limit; }
+      public bool TryAcquire() => ++_count <= _limit;
+  }
+GarbageMigrator.cs: |
+  public class GarbageMigrator
+  {
+      public const string GARBAGE_JVM_016_MIGRATE_MARKER_A = "marker";
+      public const string GARBAGE_JVM_016_SEED_MARKER_B = "marker";
+      public void Noop() {}
+  }
+GarbageSchemaBuilder.cs: |
+  public class GarbageSchemaBuilder
+  {
+      public const string GARBAGE_JVM_016_SCHEMA_MARKER_C = "marker";
+      public const string GARBAGE_JVM_016_INDEX_MARKER_D = "marker";
+      public void Noop() {}
+  }

@@ -1,0 +1,57 @@
+.gitlab-ci.yml: |
+  stages:
+    - build
+    - test
+    - deploy
+
+  build:
+    stage: build
+    script:
+      - npm ci
+      - npm run build
+
+  test:
+    stage: test
+    script:
+      - npm test
+
+  deploy:
+    stage: deploy
+    script:
+      - ./deploy.sh
+
+package.json: |
+  {
+    "name": "gitlab-pipeline-app",
+    "version": "1.0.0",
+    "scripts": {
+      "build": "webpack --mode production",
+      "test": "jest",
+      "deploy": "./scripts/deploy.sh"
+    }
+  }
+
+src/main.ts: |
+  export function bootstrap(): void {
+    console.log('Application started');
+  }
+
+  bootstrap();
+
+garbage_pipeline.ts: |
+  const GARBAGE_CICD_DOCS_021_PIPELINE_MARKER_A = "sequential";
+  const GARBAGE_CICD_DOCS_021_TRIGGER_MARKER_B = "push";
+
+  class GarbagePipelineRunner {
+    static GARBAGE_CICD_DOCS_021_PARALLEL_MARKER_C = 1;
+    execute(): void {}
+  }
+
+garbage_job.ts: |
+  const GARBAGE_CICD_DOCS_021_JOB_MARKER_D = "container";
+  const GARBAGE_CICD_DOCS_021_EXECUTOR_MARKER_E = "docker";
+
+  class GarbageJobRunner {
+    static GARBAGE_CICD_DOCS_021_RETRY_MARKER_F = 2;
+    run(): void {}
+  }

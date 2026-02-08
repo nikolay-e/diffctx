@@ -1,0 +1,50 @@
+utils.sh: |
+  #!/bin/bash
+
+  process() {
+      local file=$1
+      echo "Processing: $file"
+  }
+batch.sh: |
+  #!/bin/bash
+  source ./utils.sh
+
+  for file in *.log; do
+      process "$file"
+  done
+
+  while read -r line; do
+      echo "Line: $line"
+  done < input.txt
+
+  counter=0
+  until [[ $counter -ge 10 ]]; do
+      echo "Counter: $counter"
+      ((counter++))
+  done
+unrelated/garbage_terraform.sh: |
+  #!/bin/bash
+  # GARBAGE_SH_013_TERRAFORM_PLAN_A
+  GARBAGE_SH_013_TF_STATE_B="s3://tfstate"
+
+  garbage_tf_plan_013() {
+      echo "Planning terraform changes"
+  }
+
+  garbage_tf_apply_013() {
+      echo "Applying terraform changes"
+  }
+unrelated/garbage_ansible.sh: |
+  #!/bin/bash
+  # GARBAGE_SH_013_ANSIBLE_PLAY_C
+  GARBAGE_SH_013_INVENTORY_D="./inventory.yml"
+
+  garbage_run_playbook_013() {
+      local playbook=$1
+      echo "Running $playbook"
+  }
+
+  garbage_check_syntax_013() {
+      local playbook=$1
+      echo "Syntax OK: $playbook"
+  }

@@ -1,0 +1,51 @@
+sql/queries/top_customers.sql: |
+  -- Get top customers by order count
+  SELECT
+      u.id,
+      u.name,
+      (SELECT COUNT(*) FROM orders WHERE user_id = u.id) AS order_count
+  FROM users u
+  ORDER BY order_count DESC
+  LIMIT 10;
+
+src/models/customer_stats.py: |
+  from dataclasses import dataclass
+
+  @dataclass
+  class CustomerStats:
+      id: int
+      name: str
+      order_count: int
+
+src/repositories/customer_repository.py: |
+  from typing import List
+  from models.customer_stats import CustomerStats
+
+  class CustomerRepository:
+      def __init__(self, db):
+          self.db = db
+
+      def get_top_customers(self, limit: int = 10) -> List[CustomerStats]:
+          results = self.db.execute_file(
+              'sql/queries/top_customers.sql',
+              {'limit': limit}
+          )
+          return [CustomerStats(**r) for r in results]
+
+garbage_subquery_analyzer.ts: |
+  const GARBAGE_CICD_DOCS_075_CORRELATED_MARKER_A = "nested";
+  const GARBAGE_CICD_DOCS_075_SCALAR_MARKER_B = "single";
+
+  class GarbageSubqueryAnalyzer {
+    static GARBAGE_CICD_DOCS_075_EXISTS_MARKER_C = true;
+    analyze(): void {}
+  }
+
+garbage_query_rewriter.ts: |
+  const GARBAGE_CICD_DOCS_075_FLATTEN_MARKER_D = "unnest";
+  const GARBAGE_CICD_DOCS_075_LATERAL_MARKER_E = "cross";
+
+  class GarbageQueryRewriter {
+    static GARBAGE_CICD_DOCS_075_MATERIALIZE_MARKER_F = false;
+    rewrite(): void {}
+  }

@@ -1,0 +1,68 @@
+src/compute.ts: |
+  export function expensiveComputation(items: number[]): number {
+      return items.reduce((sum, n) => sum + n * n, 0);
+  }
+
+  export function averageValue(items: number[]): number {
+      if (items.length === 0) return 0;
+      const total = items.reduce((sum, n) => sum + n, 0);
+      return total / items.length;
+  }
+
+  export function filterOutliers(items: number[], threshold: number): number[] {
+      const avg = averageValue(items);
+      return items.filter(n => Math.abs(n - avg) <= threshold);
+  }
+src/Stats.tsx: |
+  import { useMemo } from 'react';
+  import { expensiveComputation, averageValue } from './compute';
+
+  interface StatsProps {
+      items: number[];
+  }
+
+  export function Stats({ items }: StatsProps) {
+      const sumOfSquares = useMemo(() => expensiveComputation(items), [items]);
+      const average = useMemo(() => averageValue(items), [items]);
+
+      return (
+          <div>
+              <p>Sum of squares: {sumOfSquares}</p>
+              <p>Average: {average.toFixed(2)}</p>
+              <p>Count: {items.length}</p>
+          </div>
+      );
+  }
+src/unrelated/avatar.tsx: |
+  const GARBAGE_JSX_031_AVATAR_CONFIG_A = 'avatar_garbage_marker';
+
+  export interface GarbageAvatarProps {
+      src: string;
+      size: number;
+  }
+
+  export function GarbageAvatar({ src, size }: GarbageAvatarProps) {
+      return <img src={src} width={size} height={size} alt="avatar" />;
+  }
+
+  export function GARBAGE_JSX_031_GENERATE_INITIALS_B(name: string): string {
+      return 'GARBAGE_JSX_031_INITIALS_OUTPUT_C';
+  }
+src/unrelated/spinner.tsx: |
+  const GARBAGE_JSX_031_SPINNER_CONFIG_D = { size: 40, color: 'blue' };
+
+  export class GARBAGE_JSX_031_SPINNER_MANAGER_E {
+      private visible = false;
+
+      show(): void {
+          this.visible = true;
+      }
+
+      hide(): void {
+          this.visible = false;
+      }
+  }
+
+  export function GARBAGE_JSX_031_RENDER_SPINNER_F(): void {
+      console.log('rendering spinner');
+  }

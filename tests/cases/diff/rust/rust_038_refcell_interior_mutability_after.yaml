@@ -1,0 +1,420 @@
+src/lib.rs: |
+  pub mod counter;
+  pub mod unrelated;
+src/counter.rs: |
+  use std::cell::{Cell, RefCell};
+  use std::rc::Rc;
+
+  pub struct Counter {
+      count: RefCell<u64>,
+      name: String,
+      history: RefCell<Vec<u64>>,
+  }
+
+  impl Counter {
+      pub fn new(name: &str) -> Self {
+          Self {
+              count: RefCell::new(0),
+              name: name.to_string(),
+              history: RefCell::new(Vec::new()),
+          }
+      }
+
+      pub fn increment(&self) {
+          let mut count = self.count.borrow_mut();
+          *count += 1;
+          self.history.borrow_mut().push(*count);
+      }
+
+      pub fn decrement(&self) {
+          let mut count = self.count.borrow_mut();
+          if *count > 0 {
+              *count -= 1;
+              self.history.borrow_mut().push(*count);
+          }
+      }
+
+      pub fn get(&self) -> u64 {
+          *self.count.borrow()
+      }
+
+      pub fn name(&self) -> &str {
+          &self.name
+      }
+
+      pub fn reset(&self) {
+          *self.count.borrow_mut() = 0;
+          self.history.borrow_mut().clear();
+      }
+
+      pub fn history(&self) -> Vec<u64> {
+          self.history.borrow().clone()
+      }
+  }
+
+  impl Default for Counter {
+      fn default() -> Self {
+          Self::new("default")
+      }
+  }
+
+  pub struct CellCounter {
+      count: Cell<u64>,
+      max_value: Cell<u64>,
+  }
+
+  impl CellCounter {
+      pub fn new() -> Self {
+          Self {
+              count: Cell::new(0),
+              max_value: Cell::new(u64::MAX),
+          }
+      }
+
+      pub fn with_max(max: u64) -> Self {
+          Self {
+              count: Cell::new(0),
+              max_value: Cell::new(max),
+          }
+      }
+
+      pub fn increment(&self) {
+          let current = self.count.get();
+          if current < self.max_value.get() {
+              self.count.set(current + 1);
+          }
+      }
+
+      pub fn get(&self) -> u64 {
+          self.count.get()
+      }
+
+      pub fn set_max(&self, max: u64) {
+          self.max_value.set(max);
+      }
+  }
+
+  impl Default for CellCounter {
+      fn default() -> Self {
+          Self::new()
+      }
+  }
+
+  pub struct Tracker {
+      counters: RefCell<Vec<Rc<Counter>>>,
+      total_increments: Cell<u64>,
+  }
+
+  impl Tracker {
+      pub fn new() -> Self {
+          Self {
+              counters: RefCell::new(Vec::new()),
+              total_increments: Cell::new(0),
+          }
+      }
+
+      pub fn add_counter(&self, name: &str) -> Rc<Counter> {
+          let counter = Rc::new(Counter::new(name));
+          self.counters.borrow_mut().push(Rc::clone(&counter));
+          counter
+      }
+
+      pub fn get_counter(&self, name: &str) -> Option<Rc<Counter>> {
+          self.counters
+              .borrow()
+              .iter()
+              .find(|c| c.name() == name)
+              .cloned()
+      }
+
+      pub fn total(&self) -> u64 {
+          self.counters.borrow().iter().map(|c| c.get()).sum()
+      }
+
+      pub fn increment_all(&self) {
+          for counter in self.counters.borrow().iter() {
+              counter.increment();
+          }
+          self.total_increments
+              .set(self.total_increments.get() + self.counters.borrow().len() as u64);
+      }
+
+      pub fn counter_count(&self) -> usize {
+          self.counters.borrow().len()
+      }
+
+      pub fn total_increments(&self) -> u64 {
+          self.total_increments.get()
+      }
+  }
+
+  impl Default for Tracker {
+      fn default() -> Self {
+          Self::new()
+      }
+  }
+
+  pub trait Observable {
+      fn subscribe(&self, callback: Box<dyn Fn(u64)>);
+      fn notify(&self, value: u64);
+  }
+
+  pub struct ObservableCounter {
+      count: RefCell<u64>,
+      callbacks: RefCell<Vec<Box<dyn Fn(u64)>>>,
+  }
+
+  impl ObservableCounter {
+      pub fn new() -> Self {
+          Self {
+              count: RefCell::new(0),
+              callbacks: RefCell::new(Vec::new()),
+          }
+      }
+
+      pub fn increment(&self) {
+          let new_value = {
+              let mut count = self.count.borrow_mut();
+              *count += 1;
+              *count
+          };
+          self.notify(new_value);
+      }
+
+      pub fn get(&self) -> u64 {
+          *self.count.borrow()
+      }
+  }
+
+  impl Default for ObservableCounter {
+      fn default() -> Self {
+          Self::new()
+      }
+  }
+
+  impl Observable for ObservableCounter {
+      fn subscribe(&self, callback: Box<dyn Fn(u64)>) {
+          self.callbacks.borrow_mut().push(callback);
+      }
+
+      fn notify(&self, value: u64) {
+          for callback in self.callbacks.borrow().iter() {
+              callback(value);
+          }
+      }
+  }
+src/unrelated/mod.rs: |
+  pub mod template;
+  pub mod renderer;
+  pub mod events;
+src/unrelated/template.rs: |
+  // GARBAGE_RUST_TPL_ref001
+  use std::collections::HashMap;
+
+  pub const GARBAGE_MAX_DEPTH_ref002: usize = 16;
+  pub const GARBAGE_MAX_VARS_ref003: usize = 256;
+
+  #[derive(Debug, Clone)]
+  pub enum GarbageTemplateValue_ref004 {
+      String(String),
+      Number(f64),
+      Bool(bool),
+      List(Vec<GarbageTemplateValue_ref004>),
+      Map(HashMap<String, GarbageTemplateValue_ref004>),
+  }
+
+  pub trait GarbageTemplateEngine_ref005 {
+      fn garbage_render_ref006(&self, template: &str, context: &HashMap<String, GarbageTemplateValue_ref004>) -> Result<String, String>;
+      fn garbage_compile_ref007(&self, template: &str) -> Result<GarbageCompiledTemplate_ref008, String>;
+  }
+
+  pub struct GarbageCompiledTemplate_ref008 {
+      source: String,
+      variables: Vec<String>,
+  }
+
+  impl GarbageCompiledTemplate_ref008 {
+      pub fn garbage_new_ref009(source: String) -> Self {
+          Self {
+              source,
+              variables: Vec::new(),
+          }
+      }
+
+      pub fn garbage_variables_ref010(&self) -> &[String] {
+          &self.variables
+      }
+  }
+
+  pub struct GarbageMustacheEngine_ref011 {
+      delimiters: (String, String),
+  }
+
+  impl GarbageMustacheEngine_ref011 {
+      pub fn garbage_new_ref012() -> Self {
+          Self {
+              delimiters: ("{{".to_string(), "}}".to_string()),
+          }
+      }
+
+      pub fn garbage_set_delimiters_ref013(&mut self, open: &str, close: &str) {
+          self.delimiters = (open.to_string(), close.to_string());
+      }
+
+      fn garbage_parse_tag_ref014(&self, input: &str) -> Option<(&str, &str)> {
+          None
+      }
+  }
+
+  impl GarbageTemplateEngine_ref005 for GarbageMustacheEngine_ref011 {
+      fn garbage_render_ref006(&self, template: &str, context: &HashMap<String, GarbageTemplateValue_ref004>) -> Result<String, String> {
+          Err("GARBAGE_NOT_IMPL_ref015".to_string())
+      }
+
+      fn garbage_compile_ref007(&self, template: &str) -> Result<GarbageCompiledTemplate_ref008, String> {
+          Ok(GarbageCompiledTemplate_ref008::garbage_new_ref009(template.to_string()))
+      }
+  }
+src/unrelated/renderer.rs: |
+  // GARBAGE_RUST_RENDER_ref016
+  use std::io::Write;
+
+  pub const GARBAGE_DEFAULT_WIDTH_ref017: u32 = 800;
+  pub const GARBAGE_DEFAULT_HEIGHT_ref018: u32 = 600;
+
+  #[derive(Debug, Clone, Copy)]
+  pub struct GarbageColor_ref019 {
+      r: u8,
+      g: u8,
+      b: u8,
+      a: u8,
+  }
+
+  impl GarbageColor_ref019 {
+      pub fn garbage_new_ref020(r: u8, g: u8, b: u8, a: u8) -> Self {
+          Self { r, g, b, a }
+      }
+
+      pub fn garbage_from_hex_ref021(hex: u32) -> Self {
+          Self {
+              r: ((hex >> 16) & 0xFF) as u8,
+              g: ((hex >> 8) & 0xFF) as u8,
+              b: (hex & 0xFF) as u8,
+              a: 255,
+          }
+      }
+  }
+
+  pub trait GarbageRenderer_ref022 {
+      fn garbage_clear_ref023(&mut self, color: GarbageColor_ref019);
+      fn garbage_draw_rect_ref024(&mut self, x: i32, y: i32, w: u32, h: u32, color: GarbageColor_ref019);
+      fn garbage_present_ref025(&mut self);
+  }
+
+  pub struct GarbageSoftwareRenderer_ref026 {
+      width: u32,
+      height: u32,
+      buffer: Vec<u8>,
+  }
+
+  impl GarbageSoftwareRenderer_ref026 {
+      pub fn garbage_new_ref027(width: u32, height: u32) -> Self {
+          Self {
+              width,
+              height,
+              buffer: vec![0; (width * height * 4) as usize],
+          }
+      }
+
+      pub fn garbage_resize_ref028(&mut self, width: u32, height: u32) {
+          self.width = width;
+          self.height = height;
+          self.buffer.resize((width * height * 4) as usize, 0);
+      }
+  }
+
+  impl GarbageRenderer_ref022 for GarbageSoftwareRenderer_ref026 {
+      fn garbage_clear_ref023(&mut self, color: GarbageColor_ref019) {
+          for pixel in self.buffer.chunks_mut(4) {
+              pixel[0] = color.r;
+              pixel[1] = color.g;
+              pixel[2] = color.b;
+              pixel[3] = color.a;
+          }
+      }
+
+      fn garbage_draw_rect_ref024(&mut self, x: i32, y: i32, w: u32, h: u32, color: GarbageColor_ref019) {
+          // GARBAGE_RECT_IMPL_ref029
+      }
+
+      fn garbage_present_ref025(&mut self) {
+          // GARBAGE_PRESENT_IMPL_ref030
+      }
+  }
+src/unrelated/events.rs: |
+  // GARBAGE_RUST_EVENTS_ref031
+  use std::collections::VecDeque;
+
+  pub const GARBAGE_MAX_QUEUE_SIZE_ref032: usize = 1024;
+
+  #[derive(Debug, Clone)]
+  pub enum GarbageEvent_ref033 {
+      KeyDown { key: u32, modifiers: u32 },
+      KeyUp { key: u32, modifiers: u32 },
+      MouseMove { x: i32, y: i32 },
+      MouseDown { button: u8, x: i32, y: i32 },
+      MouseUp { button: u8, x: i32, y: i32 },
+      Quit,
+  }
+
+  pub trait GarbageEventHandler_ref034 {
+      fn garbage_on_event_ref035(&mut self, event: &GarbageEvent_ref033);
+  }
+
+  pub struct GarbageEventQueue_ref036 {
+      events: VecDeque<GarbageEvent_ref033>,
+      max_size: usize,
+  }
+
+  impl GarbageEventQueue_ref036 {
+      pub fn garbage_new_ref037(max_size: usize) -> Self {
+          Self {
+              events: VecDeque::new(),
+              max_size,
+          }
+      }
+
+      pub fn garbage_push_ref038(&mut self, event: GarbageEvent_ref033) {
+          if self.events.len() < self.max_size {
+              self.events.push_back(event);
+          }
+      }
+
+      pub fn garbage_pop_ref039(&mut self) -> Option<GarbageEvent_ref033> {
+          self.events.pop_front()
+      }
+
+      pub fn garbage_is_empty_ref040(&self) -> bool {
+          self.events.is_empty()
+      }
+
+      pub fn garbage_len_ref041(&self) -> usize {
+          self.events.len()
+      }
+  }
+
+  pub struct GarbageEventDispatcher_ref042 {
+      handlers: Vec<Box<dyn GarbageEventHandler_ref034>>,
+  }
+
+  impl GarbageEventDispatcher_ref042 {
+      pub fn garbage_new_ref043() -> Self {
+          Self { handlers: Vec::new() }
+      }
+
+      pub fn garbage_dispatch_ref044(&mut self, event: &GarbageEvent_ref033) {
+          for handler in &mut self.handlers {
+              handler.garbage_on_event_ref035(event);
+          }
+      }
+  }

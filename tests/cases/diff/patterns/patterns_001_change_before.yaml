@@ -1,0 +1,76 @@
+src/database.py: |
+  import logging
+  from typing import Any
+
+  logger = logging.getLogger(__name__)
+
+  class ConnectionPool:
+      def __init__(self, max_connections: int = 10):
+          self.max_connections = max_connections
+          self._pool: list = []
+
+      def acquire(self):
+          if self._pool:
+              return self._pool.pop()
+          return self._create_connection()
+
+      def release(self, conn):
+          if len(self._pool) < self.max_connections:
+              self._pool.append(conn)
+
+      def _create_connection(self):
+          logger.info("Creating new database connection")
+          return {"connected": True}
+
+  class Database:
+      def __init__(self, connection_string: str):
+          self.connection_string = connection_string
+          self.connected = False
+          self._pool = ConnectionPool()
+
+      def connect(self):
+          self.connected = True
+          logger.info(f"Connected to {self.connection_string}")
+
+      def disconnect(self):
+          self.connected = False
+          logger.info("Disconnected from database")
+
+      def query(self, sql: str) -> list:
+          if not self.connected:
+              raise RuntimeError("Not connected")
+          return []
+tests/conftest.py: |
+  import pytest
+  from src.database import Database
+
+  @pytest.fixture
+  def db():
+      database = Database("test://localhost")
+      database.connect()
+      yield database
+      database.disconnect()
+tests/test_queries.py: |
+  def test_query_returns_list(db):
+      result = db.query("SELECT * FROM users")
+      assert isinstance(result, list)
+
+  def test_db_is_connected(db):
+      assert db.connected is True
+utils/garbage_metrics_collector.py: |
+  # GARBAGE_PAT_001_METRICS_COLLECTOR_A
+  GARBAGE_PAT_001_COLLECTION_INTERVAL_B = 30
+
+  class GarbageMetricsCollector:
+      def __init__(self):
+          self.metrics = {}
+
+      def record(self, name, value):
+          self.metrics[name] = value
+utils/garbage_log_rotator.py: |
+  # GARBAGE_PAT_001_LOG_ROTATOR_A
+  GARBAGE_PAT_001_ROTATION_SIZE_B = 104857600
+
+  class GarbageLogRotator:
+      def rotate(self, path):
+          pass

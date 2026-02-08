@@ -1,0 +1,16 @@
+must_include_files:
+  - spec/user_spec.rb
+must_include_content:
+  - |
+    user = User.new(email: 'test@example.com')
+must_not_include:
+  - GARBAGE_RUBY_020_SITEMAP_FORMAT_A
+  - GARBAGE_RUBY_020_MAX_URLS_B
+  - GARBAGE_RUBY_020_CHANGE_FREQ_C
+  - GARBAGE_RUBY_020_FEED_VERSION_D
+  - GARBAGE_RUBY_020_ENCODING_E
+  - GARBAGE_RUBY_020_MAX_ITEMS_F
+  - GarbageSitemapBuilder
+  - GarbageRssFeedGenerator
+  - garbage_sitemap.rb
+  - garbage_rss_feed.rb

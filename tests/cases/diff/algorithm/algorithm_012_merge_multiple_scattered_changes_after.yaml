@@ -1,0 +1,68 @@
+src/core/application.py: |
+  import os
+  import logging
+  from typing import Dict, Any, Optional, List
+
+  APP_NAME = "MyApplication"
+  VERSION = "2.0.0"
+  DEBUG = os.getenv("DEBUG", "false").lower() == "true"
+
+  logger = logging.getLogger(__name__)
+
+  def initialize_config() -> Dict[str, Any]:
+      return {
+          "name": APP_NAME,
+          "version": VERSION,
+          "debug": DEBUG,
+          "environment": os.getenv("ENVIRONMENT", "development"),
+      }
+
+  def setup_logging(level: str = "INFO") -> None:
+      logging.basicConfig(
+          level=getattr(logging, level),
+          format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+      )
+      logger.info(f"Logging initialized at {level} level")
+
+  def validate_environment() -> bool:
+      required = ["DATABASE_URL", "SECRET_KEY"]
+      missing = [var for var in required if not os.getenv(var)]
+      if missing:
+          logger.error(f"Missing environment variables: {missing}")
+          return False
+      return True
+
+  class ApplicationContext:
+      def __init__(self, config: Dict[str, Any]):
+          self.config = config
+          self.initialized = False
+          self.plugins: List[str] = []
+
+      def start(self) -> None:
+          if not self.initialized:
+              setup_logging(self.config.get("log_level", "INFO"))
+              self.initialized = True
+              logger.info(f"Application {APP_NAME} v{VERSION} started")
+
+      def get_setting(self, key: str, default: Any = None) -> Optional[Any]:
+          return self.config.get(key, default)
+
+garbage_plugins.py: |
+  GARBAGE_ALGO_012_PLUGIN_MARKER_A = "plugin"
+  GARBAGE_ALGO_012_LOADER_MARKER_B = True
+
+  class PluginLoader:
+      GARBAGE_ALGO_012_REGISTRY_MARKER_C = {}
+
+      def load(self, name: str) -> None:
+          pass
+
+garbage_extensions.py: |
+  GARBAGE_ALGO_012_EXT_MARKER_D = "extension"
+  GARBAGE_ALGO_012_HOOK_MARKER_E = []
+
+  class ExtensionManager:
+      GARBAGE_ALGO_012_ACTIVE_MARKER_F = True
+
+      def register(self, ext: str) -> None:
+          pass

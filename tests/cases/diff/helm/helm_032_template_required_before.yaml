@@ -1,0 +1,10 @@
+values.yaml: |
+  apiKey: ""
+templates/secret.yaml: |
+  apiVersion: v1
+  kind: Secret
+  data:
+    api-key: {{ .Values.apiKey | b64enc }}
+unrelated.txt: |
+  garbage_marker_12345
+  unused_marker_67890

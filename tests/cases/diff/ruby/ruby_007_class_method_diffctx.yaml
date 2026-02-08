@@ -1,0 +1,16 @@
+must_include_files:
+  - app/controllers/users_controller.rb
+must_include_content:
+  - |
+    @user = User.find(id)
+must_not_include:
+  - GARBAGE_RUBY_007_PROVIDER_NAME_A
+  - GARBAGE_RUBY_007_CACHE_STRATEGY_B
+  - GARBAGE_RUBY_007_TIMEOUT_MS_C
+  - GARBAGE_RUBY_007_PAGE_FORMAT_D
+  - GARBAGE_RUBY_007_FONT_FAMILY_E
+  - GARBAGE_RUBY_007_DPI_SETTING_F
+  - GarbageGeocoderClient
+  - GarbagePdfRenderer
+  - garbage_geocoder.rb
+  - garbage_pdf_renderer.rb

@@ -1,0 +1,18 @@
+must_include_files:
+  - src/Controllers/ProductController.php
+must_include_content:
+  - |
+    extends BaseController
+must_not_include:
+  - GARBAGE_PHP_005_SMTP_HOST_A
+  - GARBAGE_PHP_005_SMTP_PORT_B
+  - GARBAGE_PHP_005_ENCRYPTION_C
+  - GARBAGE_PHP_005_TIMEOUT_D
+  - GARBAGE_PHP_005_MAX_WIDTH_E
+  - GARBAGE_PHP_005_QUALITY_F
+  - GARBAGE_PHP_005_FORMAT_G
+  - GARBAGE_PHP_005_INTERPOLATION_H
+  - GarbageSmtpTransport
+  - GarbageImageResize
+  - garbage_smtp_transport.php
+  - garbage_image_resize.php

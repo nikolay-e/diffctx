@@ -1,0 +1,61 @@
+decorators.py: |
+  import functools
+  import logging
+  import time
+
+  logger = logging.getLogger(__name__)
+
+  def cache(ttl=60):
+      def decorator(func):
+          cache_store = {}
+          cache_times = {}
+          @functools.wraps(func)
+          def wrapper(*args):
+              now = time.time()
+              if args in cache_store:
+                  if now - cache_times[args] < ttl:
+                      return cache_store[args]
+              result = func(*args)
+              cache_store[args] = result
+              cache_times[args] = now
+              return result
+          return wrapper
+      return decorator
+
+  def validate_args(*types):
+      def decorator(func):
+          @functools.wraps(func)
+          def wrapper(*args):
+              for arg, expected_type in zip(args, types):
+                  if not isinstance(arg, expected_type):
+                      raise TypeError(f"Expected {expected_type}, got {type(arg)}")
+              return func(*args)
+          return wrapper
+      return decorator
+services.py: |
+  from decorators import cache
+
+  @cache(ttl=300)
+  def expensive_computation(x):
+      return x ** 2
+
+  @cache(ttl=60)
+  def quick_lookup(key):
+      return {"key": key}
+
+  def uncached_operation(data):
+      return sorted(data)
+utils/garbage_profiler.py: |
+  # GARBAGE_PAT_005_PROFILER_A
+  GARBAGE_PAT_005_SAMPLE_RATE_B = 0.01
+
+  class GarbageProfiler:
+      def start(self):
+          pass
+utils/garbage_tracer.py: |
+  # GARBAGE_PAT_005_TRACER_A
+  GARBAGE_PAT_005_SPAN_NAME_B = "default"
+
+  class GarbageTracer:
+      def trace(self, name):
+          pass

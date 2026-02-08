@@ -1,0 +1,41 @@
+.gitlab-ci.yml: |
+  build:
+    script:
+      - npm ci
+      - npm run build
+
+package.json: |
+  {
+    "name": "gitlab-artifacts-app",
+    "version": "1.0.0",
+    "scripts": {
+      "build": "vite build"
+    }
+  }
+
+vite.config.ts: |
+  import { defineConfig } from 'vite';
+
+  export default defineConfig({
+    build: {
+      outDir: 'dist'
+    }
+  });
+
+garbage_storage.ts: |
+  const GARBAGE_CICD_DOCS_028_STORAGE_MARKER_A = "s3";
+  const GARBAGE_CICD_DOCS_028_BUCKET_MARKER_B = "artifacts";
+
+  class GarbageStorageBackend {
+    static GARBAGE_CICD_DOCS_028_COMPRESS_MARKER_C = true;
+    upload(): void {}
+  }
+
+garbage_expiry.ts: |
+  const GARBAGE_CICD_DOCS_028_EXPIRY_MARKER_D = "7d";
+  const GARBAGE_CICD_DOCS_028_CLEANUP_MARKER_E = "automatic";
+
+  class GarbageExpiryPolicy {
+    static GARBAGE_CICD_DOCS_028_EXTEND_MARKER_F = false;
+    cleanup(): void {}
+  }

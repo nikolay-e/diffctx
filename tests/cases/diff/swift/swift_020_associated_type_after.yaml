@@ -1,0 +1,39 @@
+Container.swift: |
+  protocol Container {
+      associatedtype Item
+      var count: Int { get }
+      mutating func append(_ item: Item)
+      subscript(i: Int) -> Item { get }
+  }
+
+  protocol IterableContainer: Container {
+      associatedtype Iterator: IteratorProtocol where Iterator.Element == Item
+      func makeIterator() -> Iterator
+  }
+  // unused_marker_67890
+Stack.swift: |
+  struct Stack<Element>: Container {
+      typealias Item = Element
+
+      private var items: [Element] = []
+
+      var count: Int {
+          return items.count
+      }
+
+      mutating func append(_ item: Element) {
+          items.append(item)
+      }
+
+      subscript(i: Int) -> Element {
+          return items[i]
+      }
+
+      mutating func push(_ item: Element) {
+          items.append(item)
+      }
+
+      mutating func pop() -> Element? {
+          return items.popLast()
+      }
+  }

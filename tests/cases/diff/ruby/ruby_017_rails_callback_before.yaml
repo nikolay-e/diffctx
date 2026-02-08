@@ -1,0 +1,62 @@
+lib/callbacks.rb: |
+  module Callbacks
+    def self.included(base)
+      base.extend(ClassMethods)
+    end
+
+    module ClassMethods
+      def before_save(*methods)
+        @before_save_callbacks ||= []
+        @before_save_callbacks.concat(methods)
+      end
+
+      def after_save(*methods)
+        @after_save_callbacks ||= []
+        @after_save_callbacks.concat(methods)
+      end
+
+      def before_save_callbacks
+        @before_save_callbacks || []
+      end
+
+      def after_save_callbacks
+        @after_save_callbacks || []
+      end
+    end
+
+    def run_before_callbacks
+      self.class.before_save_callbacks.each { |m| send(m) }
+    end
+
+    def run_after_callbacks
+      self.class.after_save_callbacks.each { |m| send(m) }
+    end
+  end
+app/models/user.rb: |
+  class User
+    def save
+      true
+    end
+  end
+lib/garbage_color_theme.rb: |
+  GARBAGE_RUBY_017_PALETTE_NAME_A = "ocean_breeze"
+  GARBAGE_RUBY_017_PRIMARY_HEX_B = "#0077B6"
+
+  class GarbageColorThemeEngine
+    GARBAGE_RUBY_017_MAX_COLORS_C = 12
+
+    def apply_theme(element)
+      GARBAGE_RUBY_017_PALETTE_NAME_A
+    end
+  end
+lib/garbage_font_loader.rb: |
+  GARBAGE_RUBY_017_FONT_FAMILY_D = "Inter"
+  GARBAGE_RUBY_017_FALLBACK_FONT_E = "sans-serif"
+
+  class GarbageFontLoader
+    GARBAGE_RUBY_017_MAX_FONT_SIZE_F = 72
+
+    def load_font(name)
+      GARBAGE_RUBY_017_FONT_FAMILY_D
+    end
+  end

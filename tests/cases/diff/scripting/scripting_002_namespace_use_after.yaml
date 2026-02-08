@@ -1,0 +1,80 @@
+PaymentService.php: |
+  <?php
+  namespace App\Services;
+
+  class PaymentService {
+      private string $provider;
+      private string $currency;
+
+      public function __construct(string $provider = 'stripe', string $currency = 'USD') {
+          $this->provider = $provider;
+          $this->currency = $currency;
+      }
+
+      public function process(float $amount): bool {
+          if ($amount <= 0) {
+              return false;
+          }
+          return true;
+      }
+
+      public function refund(string $transactionId, float $amount): bool {
+          return $amount > 0 && strlen($transactionId) > 0;
+      }
+
+      public function getProvider(): string {
+          return $this->provider;
+      }
+
+      public function getCurrency(): string {
+          return $this->currency;
+      }
+  }
+Controller.php: |
+  <?php
+  use App\Services\PaymentService;
+
+  class Controller {
+      private PaymentService $paymentService;
+
+      public function __construct() {
+          $this->paymentService = new PaymentService();
+      }
+
+      public function checkout(float $amount): array {
+          $success = $this->paymentService->process($amount);
+          return [
+              'success' => $success,
+              'provider' => $this->paymentService->getProvider(),
+              'currency' => $this->paymentService->getCurrency(),
+          ];
+      }
+  }
+unrelated/csv_importer.php: |
+  <?php
+  // GARBAGE_SCR_002_MARKER_A
+  define('GARBAGE_SCR_002_IMPORT_B', 'unrelated-csv-importer');
+
+  function parse_csv_line(string $line): array {
+      return str_getcsv($line);
+  }
+
+  function validate_csv_headers(array $headers, array $required): bool {
+      return count(array_intersect($headers, $required)) === count($required);
+  }
+
+  $GARBAGE_SCR_002_DELIM_C = 'unused-delimiter';
+unrelated/zip_archiver.php: |
+  <?php
+  // GARBAGE_SCR_002_MARKER_D
+  define('GARBAGE_SCR_002_ZIP_E', 'unrelated-zip-config');
+
+  class ZipArchiver {
+      public function compress(array $files, string $output): string {
+          return $output . '.zip';
+      }
+
+      public function extract(string $archive, string $destination): array {
+          return [];
+      }
+  }

@@ -1,0 +1,134 @@
+internal/models/base.go: |
+  package models
+
+  import "time"
+
+  type BaseModel struct {
+      ID        int64     `json:"id" db:"id"`
+      CreatedAt time.Time `json:"created_at" db:"created_at"`
+      UpdatedAt time.Time `json:"updated_at" db:"updated_at"`
+  }
+
+  func (b *BaseModel) GetID() int64 {
+      return b.ID
+  }
+
+  func (b *BaseModel) SetID(id int64) {
+      b.ID = id
+  }
+
+  func (b *BaseModel) Touch() {
+      b.UpdatedAt = time.Now()
+  }
+
+  type SoftDelete struct {
+      DeletedAt *time.Time `json:"deleted_at,omitempty" db:"deleted_at"`
+      IsDeleted bool       `json:"is_deleted" db:"is_deleted"`
+  }
+
+  func (s *SoftDelete) MarkDeleted() {
+      now := time.Now()
+      s.DeletedAt = &now
+      s.IsDeleted = true
+  }
+
+  func (s *SoftDelete) Restore() {
+      s.DeletedAt = nil
+      s.IsDeleted = false
+  }
+
+  type Auditable struct {
+      CreatedBy string `json:"created_by" db:"created_by"`
+      UpdatedBy string `json:"updated_by" db:"updated_by"`
+  }
+
+  func (a *Auditable) SetCreator(userID string) {
+      a.CreatedBy = userID
+      a.UpdatedBy = userID
+  }
+
+  func (a *Auditable) SetUpdater(userID string) {
+      a.UpdatedBy = userID
+  }
+
+  type Versionable struct {
+      Version int `json:"version" db:"version"`
+  }
+
+  func (v *Versionable) IncrementVersion() {
+      v.Version++
+  }
+internal/models/user.go: |
+  package models
+
+  type User struct {
+      Name  string `json:"name" db:"name"`
+      Email string `json:"email" db:"email"`
+  }
+internal/unrelated/notifications/email_sender.go: |
+  package notifications
+
+  import "context"
+
+  const GARBAGE_GO_EMAIL_SENDER_A1B2C3 = "email_garbage_marker"
+
+  type GARBAGE_GO_TYPE_SMTP_D4E5F6 struct {
+      host     string
+      port     int
+      username string
+      password string
+  }
+
+  func GARBAGE_GO_FUNC_EMAIL_G7H8I9() string {
+      return "GARBAGE_GO_EMAIL_UNUSED_J0K1L2"
+  }
+
+  type EmailConfig struct {
+      SMTPHost     string
+      SMTPPort     int
+      FromAddress  string
+      FromName     string
+      TLSEnabled   bool
+  }
+
+  func GARBAGE_GO_FUNC_SEND_EMAIL_M3N4O5(ctx context.Context, to string) error {
+      println("GARBAGE_GO_EMAIL_OUTPUT_P6Q7R8")
+      return nil
+  }
+internal/unrelated/notifications/sms_gateway.go: |
+  package notifications
+
+  const GARBAGE_GO_SMS_GATEWAY_S9T0U1 = "sms_garbage"
+
+  type GARBAGE_GO_TYPE_TWILIO_V2W3X4 struct {
+      accountSID string
+      authToken  string
+  }
+
+  func GARBAGE_GO_FUNC_SMS_Y5Z6A7() {
+      println("GARBAGE_GO_SMS_OUTPUT_B8C9D0")
+  }
+
+  type SMSConfig struct {
+      AccountSID   string
+      AuthToken    string
+      FromNumber   string
+      MessagingServiceSID string
+  }
+
+  func GARBAGE_GO_FUNC_SEND_SMS_E1F2G3(to, message string) error {
+      return nil
+  }
+internal/unrelated/notifications/push_service.go: |
+  package notifications
+
+  const GARBAGE_GO_PUSH_SERVICE_H4I5J6 = "push_garbage"
+
+  type GARBAGE_GO_TYPE_FCM_K7L8M9 struct {
+      apiKey    string
+      projectID string
+  }
+
+  func GARBAGE_GO_FUNC_PUSH_N0O1P2() {
+      println("GARBAGE_GO_PUSH_OUTPUT_Q3R4S5")
+  }

@@ -1,0 +1,142 @@
+include/algorithm/algorithm.hpp: |
+  #pragma once
+  #include <type_traits>
+  #include <utility>
+  #include <functional>
+
+  namespace app::algorithm {
+
+  template<typename T>
+  T maxValue(T a, T b) {
+      return (a > b) ? a : b;
+  }
+
+  template<typename T>
+  T minValue(T a, T b) {
+      return (a < b) ? a : b;
+  }
+
+  template<typename T>
+  T clamp(T value, T minVal, T maxVal) {
+      return maxValue(minVal, minValue(value, maxVal));
+  }
+
+  template<typename T>
+  void swap(T& a, T& b) noexcept(std::is_nothrow_move_constructible_v<T>) {
+      T temp = std::move(a);
+      a = std::move(b);
+      b = std::move(temp);
+  }
+
+  template<typename Iterator, typename T>
+  Iterator find(Iterator begin, Iterator end, const T& value) {
+      for (auto it = begin; it != end; ++it) {
+          if (*it == value) {
+              return it;
+          }
+      }
+      return end;
+  }
+
+  template<typename Iterator, typename Predicate>
+  Iterator findIf(Iterator begin, Iterator end, Predicate pred) {
+      for (auto it = begin; it != end; ++it) {
+          if (pred(*it)) {
+              return it;
+          }
+      }
+      return end;
+  }
+
+  template<typename Iterator, typename Func>
+  void forEach(Iterator begin, Iterator end, Func func) {
+      for (auto it = begin; it != end; ++it) {
+          func(*it);
+      }
+  }
+
+  template<typename T, typename Compare = std::less<T>>
+  bool isSorted(const T* arr, size_t size, Compare comp = Compare{}) {
+      for (size_t i = 1; i < size; ++i) {
+          if (comp(arr[i], arr[i - 1])) {
+              return false;
+          }
+      }
+      return true;
+  }
+
+  }
+include/unrelated/config_loader.hpp: |
+  #pragma once
+  // GARBAGE_CPP_CONFIG_262_001
+  #define GARBAGE_CPP_CONFIG_VERSION_262_002 "1.0.0"
+
+  namespace app::unrelated::config {
+
+  // GARBAGE_CPP_CONFIG_ENTRY_262_003
+  struct ConfigEntry {
+      const char* key;
+      const char* value;
+      // GARBAGE_CPP_CONFIG_TYPE_262_004
+  };
+
+  // GARBAGE_CPP_CONFIG_LOADER_262_005
+  class ConfigLoader {
+  public:
+      // GARBAGE_CPP_CONFIG_LOAD_262_006
+      bool loadFromFile(const char* path) {
+          // GARBAGE_CPP_CONFIG_LOAD_IMPL_262_007
+          return false;
+      }
+
+      // GARBAGE_CPP_CONFIG_GET_262_008
+      const char* getValue(const char* key) {
+          // GARBAGE_CPP_CONFIG_GET_IMPL_262_009
+          return nullptr;
+      }
+
+      // GARBAGE_CPP_CONFIG_SET_262_010
+      void setValue(const char* key, const char* value) {
+          // GARBAGE_CPP_CONFIG_SET_IMPL_262_011
+      }
+  };
+
+  }
+src/unrelated/logger_backend.cpp: |
+  // GARBAGE_CPP_LOGGER_262_012
+  #include <cstdio>
+
+  namespace app::unrelated::logging {
+
+  // GARBAGE_CPP_LOGGER_LEVEL_262_013
+  enum class LogLevel {
+      Debug,
+      Info,
+      Warning,
+      Error,
+      Fatal
+  };
+
+  // GARBAGE_CPP_LOGGER_BACKEND_262_014
+  class LoggerBackend {
+  public:
+      // GARBAGE_CPP_LOGGER_WRITE_262_015
+      void write(LogLevel level, const char* message) {
+          // GARBAGE_CPP_LOGGER_WRITE_IMPL_262_016
+      }
+
+      // GARBAGE_CPP_LOGGER_FLUSH_262_017
+      void flush() {
+          // GARBAGE_CPP_LOGGER_FLUSH_IMPL_262_018
+      }
+
+      // GARBAGE_CPP_LOGGER_ROTATE_262_019
+      void rotateLog() {
+          // GARBAGE_CPP_LOGGER_ROTATE_IMPL_262_020
+      }
+  };
+
+  }
+src/math.cpp: |
+  #include <iostream>
+  int main() { return 0; }

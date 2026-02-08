@@ -1,0 +1,18 @@
+must_include_files:
+  - app/Models/User.php
+must_include_content:
+  - |
+    public function addPost(Post $post): void
+must_not_include:
+  - GARBAGE_PHP_017_TIMEOUT_A
+  - GARBAGE_PHP_017_RETRIES_B
+  - GARBAGE_PHP_017_CONTENT_TYPE_C
+  - GARBAGE_PHP_017_SIGNATURE_ALG_D
+  - GARBAGE_PHP_017_COMPRESSION_LEVEL_E
+  - GARBAGE_PHP_017_MAX_FILE_SIZE_F
+  - GARBAGE_PHP_017_ENCRYPT_G
+  - GARBAGE_PHP_017_BUFFER_SIZE_H
+  - GarbageWebhookSender
+  - GarbageZipArchiver
+  - garbage_webhook_sender.php
+  - garbage_zip_archiver.php

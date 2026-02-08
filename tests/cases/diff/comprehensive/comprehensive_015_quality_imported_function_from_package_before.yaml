@@ -1,0 +1,42 @@
+pkg/__init__.py: |
+  from .helpers import compute_square, compute_cube
+
+pkg/helpers.py: |
+  def compute_square(x):
+      return x ** 2
+
+  def compute_cube(x):
+      return x ** 3
+
+  def compute_power(x, n):
+      return x ** n
+
+  def clamp(value, minimum, maximum):
+      return max(minimum, min(value, maximum))
+
+src/main.py: |
+  result = 0
+
+  def process_input(value):
+      return int(value)
+
+  def display_result(result):
+      print(f"Result: {result}")
+
+garbage_math_extension.py: |
+  GARBAGE_COMP_015_PRECISION_MODE_A = "arbitrary"
+  GARBAGE_COMP_015_ROUNDING_RULE_B = "banker"
+
+  class GarbageMathExtension:
+      GARBAGE_COMP_015_OVERFLOW_CHECK_C = True
+      def extend(self):
+          pass
+
+garbage_numeric_parser.py: |
+  GARBAGE_COMP_015_LOCALE_FORMAT_D = "decimal_comma"
+  GARBAGE_COMP_015_SCIENTIFIC_E = "notation"
+
+  class GarbageNumericParser:
+      GARBAGE_COMP_015_STRICT_MODE_F = False
+      def parse(self):
+          pass

@@ -1,0 +1,58 @@
+handlers/base.py: |
+  class BaseHandler:
+      def __init__(self):
+          self.middlewares = []
+
+      def handle(self, request: dict) -> dict:
+          return {"status": "base"}
+
+      def setup(self) -> None:
+          pass
+
+      def add_middleware(self, middleware) -> None:
+          self.middlewares.append(middleware)
+
+      def run_middlewares(self, request: dict) -> dict:
+          result = request
+          for mw in self.middlewares:
+              result = mw(result)
+          return result
+custom_handler.py: |
+  def placeholder():
+      pass
+garbage/recipe_book_GARBAGE_DEP_007_RECIPE_A.py: |
+  def parse_ingredient_GARBAGE_DEP_007_RECIPE_A(line: str) -> dict:
+      parts = line.split()
+      return {"amount": parts[0], "unit": parts[1], "name": " ".join(parts[2:])}
+
+  def scale_recipe_GARBAGE_DEP_007_RECIPE_A(ingredients: list, factor: float) -> list:
+      return [{"amount": float(i["amount"]) * factor, **i} for i in ingredients]
+
+  class CookBook_GARBAGE_DEP_007_RECIPE_A:
+      def __init__(self):
+          self.recipes = {}
+
+      def add_recipe(self, name: str, ingredients: list) -> None:
+          self.recipes[name] = ingredients
+
+      def get_shopping_list(self) -> list:
+          items = []
+          for ingredients in self.recipes.values():
+              items.extend(ingredients)
+          return items
+garbage/bird_watcher_GARBAGE_DEP_007_BIRD_B.py: |
+  def identify_bird_GARBAGE_DEP_007_BIRD_B(color: str, size: str) -> str:
+      if color == "red" and size == "small":
+          return "Cardinal"
+      return "Unknown"
+
+  def migration_season_GARBAGE_DEP_007_BIRD_B(species: str) -> str:
+      seasons = {"Swallow": "spring", "Goose": "autumn"}
+      return seasons.get(species, "unknown")
+
+  class BirdLog_GARBAGE_DEP_007_BIRD_B:
+      def __init__(self):
+          self.sightings = []
+
+      def record(self, species: str, location: str) -> None:
+          self.sightings.append({"species": species, "location": location})

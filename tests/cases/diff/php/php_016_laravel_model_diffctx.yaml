@@ -1,0 +1,18 @@
+must_include_files:
+  - app/Models/User.php
+must_include_content:
+  - |
+    class User extends BaseModel
+must_not_include:
+  - GARBAGE_PHP_016_MAX_URLS_A
+  - GARBAGE_PHP_016_PRIORITY_B
+  - GARBAGE_PHP_016_CHANGEFREQ_C
+  - GARBAGE_PHP_016_LASTMOD_D
+  - GARBAGE_PHP_016_PRIMARY_E
+  - GARBAGE_PHP_016_SECONDARY_F
+  - GARBAGE_PHP_016_ACCENT_G
+  - GARBAGE_PHP_016_STEP_H
+  - GarbageSitemapBuilder
+  - GarbageColorPalette
+  - garbage_sitemap_builder.php
+  - garbage_color_palette.php

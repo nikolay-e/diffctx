@@ -1,0 +1,29 @@
+StringExtensions.swift: |
+  extension String {
+      func isValidEmail() -> Bool {
+          let pattern = "[A-Z0-9a-z._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}"
+          return self.range(of: pattern, options: .regularExpression) != nil
+      }
+
+      var trimmed: String {
+          trimmingCharacters(in: .whitespacesAndNewlines)
+      }
+  }
+Validator.swift: |
+  struct Validator {
+      func validateEmail(_ email: String) -> Bool {
+          return email.trimmed.isValidEmail()
+      }
+  }
+GarbageProtocolDefault.swift: |
+  class GarbageProtocolDefault {
+      static let GARBAGE_JVM_064_PROTOCOL_MARKER_A = "marker"
+      static let GARBAGE_JVM_064_DEFAULT_MARKER_B = "marker"
+      func noop() {}
+  }
+GarbageConformance.swift: |
+  class GarbageConformance {
+      static let GARBAGE_JVM_064_CONFORM_MARKER_C = "marker"
+      static let GARBAGE_JVM_064_WITNESS_MARKER_D = "marker"
+      func noop() {}
+  }

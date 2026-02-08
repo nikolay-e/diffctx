@@ -1,0 +1,22 @@
+Repository.swift: |
+  protocol Repository {
+      associatedtype Entity
+      func save(_ entity: Entity)
+      func find(id: String) -> Entity?
+      func delete(id: String)
+  }
+CacheService.swift: |
+  // Initial
+  class CacheService {}
+GarbageAssocType.swift: |
+  class GarbageAssocType {
+      static let GARBAGE_JVM_065_ASSOC_MARKER_A = "marker"
+      static let GARBAGE_JVM_065_TYPE_MARKER_B = "marker"
+      func noop() {}
+  }
+GarbageOpaqueWrapper.swift: |
+  class GarbageOpaqueWrapper {
+      static let GARBAGE_JVM_065_OPAQUE_MARKER_C = "marker"
+      static let GARBAGE_JVM_065_SOME_MARKER_D = "marker"
+      func noop() {}
+  }

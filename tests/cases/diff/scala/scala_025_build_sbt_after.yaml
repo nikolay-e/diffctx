@@ -1,0 +1,23 @@
+build.sbt: |
+  name := "myapp"
+  version := "0.1.0"
+  scalaVersion := "3.3.0"
+
+  libraryDependencies ++= Seq(
+    "org.typelevel" %% "cats-core" % "2.9.0",
+    "org.typelevel" %% "cats-effect" % "3.5.0",
+    "co.fs2" %% "fs2-core" % "3.7.0",
+    "org.scalatest" %% "scalatest" % "3.2.15" % Test
+  )
+
+  scalacOptions ++= Seq(
+    "-deprecation",
+    "-feature",
+    "-Xfatal-warnings"
+  )
+src/main/scala/Main.scala: |
+  import cats.syntax.all._
+
+  object Main extends App {
+    println("Hello")
+  }

@@ -1,0 +1,48 @@
+StringExtensions.cs: |
+  public static class StringExtensions
+  {
+      public static bool IsValidEmail(this string s)
+      {
+          return !string.IsNullOrEmpty(s) && s.Contains("@") && s.Contains(".");
+      }
+
+      public static string Truncate(this string s, int maxLength)
+      {
+          if (string.IsNullOrEmpty(s) || s.Length <= maxLength)
+              return s;
+          return s.Substring(0, maxLength) + "...";
+      }
+  }
+Validator.cs: |
+  class Validator { }
+GarbageColorParser.cs: |
+  public static class GarbageColorParser
+  {
+      public const string GARBAGE_JVM_017_PARSE_MARKER_A = "parse_rgb";
+      public const string GARBAGE_JVM_017_FORMAT_MARKER_B = "format_rgb";
+
+      public static int ParseHex(string hex) => Convert.ToInt32(hex, 16);
+  }
+GarbageFileScanner.cs: |
+  public class GarbageFileScanner
+  {
+      public const string GARBAGE_JVM_017_SCAN_MARKER_C = "scan_dir";
+      public const string GARBAGE_JVM_017_FILTER_MARKER_D = "filter_ext";
+
+      public int FileCount { get; private set; }
+      public void Scan(string path) { FileCount++; }
+  }
+GarbageConverter.cs: |
+  public class GarbageConverter
+  {
+      public const string GARBAGE_JVM_017_CONVERT_MARKER_A = "marker";
+      public const string GARBAGE_JVM_017_PARSE_MARKER_B = "marker";
+      public void Noop() {}
+  }
+GarbageEncoder.cs: |
+  public class GarbageEncoder
+  {
+      public const string GARBAGE_JVM_017_ENCODE_MARKER_C = "marker";
+      public const string GARBAGE_JVM_017_DECODE_MARKER_D = "marker";
+      public void Noop() {}
+  }

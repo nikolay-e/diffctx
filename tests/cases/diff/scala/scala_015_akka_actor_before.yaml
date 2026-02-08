@@ -1,0 +1,14 @@
+Messages.scala: 'sealed trait UserMessage
+
+  case class CreateUser(name: String) extends UserMessage
+
+  case class DeleteUser(id: String) extends UserMessage
+
+  case class GetUser(id: String) extends UserMessage
+
+  case class UserCreated(id: String, name: String)
+
+  '
+UserActor.scala: 'class UserActor {}
+
+  '

@@ -1,0 +1,50 @@
+.gitlab-ci.yml: |
+  stages:
+    - build
+    - deploy
+
+  build:
+    stage: build
+    script:
+      - npm ci
+      - npm run build
+
+.gitlab/ci/deploy.yml: |
+  deploy:
+    stage: deploy
+    script:
+      - ./deploy.sh
+    environment:
+      name: production
+
+deploy.sh: |
+  #!/bin/bash
+  set -e
+  echo "Deploying to production..."
+
+package.json: |
+  {
+    "name": "gitlab-include-app",
+    "version": "1.0.0",
+    "scripts": {
+      "build": "rollup -c"
+    }
+  }
+
+garbage_config_loader.ts: |
+  const GARBAGE_CICD_DOCS_032_LOADER_MARKER_A = "yaml";
+  const GARBAGE_CICD_DOCS_032_PARSER_MARKER_B = "js-yaml";
+
+  class GarbageConfigLoader {
+    static GARBAGE_CICD_DOCS_032_MERGE_MARKER_C = true;
+    load(): void {}
+  }
+
+garbage_config_validator.ts: |
+  const GARBAGE_CICD_DOCS_032_VALIDATOR_MARKER_D = "ajv";
+  const GARBAGE_CICD_DOCS_032_SCHEMA_MARKER_E = "json-schema";
+
+  class GarbageConfigValidator {
+    static GARBAGE_CICD_DOCS_032_STRICT_MARKER_F = false;
+    validate(): boolean { return true; }
+  }

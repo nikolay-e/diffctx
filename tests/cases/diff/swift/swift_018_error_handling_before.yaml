@@ -1,0 +1,24 @@
+AppError.swift: |
+  enum AppError: Error {
+      case networkError(String)
+      case validationError(String)
+      case notFound
+      case unauthorized
+
+      var localizedDescription: String {
+          switch self {
+          case .networkError(let message):
+              return "Network error: \(message)"
+          case .validationError(let message):
+              return "Validation error: \(message)"
+          case .notFound:
+              return "Resource not found"
+          case .unauthorized:
+              return "Unauthorized access"
+          }
+      }
+  }
+  // unused_marker_67890
+UserService.swift: |
+  // Initial
+  class UserService {}

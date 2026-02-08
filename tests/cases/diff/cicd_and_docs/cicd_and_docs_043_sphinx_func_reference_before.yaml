@@ -1,0 +1,41 @@
+docs/api.rst: |
+  API Reference
+  =============
+
+  Functions
+  ---------
+
+  .. autofunction:: mylib.process
+
+  See :func:`mylib.process` for data processing.
+
+src/mylib/__init__.py: |
+  from .core import process
+
+  __all__ = ['process']
+
+src/mylib/core.py: |
+  def process(data):
+      return [x * 2 for x in data]
+
+conf.py: |
+  project = 'mylib'
+  extensions = ['sphinx.ext.autodoc']
+
+garbage_sphinx_builder.ts: |
+  const GARBAGE_CICD_DOCS_043_BUILDER_MARKER_A = "html";
+  const GARBAGE_CICD_DOCS_043_FORMAT_MARKER_B = "rst";
+
+  class GarbageSphinxBuilder {
+    static GARBAGE_CICD_DOCS_043_PARALLEL_MARKER_C = 4;
+    build(): void {}
+  }
+
+garbage_sphinx_indexer.ts: |
+  const GARBAGE_CICD_DOCS_043_INDEXER_MARKER_D = "genindex";
+  const GARBAGE_CICD_DOCS_043_SEARCH_MARKER_E = "whoosh";
+
+  class GarbageSphinxIndexer {
+    static GARBAGE_CICD_DOCS_043_STEMMER_MARKER_F = "english";
+    index(): void {}
+  }

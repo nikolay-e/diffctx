@@ -1,0 +1,243 @@
+include/math/vector.hpp: |
+  #pragma once
+  #include <cmath>
+  #include <ostream>
+  #include <stdexcept>
+  #include <array>
+  #include <initializer_list>
+
+  namespace app::math {
+
+  template<typename T, size_t N>
+  class Vector {
+  public:
+      Vector() : data_{} {}
+
+      Vector(std::initializer_list<T> init) {
+          size_t i = 0;
+          for (auto val : init) {
+              if (i >= N) break;
+              data_[i++] = val;
+          }
+      }
+
+      T& operator[](size_t i) {
+          if (i >= N) throw std::out_of_range("Index out of range");
+          return data_[i];
+      }
+
+      const T& operator[](size_t i) const {
+          if (i >= N) throw std::out_of_range("Index out of range");
+          return data_[i];
+      }
+
+      Vector operator+(const Vector& other) const {
+          Vector result;
+          for (size_t i = 0; i < N; ++i) {
+              result.data_[i] = data_[i] + other.data_[i];
+          }
+          return result;
+      }
+
+      Vector operator-(const Vector& other) const {
+          Vector result;
+          for (size_t i = 0; i < N; ++i) {
+              result.data_[i] = data_[i] - other.data_[i];
+          }
+          return result;
+      }
+
+      Vector operator*(T scalar) const {
+          Vector result;
+          for (size_t i = 0; i < N; ++i) {
+              result.data_[i] = data_[i] * scalar;
+          }
+          return result;
+      }
+
+      Vector operator/(T scalar) const {
+          Vector result;
+          for (size_t i = 0; i < N; ++i) {
+              result.data_[i] = data_[i] / scalar;
+          }
+          return result;
+      }
+
+      Vector& operator+=(const Vector& other) {
+          for (size_t i = 0; i < N; ++i) {
+              data_[i] += other.data_[i];
+          }
+          return *this;
+      }
+
+      Vector& operator-=(const Vector& other) {
+          for (size_t i = 0; i < N; ++i) {
+              data_[i] -= other.data_[i];
+          }
+          return *this;
+      }
+
+      Vector& operator*=(T scalar) {
+          for (size_t i = 0; i < N; ++i) {
+              data_[i] *= scalar;
+          }
+          return *this;
+      }
+
+      Vector operator-() const {
+          Vector result;
+          for (size_t i = 0; i < N; ++i) {
+              result.data_[i] = -data_[i];
+          }
+          return result;
+      }
+
+      bool operator==(const Vector& other) const {
+          for (size_t i = 0; i < N; ++i) {
+              if (data_[i] != other.data_[i]) return false;
+          }
+          return true;
+      }
+
+      bool operator!=(const Vector& other) const {
+          return !(*this == other);
+      }
+
+      T dot(const Vector& other) const {
+          T result = T{};
+          for (size_t i = 0; i < N; ++i) {
+              result += data_[i] * other.data_[i];
+          }
+          return result;
+      }
+
+      T lengthSquared() const { return dot(*this); }
+
+      double length() const { return std::sqrt(static_cast<double>(lengthSquared())); }
+
+      Vector normalized() const {
+          double len = length();
+          if (len < 1e-10) return *this;
+          return *this / static_cast<T>(len);
+      }
+
+      static constexpr size_t size() { return N; }
+
+      T* begin() { return data_.data(); }
+      T* end() { return data_.data() + N; }
+      const T* begin() const { return data_.data(); }
+      const T* end() const { return data_.data() + N; }
+
+  private:
+      std::array<T, N> data_;
+  };
+
+  template<typename T, size_t N>
+  std::ostream& operator<<(std::ostream& os, const Vector<T, N>& v) {
+      os << "(";
+      for (size_t i = 0; i < N; ++i) {
+          if (i > 0) os << ", ";
+          os << v[i];
+      }
+      os << ")";
+      return os;
+  }
+
+  template<typename T, size_t N>
+  Vector<T, N> operator*(T scalar, const Vector<T, N>& v) {
+      return v * scalar;
+  }
+
+  using Vec2 = Vector<double, 2>;
+  using Vec3 = Vector<double, 3>;
+  using Vec4 = Vector<double, 4>;
+  using Vec2i = Vector<int, 2>;
+  using Vec3i = Vector<int, 3>;
+
+  }
+include/unrelated/json_builder.hpp: |
+  #pragma once
+  // GARBAGE_CPP_JSON_278_001
+  #define GARBAGE_CPP_JSON_DEPTH_278_002 64
+
+  namespace app::unrelated::json {
+
+  // GARBAGE_CPP_JSON_TYPE_278_003
+  enum class JsonType {
+      Null, Boolean, Number, String, Array, Object
+  };
+
+  // GARBAGE_CPP_JSON_VALUE_278_004
+  struct JsonValue {
+      JsonType type;
+      // GARBAGE_CPP_JSON_DATA_278_005
+  };
+
+  // GARBAGE_CPP_JSON_BUILDER_278_006
+  class JsonBuilder {
+  public:
+      // GARBAGE_CPP_JSON_OBJ_278_007
+      JsonBuilder& beginObject() {
+          // GARBAGE_CPP_JSON_OBJ_IMPL_278_008
+          return *this;
+      }
+
+      // GARBAGE_CPP_JSON_ARR_278_009
+      JsonBuilder& beginArray() {
+          // GARBAGE_CPP_JSON_ARR_IMPL_278_010
+          return *this;
+      }
+
+      // GARBAGE_CPP_JSON_KEY_278_011
+      JsonBuilder& key(const char* k) {
+          // GARBAGE_CPP_JSON_KEY_IMPL_278_012
+          return *this;
+      }
+
+      // GARBAGE_CPP_JSON_VAL_278_013
+      JsonBuilder& value(int v) {
+          // GARBAGE_CPP_JSON_VAL_IMPL_278_014
+          return *this;
+      }
+  };
+
+  }
+src/unrelated/markdown_parser.cpp: |
+  // GARBAGE_CPP_MD_278_015
+  #include <string>
+  #include <vector>
+
+  namespace app::unrelated::markdown {
+
+  // GARBAGE_CPP_MD_NODE_278_016
+  enum class NodeType {
+      Paragraph, Heading, List, Code, Quote
+  };
+
+  // GARBAGE_CPP_MD_ELEMENT_278_017
+  struct MarkdownNode {
+      NodeType type;
+      std::string content;
+      // GARBAGE_CPP_MD_CHILDREN_278_018
+  };
+
+  // GARBAGE_CPP_MD_PARSER_278_019
+  class MarkdownParser {
+  public:
+      // GARBAGE_CPP_MD_PARSE_278_020
+      std::vector<MarkdownNode> parse(const std::string& text) {
+          // GARBAGE_CPP_MD_PARSE_IMPL_278_021
+          return {};
+      }
+
+      // GARBAGE_CPP_MD_TO_HTML_278_022
+      std::string toHtml(const std::vector<MarkdownNode>& nodes) {
+          // GARBAGE_CPP_MD_HTML_IMPL_278_023
+          return "";
+      }
+  };
+
+  }
+src/physics.cpp: |
+  #include <iostream>
+  int main() { return 0; }

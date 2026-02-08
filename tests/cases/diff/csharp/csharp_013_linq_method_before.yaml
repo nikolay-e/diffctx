@@ -1,0 +1,32 @@
+Models/Order.cs: |
+  namespace MyApp.Models;
+
+  public class Order
+  {
+      public int Id { get; set; }
+      public int CustomerId { get; set; }
+      public decimal Total { get; set; }
+      public DateTime Date { get; set; }
+  }
+Services/OrderService.cs: |
+  namespace MyApp.Services;
+
+  public class OrderService { }
+Unrelated/SmsGateway.cs: |
+  namespace MyApp.Unrelated;
+
+  public class SmsGateway
+  {
+      private const string GARBAGE_CS_013_SMS_GATEWAY_A = "sms_gateway_marker";
+
+      public void SendSms(string phone, string text) => _ = GARBAGE_CS_013_SMS_GATEWAY_A + phone;
+  }
+Unrelated/WebhookDispatcher.cs: |
+  namespace MyApp.Unrelated;
+
+  public class WebhookDispatcher
+  {
+      public const string GARBAGE_CS_013_WEBHOOK_DISPATCHER_B = "webhook_dispatcher_marker";
+
+      public void Dispatch(string url) => _ = GARBAGE_CS_013_WEBHOOK_DISPATCHER_B + url;
+  }

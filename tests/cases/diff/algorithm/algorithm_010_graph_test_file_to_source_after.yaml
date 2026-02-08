@@ -1,0 +1,83 @@
+src/calculator/operations.py: |
+  from typing import Union, List
+  from decimal import Decimal
+
+  Number = Union[int, float, Decimal]
+
+  def add(a: Number, b: Number) -> float:
+      return float(a) + float(b)
+
+  def subtract(a: Number, b: Number) -> float:
+      return float(a) - float(b)
+
+  def multiply(a: Number, b: Number) -> float:
+      return float(a) * float(b)
+
+  def divide(a: Number, b: Number) -> float:
+      if b == 0:
+          raise ValueError("Cannot divide by zero")
+      return float(a) / float(b)
+
+  def average(numbers: List[Number]) -> float:
+      if not numbers:
+          raise ValueError("Cannot calculate average of empty list")
+      return sum(float(n) for n in numbers) / len(numbers)
+
+  def safe_divide(a: Number, b: Number, default: float = 0.0) -> float:
+      try:
+          return divide(a, b)
+      except ValueError:
+          return default
+
+tests/test_operations.py: |
+  import pytest
+  from src.calculator.operations import add, subtract, multiply, divide, average, safe_divide
+
+  class TestAdd:
+      def test_add_integers(self):
+          assert add(1, 2) == 3.0
+
+      def test_add_floats(self):
+          assert add(1.5, 2.5) == 4.0
+
+      def test_add_negative(self):
+          assert add(-1, 1) == 0.0
+
+  class TestDivide:
+      def test_divide_integers(self):
+          assert divide(10, 2) == 5.0
+
+      def test_divide_by_zero(self):
+          with pytest.raises(ValueError):
+              divide(10, 0)
+
+  class TestSafeDivide:
+      def test_safe_divide_normal(self):
+          assert safe_divide(10, 2) == 5.0
+
+      def test_safe_divide_by_zero(self):
+          assert safe_divide(10, 0) == 0.0
+
+  class TestAverage:
+      def test_average_list(self):
+          assert average([1, 2, 3, 4, 5]) == 3.0
+
+garbage_fixtures.py: |
+  GARBAGE_ALGO_010_FIXTURE_MARKER_A = "fixture"
+  GARBAGE_ALGO_010_SETUP_MARKER_B = True
+
+  class TestFixtures:
+      GARBAGE_ALGO_010_DATA_MARKER_C = []
+
+      def setup(self):
+          pass
+
+garbage_mocks.py: |
+  GARBAGE_ALGO_010_MOCK_MARKER_D = "mock"
+  GARBAGE_ALGO_010_PATCH_MARKER_E = True
+
+  class MockCalculator:
+      GARBAGE_ALGO_010_FAKE_MARKER_F = True
+
+      def add(self, a, b):
+          return 0

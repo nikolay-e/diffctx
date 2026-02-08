@@ -1,0 +1,74 @@
+.treemapperignore: |
+  *.tmp
+  *.log
+  build/
+
+main.py: |
+  from pathlib import Path
+  from typing import Any
+
+  class FileProcessor:
+      def __init__(self, base_dir: str = "."):
+          self.base_dir = Path(base_dir)
+          self._processed: list[str] = []
+
+      def process_file(self, filename: str) -> dict[str, Any]:
+          path = self.base_dir / filename
+          size = path.stat().st_size if path.exists() else 0
+          self._processed.append(filename)
+          return {"file": filename, "size": size, "status": "processed"}
+
+      def get_processed_count(self) -> int:
+          return len(self._processed)
+
+      def get_processed_files(self) -> list[str]:
+          return list(self._processed)
+
+  def create_processor(base_dir: str = ".") -> FileProcessor:
+      return FileProcessor(base_dir)
+
+cache.tmp: |
+  temporary cached data that should be ignored by treemapper
+  session_id=abc123
+  last_access=2024-06-15
+
+debug.log: |
+  [2024-01-01 00:00:00] INFO: Application started
+  [2024-01-01 00:01:00] DEBUG: Processing request
+  [2024-01-01 00:02:00] ERROR: Something failed
+  [2024-06-15 10:00:00] INFO: Application restarted
+
+garbage_archiver.py: |
+  GARBAGE_OPS_006_ARCHIVE_A = "archiver module marker"
+  GARBAGE_OPS_006_COMPRESS_B = "compression marker"
+
+  class FileArchiver:
+      GARBAGE_OPS_006_TAR_C = "tar format marker"
+
+      def __init__(self, archive_dir: str = "/tmp/archives"):
+          self.archive_dir = archive_dir
+
+      def archive(self, files: list[str]) -> str:
+          return f"{self.archive_dir}/archive.tar.gz"
+
+      def extract(self, archive_path: str) -> list[str]:
+          GARBAGE_OPS_006_UNPACK_D = "unpack marker"
+          return []
+
+garbage_watcher.py: |
+  GARBAGE_OPS_006_WATCH_E = "file watcher marker"
+  GARBAGE_OPS_006_INOTIFY_F = "inotify config marker"
+
+  class FileWatcher:
+      GARBAGE_OPS_006_DEBOUNCE_G = True
+
+      def __init__(self, watch_dir: str = "."):
+          self.watch_dir = watch_dir
+          self._handlers: dict[str, callable] = {}
+
+      def on_change(self, pattern: str, handler: callable) -> None:
+          self._handlers[pattern] = handler
+
+      def start(self) -> None:
+          GARBAGE_OPS_006_POLL_H = "polling fallback marker"
+          pass

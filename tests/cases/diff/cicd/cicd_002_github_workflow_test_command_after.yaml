@@ -1,0 +1,93 @@
+.github/workflows/test.yml: |
+  name: Test
+  on:
+    push:
+      branches: [main, develop]
+    pull_request:
+      branches: [main]
+  jobs:
+    test:
+      runs-on: ubuntu-latest
+      strategy:
+        matrix:
+          python-version: ['3.10', '3.11', '3.12']
+      steps:
+        - uses: actions/checkout@v4
+        - name: Set up Python ${{ matrix.python-version }}
+          uses: actions/setup-python@v5
+          with:
+            python-version: ${{ matrix.python-version }}
+        - name: Install dependencies
+          run: pip install -e .[dev]
+        - name: Run tests with coverage
+          run: pytest tests/ --cov=src --cov-report=xml --cov-fail-under=80
+        - name: Upload coverage
+          uses: codecov/codecov-action@v4
+          with:
+            file: ./coverage.xml
+
+src/calculator.py: |
+  from typing import Union
+  from decimal import Decimal
+
+  Number = Union[int, float, Decimal]
+
+  def add(a: Number, b: Number) -> Number:
+      return a + b
+
+  def subtract(a: Number, b: Number) -> Number:
+      return a - b
+
+  def multiply(a: Number, b: Number) -> Number:
+      return a * b
+
+  def divide(a: Number, b: Number) -> Number:
+      if b == 0:
+          raise ValueError("Cannot divide by zero")
+      return a / b
+
+tests/test_calculator.py: |
+  import pytest
+  from src.calculator import add, subtract, multiply, divide
+
+  class TestAddition:
+      def test_addition_integers(self):
+          assert add(1, 2) == 3
+
+      def test_addition_floats(self):
+          assert add(1.5, 2.5) == 4.0
+
+      def test_addition_negative(self):
+          assert add(-1, 1) == 0
+
+  class TestSubtraction:
+      def test_subtraction_integers(self):
+          assert subtract(5, 3) == 2
+
+  class TestDivision:
+      def test_division_integers(self):
+          assert divide(10, 2) == 5
+
+      def test_division_by_zero(self):
+          with pytest.raises(ValueError):
+              divide(10, 0)
+
+garbage_benchmarks.py: |
+  GARBAGE_CICD_002_BENCH_MARKER_A = "benchmark"
+  GARBAGE_CICD_002_PERF_MARKER_B = True
+
+  class BenchmarkRunner:
+      GARBAGE_CICD_002_ITERATIONS_MARKER_C = 1000
+
+      def run(self) -> None:
+          pass
+
+garbage_fixtures.py: |
+  GARBAGE_CICD_002_FIXTURE_MARKER_D = "fixture"
+  GARBAGE_CICD_002_SETUP_MARKER_E = []
+
+  class TestFixtures:
+      GARBAGE_CICD_002_DATA_MARKER_F = {}
+
+      def setup(self) -> None:
+          pass

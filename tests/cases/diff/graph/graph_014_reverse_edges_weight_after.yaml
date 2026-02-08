@@ -1,0 +1,108 @@
+caller.py: |
+  from callee import helper, compute, validate, DataSource
+  from processor import process_result, format_output, ResultProcessor
+
+  def main():
+      raw = helper()
+      computed = compute(raw)
+      validated = validate(computed)
+      processed = process_result(validated)
+      return format_output(processed)
+
+  def main_with_caching():
+      processor = ResultProcessor()
+      source = DataSource()
+      raw = source.get_computed()
+      return processor.process(raw)
+
+  def orchestrate():
+      results = []
+      for i in range(3):
+          result = main()
+          results.append(result)
+      return aggregate(results)
+
+  def aggregate(items):
+      return {"total": len(items), "items": items}
+callee.py: |
+  def helper():
+      return fetch_data()
+
+  def fetch_data():
+      return {"raw": "data"}
+
+  def compute(data):
+      return {"computed": data}
+
+  def validate(data):
+      if not data:
+          raise ValueError("Invalid data")
+      return {"validated": data}
+
+  class DataSource:
+      def get(self):
+          return helper()
+
+      def get_computed(self):
+          return compute(self.get())
+processor.py: |
+  def process_result(data):
+      transformed = transform(data)
+      enriched = enrich(transformed)
+      return finalize(enriched)
+
+  def transform(data):
+      return {"transformed": data}
+
+  def enrich(data):
+      data["enriched"] = True
+      return data
+
+  def finalize(data):
+      data["finalized"] = True
+      return data
+
+  def format_output(data):
+      import json
+      return json.dumps(data, indent=2)
+
+  class ResultProcessor:
+      def __init__(self):
+          self.cache = {}
+
+      def process(self, data):
+          key = str(data)
+          if key in self.cache:
+              return self.cache[key]
+          result = process_result(data)
+          self.cache[key] = result
+          return result
+garbage/reverse_caller_GARBAGE_GRAPH_nop001.py: |
+  def reverse_main_GARBAGE_GRAPH_nop001():
+      return reverse_helper_GARBAGE_GRAPH_nop001()
+
+  def reverse_helper_GARBAGE_GRAPH_nop001():
+      return "reversed"
+
+  def reverse_compute_GARBAGE_GRAPH_nop001(x):
+      return x * -1
+garbage/chain_caller_GARBAGE_GRAPH_nop002.py: |
+  def chain_a_GARBAGE_GRAPH_nop002():
+      return chain_b_GARBAGE_GRAPH_nop002()
+
+  def chain_b_GARBAGE_GRAPH_nop002():
+      return chain_c_GARBAGE_GRAPH_nop002()
+
+  def chain_c_GARBAGE_GRAPH_nop002():
+      return "end of chain"
+garbage/bidirectional_GARBAGE_GRAPH_nop003.py: |
+  def bidi_func_a_GARBAGE_GRAPH_nop003():
+      return bidi_func_b_GARBAGE_GRAPH_nop003()
+
+  def bidi_func_b_GARBAGE_GRAPH_nop003():
+      if should_recurse_GARBAGE_GRAPH_nop003():
+          return bidi_func_a_GARBAGE_GRAPH_nop003()
+      return "done"
+
+  def should_recurse_GARBAGE_GRAPH_nop003():
+      return False

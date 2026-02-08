@@ -1,0 +1,14 @@
+templates/_helpers.tpl: |
+  {{- define "app.labels" -}}
+  app.kubernetes.io/name: {{ .Chart.Name }}
+  app.kubernetes.io/instance: {{ .Release.Name }}
+  {{- end }}
+templates/deployment.yaml: |
+  apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    labels:
+  {{ include "app.labels" . | indent 4 }}
+junk.md: |
+  garbage_marker_12345
+  unused_marker_67890

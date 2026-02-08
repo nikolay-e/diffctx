@@ -1,0 +1,72 @@
+include/hw/register_map.hpp: |
+  #pragma once
+  #include <cstdint>
+
+  namespace hw {
+
+  struct SpiRegisters {
+      volatile uint32_t control;
+      volatile uint32_t status;
+      volatile uint32_t data_out;
+      volatile uint32_t data_in;
+      volatile uint32_t clock_div;
+  };
+
+  constexpr uint32_t SPI_STATUS_BUSY = 0x01;
+  constexpr uint32_t SPI_STATUS_TX_EMPTY = 0x02;
+  constexpr uint32_t SPI_STATUS_RX_READY = 0x04;
+  constexpr uint32_t SPI_CONTROL_ENABLE = 0x01;
+  constexpr uint32_t SPI_CONTROL_RESET = 0x80;
+
+  SpiRegisters* getSpiBase(int channel);
+
+  }
+src/driver/spi_controller.cpp: |
+  #include <iostream>
+  int main() { return 0; }
+include/unrelated/json_formatter.hpp: |
+  #pragma once
+  // GARBAGE_CPP_015_JSON_A
+  #include <string>
+  #include <sstream>
+
+  namespace unrelated {
+
+  // GARBAGE_CPP_015_JSON_B
+  class JsonFormatter {
+  public:
+      void beginObject() { buffer_ << "{"; depth_++; }
+      void endObject() { depth_--; buffer_ << "}"; }
+      void addField(const std::string& key, const std::string& value) {
+          // GARBAGE_CPP_015_FIELD_C
+          buffer_ << "\"" << key << "\": \"" << value << "\"";
+      }
+      std::string toString() const { return buffer_.str(); }
+  private:
+      std::ostringstream buffer_;
+      int depth_ = 0;
+  };
+
+  }
+src/unrelated/string_pool.cpp: |
+  // GARBAGE_CPP_015_POOL_D
+  #include <string>
+  #include <unordered_set>
+
+  namespace unrelated {
+
+  // GARBAGE_CPP_015_POOL_E
+  class StringPool {
+  public:
+      const std::string& intern(const std::string& str) {
+          // GARBAGE_CPP_015_INTERN_F
+          auto [it, _] = pool_.insert(str);
+          return *it;
+      }
+      size_t size() const { return pool_.size(); }
+      void clear() { pool_.clear(); }
+  private:
+      std::unordered_set<std::string> pool_;
+  };
+
+  }

@@ -1,0 +1,11 @@
+service.py: |
+  class PaymentService:
+      def __init__(self):
+          self.payments = []
+
+      def process_payment(self):
+          self.validate()
+          return "processed with validation"
+
+      def validate(self):
+          return True

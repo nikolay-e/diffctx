@@ -1,0 +1,95 @@
+noxfile.py: |
+  import nox
+
+  @nox.session
+  def tests(session):
+      session.install("pytest")
+      session.run("pytest")
+
+src/api.py: |
+  from typing import List, Optional
+  from dataclasses import dataclass, field
+  from datetime import datetime
+
+  @dataclass
+  class User:
+      id: int
+      name: str
+      email: str
+      created_at: datetime = field(default_factory=datetime.now)
+
+  class UserRepository:
+      def __init__(self):
+          self._users: List[User] = []
+          self._next_id = 1
+
+      def get_users(self) -> List[User]:
+          return self._users.copy()
+
+      def get_user(self, user_id: int) -> Optional[User]:
+          for user in self._users:
+              if user.id == user_id:
+                  return user
+          return None
+
+      def create_user(self, name: str, email: str) -> User:
+          user = User(id=self._next_id, name=name, email=email)
+          self._users.append(user)
+          self._next_id += 1
+          return user
+
+      def delete_user(self, user_id: int) -> bool:
+          for i, user in enumerate(self._users):
+              if user.id == user_id:
+                  del self._users[i]
+                  return True
+          return False
+
+  def get_users() -> List[User]:
+      repo = UserRepository()
+      return repo.get_users()
+
+tests/test_api.py: |
+  import pytest
+  from src.api import UserRepository, get_users
+
+  class TestUserRepository:
+      def test_create_user(self):
+          repo = UserRepository()
+          user = repo.create_user("Alice", "alice@example.com")
+          assert user.name == "Alice"
+          assert user.id == 1
+
+      def test_get_users_empty(self):
+          repo = UserRepository()
+          assert repo.get_users() == []
+
+      def test_delete_user(self):
+          repo = UserRepository()
+          user = repo.create_user("Bob", "bob@example.com")
+          assert repo.delete_user(user.id) is True
+          assert repo.get_users() == []
+
+  def test_get_users_function():
+      users = get_users()
+      assert isinstance(users, list)
+
+garbage_auth.py: |
+  GARBAGE_CICD_014_AUTH_MARKER_A = "jwt"
+  GARBAGE_CICD_014_EXPIRY_MARKER_B = 3600
+
+  class GarbageAuthService:
+      GARBAGE_CICD_014_SECRET_MARKER_C = "secret"
+
+      def authenticate(self) -> bool:
+          return True
+
+garbage_session.py: |
+  GARBAGE_CICD_014_SESSION_MARKER_D = "redis"
+  GARBAGE_CICD_014_TTL_MARKER_E = 86400
+
+  class GarbageSessionManager:
+      GARBAGE_CICD_014_PREFIX_MARKER_F = "sess:"
+
+      def create(self) -> str:
+          return ""

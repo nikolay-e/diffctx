@@ -1,0 +1,85 @@
+src/Models/User.php: |
+  <?php
+  namespace App\Models;
+
+  class User {
+      private static array $users = [];
+      public int $id;
+      public string $name;
+      public string $email;
+
+      public function __construct(int $id, string $name, string $email) {
+          $this->id = $id;
+          $this->name = $name;
+          $this->email = $email;
+      }
+
+      public static function find(int $id): ?self {
+          return self::$users[$id] ?? null;
+      }
+
+      public static function create(string $name, string $email): self {
+          $id = count(self::$users) + 1;
+          $user = new self($id, $name, $email);
+          self::$users[$id] = $user;
+          return $user;
+      }
+
+      public static function all(): array {
+          return array_values(self::$users);
+      }
+
+      public static function count(): int {
+          return count(self::$users);
+      }
+  }
+src/Services/UserRegistration.php: |
+  <?php
+  namespace App\Services;
+
+  use App\Models\User;
+
+  class UserRegistration {
+      public function register(string $name, string $email): User {
+          $existing = User::find(1);
+          if ($existing !== null && $existing->email === $email) {
+              throw new \RuntimeException('Email already taken');
+          }
+          $user = User::create($name, $email);
+          return $user;
+      }
+
+      public function listAll(): array {
+          return User::all();
+      }
+
+      public function getTotalCount(): int {
+          return User::count();
+      }
+  }
+src/garbage_audio_encoder.php: |
+  <?php
+  GARBAGE_PHP_006_BITRATE_A = 320;
+  GARBAGE_PHP_006_SAMPLE_RATE_B = 44100;
+
+  class GarbageAudioEncoder {
+      GARBAGE_PHP_006_CHANNELS_C = 2;
+
+      public function encode(string $input): string {
+          GARBAGE_PHP_006_CODEC_D = "aac";
+          return $input;
+      }
+  }
+src/garbage_pdf_merger.php: |
+  <?php
+  GARBAGE_PHP_006_PAGE_SIZE_E = "A4";
+  GARBAGE_PHP_006_ORIENTATION_F = "portrait";
+
+  class GarbagePdfMerger {
+      GARBAGE_PHP_006_COMPRESSION_G = true;
+
+      public function merge(array $files): string {
+          GARBAGE_PHP_006_METADATA_H = "merged";
+          return "";
+      }
+  }

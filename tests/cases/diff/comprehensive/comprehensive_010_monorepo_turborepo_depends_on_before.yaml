@@ -1,0 +1,52 @@
+turbo.json: |
+  {
+      "$schema": "https://turbo.build/schema.json",
+      "pipeline": {
+          "build": {
+              "dependsOn": ["^build"],
+              "outputs": ["dist/**"]
+          },
+          "test": {
+              "dependsOn": ["build"]
+          }
+      }
+  }
+
+packages/core/src/index.ts: |
+  export const VERSION = '1.0.0';
+
+  export function initialize(config: Record<string, unknown>) {
+      return { ...config, version: VERSION };
+  }
+
+  export function shutdown() {
+      return true;
+  }
+
+packages/app/src/index.ts: |
+  import { VERSION, initialize } from '@myorg/core';
+
+  console.log(`App version: ${VERSION}`);
+
+  export function startApp() {
+      const config = initialize({ debug: false });
+      return config;
+  }
+
+garbage_deploy_pipeline.ts: |
+  const GARBAGE_COMP_010_CANARY_WEIGHT_A = "percentage";
+  const GARBAGE_COMP_010_ROLLBACK_HOOK_B = "webhook";
+
+  class GarbageDeployPipeline {
+    static GARBAGE_COMP_010_APPROVAL_GATE_C = true;
+    deploy(): void {}
+  }
+
+garbage_release_manager.ts: |
+  const GARBAGE_COMP_010_CHANGELOG_GEN_D = "conventional";
+  const GARBAGE_COMP_010_TAG_PATTERN_E = "semver";
+
+  class GarbageReleaseManager {
+    static GARBAGE_COMP_010_DRAFT_MODE_F = false;
+    release(): void {}
+  }

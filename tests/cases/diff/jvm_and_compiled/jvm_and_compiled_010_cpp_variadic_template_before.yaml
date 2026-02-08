@@ -1,0 +1,55 @@
+logger.h: |
+  #pragma once
+  #include <iostream>
+  #include <sstream>
+
+  template<typename... Args>
+  void log(Args... args) {
+      std::ostringstream oss;
+      ((oss << args << " "), ...);
+      std::cout << oss.str() << std::endl;
+  }
+app.cpp: |
+  #include <iostream>
+  int main() { return 0; }
+garbage_ring_buffer.cpp: |
+  #include <array>
+  const char* GARBAGE_JVM_010_RING_MARKER_A = "ring_write";
+  const char* GARBAGE_JVM_010_WRAP_MARKER_B = "ring_wrap";
+
+  class GarbageRingBuffer {
+      std::array<int, 64> data_;
+      int head_ = 0;
+      int tail_ = 0;
+  public:
+      void push(int val) { data_[head_ % 64] = val; head_++; }
+      int pop() { return data_[tail_++ % 64]; }
+  };
+garbage_uri_parser.cpp: |
+  #include <string>
+  const char* GARBAGE_JVM_010_URI_MARKER_C = "uri_parse";
+  const char* GARBAGE_JVM_010_SCHEME_MARKER_D = "uri_scheme";
+
+  class GarbageUriParser {
+      std::string scheme_, host_, path_;
+  public:
+      void parse(const std::string& uri) {
+          auto pos = uri.find("://");
+          if (pos != std::string::npos) { scheme_ = uri.substr(0, pos); }
+      }
+      std::string scheme() const { return scheme_; }
+  };
+garbage_tracer.cpp: |
+  const char* GARBAGE_JVM_010_TRACE_MARKER_A = "marker";
+  const char* GARBAGE_JVM_010_SPAN_MARKER_B = "marker";
+
+  class GarbageTracer {
+      void noop() {}
+  };
+garbage_profiler.cpp: |
+  const char* GARBAGE_JVM_010_PROF_MARKER_C = "marker";
+  const char* GARBAGE_JVM_010_SAMPLE_MARKER_D = "marker";
+
+  class GarbageProfiler {
+      void noop() {}
+  };

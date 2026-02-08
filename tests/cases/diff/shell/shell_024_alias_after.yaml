@@ -1,0 +1,45 @@
+aliases.sh: |
+  #!/bin/bash
+
+  alias ll='ls -la'
+  alias la='ls -A'
+  alias grep='grep --color=auto'
+  alias df='df -h'
+
+  alias gs='git status'
+  alias gc='git commit'
+  alias gp='git push'
+interactive.sh: |
+  #!/bin/bash
+  shopt -s expand_aliases
+  source ./aliases.sh
+
+  ll /tmp
+  gs
+  df
+unrelated/garbage_xinetd.sh: |
+  #!/bin/bash
+  # GARBAGE_SH_024_XINETD_SVC_A
+  GARBAGE_SH_024_SERVICE_DIR_B="/etc/xinetd.d"
+
+  garbage_enable_svc_024() {
+      local svc=$1
+      echo "Enabling $svc"
+  }
+
+  garbage_disable_svc_024() {
+      local svc=$1
+      echo "Disabling $svc"
+  }
+unrelated/garbage_samba.sh: |
+  #!/bin/bash
+  # GARBAGE_SH_024_SAMBA_SHARE_C
+  GARBAGE_SH_024_WORKGROUP_D="WORKGROUP"
+
+  garbage_list_shares_024() {
+      echo "Shares: public, private"
+  }
+
+  garbage_test_config_024() {
+      echo "Samba config OK"
+  }

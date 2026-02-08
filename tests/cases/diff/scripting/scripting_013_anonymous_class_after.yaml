@@ -1,0 +1,22 @@
+Handler.php: |
+  <?php
+  interface Handler {
+      public function handle(mixed $data): mixed;
+  }
+app.php: |
+  <?php
+  require_once 'Handler.php';
+
+  $handler = new class implements Handler {
+      public function handle(mixed $data): mixed {
+          return strtoupper($data);
+      }
+  };
+
+  echo $handler->handle('hello');
+garbage.php: |
+  <?php
+  interface GarbageAnon99999 {
+      public function unused(): void;
+  }
+  $unused_marker_12345 = "not used";

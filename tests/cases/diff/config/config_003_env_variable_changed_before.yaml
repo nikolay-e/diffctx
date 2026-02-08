@@ -1,0 +1,91 @@
+.env.example: |
+  # API Configuration
+  API_BASE_URL=https://api.example.com
+  API_TIMEOUT=30
+  API_KEY=your_key_here
+  API_RETRY_COUNT=3
+
+  # Database
+  DATABASE_URL=postgresql://localhost:5432/myapp
+  DATABASE_POOL_SIZE=5
+
+  # Logging
+  LOG_LEVEL=INFO
+  LOG_FORMAT=json
+client.py: |
+  import os
+  from typing import Any, Optional
+  from urllib.parse import urljoin
+
+
+  def get_api_base_url() -> str:
+      return os.getenv("API_BASE_URL", "https://api.example.com")
+
+
+  def get_timeout() -> int:
+      return int(os.getenv("API_TIMEOUT", "30"))
+
+
+  def get_retry_count() -> int:
+      return int(os.getenv("API_RETRY_COUNT", "3"))
+
+
+  def make_request(endpoint: str, method: str = "GET") -> dict[str, Any]:
+      base_url = get_api_base_url()
+      timeout = get_timeout()
+      url = urljoin(base_url, endpoint)
+      return {
+          "url": url,
+          "method": method,
+          "timeout": timeout,
+          "retries": get_retry_count(),
+      }
+
+
+  def make_authenticated_request(
+      endpoint: str, token: Optional[str] = None
+  ) -> dict[str, Any]:
+      request = make_request(endpoint)
+      api_key = os.getenv("API_KEY", "")
+      request["headers"] = {"Authorization": f"Bearer {token or api_key}"}
+      return request
+settings.py: |
+  import os
+
+
+  class Settings:
+      API_TIMEOUT = int(os.environ.get("API_TIMEOUT", "30"))
+      API_BASE_URL = os.environ.get("API_BASE_URL", "https://api.example.com")
+      API_KEY = os.environ.get("API_KEY", "")
+      API_RETRY_COUNT = int(os.environ.get("API_RETRY_COUNT", "3"))
+      DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://localhost:5432/myapp")
+      LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO")
+
+      @classmethod
+      def is_production(cls) -> bool:
+          return "production" in cls.DATABASE_URL
+unrelated/report_generator.py: |
+  # GARBAGE_CFG_003_MARKER_A
+  GARBAGE_CFG_003_REPORT_B = "unrelated-report-config"
+
+  def generate_monthly_report(month: int, year: int) -> dict:
+      return {"month": month, "year": year, "status": "generated"}
+
+  def export_csv(data: list[dict], filename: str) -> str:
+      return f"{filename}.csv"
+
+  GARBAGE_CFG_003_FORMAT_C = "unused-format-string"
+unrelated/cache_manager.py: |
+  # GARBAGE_CFG_003_MARKER_D
+  GARBAGE_CFG_003_CACHE_E = "unrelated-cache-backend"
+
+  class CacheManager:
+      def __init__(self, ttl: int = 300):
+          self.store = {}
+          self.ttl = ttl
+
+      def get(self, key: str):
+          return self.store.get(key)
+
+      def set(self, key: str, value):
+          self.store[key] = value

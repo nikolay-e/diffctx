@@ -1,0 +1,84 @@
+k8s/apps/web/deployment.yaml: |
+  apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    name: web-app
+    namespace: production
+    labels:
+      app: web-app
+      tier: frontend
+  spec:
+    replicas: 3
+    selector:
+      matchLabels:
+        app: web-app
+    template:
+      metadata:
+        labels:
+          app: web-app
+          tier: frontend
+      spec:
+        containers:
+        - name: web
+          image: web-app:v1.0.0
+          ports:
+          - containerPort: 3000
+          env:
+          - name: CACHE_URL
+            value: "redis://cache.production.svc.cluster.local:6379"
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"
+              cpu: "200m"
+k8s/apps/cache/deployment.yaml: |
+  apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    name: cache
+    namespace: production
+    labels:
+      app: cache
+      tier: caching
+  spec:
+    replicas: 3
+    selector:
+      matchLabels:
+        app: cache
+    template:
+      metadata:
+        labels:
+          app: cache
+          tier: caching
+      spec:
+        containers:
+        - name: redis
+          image: redis:7-alpine
+          ports:
+          - containerPort: 6379
+k8s/unrelated/velero/backup.yaml: |
+  # GARBAGE_K8S_413_VELERO_BACKUP
+  apiVersion: velero.io/v1
+  kind: Backup
+  metadata:
+    name: GARBAGE_K8S_413_BACKUP_NAME
+  spec:
+    includedNamespaces:
+    - GARBAGE_K8S_413_NAMESPACE
+    storageLocation: GARBAGE_K8S_413_STORAGE_LOC
+    ttl: GARBAGE_K8S_413_TTL
+k8s/unrelated/kubevirt/vm.yaml: |
+  # GARBAGE_K8S_413_KUBEVIRT_VM
+  apiVersion: kubevirt.io/v1
+  kind: VirtualMachine
+  metadata:
+    name: GARBAGE_K8S_413_VM_NAME
+  spec:
+    running: GARBAGE_K8S_413_RUNNING
+    template:
+      spec:
+        domain:
+          cpu:
+            cores: GARBAGE_K8S_413_CPU_CORES

@@ -1,0 +1,68 @@
+app/models/order.rb: |
+  class Order
+    attr_accessor :id, :user_id, :total, :status, :items
+
+    def initialize(id: nil, user_id: nil, total: 0, status: :pending)
+      @id = id
+      @user_id = user_id
+      @total = total
+      @status = status
+      @items = []
+    end
+
+    def add_item(name, price, quantity: 1)
+      @items << { name: name, price: price, quantity: quantity }
+      @total += price * quantity
+    end
+
+    def complete
+      @status = :completed
+    end
+  end
+app/models/user.rb: |
+  require_relative 'order'
+
+  class User
+    attr_accessor :id, :name, :orders
+
+    def initialize(id: nil, name: nil)
+      @id = id
+      @name = name
+      @orders = []
+    end
+
+    def add_order(order)
+      order.user_id = @id
+      @orders << order
+    end
+
+    def total_spent
+      @orders.select { |o| o.status == :completed }.sum(&:total)
+    end
+
+    def pending_orders
+      @orders.select { |o| o.status == :pending }
+    end
+  end
+lib/garbage_file_sync.rb: |
+  GARBAGE_RUBY_016_SYNC_PROTOCOL_A = "rsync"
+  GARBAGE_RUBY_016_CHUNK_SIZE_B = "4MB"
+
+  class GarbageFileSyncAgent
+    GARBAGE_RUBY_016_MAX_RETRIES_C = 5
+
+    def sync(source, target)
+      GARBAGE_RUBY_016_SYNC_PROTOCOL_A
+    end
+  end
+lib/garbage_backup_mgr.rb: |
+  GARBAGE_RUBY_016_BACKUP_STRATEGY_D = "incremental"
+  GARBAGE_RUBY_016_RETENTION_DAYS_E = "90"
+
+  class GarbageBackupManager
+    GARBAGE_RUBY_016_COMPRESS_LEVEL_F = 6
+
+    def create_backup(path)
+      GARBAGE_RUBY_016_BACKUP_STRATEGY_D
+    end
+  end

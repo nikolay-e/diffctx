@@ -1,0 +1,16 @@
+must_include_files:
+  - Sources/Services/UserService.swift
+must_include_content:
+  - |
+    try encoder.encode(user)
+must_not_include:
+  - GARBAGE_SWIFT_001_TRACKER_ID_A
+  - GARBAGE_SWIFT_001_EVENT_QUEUE_B
+  - GARBAGE_SWIFT_001_BATCH_SIZE_C
+  - GARBAGE_SWIFT_001_LOG_LEVEL_D
+  - GARBAGE_SWIFT_001_LOG_FORMAT_E
+  - GARBAGE_SWIFT_001_MAX_BUFFER_F
+  - GarbageAnalyticsTracker001
+  - GarbageLogRouter001
+  - GarbageAnalytics001.swift
+  - GarbageLogger001.swift

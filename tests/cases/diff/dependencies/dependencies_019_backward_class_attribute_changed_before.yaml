@@ -1,0 +1,14 @@
+models.py: |
+  class Config:
+      timeout = 30
+      max_connections = 10
+client.py: |
+  from models import Config
+
+  def make_request():
+      timeout = Config.timeout
+      return f"Request with timeout {timeout}"
+settings.py: |
+  from models import Config
+
+  default_timeout = Config.timeout

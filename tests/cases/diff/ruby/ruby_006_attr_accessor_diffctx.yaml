@@ -1,0 +1,17 @@
+must_include_files:
+  - app.rb
+must_include_content:
+  - |
+    user = User.new(name: 'John Doe', email: 'john@example.com')
+    puts user.name
+must_not_include:
+  - GARBAGE_RUBY_006_BUCKET_SIZE_A
+  - GARBAGE_RUBY_006_REFILL_RATE_B
+  - GARBAGE_RUBY_006_WINDOW_SIZE_C
+  - GARBAGE_RUBY_006_FLAG_STORE_D
+  - GARBAGE_RUBY_006_DEFAULT_STATE_E
+  - GARBAGE_RUBY_006_CACHE_TTL_F
+  - GarbageRateLimiter
+  - GarbageFeatureFlagService
+  - garbage_rate_limiter.rb
+  - garbage_feature_flag.rb

@@ -1,0 +1,98 @@
+sql/triggers/audit_trigger.sql: |
+  CREATE OR REPLACE FUNCTION audit_trigger_func()
+  RETURNS TRIGGER AS $$
+  DECLARE
+      v_user_id INTEGER;
+      v_client_ip TEXT;
+      v_changed_fields JSONB;
+  BEGIN
+      -- Get session context
+      v_user_id := current_setting('app.current_user_id', TRUE)::INTEGER;
+      v_client_ip := current_setting('app.client_ip', TRUE);
+
+      -- Calculate changed fields for UPDATE
+      IF TG_OP = 'UPDATE' THEN
+          SELECT jsonb_object_agg(key, value)
+          INTO v_changed_fields
+          FROM jsonb_each(to_jsonb(NEW))
+          WHERE to_jsonb(NEW) -> key IS DISTINCT FROM to_jsonb(OLD) -> key;
+      END IF;
+
+      INSERT INTO audit_log (
+          table_name,
+          record_id,
+          operation,
+          old_data,
+          new_data,
+          changed_fields,
+          user_id,
+          ip_address,
+          created_at
+      )
+      VALUES (
+          TG_TABLE_NAME,
+          COALESCE(NEW.id, OLD.id),
+          TG_OP,
+          CASE WHEN TG_OP != 'INSERT' THEN row_to_json(OLD) END,
+          CASE WHEN TG_OP != 'DELETE' THEN row_to_json(NEW) END,
+          v_changed_fields,
+          v_user_id,
+          v_client_ip,
+          NOW()
+      );
+
+      RETURN COALESCE(NEW, OLD);
+  END;
+  $$ LANGUAGE plpgsql SECURITY DEFINER;
+
+  CREATE TRIGGER users_audit
+  AFTER INSERT OR UPDATE OR DELETE ON users
+  FOR EACH ROW EXECUTE FUNCTION audit_trigger_func();
+
+  CREATE TRIGGER orders_audit
+  AFTER INSERT OR UPDATE OR DELETE ON orders
+  FOR EACH ROW EXECUTE FUNCTION audit_trigger_func();
+
+  CREATE TRIGGER products_audit
+  AFTER INSERT OR UPDATE OR DELETE ON products
+  FOR EACH ROW EXECUTE FUNCTION audit_trigger_func();
+
+src/services/user_service.py: |
+  from typing import Optional
+  from models.user import User
+
+  class UserService:
+      def __init__(self, db):
+          self.db = db
+
+      def update_user(self, user_id: int, name: str) -> Optional[User]:
+          self.db.execute(
+              "UPDATE users SET name = %s WHERE id = %s",
+              [name, user_id]
+          )
+          return self.get_user(user_id)
+
+      def get_user(self, user_id: int) -> Optional[User]:
+          result = self.db.query(
+              "SELECT * FROM users WHERE id = %s",
+              [user_id]
+          )
+          return User(**result[0]) if result else None
+
+garbage_trigger_manager.ts: |
+  const GARBAGE_CICD_DOCS_070_TRIGGER_MARKER_A = "after";
+  const GARBAGE_CICD_DOCS_070_TIMING_MARKER_B = "row";
+
+  class GarbageTriggerManager {
+    static GARBAGE_CICD_DOCS_070_DEFER_MARKER_C = false;
+    manage(): void {}
+  }
+
+garbage_audit_handler.ts: |
+  const GARBAGE_CICD_DOCS_070_AUDIT_MARKER_D = "json";
+  const GARBAGE_CICD_DOCS_070_RETENTION_MARKER_E = 90;
+
+  class GarbageAuditHandler {
+    static GARBAGE_CICD_DOCS_070_COMPRESS_MARKER_F = true;
+    handle(): void {}
+  }

@@ -1,0 +1,11 @@
+kms.tf: |
+  resource "aws_kms_key" "main" {
+    description = "Main encryption key"
+  }
+src/encrypt.py: |
+  import boto3
+
+  def encrypt_data(key_id: str, plaintext: bytes) -> bytes:
+      kms = boto3.client("kms")
+      response = kms.encrypt(KeyId=key_id, Plaintext=plaintext)
+      return response["CiphertextBlob"]

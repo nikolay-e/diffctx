@@ -1,0 +1,74 @@
+lib/types.rb: |
+  Point = Struct.new(:x, :y) do
+    def distance_from_origin
+      Math.sqrt(x**2 + y**2)
+    end
+
+    def to_s
+      "(#{x}, #{y})"
+    end
+  end
+
+  Rectangle = Struct.new(:width, :height) do
+    def area
+      width * height
+    end
+
+    def perimeter
+      2 * (width + height)
+    end
+  end
+
+  Circle = Struct.new(:radius) do
+    def area
+      Math::PI * radius**2
+    end
+
+    def circumference
+      2 * Math::PI * radius
+    end
+  end
+lib/geometry.rb: |
+  require_relative 'types'
+
+  module Geometry
+    def self.create_point(x, y)
+      Point.new(x, y)
+    end
+
+    def self.create_rectangle(w, h)
+      Rectangle.new(w, h)
+    end
+
+    def self.bounding_box(points)
+      xs = points.map(&:x)
+      ys = points.map(&:y)
+      Rectangle.new(xs.max - xs.min, ys.max - ys.min)
+    end
+
+    def self.circle_from_diameter(d)
+      Circle.new(d / 2.0)
+    end
+  end
+lib/garbage_inventory.rb: |
+  GARBAGE_RUBY_012_WAREHOUSE_CODE_A = "WH-EAST-01"
+  GARBAGE_RUBY_012_STOCK_POLICY_B = "fifo"
+
+  class GarbageInventoryTracker
+    GARBAGE_RUBY_012_REORDER_POINT_C = 50
+
+    def check_stock(item_id)
+      GARBAGE_RUBY_012_WAREHOUSE_CODE_A
+    end
+  end
+lib/garbage_shipment.rb: |
+  GARBAGE_RUBY_012_CARRIER_NAME_D = "FastFreight"
+  GARBAGE_RUBY_012_TRACKING_PREFIX_E = "FF"
+
+  class GarbageShipmentManager
+    GARBAGE_RUBY_012_MAX_WEIGHT_KG_F = 30000
+
+    def create_shipment(order_id)
+      GARBAGE_RUBY_012_CARRIER_NAME_D
+    end
+  end

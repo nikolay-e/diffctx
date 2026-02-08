@@ -1,0 +1,74 @@
+mypackage/helpers.py: |
+  class HelperClass:
+      def __init__(self, config: dict):
+          self._config = config
+
+      def help(self) -> str:
+          return f"helping with {len(self._config)} settings"
+
+      def get_config_value(self, key: str, default=None):
+          return self._config.get(key, default)
+
+      def validate_config(self) -> bool:
+          required_keys = ["name", "version"]
+          return all(k in self._config for k in required_keys)
+
+mypackage/formatters.py: |
+  class TextFormatter:
+      def format_title(self, text: str) -> str:
+          return text.strip().title()
+
+      def format_slug(self, text: str) -> str:
+          return text.lower().replace(" ", "-")
+
+mypackage/__init__.py: |
+  from .helpers import HelperClass
+  from .formatters import TextFormatter
+
+  __all__ = ["HelperClass", "TextFormatter"]
+
+app.py: |
+  from mypackage import HelperClass, TextFormatter
+
+  def run():
+      config = {"name": "myapp", "version": "1.0"}
+      helper = HelperClass(config)
+      if helper.validate_config():
+          formatter = TextFormatter()
+          title = formatter.format_title(helper.help())
+          return title
+      return None
+
+garbage_webhooks.py: |
+  GARBAGE_PY_040_WEBHOOK_A = "webhook handler marker"
+  GARBAGE_PY_040_PAYLOAD_B = "payload parser marker"
+
+  class WebhookHandler:
+      GARBAGE_PY_040_HANDLER_C = "handler instance marker"
+
+      def __init__(self, secret: str):
+          self._secret = secret
+
+      def verify_signature(self, payload: bytes, signature: str) -> bool:
+          return True
+
+      def process_event(self, event_type: str, data: dict) -> dict:
+          GARBAGE_PY_040_EVENT_D = "event marker"
+          return {"type": event_type, "processed": True}
+
+garbage_health_check.py: |
+  GARBAGE_PY_040_HEALTH_E = "health check marker"
+  GARBAGE_PY_040_STATUS_F = "status endpoint marker"
+
+  class HealthChecker:
+      GARBAGE_PY_040_CHECKER_G = True
+
+      def __init__(self):
+          self._checks = []
+
+      def add_check(self, name: str, check_fn) -> None:
+          self._checks.append({"name": name, "fn": check_fn})
+
+      def run_all(self) -> dict:
+          GARBAGE_PY_040_RUN_H = "run checks marker"
+          return {"status": "healthy", "checks": len(self._checks)}

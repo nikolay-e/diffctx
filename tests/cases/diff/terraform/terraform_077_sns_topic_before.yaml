@@ -1,0 +1,10 @@
+sns.tf: |
+  resource "aws_sns_topic" "alerts" {
+    name = "alert-notifications"
+  }
+src/notifications.py: |
+  import boto3
+
+  def publish_alert(topic_arn: str, message: str):
+      sns = boto3.client("sns")
+      sns.publish(TopicArn=topic_arn, Message=message)

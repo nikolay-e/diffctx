@@ -1,0 +1,29 @@
+base/handler.py: |
+  from abc import ABC, abstractmethod
+
+  class BaseHandler(ABC):
+      @abstractmethod
+      def handle(self, request: dict) -> dict:
+          pass
+
+      @abstractmethod
+      def validate(self, request: dict) -> bool:
+          pass
+handlers/user_handler.py: |
+  from base.handler import BaseHandler
+
+  class UserHandler(BaseHandler):
+      def handle(self, request: dict) -> dict:
+          return {"user": request.get("user_id")}
+
+      def validate(self, request: dict) -> bool:
+          return "user_id" in request
+handlers/order_handler.py: |
+  from base.handler import BaseHandler
+
+  class OrderHandler(BaseHandler):
+      def handle(self, request: dict) -> dict:
+          return {"order": request.get("order_id")}
+
+      def validate(self, request: dict) -> bool:
+          return "order_id" in request

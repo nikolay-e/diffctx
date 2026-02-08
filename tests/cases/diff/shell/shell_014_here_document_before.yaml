@@ -1,0 +1,40 @@
+generate.sh: |
+  #!/bin/bash
+
+  APP_NAME="myapp"
+  VERSION="1.0.0"
+
+  cat <<EOF > config.json
+  {
+      "name": "$APP_NAME",
+      "version": "$VERSION"
+  }
+  EOF
+unrelated/garbage_gpg.sh: |
+  #!/bin/bash
+  # GARBAGE_SH_014_GPG_KEYRING_A
+  GARBAGE_SH_014_KEY_SERVER_B="hkps://keys.openpgp.org"
+
+  garbage_import_key_014() {
+      local keyid=$1
+      echo "Importing key $keyid"
+  }
+
+  garbage_verify_sig_014() {
+      local file=$1
+      echo "Signature valid: $file"
+  }
+unrelated/garbage_rsync.sh: |
+  #!/bin/bash
+  # GARBAGE_SH_014_RSYNC_MIRROR_C
+  GARBAGE_SH_014_REMOTE_HOST_D="backup.example.com"
+
+  garbage_mirror_dir_014() {
+      local src=$1
+      echo "Mirroring $src to $GARBAGE_SH_014_REMOTE_HOST_D"
+  }
+
+  garbage_dry_run_014() {
+      local src=$1
+      echo "Dry run: $src"
+  }

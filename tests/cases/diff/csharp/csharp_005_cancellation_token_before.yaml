@@ -1,0 +1,57 @@
+Services/DownloadService.cs: |
+  using System;
+  using System.Net.Http;
+  using System.Threading;
+  using System.Threading.Tasks;
+
+  namespace MyApp.Services;
+
+  public class DownloadService
+  {
+      private readonly HttpClient _httpClient;
+
+      public DownloadService(HttpClient httpClient)
+      {
+          _httpClient = httpClient;
+      }
+
+      public async Task<byte[]> DownloadAsync(string url, CancellationToken cancellationToken)
+      {
+          var response = await _httpClient.GetAsync(url, cancellationToken);
+          response.EnsureSuccessStatusCode();
+          return await response.Content.ReadAsByteArrayAsync(cancellationToken);
+      }
+
+      public async Task<string> DownloadTextAsync(string url, CancellationToken cancellationToken)
+      {
+          return await _httpClient.GetStringAsync(url, cancellationToken);
+      }
+  }
+Program.cs: |
+  using System;
+
+  class Program
+  {
+      static void Main()
+      {
+          Console.WriteLine("Download client ready");
+      }
+  }
+Unrelated/SessionStore.cs: |
+  namespace MyApp.Unrelated;
+
+  public class SessionStore
+  {
+      private const string GARBAGE_CS_005_SESSION_STORE_A = "session_store_marker";
+
+      public string GetSession(string id) => GARBAGE_CS_005_SESSION_STORE_A + id;
+  }
+Unrelated/TokenBucket.cs: |
+  namespace MyApp.Unrelated;
+
+  public class TokenBucket
+  {
+      public const string GARBAGE_CS_005_TOKEN_BUCKET_B = "token_bucket_marker";
+
+      public bool TryConsume() => GARBAGE_CS_005_TOKEN_BUCKET_B.Length > 0;
+  }

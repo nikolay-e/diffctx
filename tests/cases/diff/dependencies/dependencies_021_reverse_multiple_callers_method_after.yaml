@@ -1,0 +1,29 @@
+models/user.py: |
+  class User:
+      def __init__(self, name: str, email: str, title: str = ""):
+          self.name = name
+          self.email = email
+          self.title = title
+
+      def get_display_name(self, include_title: bool = False) -> str:
+          if include_title and self.title:
+              return f"{self.title} {self.name}"
+          return self.name
+views/profile.py: |
+  from models.user import User
+
+  def render_profile(user: User) -> str:
+      name = user.get_display_name()
+      return f"<h1>{name}</h1>"
+views/header.py: |
+  from models.user import User
+
+  def render_header(user: User) -> str:
+      display = user.get_display_name()
+      return f"<span>{display}</span>"
+emails/welcome.py: |
+  from models.user import User
+
+  def send_welcome_email(user: User) -> None:
+      name = user.get_display_name()
+      print(f"Welcome, {name}!")

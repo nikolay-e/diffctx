@@ -1,0 +1,47 @@
+User.cs: |
+  public class User
+  {
+      public string Name { get; set; }
+      public int Age { get; set; }
+      public bool IsActive { get; set; }
+  }
+Validator.cs: |
+  class Validator
+  {
+      public string ValidateUser(object obj)
+      {
+          return obj switch
+          {
+              User { Age: < 18 } => "User is too young",
+              User { IsActive: false } => "User is not active",
+              User { Name: "" or null } => "User name is empty",
+              User user => $"Valid user: {user.Name}",
+              null => "Object is null",
+              _ => "Unknown object"
+          };
+      }
+
+      public bool IsAdult(object obj)
+      {
+          if (obj is User { Age: >= 18 } adult)
+          {
+              Console.WriteLine($"{adult.Name} is an adult");
+              return true;
+          }
+          return false;
+      }
+  }
+GarbageVisitor.cs: |
+  public class GarbageVisitor
+  {
+      public const string GARBAGE_JVM_022_VISITOR_MARKER_A = "marker";
+      public const string GARBAGE_JVM_022_ACCEPT_MARKER_B = "marker";
+      public void Noop() {}
+  }
+GarbageTreeWalker.cs: |
+  public class GarbageTreeWalker
+  {
+      public const string GARBAGE_JVM_022_TRAVERSE_MARKER_C = "marker";
+      public const string GARBAGE_JVM_022_WALK_MARKER_D = "marker";
+      public void Noop() {}
+  }

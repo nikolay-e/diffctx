@@ -1,0 +1,62 @@
+calculator.py: |
+  from typing import Union
+
+  Number = Union[int, float]
+
+  def add(a: Number, b: Number) -> Number:
+      return a + b
+
+  def subtract(a: Number, b: Number) -> Number:
+      return a - b
+
+  def multiply(a: Number, b: Number) -> Number:
+      return a * b
+
+  def divide(a: Number, b: Number) -> float:
+      if b == 0:
+          raise ValueError("Cannot divide by zero")
+      return a / b
+
+  def power(base: Number, exponent: int) -> Number:
+      return base ** exponent
+
+__pycache__/calculator.cpython-311.pyc: binary_content_placeholder
+
+__pycache__/utils.cpython-311.pyc: binary_content_placeholder
+
+garbage_matrix.py: |
+  GARBAGE_OPS_004_MATRIX_A = "matrix operations marker"
+  GARBAGE_OPS_004_VECTOR_B = "vector math marker"
+
+  class MatrixOps:
+      GARBAGE_OPS_004_DET_C = "determinant marker"
+
+      def __init__(self, rows: int = 3, cols: int = 3):
+          self.rows = rows
+          self.cols = cols
+
+      def transpose(self, matrix: list[list[float]]) -> list[list[float]]:
+          return [list(row) for row in zip(*matrix)]
+
+      def multiply(self, a: list[list[float]], b: list[list[float]]) -> list[list[float]]:
+          GARBAGE_OPS_004_DOT_D = "dot product marker"
+          return [[0.0] * len(b[0]) for _ in range(len(a))]
+
+garbage_stats.py: |
+  GARBAGE_OPS_004_STATS_E = "statistics module marker"
+  GARBAGE_OPS_004_MEAN_F = "mean calculation marker"
+
+  class StatisticsEngine:
+      GARBAGE_OPS_004_MEDIAN_G = True
+
+      def __init__(self):
+          self._data: list[float] = []
+
+      def add_sample(self, value: float) -> None:
+          self._data.append(value)
+
+      def compute_mean(self) -> float:
+          GARBAGE_OPS_004_VARIANCE_H = "variance marker"
+          if not self._data:
+              return 0.0
+          return sum(self._data) / len(self._data)

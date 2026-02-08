@@ -1,0 +1,302 @@
+include/container/buffer.hpp: |
+  #pragma once
+  #include <cstddef>
+  #include <utility>
+  #include <algorithm>
+  #include <stdexcept>
+
+  namespace app::container {
+
+  class Buffer {
+  public:
+      explicit Buffer(size_t size)
+          : data_(new char[size])
+          , size_(size)
+          , capacity_(size) {}
+
+      Buffer(const char* data, size_t size)
+          : data_(new char[size])
+          , size_(size)
+          , capacity_(size) {
+          std::copy(data, data + size, data_);
+      }
+
+      ~Buffer() {
+          delete[] data_;
+      }
+
+      Buffer(Buffer&& other) noexcept
+          : data_(other.data_)
+          , size_(other.size_)
+          , capacity_(other.capacity_) {
+          other.data_ = nullptr;
+          other.size_ = 0;
+          other.capacity_ = 0;
+      }
+
+      Buffer& operator=(Buffer&& other) noexcept {
+          if (this != &other) {
+              delete[] data_;
+              data_ = other.data_;
+              size_ = other.size_;
+              capacity_ = other.capacity_;
+              other.data_ = nullptr;
+              other.size_ = 0;
+              other.capacity_ = 0;
+          }
+          return *this;
+      }
+
+      Buffer(const Buffer&) = delete;
+      Buffer& operator=(const Buffer&) = delete;
+
+      char* data() { return data_; }
+      const char* data() const { return data_; }
+      size_t size() const { return size_; }
+      size_t capacity() const { return capacity_; }
+      bool empty() const { return size_ == 0; }
+
+      void resize(size_t newSize) {
+          if (newSize > capacity_) {
+              throw std::runtime_error("Cannot resize beyond capacity");
+          }
+          size_ = newSize;
+      }
+
+      char& operator[](size_t index) { return data_[index]; }
+      const char& operator[](size_t index) const { return data_[index]; }
+
+  private:
+      char* data_;
+      size_t size_;
+      size_t capacity_;
+  };
+
+  }
+include/unrelated/crypto_hash.hpp: |
+  #pragma once
+  // GARBAGE_CPP_CRYPTO_248_001
+  #define GARBAGE_CPP_CRYPTO_BLOCK_248_002 64
+
+  namespace app::unrelated::crypto {
+
+  // GARBAGE_CPP_CRYPTO_ALGO_248_003
+  enum class HashAlgorithm {
+      MD5,
+      SHA1,
+      SHA256,
+      SHA512
+  };
+
+  // GARBAGE_CPP_CRYPTO_RESULT_248_004
+  struct HashResult {
+      unsigned char digest[64];
+      size_t length;
+  };
+
+  // GARBAGE_CPP_CRYPTO_HASHER_248_005
+  class Hasher {
+  public:
+      // GARBAGE_CPP_CRYPTO_INIT_248_006
+      void init(HashAlgorithm algo) {
+          // GARBAGE_CPP_CRYPTO_INIT_IMPL_248_007
+      }
+
+      // GARBAGE_CPP_CRYPTO_UPDATE_248_008
+      void update(const void* data, size_t length) {
+          // GARBAGE_CPP_CRYPTO_UPDATE_IMPL_248_009
+      }
+
+      // GARBAGE_CPP_CRYPTO_FINAL_248_010
+      HashResult finalize() {
+          // GARBAGE_CPP_CRYPTO_FINAL_IMPL_248_011
+          return HashResult{};
+      }
+  };
+
+  }
+src/unrelated/http_client.cpp: |
+  // GARBAGE_CPP_HTTP_248_012
+  #include <string>
+
+  namespace app::unrelated::http {
+
+  // GARBAGE_CPP_HTTP_METHOD_248_013
+  enum class HttpMethod {
+      GET,
+      POST,
+      PUT,
+      DELETE
+  };
+
+  // GARBAGE_CPP_HTTP_RESPONSE_248_014
+  struct HttpResponse {
+      int statusCode;
+      std::string body;
+      // GARBAGE_CPP_HTTP_HEADERS_248_015
+  };
+
+  // GARBAGE_CPP_HTTP_CLIENT_248_016
+  class HttpClient {
+  public:
+      // GARBAGE_CPP_HTTP_REQUEST_248_017
+      HttpResponse request(HttpMethod method, const std::string& url) {
+          // GARBAGE_CPP_HTTP_REQUEST_IMPL_248_018
+          return HttpResponse{};
+      }
+
+      // GARBAGE_CPP_HTTP_GET_248_019
+      HttpResponse get(const std::string& url) {
+          return request(HttpMethod::GET, url);
+      }
+
+      // GARBAGE_CPP_HTTP_POST_248_020
+      HttpResponse post(const std::string& url, const std::string& body) {
+          // GARBAGE_CPP_HTTP_POST_IMPL_248_021
+          return HttpResponse{};
+      }
+  };
+
+  }
+src/processor.cpp: |
+  #include "container/buffer.hpp"
+  #include <utility>
+  #include <vector>
+  #include <iostream>
+  #include <functional>
+
+  namespace app::processing {
+
+  class BufferPool {
+  public:
+      explicit BufferPool(size_t bufferSize, size_t poolSize)
+          : bufferSize_(bufferSize) {
+          for (size_t i = 0; i < poolSize; ++i) {
+              available_.push_back(container::Buffer(bufferSize));
+          }
+      }
+
+      container::Buffer acquire() {
+          if (available_.empty()) {
+              return container::Buffer(bufferSize_);
+          }
+          auto buffer = std::move(available_.back());
+          available_.pop_back();
+          return buffer;
+      }
+
+      void release(container::Buffer buffer) {
+          buffer.resize(bufferSize_);
+          available_.push_back(std::move(buffer));
+      }
+
+      size_t availableCount() const { return available_.size(); }
+
+  private:
+      size_t bufferSize_;
+      std::vector<container::Buffer> available_;
+  };
+
+  class DataProcessor {
+  public:
+      using ProcessFn = std::function<void(container::Buffer&)>;
+
+      explicit DataProcessor(BufferPool& pool)
+          : pool_(pool) {}
+
+      container::Buffer process(container::Buffer input, ProcessFn processor) {
+          processor(input);
+          return input;
+      }
+
+      container::Buffer processWithTemp(container::Buffer input, ProcessFn processor) {
+          auto temp = pool_.acquire();
+
+          std::copy(input.data(), input.data() + input.size(), temp.data());
+          temp.resize(input.size());
+
+          processor(temp);
+
+          pool_.release(std::move(input));
+          return temp;
+      }
+
+      std::vector<container::Buffer> processBatch(
+          std::vector<container::Buffer> inputs,
+          ProcessFn processor) {
+
+          std::vector<container::Buffer> results;
+          results.reserve(inputs.size());
+
+          for (auto& input : inputs) {
+              processor(input);
+              results.push_back(std::move(input));
+          }
+
+          return results;
+      }
+
+  private:
+      BufferPool& pool_;
+  };
+
+  class Pipeline {
+  public:
+      void addStage(DataProcessor::ProcessFn stage) {
+          stages_.push_back(std::move(stage));
+      }
+
+      container::Buffer execute(container::Buffer input) {
+          auto current = std::move(input);
+
+          for (auto& stage : stages_) {
+              stage(current);
+          }
+
+          return current;
+      }
+
+  private:
+      std::vector<DataProcessor::ProcessFn> stages_;
+  };
+
+  container::Buffer createTestBuffer(const char* data, size_t size) {
+      container::Buffer buf(data, size);
+      return buf;
+  }
+
+  }
+
+  int main() {
+      app::processing::BufferPool pool(1024, 4);
+      app::processing::DataProcessor processor(pool);
+
+      auto buffer = app::processing::createTestBuffer("Hello, World!", 13);
+      std::cout << "Initial buffer size: " << buffer.size() << "\n";
+
+      auto processed = processor.process(std::move(buffer), [](app::container::Buffer& buf) {
+          for (size_t i = 0; i < buf.size(); ++i) {
+              if (buf[i] >= 'a' && buf[i] <= 'z') {
+                  buf[i] = buf[i] - 'a' + 'A';
+              }
+          }
+      });
+
+      std::cout << "Processed: ";
+      for (size_t i = 0; i < processed.size(); ++i) {
+          std::cout << processed[i];
+      }
+      std::cout << "\n";
+
+      app::processing::Pipeline pipeline;
+      pipeline.addStage([](app::container::Buffer& buf) {
+          buf.resize(buf.size() > 5 ? 5 : buf.size());
+      });
+
+      auto pipeResult = pipeline.execute(std::move(processed));
+      std::cout << "Pipeline result size: " << pipeResult.size() << "\n";
+
+      std::cout << "Pool available: " << pool.availableCount() << "\n";
+
+      return 0;
+  }

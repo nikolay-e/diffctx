@@ -1,0 +1,51 @@
+exceptions.py: |
+  class InsufficientFundsError(Exception):
+      def __init__(self, account_id, balance=0, requested=0):
+          self.account_id = account_id
+          self.balance = balance
+          self.requested = requested
+          super().__init__(f"Insufficient funds for account {account_id}")
+
+  class AccountLockedError(Exception):
+      def __init__(self, account_id, reason=""):
+          self.account_id = account_id
+          self.reason = reason
+          super().__init__(f"Account {account_id} is locked: {reason}")
+service.py: |
+  def transfer(from_account, to_account, amount):
+      return True
+
+  def get_balance(account):
+      return 100
+
+  def validate_account(account_id):
+      return True
+api/views.py: |
+  from exceptions import InsufficientFundsError
+  from service import transfer
+
+  def transfer_endpoint(request):
+      try:
+          result = transfer(request.from_id, request.to_id, request.amount)
+          return {"success": result}
+      except InsufficientFundsError as e:
+          return {"error": str(e)}
+
+  def balance_endpoint(request):
+      from service import get_balance
+      balance = get_balance(request.account_id)
+      return {"balance": balance}
+utils/garbage_audit_logger.py: |
+  # GARBAGE_PAT_006_AUDIT_LOGGER_A
+  GARBAGE_PAT_006_AUDIT_TABLE_B = "audit_log"
+
+  class GarbageAuditLogger:
+      def log_transaction(self, tx):
+          pass
+utils/garbage_notification_sender.py: |
+  # GARBAGE_PAT_006_NOTIFICATION_A
+  GARBAGE_PAT_006_CHANNEL_B = "email"
+
+  class GarbageNotificationSender:
+      def send(self, to, message):
+          pass

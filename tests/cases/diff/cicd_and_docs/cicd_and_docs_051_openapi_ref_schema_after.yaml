@@ -1,0 +1,84 @@
+openapi.yaml: |
+  openapi: 3.0.0
+  info:
+    title: User API
+    version: 1.0.0
+  paths:
+    /users/{id}:
+      get:
+        parameters:
+          - name: id
+            in: path
+            required: true
+            schema:
+              type: integer
+        responses:
+          '200':
+            content:
+              application/json:
+                schema:
+                  $ref: '#/components/schemas/User'
+  components:
+    schemas:
+      User:
+        type: object
+        required:
+          - id
+          - name
+        properties:
+          id:
+            type: integer
+          name:
+            type: string
+          email:
+            type: string
+            format: email
+          address:
+            $ref: '#/components/schemas/Address'
+      Address:
+        type: object
+        properties:
+          street:
+            type: string
+          city:
+            type: string
+          country:
+            type: string
+          postal_code:
+            type: string
+
+src/models/user.py: |
+  from dataclasses import dataclass
+  from typing import Optional
+
+  @dataclass
+  class Address:
+      street: str
+      city: str
+      country: str
+      postal_code: Optional[str] = None
+
+  @dataclass
+  class User:
+      id: int
+      name: str
+      email: Optional[str] = None
+      address: Optional[Address] = None
+
+garbage_schema_validator.ts: |
+  const GARBAGE_CICD_DOCS_051_VALIDATOR_MARKER_A = "ajv";
+  const GARBAGE_CICD_DOCS_051_FORMAT_MARKER_B = "draft-07";
+
+  class GarbageSchemaValidator {
+    static GARBAGE_CICD_DOCS_051_COERCE_MARKER_C = true;
+    validate(): boolean { return true; }
+  }
+
+garbage_schema_resolver.ts: |
+  const GARBAGE_CICD_DOCS_051_RESOLVER_MARKER_D = "json-refs";
+  const GARBAGE_CICD_DOCS_051_CIRCULAR_MARKER_E = "ignore";
+
+  class GarbageSchemaResolver {
+    static GARBAGE_CICD_DOCS_051_CACHE_MARKER_F = false;
+    resolve(): void {}
+  }

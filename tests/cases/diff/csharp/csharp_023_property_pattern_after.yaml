@@ -1,0 +1,47 @@
+Models/Request.cs: |
+  namespace MyApp.Models;
+
+  public class Request
+  {
+      public string Method { get; set; }
+      public string Path { get; set; }
+      public bool IsAuthenticated { get; set; }
+      public string? UserId { get; set; }
+  }
+Services/RequestHandler.cs: |
+  using MyApp.Models;
+
+  namespace MyApp.Services;
+
+  public class RequestHandler
+  {
+      public string Route(Request request)
+      {
+          return request switch
+          {
+              { Method: "GET", Path: "/" } => "Home",
+              { Method: "GET", Path: "/api", IsAuthenticated: true } => "API",
+              { Method: "POST", IsAuthenticated: true, UserId: not null } => "Authorized Post",
+              { IsAuthenticated: false } => "Unauthorized",
+              _ => "Not Found"
+          };
+      }
+  }
+Unrelated/CorsHandler.cs: |
+  namespace MyApp.Unrelated;
+
+  public class CorsHandler
+  {
+      private const string GARBAGE_CS_023_CORS_HANDLER_A = "cors_handler_marker";
+
+      public bool IsAllowed(string origin) => GARBAGE_CS_023_CORS_HANDLER_A.Length > 0;
+  }
+Unrelated/CompressionMiddleware.cs: |
+  namespace MyApp.Unrelated;
+
+  public class CompressionMiddleware
+  {
+      public const string GARBAGE_CS_023_COMPRESSION_MW_B = "compression_middleware_marker";
+
+      public byte[] Compress(byte[] data) => data;
+  }

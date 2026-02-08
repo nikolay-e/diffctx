@@ -1,0 +1,94 @@
+src/types/product.ts: |
+  export interface Product {
+    id: string;
+    name: string;
+    price: number;
+    category: string;
+    inStock: boolean;
+  }
+
+  export interface CartItem {
+    product: Product;
+    quantity: number;
+  }
+src/hooks/useCart.ts: |
+  import { useState, useCallback, useMemo } from 'react';
+  import { Product, CartItem } from '../types/product';
+
+  export function useCart() {
+    const [items, setItems] = useState<CartItem[]>([]);
+
+    const addItem = useCallback((product: Product, quantity = 1) => {
+      setItems((prev) => {
+        const existing = prev.find((item) => item.product.id === product.id);
+        if (existing) {
+          return prev.map((item) =>
+            item.product.id === product.id
+              ? { ...item, quantity: item.quantity + quantity }
+              : item
+          );
+        }
+        return [...prev, { product, quantity }];
+      });
+    }, []);
+
+    const removeItem = useCallback((productId: string) => {
+      setItems((prev) => prev.filter((item) => item.product.id !== productId));
+    }, []);
+
+    const total = useMemo(() => {
+      return items.reduce((sum, item) => sum + item.product.price * item.quantity, 0);
+    }, [items]);
+
+    return { items, addItem, removeItem, total };
+  }
+src/components/ProductList.tsx: |
+  console.log('placeholder');
+src/unrelated/theme.ts: |
+  // GARBAGE_TS_002_THEME_001 - theming utilities
+  export type GARBAGE_TS_002_ThemeMode_002 = 'light' | 'dark' | 'system';
+
+  export interface GARBAGE_TS_002_ThemeColors_003 {
+    primary: string;
+    secondary: string;
+    background: string;
+    text: string;
+  }
+
+  export const GARBAGE_TS_002_lightTheme_004: GARBAGE_TS_002_ThemeColors_003 = {
+    primary: '#3B82F6',
+    secondary: '#10B981',
+    background: '#FFFFFF',
+    text: '#1F2937',
+  };
+
+  export const GARBAGE_TS_002_darkTheme_005: GARBAGE_TS_002_ThemeColors_003 = {
+    primary: '#60A5FA',
+    secondary: '#34D399',
+    background: '#1F2937',
+    text: '#F9FAFB',
+  };
+
+  export function GARBAGE_TS_002_getTheme_006(mode: GARBAGE_TS_002_ThemeMode_002): GARBAGE_TS_002_ThemeColors_003 {
+    return mode === 'dark' ? GARBAGE_TS_002_darkTheme_005 : GARBAGE_TS_002_lightTheme_004;
+  }
+src/unrelated/storage.ts: |
+  // GARBAGE_TS_002_STORAGE_007 - local storage wrapper
+  export class GARBAGE_TS_002_StorageService_008 {
+    private prefix = 'GARBAGE_TS_002_PREFIX_009_';
+
+    set<T>(key: string, value: T): void {
+      localStorage.setItem(this.prefix + key, JSON.stringify(value));
+    }
+
+    get<T>(key: string): T | null {
+      const item = localStorage.getItem(this.prefix + key);
+      return item ? JSON.parse(item) : null;
+    }
+
+    remove(key: string): void {
+      localStorage.removeItem(this.prefix + key);
+    }
+  }
+
+  export const GARBAGE_TS_002_storage_010 = new GARBAGE_TS_002_StorageService_008();

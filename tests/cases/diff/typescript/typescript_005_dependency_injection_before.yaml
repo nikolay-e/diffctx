@@ -1,0 +1,104 @@
+src/di/container.ts: |
+  export type Constructor<T = unknown> = new (...args: unknown[]) => T;
+  export type Factory<T = unknown> = () => T;
+  export type ServiceIdentifier<T = unknown> = string | symbol | Constructor<T>;
+
+  export interface ServiceDescriptor<T> {
+    identifier: ServiceIdentifier<T>;
+    implementation: Constructor<T> | Factory<T>;
+    lifecycle: 'singleton' | 'transient';
+  }
+
+  export class Container {
+    private services = new Map<ServiceIdentifier, ServiceDescriptor<unknown>>();
+    private singletons = new Map<ServiceIdentifier, unknown>();
+
+    register<T>(descriptor: ServiceDescriptor<T>): this {
+      this.services.set(descriptor.identifier, descriptor as ServiceDescriptor<unknown>);
+      return this;
+    }
+
+    registerSingleton<T>(identifier: ServiceIdentifier<T>, implementation: Constructor<T> | Factory<T>): this {
+      return this.register({ identifier, implementation, lifecycle: 'singleton' });
+    }
+
+    registerTransient<T>(identifier: ServiceIdentifier<T>, implementation: Constructor<T> | Factory<T>): this {
+      return this.register({ identifier, implementation, lifecycle: 'transient' });
+    }
+
+    resolve<T>(identifier: ServiceIdentifier<T>): T {
+      const descriptor = this.services.get(identifier);
+      if (!descriptor) {
+        throw new Error(`Service not found: ${String(identifier)}`);
+      }
+
+      if (descriptor.lifecycle === 'singleton') {
+        if (!this.singletons.has(identifier)) {
+          this.singletons.set(identifier, this.createInstance(descriptor));
+        }
+        return this.singletons.get(identifier) as T;
+      }
+
+      return this.createInstance(descriptor) as T;
+    }
+
+    private createInstance(descriptor: ServiceDescriptor<unknown>): unknown {
+      const impl = descriptor.implementation;
+      return typeof impl === 'function' && impl.prototype
+        ? new (impl as Constructor)()
+        : (impl as Factory)();
+    }
+  }
+src/services/userService.ts: |
+  console.log('placeholder');
+src/unrelated/config.ts: |
+  // GARBAGE_TS_005_CONFIG_001 - configuration management
+  export interface GARBAGE_TS_005_ConfigSchema_002 {
+    database: { host: string; port: number };
+    redis: { url: string };
+    api: { timeout: number };
+  }
+
+  export class GARBAGE_TS_005_ConfigLoader_003 {
+    private config: Partial<GARBAGE_TS_005_ConfigSchema_002> = {};
+    private readonly GARBAGE_TS_005_ENV_PREFIX_004 = 'APP_';
+
+    load(): GARBAGE_TS_005_ConfigSchema_002 {
+      return {
+        database: { host: 'localhost', port: 5432 },
+        redis: { url: 'redis://localhost:6379' },
+        api: { timeout: 30000 },
+      };
+    }
+
+    get<K extends keyof GARBAGE_TS_005_ConfigSchema_002>(key: K): GARBAGE_TS_005_ConfigSchema_002[K] {
+      return this.load()[key];
+    }
+  }
+
+  export const GARBAGE_TS_005_config_005 = new GARBAGE_TS_005_ConfigLoader_003();
+src/unrelated/events.ts: |
+  // GARBAGE_TS_005_EVENTS_006 - event bus
+  export type GARBAGE_TS_005_EventHandler_007<T> = (data: T) => void;
+
+  export class GARBAGE_TS_005_EventBus_008 {
+    private handlers = new Map<string, GARBAGE_TS_005_EventHandler_007<unknown>[]>();
+    private readonly GARBAGE_TS_005_MAX_LISTENERS_009 = 100;
+
+    on<T>(event: string, handler: GARBAGE_TS_005_EventHandler_007<T>): void {
+      const handlers = this.handlers.get(event) || [];
+      handlers.push(handler as GARBAGE_TS_005_EventHandler_007<unknown>);
+      this.handlers.set(event, handlers);
+    }
+
+    emit<T>(event: string, data: T): void {
+      const handlers = this.handlers.get(event) || [];
+      handlers.forEach((handler) => handler(data));
+    }
+
+    off(event: string): void {
+      this.handlers.delete(event);
+    }
+  }
+
+  export const GARBAGE_TS_005_eventBus_010 = new GARBAGE_TS_005_EventBus_008();

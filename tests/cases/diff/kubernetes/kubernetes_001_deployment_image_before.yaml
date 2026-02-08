@@ -1,0 +1,102 @@
+k8s/base/deployment.yaml: |
+  apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    name: api-server
+    namespace: production
+    labels:
+      app: api-server
+      tier: backend
+      environment: production
+  spec:
+    replicas: 3
+    selector:
+      matchLabels:
+        app: api-server
+    template:
+      metadata:
+        labels:
+          app: api-server
+          tier: backend
+      spec:
+        containers:
+        - name: api
+          image: registry.example.com/api-server:v1.2.3
+          ports:
+          - containerPort: 8080
+            name: http
+          - containerPort: 9090
+            name: grpc
+          env:
+          - name: LOG_LEVEL
+            value: "info"
+          - name: DATABASE_URL
+            valueFrom:
+              secretKeyRef:
+                name: db-credentials
+                key: url
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+k8s/base/service.yaml: |
+  apiVersion: v1
+  kind: Service
+  metadata:
+    name: api-server
+    namespace: production
+  spec:
+    selector:
+      app: api-server
+    ports:
+    - name: http
+      port: 80
+      targetPort: 8080
+    - name: grpc
+      port: 9090
+      targetPort: 9090
+k8s/unrelated/monitoring-stack.yaml: |
+  # GARBAGE_K8S_401_PROMETHEUS_STACK
+  apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    name: GARBAGE_K8S_401_PROMETHEUS_MARKER
+    namespace: monitoring
+  spec:
+    replicas: 1
+    selector:
+      matchLabels:
+        app: GARBAGE_K8S_401_MONITORING_APP
+    template:
+      spec:
+        containers:
+        - name: prometheus
+          image: prom/prometheus:GARBAGE_K8S_401_VERSION
+          ports:
+          - containerPort: 9090
+k8s/unrelated/logging-cronjob.yaml: |
+  # GARBAGE_K8S_401_LOGGING_CLEANUP
+  apiVersion: batch/v1
+  kind: CronJob
+  metadata:
+    name: GARBAGE_K8S_401_LOG_ROTATION
+  spec:
+    schedule: "0 0 * * *"
+    jobTemplate:
+      spec:
+        template:
+          spec:
+            containers:
+            - name: cleaner
+              image: alpine:GARBAGE_K8S_401_ALPINE_TAG
+Dockerfile: |
+  FROM python:3.11-slim
+  WORKDIR /app
+  COPY requirements.txt .
+  RUN pip install --no-cache-dir -r requirements.txt
+  COPY . .
+  EXPOSE 8080 9090
+  CMD ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0"]

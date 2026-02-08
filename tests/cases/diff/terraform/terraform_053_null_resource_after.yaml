@@ -1,0 +1,16 @@
+scripts/deploy.sh: |
+  #!/bin/bash
+  echo "Deploying application..."
+main.tf: |
+  resource "null_resource" "deploy" {
+    triggers = {
+      build_version = var.build_version
+      config_hash   = md5(file("config.json"))
+    }
+
+    provisioner "local-exec" {
+      command = "./scripts/deploy.sh ${var.environment}"
+    }
+
+    depends_on = [aws_instance.web]
+  }

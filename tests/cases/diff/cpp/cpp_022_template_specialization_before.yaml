@@ -1,0 +1,174 @@
+include/serializer/serializer.hpp: |
+  #pragma once
+  #include <string>
+  #include <sstream>
+  #include <iomanip>
+  #include <vector>
+  #include <type_traits>
+
+  namespace app::serializer {
+
+  template<typename T>
+  struct Serializer {
+      static std::string serialize(const T& value) {
+          std::ostringstream oss;
+          oss << value;
+          return oss.str();
+      }
+
+      static T deserialize(const std::string& str) {
+          std::istringstream iss(str);
+          T value;
+          iss >> value;
+          return value;
+      }
+  };
+
+  template<>
+  struct Serializer<bool> {
+      static std::string serialize(bool value) {
+          return value ? "true" : "false";
+      }
+
+      static bool deserialize(const std::string& str) {
+          return str == "true" || str == "1";
+      }
+  };
+
+  template<>
+  struct Serializer<std::string> {
+      static std::string serialize(const std::string& value) {
+          std::ostringstream oss;
+          oss << '"';
+          for (char c : value) {
+              if (c == '"') oss << "\\\"";
+              else if (c == '\\') oss << "\\\\";
+              else if (c == '\n') oss << "\\n";
+              else oss << c;
+          }
+          oss << '"';
+          return oss.str();
+      }
+
+      static std::string deserialize(const std::string& str) {
+          if (str.size() < 2 || str.front() != '"' || str.back() != '"') {
+              return str;
+          }
+          std::string result;
+          for (size_t i = 1; i < str.size() - 1; ++i) {
+              if (str[i] == '\\' && i + 1 < str.size() - 1) {
+                  char next = str[i + 1];
+                  if (next == '"') { result += '"'; ++i; }
+                  else if (next == '\\') { result += '\\'; ++i; }
+                  else if (next == 'n') { result += '\n'; ++i; }
+                  else result += str[i];
+              } else {
+                  result += str[i];
+              }
+          }
+          return result;
+      }
+  };
+
+  template<>
+  struct Serializer<double> {
+      static std::string serialize(double value) {
+          std::ostringstream oss;
+          oss << std::setprecision(15) << value;
+          return oss.str();
+      }
+
+      static double deserialize(const std::string& str) {
+          return std::stod(str);
+      }
+  };
+
+  template<typename T>
+  struct Serializer<std::vector<T>> {
+      static std::string serialize(const std::vector<T>& vec) {
+          std::ostringstream oss;
+          oss << "[";
+          for (size_t i = 0; i < vec.size(); ++i) {
+              if (i > 0) oss << ",";
+              oss << Serializer<T>::serialize(vec[i]);
+          }
+          oss << "]";
+          return oss.str();
+      }
+  };
+
+  }
+include/unrelated/cache_manager.hpp: |
+  #pragma once
+  // GARBAGE_CPP_CACHE_263_001
+  #define GARBAGE_CPP_CACHE_SIZE_263_002 1024
+
+  namespace app::unrelated::cache {
+
+  // GARBAGE_CPP_CACHE_ENTRY_263_003
+  struct CacheEntry {
+      void* data;
+      size_t size;
+      // GARBAGE_CPP_CACHE_TIMESTAMP_263_004
+      unsigned long timestamp;
+  };
+
+  // GARBAGE_CPP_CACHE_MANAGER_263_005
+  class CacheManager {
+  public:
+      // GARBAGE_CPP_CACHE_GET_263_006
+      void* get(const char* key) {
+          // GARBAGE_CPP_CACHE_GET_IMPL_263_007
+          return nullptr;
+      }
+
+      // GARBAGE_CPP_CACHE_PUT_263_008
+      void put(const char* key, void* data, size_t size) {
+          // GARBAGE_CPP_CACHE_PUT_IMPL_263_009
+      }
+
+      // GARBAGE_CPP_CACHE_EVICT_263_010
+      void evict(const char* key) {
+          // GARBAGE_CPP_CACHE_EVICT_IMPL_263_011
+      }
+
+      // GARBAGE_CPP_CACHE_CLEAR_263_012
+      void clear() {
+          // GARBAGE_CPP_CACHE_CLEAR_IMPL_263_013
+      }
+  };
+
+  }
+src/unrelated/thread_pool.cpp: |
+  // GARBAGE_CPP_THREADPOOL_263_014
+  #include <functional>
+
+  namespace app::unrelated::threading {
+
+  // GARBAGE_CPP_THREADPOOL_TASK_263_015
+  using TaskFunction = std::function<void()>;
+
+  // GARBAGE_CPP_THREADPOOL_CLASS_263_016
+  class ThreadPool {
+  public:
+      // GARBAGE_CPP_THREADPOOL_SUBMIT_263_017
+      void submit(TaskFunction task) {
+          // GARBAGE_CPP_THREADPOOL_SUBMIT_IMPL_263_018
+      }
+
+      // GARBAGE_CPP_THREADPOOL_SHUTDOWN_263_019
+      void shutdown() {
+          // GARBAGE_CPP_THREADPOOL_SHUTDOWN_IMPL_263_020
+      }
+
+      // GARBAGE_CPP_THREADPOOL_SIZE_263_021
+      size_t pendingTasks() const {
+          // GARBAGE_CPP_THREADPOOL_SIZE_IMPL_263_022
+          return 0;
+      }
+  };
+
+  }
+src/formatter.cpp: |
+  #include <iostream>
+  int main() { return 0; }

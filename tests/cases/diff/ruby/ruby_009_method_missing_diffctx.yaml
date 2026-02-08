@@ -1,0 +1,16 @@
+must_include_files:
+  - app.rb
+must_include_content:
+  - |
+    config = DynamicStruct.new(host: 'localhost', port: 3000, debug: false)
+must_not_include:
+  - GARBAGE_RUBY_009_QUEUE_BACKEND_A
+  - GARBAGE_RUBY_009_CONCURRENCY_B
+  - GARBAGE_RUBY_009_POLL_INTERVAL_C
+  - GARBAGE_RUBY_009_TEMPLATE_LANG_D
+  - GARBAGE_RUBY_009_ESCAPE_MODE_E
+  - GARBAGE_RUBY_009_CACHE_COMPILED_F
+  - GarbageQueueWorker
+  - GarbageTemplateEngine
+  - garbage_queue_worker.rb
+  - garbage_template_engine.rb

@@ -1,0 +1,57 @@
+lib/string_ext.rb: |
+  module StringExtensions
+    refine String do
+      def titlecase
+        split(' ').map(&:capitalize).join(' ')
+      end
+
+      def truncate(length, omission: '...')
+        return self if size <= length
+        "#{self[0, length - omission.size]}#{omission}"
+      end
+
+      def word_count
+        split(/\s+/).size
+      end
+    end
+  end
+lib/formatter.rb: |
+  require_relative 'string_ext'
+
+  class Formatter
+    using StringExtensions
+
+    def format_title(text)
+      text.titlecase
+    end
+
+    def format_summary(text, max_length: 100)
+      text.truncate(max_length)
+    end
+
+    def analyze(text)
+      { words: text.word_count, title: text.titlecase }
+    end
+  end
+lib/garbage_barcode.rb: |
+  GARBAGE_RUBY_013_BARCODE_FORMAT_A = "EAN-13"
+  GARBAGE_RUBY_013_CHECK_DIGIT_B = "modulo10"
+
+  class GarbageBarcodeGenerator
+    GARBAGE_RUBY_013_PREFIX_LENGTH_C = 3
+
+    def generate(product_id)
+      GARBAGE_RUBY_013_BARCODE_FORMAT_A
+    end
+  end
+lib/garbage_label_printer.rb: |
+  GARBAGE_RUBY_013_PRINTER_MODEL_D = "ZebraTLP2844"
+  GARBAGE_RUBY_013_LABEL_SIZE_E = "4x6"
+
+  class GarbageLabelPrinter
+    GARBAGE_RUBY_013_DPI_SETTING_F = 203
+
+    def print_label(content)
+      GARBAGE_RUBY_013_PRINTER_MODEL_D
+    end
+  end

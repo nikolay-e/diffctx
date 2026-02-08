@@ -1,0 +1,60 @@
+app/models/concerns/commentable.rb: |
+  module Commentable
+    def self.included(base)
+      base.class_eval do
+        define_method(:comments) { @comments ||= [] }
+        define_method(:add_comment) { |c| comments << c }
+        define_method(:comment_count) { comments.size }
+      end
+    end
+  end
+
+  module Taggable
+    def self.included(base)
+      base.class_eval do
+        define_method(:tags) { @tags ||= [] }
+        define_method(:add_tag) { |t| tags << t unless tags.include?(t) }
+        define_method(:tagged_with?) { |t| tags.include?(t) }
+      end
+    end
+  end
+app/models/post.rb: |
+  require_relative 'concerns/commentable'
+
+  class Post
+    include Commentable
+    include Taggable
+
+    attr_accessor :title, :body
+
+    def initialize(title:, body:)
+      @title = title
+      @body = body
+    end
+
+    def summary
+      "#{title} (#{comment_count} comments, tags: #{tags.join(', ')})"
+    end
+  end
+lib/garbage_sms_gateway.rb: |
+  GARBAGE_RUBY_019_SMS_PROVIDER_A = "twilio"
+  GARBAGE_RUBY_019_COUNTRY_CODE_B = "+1"
+
+  class GarbageSmsGateway
+    GARBAGE_RUBY_019_MAX_LENGTH_C = 160
+
+    def send_sms(number, message)
+      GARBAGE_RUBY_019_SMS_PROVIDER_A
+    end
+  end
+lib/garbage_push_notify.rb: |
+  GARBAGE_RUBY_019_PUSH_SERVICE_D = "firebase"
+  GARBAGE_RUBY_019_PLATFORM_E = "android"
+
+  class GarbagePushNotifier
+    GARBAGE_RUBY_019_TTL_SECONDS_F = 86400
+
+    def notify(device_token, payload)
+      GARBAGE_RUBY_019_PUSH_SERVICE_D
+    end
+  end

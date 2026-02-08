@@ -1,0 +1,14 @@
+build.sbt: |
+  name := "myapp"
+  version := "0.1.0"
+  scalaVersion := "3.3.0"
+
+  libraryDependencies ++= Seq(
+    "org.typelevel" %% "cats-core" % "2.9.0"
+  )
+src/main/scala/Main.scala: |
+  import cats.syntax.all._
+
+  object Main extends App {
+    println("Hello")
+  }

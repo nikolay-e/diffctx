@@ -1,0 +1,79 @@
+src/lib.rs: |
+  pub mod ffi;
+  pub mod unrelated;
+src/ffi.rs: |
+  use std::ffi::CStr;
+  use std::os::raw::{c_char, c_int};
+
+  extern "C" {
+      fn external_function(x: c_int) -> c_int;
+      fn another_external(s: *const c_char, len: usize) -> c_int;
+  }
+
+  pub fn safe_wrapper(x: i32) -> i32 {
+      unsafe { external_function(x as c_int) as i32 }
+  }
+
+  pub fn safe_string_wrapper(s: &str) -> i32 {
+      let c_str = std::ffi::CString::new(s).expect("CString creation failed");
+      unsafe { another_external(c_str.as_ptr(), s.len()) as i32 }
+  }
+
+  pub fn validate_input(x: i32) -> bool {
+      x >= 0 && x <= 1000
+  }
+
+  pub fn process_external(x: i32) -> Result<i32, String> {
+      if !validate_input(x) {
+          return Err("Input out of range".to_string());
+      }
+      Ok(safe_wrapper(x))
+  }
+
+  pub fn process_string_external(s: &str) -> Result<i32, String> {
+      if s.is_empty() {
+          return Err("Empty string".to_string());
+      }
+      Ok(safe_string_wrapper(s))
+  }
+src/unrelated/mod.rs: |
+  pub mod logger;
+  pub mod cache;
+src/unrelated/logger.rs: |
+  // GARBAGE_RUST_022_LOGGER_A
+  pub const GARBAGE_RUST_022_LOG_LEVEL_B: &str = "debug";
+
+  pub struct GarbageLogWriter022 {
+      path: String,
+      max_lines: usize,
+  }
+
+  impl GarbageLogWriter022 {
+      pub fn garbage_write_log_022(&self, msg: &str) {
+          println!("[{}] {}: {}", self.path, self.max_lines, msg);
+      }
+
+      pub fn garbage_rotate_022(&mut self) {
+          self.max_lines = 0;
+      }
+  }
+src/unrelated/cache.rs: |
+  // GARBAGE_RUST_022_CACHE_C
+  use std::collections::HashMap;
+
+  pub struct GarbageLruCache022 {
+      items: HashMap<String, String>,
+      capacity: usize,
+  }
+
+  impl GarbageLruCache022 {
+      pub fn garbage_get_022(&self, key: &str) -> Option<&String> {
+          self.items.get(key)
+      }
+
+      pub fn garbage_evict_022(&mut self) {
+          if self.items.len() > self.capacity {
+              self.items.clear();
+          }
+      }
+  }

@@ -1,0 +1,129 @@
+Makefile: |
+  .PHONY: build test clean install dev
+
+  PYTHON := python3
+  VENV := venv
+  PIP := $(VENV)/bin/pip
+  PYTEST := $(VENV)/bin/pytest
+
+  build:
+  	python setup.py build
+
+  test:
+  	pytest tests/
+
+  clean:
+  	rm -rf build/ dist/ *.egg-info
+  	find . -type d -name __pycache__ -exec rm -rf {} +
+  	find . -type f -name "*.pyc" -delete
+
+  install:
+  	$(PIP) install -e .
+
+  dev:
+  	$(PIP) install -e ".[dev]"
+
+src/app.py: |
+  import logging
+  from typing import Optional
+  from dataclasses import dataclass
+
+  from .config import load_config, AppConfig
+  from .services import DatabaseService, CacheService
+
+  logger = logging.getLogger(__name__)
+
+  @dataclass
+  class Application:
+      config: AppConfig
+      database: DatabaseService
+      cache: Optional[CacheService] = None
+
+      def run(self) -> None:
+          logger.info(f"Starting application in {self.config.environment} mode")
+          self.database.connect()
+          if self.cache:
+              self.cache.connect()
+          logger.info("Application started successfully")
+
+      def shutdown(self) -> None:
+          logger.info("Shutting down application")
+          if self.cache:
+              self.cache.disconnect()
+          self.database.disconnect()
+          logger.info("Application shut down complete")
+
+  def create_application() -> Application:
+      config = load_config()
+      database = DatabaseService(config.database)
+      cache = CacheService(config.cache) if config.cache.enabled else None
+      return Application(config=config, database=database, cache=cache)
+
+  def run() -> None:
+      app = create_application()
+      try:
+          app.run()
+      except KeyboardInterrupt:
+          app.shutdown()
+
+src/config.py: |
+  import os
+  from dataclasses import dataclass
+  from typing import Optional
+
+  @dataclass
+  class DatabaseConfig:
+      host: str
+      port: int
+      name: str
+      user: str
+      password: str
+
+  @dataclass
+  class CacheConfig:
+      enabled: bool
+      host: str
+      port: int
+
+  @dataclass
+  class AppConfig:
+      environment: str
+      database: DatabaseConfig
+      cache: CacheConfig
+
+  def load_config() -> AppConfig:
+      return AppConfig(
+          environment=os.getenv("ENV", "development"),
+          database=DatabaseConfig(
+              host=os.getenv("DB_HOST", "localhost"),
+              port=int(os.getenv("DB_PORT", "5432")),
+              name=os.getenv("DB_NAME", "app"),
+              user=os.getenv("DB_USER", "postgres"),
+              password=os.getenv("DB_PASSWORD", ""),
+          ),
+          cache=CacheConfig(
+              enabled=os.getenv("CACHE_ENABLED", "false").lower() == "true",
+              host=os.getenv("CACHE_HOST", "localhost"),
+              port=int(os.getenv("CACHE_PORT", "6379")),
+          ),
+      )
+
+garbage_docs.py: |
+  GARBAGE_CICD_007_DOC_MARKER_A = "readme"
+  GARBAGE_CICD_007_FORMAT_MARKER_B = "markdown"
+
+  class GarbageDocGenerator:
+      GARBAGE_CICD_007_TEMPLATE_MARKER_C = "default"
+
+      def generate(self) -> str:
+          return ""
+
+garbage_release.py: |
+  GARBAGE_CICD_007_RELEASE_MARKER_D = "semantic"
+  GARBAGE_CICD_007_BRANCH_MARKER_E = "main"
+
+  class GarbageReleaseManager:
+      GARBAGE_CICD_007_TAG_MARKER_F = "v1.0.0"
+
+      def release(self) -> None:
+          pass

@@ -1,0 +1,22 @@
+src/main/java/com/example/Service.java: |
+  package com.example;
+
+  public class Service {
+      public void process(String input) {
+          if (input == null) {
+              throw new RuntimeException("Input is null");
+          }
+      }
+  }
+GarbageErrorHandler.java: |
+  public class GarbageErrorHandler {
+      public static final String GARBAGE_JVM_028_HANDLER_MARKER_A = "marker";
+      public static final String GARBAGE_JVM_028_RECOVER_MARKER_B = "marker";
+      public void noop() {}
+  }
+GarbageFallbackService.java: |
+  public class GarbageFallbackService {
+      public static final String GARBAGE_JVM_028_FALLBACK_MARKER_C = "marker";
+      public static final String GARBAGE_JVM_028_RETRY_MARKER_D = "marker";
+      public void noop() {}
+  }

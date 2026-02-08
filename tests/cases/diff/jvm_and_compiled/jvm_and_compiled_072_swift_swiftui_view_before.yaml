@@ -1,0 +1,24 @@
+User.swift: |
+  struct User: Identifiable {
+      let id: String
+      let name: String
+      let email: String
+  }
+UserView.swift: |
+  // Initial
+  import SwiftUI
+  struct UserView: View {
+      var body: some View { Text("") }
+  }
+GarbageModifierChain.swift: |
+  class GarbageModifierChain {
+      static let GARBAGE_JVM_072_MODIFIER_MARKER_A = "marker"
+      static let GARBAGE_JVM_072_STYLE_MARKER_B = "marker"
+      func noop() {}
+  }
+GarbageAnimationHelper.swift: |
+  class GarbageAnimationHelper {
+      static let GARBAGE_JVM_072_ANIMATION_MARKER_C = "marker"
+      static let GARBAGE_JVM_072_TRANSITION_MARKER_D = "marker"
+      func noop() {}
+  }

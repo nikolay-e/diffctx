@@ -1,0 +1,18 @@
+must_include_files:
+  - app/Http/Controllers/UserController.php
+must_include_content:
+  - |
+    public function store(StoreUserRequest $request): array
+must_not_include:
+  - GARBAGE_PHP_015_RETENTION_A
+  - GARBAGE_PHP_015_LOG_LEVEL_B
+  - GARBAGE_PHP_015_STORAGE_C
+  - GARBAGE_PHP_015_TIMESTAMP_FORMAT_D
+  - GARBAGE_PHP_015_DEFAULT_STATE_E
+  - GARBAGE_PHP_015_CACHE_TTL_F
+  - GARBAGE_PHP_015_STRATEGY_G
+  - GARBAGE_PHP_015_ROLLOUT_H
+  - GarbageAuditTrail
+  - GarbageFeatureToggle
+  - garbage_audit_trail.php
+  - garbage_feature_toggle.php

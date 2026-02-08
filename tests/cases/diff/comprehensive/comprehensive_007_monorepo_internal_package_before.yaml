@@ -1,0 +1,58 @@
+internal/logger/index.ts: |
+  export class Logger {
+      log(message: string) {
+          console.log(message);
+      }
+  }
+
+  export function createLogger(name: string): Logger {
+      return new Logger();
+  }
+
+  export const DEFAULT_LOG_PREFIX = "[APP]";
+
+packages/api/src/server.ts: |
+  import { Logger, createLogger } from '../../internal/logger';
+
+  const logger = createLogger('api');
+
+  export function startServer(port: number) {
+      logger.log(`Server started on port ${port}`);
+      return { port, status: 'running' };
+  }
+
+  export function stopServer() {
+      logger.log('Server stopped');
+  }
+
+packages/worker/src/main.ts: |
+  import { Logger, createLogger } from '../../internal/logger';
+
+  const logger = createLogger('worker');
+
+  export function runWorker(taskName: string) {
+      logger.log(`Worker started: ${taskName}`);
+      return { task: taskName, status: 'processing' };
+  }
+
+  export function stopWorker() {
+      logger.log('Worker stopped');
+  }
+
+garbage_service_mesh.ts: |
+  const GARBAGE_COMP_007_SIDECAR_PROXY_A = "envoy";
+  const GARBAGE_COMP_007_LOAD_BALANCE_B = "round_robin";
+
+  class GarbageServiceMesh {
+    static GARBAGE_COMP_007_CIRCUIT_BREAK_C = true;
+    route(): void {}
+  }
+
+garbage_config_sync.ts: |
+  const GARBAGE_COMP_007_ETCD_CLUSTER_D = "consensus";
+  const GARBAGE_COMP_007_WATCH_INTERVAL_E = "polling";
+
+  class GarbageConfigSync {
+    static GARBAGE_COMP_007_RECONCILE_F = false;
+    sync(): void {}
+  }

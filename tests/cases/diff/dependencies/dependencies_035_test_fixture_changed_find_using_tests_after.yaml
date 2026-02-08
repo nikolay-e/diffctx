@@ -1,0 +1,12 @@
+tests/conftest.py: |
+  import pytest
+
+  @pytest.fixture
+  def mock_api():
+      return {"status": "ok", "version": "2.0"}
+tests/test_client.py: |
+  def test_fetch(mock_api):
+      assert mock_api["status"] == "ok"
+tests/test_sync.py: |
+  def test_sync(mock_api):
+      assert mock_api["status"] == "ok"

@@ -1,0 +1,76 @@
+src/services/user_service.py: |
+  from typing import Optional, List, Dict, Any
+  from dataclasses import dataclass
+  from datetime import datetime
+
+  @dataclass
+  class User:
+      id: int
+      username: str
+      email: str
+      created_at: datetime
+
+  class UserService:
+      def __init__(self, db_connection):
+          self.db = db_connection
+          self.cache: Dict[int, User] = {}
+
+      def get_user(self, user_id: int) -> Optional[User]:
+          if user_id in self.cache:
+              return self.cache[user_id]
+          user = self.db.query(User).filter_by(id=user_id).first()
+          if user:
+              self.cache[user_id] = user
+          return user
+
+      def get_users_by_email_domain(self, domain: str) -> List[User]:
+          return self.db.query(User).filter(
+              User.email.endswith(f"@{domain}")
+          ).all()
+
+      def create_user(self, username: str, email: str) -> User:
+          if self.get_user_by_email(email):
+              raise ValueError(f"User with email {email} already exists")
+          user = User(
+              id=self._generate_id(),
+              username=username,
+              email=email.lower(),
+              created_at=datetime.now()
+          )
+          self.db.add(user)
+          return user
+
+      def get_user_by_email(self, email: str) -> Optional[User]:
+          return self.db.query(User).filter_by(email=email.lower()).first()
+
+      def update_email(self, user_id: int, new_email: str) -> bool:
+          user = self.get_user(user_id)
+          if not user:
+              return False
+          user.email = new_email.lower()
+          self.cache.pop(user_id, None)
+          self.db.commit()
+          return True
+
+      def _generate_id(self) -> int:
+          return hash(datetime.now().isoformat()) % 1000000
+
+garbage_permissions.py: |
+  GARBAGE_ALGO_013_PERM_MARKER_A = "permission"
+  GARBAGE_ALGO_013_ROLE_MARKER_B = True
+
+  class PermissionChecker:
+      GARBAGE_ALGO_013_ACCESS_MARKER_C = {}
+
+      def check(self, user_id: int, action: str) -> bool:
+          return True
+
+garbage_notifications.py: |
+  GARBAGE_ALGO_013_NOTIFY_MARKER_D = "notify"
+  GARBAGE_ALGO_013_CHANNEL_MARKER_E = "email"
+
+  class NotificationService:
+      GARBAGE_ALGO_013_QUEUE_MARKER_F = []
+
+      def send(self, user_id: int, message: str) -> None:
+          pass

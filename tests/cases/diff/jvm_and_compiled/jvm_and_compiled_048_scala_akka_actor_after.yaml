@@ -1,0 +1,43 @@
+Messages.scala: |
+  sealed trait UserMessage
+  case class CreateUser(name: String) extends UserMessage
+  case class DeleteUser(id: String) extends UserMessage
+  case class GetUser(id: String) extends UserMessage
+  case class UserCreated(id: String, name: String)
+UserActor.scala: |
+  import akka.actor.{Actor, ActorLogging, Props}
+
+  class UserActor extends Actor with ActorLogging {
+    private var users: Map[String, String] = Map.empty
+
+    def receive: Receive = {
+      case CreateUser(name) =>
+        val id = java.util.UUID.randomUUID().toString
+        users = users + (id -> name)
+        log.info(s"Created user $id: $name")
+        sender() ! UserCreated(id, name)
+
+      case DeleteUser(id) =>
+        users = users - id
+        log.info(s"Deleted user $id")
+
+      case GetUser(id) =>
+        sender() ! users.get(id)
+    }
+  }
+
+  object UserActor {
+    def props: Props = Props[UserActor]()
+  }
+GarbageStreamSource.scala: |
+  object GarbageStreamSource {
+    val GARBAGE_JVM_048_STREAM_MARKER_A = "marker"
+    val GARBAGE_JVM_048_SOURCE_MARKER_B = "marker"
+    def noop(): Unit = {}
+  }
+GarbageStreamSink.scala: |
+  object GarbageStreamSink {
+    val GARBAGE_JVM_048_SINK_MARKER_C = "marker"
+    val GARBAGE_JVM_048_FLOW_MARKER_D = "marker"
+    def noop(): Unit = {}
+  }

@@ -1,0 +1,58 @@
+lib/service.rb: |
+  class Service
+    def process(data)
+      validated = validate(data)
+      normalized = normalize(validated)
+      transform(normalized)
+    end
+
+    private
+
+    def validate(data)
+      raise ArgumentError, "Data cannot be nil" if data.nil?
+      raise ArgumentError, "Data cannot be empty" if data.empty?
+      data
+    end
+
+    def normalize(data)
+      data.to_s.strip.downcase
+    end
+
+    def transform(data)
+      data.upcase
+    end
+  end
+app.rb: |
+  require_relative 'lib/service'
+
+  service = Service.new
+  result = service.process("  Hello World  ")
+  puts result
+
+  begin
+    service.process(nil)
+  rescue ArgumentError => e
+    puts "Error: #{e.message}"
+  end
+lib/garbage_image_processor.rb: |
+  GARBAGE_RUBY_008_RESIZE_MODE_A = "bicubic"
+  GARBAGE_RUBY_008_OUTPUT_FORMAT_B = "webp"
+
+  class GarbageImageProcessor
+    GARBAGE_RUBY_008_MAX_DIMENSION_C = 2048
+
+    def process(image_path)
+      GARBAGE_RUBY_008_RESIZE_MODE_A
+    end
+  end
+lib/garbage_search_index.rb: |
+  GARBAGE_RUBY_008_INDEX_TYPE_D = "inverted"
+  GARBAGE_RUBY_008_ANALYZER_MODE_E = "standard"
+
+  class GarbageSearchIndexer
+    GARBAGE_RUBY_008_SHARD_COUNT_F = 5
+
+    def index(document)
+      GARBAGE_RUBY_008_INDEX_TYPE_D
+    end
+  end

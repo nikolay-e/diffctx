@@ -1,0 +1,18 @@
+component_a.py: |
+  def alpha_one():
+      alpha_two()
+
+  def alpha_two():
+      alpha_three()
+
+  def alpha_three():
+      pass
+component_b.py: |
+  def beta_one():
+      beta_two()
+
+  def beta_two():
+      beta_three()
+
+  def beta_three():
+      pass

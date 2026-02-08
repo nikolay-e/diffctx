@@ -1,0 +1,15 @@
+main.tf: |
+  resource "aws_instance" "web" {
+    ami = "ami-12345"
+  }
+versions.tf: |
+  terraform {
+    required_version = ">= 1.5.0, < 2.0.0"
+
+    required_providers {
+      aws = {
+        source  = "hashicorp/aws"
+        version = "~> 5.0"
+      }
+    }
+  }

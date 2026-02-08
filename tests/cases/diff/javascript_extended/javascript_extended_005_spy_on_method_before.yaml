@@ -1,0 +1,79 @@
+src/logger.ts: |
+  export interface LogEntry {
+      level: string;
+      message: string;
+      timestamp: Date;
+  }
+
+  export const logger = {
+      entries: [] as LogEntry[],
+
+      log(message: string): void {
+          this.entries.push({ level: 'info', message, timestamp: new Date() });
+          console.log(`[INFO] ${message}`);
+      },
+
+      error(message: string): void {
+          this.entries.push({ level: 'error', message, timestamp: new Date() });
+          console.error(`[ERROR] ${message}`);
+      },
+
+      warn(message: string): void {
+          this.entries.push({ level: 'warn', message, timestamp: new Date() });
+          console.warn(`[WARN] ${message}`);
+      },
+  };
+src/app.ts: |
+  import { logger } from './logger';
+
+  export function processData(data: string): string {
+      logger.log(`Processing: ${data}`);
+      const result = data.toUpperCase().trim();
+      if (result.length === 0) {
+          logger.warn('Empty data after processing');
+      }
+      return result;
+  }
+
+  export function handleError(error: Error): void {
+      logger.error(`Unhandled error: ${error.message}`);
+  }
+src/app.test.ts: |
+  console.log('initial');
+src/unrelated/metrics.ts: |
+  const GARBAGE_JSX_005_METRICS_COUNTER_A = 'metrics_garbage_marker';
+
+  export class GarbageMetricsCollector {
+      private counters: Map<string, number> = new Map();
+
+      increment(name: string): void {
+          const current = this.counters.get(name) ?? 0;
+          this.counters.set(name, current + 1);
+      }
+
+      getCount(name: string): number {
+          return this.counters.get(name) ?? 0;
+      }
+  }
+
+  export function GARBAGE_JSX_005_REPORT_METRICS_B(): void {
+      console.log('GARBAGE_JSX_005_REPORT_OUTPUT_C');
+  }
+src/unrelated/scheduler.ts: |
+  const GARBAGE_JSX_005_SCHEDULER_CONFIG_D = { interval: 5000, maxJobs: 10 };
+
+  export class GARBAGE_JSX_005_JOB_SCHEDULER_E {
+      private jobs: Array<() => void> = [];
+
+      schedule(job: () => void): void {
+          this.jobs.push(job);
+      }
+
+      run(): void {
+          this.jobs.forEach(job => job());
+      }
+  }
+
+  export function GARBAGE_JSX_005_CLEAR_SCHEDULE_F(): void {
+      console.log('clearing schedule');
+  }

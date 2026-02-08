@@ -1,0 +1,52 @@
+patterns.sh: |
+  #!/bin/bash
+  shopt -s extglob
+
+  for f in *.@(jpg|png|gif); do
+      echo "Image: $f"
+  done
+
+  rm -f !(*.txt|*.log|*.md)
+
+  case "$1" in
+      *.+(tar|gz|bz2))
+          echo "Archive file"
+          ;;
+      !(*.*)  )
+          echo "No extension"
+          ;;
+      @(README|LICENSE|CHANGELOG)*)
+          echo "Project meta file"
+          ;;
+  esac
+
+  for f in +([0-9])_*.sh; do
+      echo "Numbered script: $f"
+  done
+unrelated/garbage_syslog.sh: |
+  #!/bin/bash
+  # GARBAGE_SH_005_SYSLOG_PARSER_A
+  GARBAGE_SH_005_LOG_FACILITY_B="local0"
+
+  garbage_parse_syslog_005() {
+      local line=$1
+      echo "Parsed: $line"
+  }
+
+  garbage_filter_severity_005() {
+      local level=$1
+      echo "Filtering severity: $level"
+  }
+unrelated/garbage_cron_check.sh: |
+  #!/bin/bash
+  # GARBAGE_SH_005_CRON_CHECK_C
+  GARBAGE_SH_005_SCHEDULE_D="0 * * * *"
+
+  garbage_validate_cron_005() {
+      local expr=$1
+      echo "Valid cron: $expr"
+  }
+
+  garbage_next_run_005() {
+      echo "Next run: tomorrow"
+  }

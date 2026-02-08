@@ -1,0 +1,92 @@
+bitbucket-pipelines.yml: |
+  pipelines:
+    default:
+      - step:
+          name: Build
+          script:
+            - npm run build
+
+src/index.js: |
+  const express = require('express');
+  const { Logger } = require('./logger');
+  const { router } = require('./routes');
+
+  const logger = new Logger('app');
+
+  function createApp() {
+    const app = express();
+    app.use(express.json());
+    app.use('/api', router);
+    return app;
+  }
+
+  function main() {
+    const app = createApp();
+    const port = process.env.PORT || 3000;
+
+    app.listen(port, () => {
+      logger.info(`Server running on port ${port}`);
+    });
+  }
+
+  module.exports = { createApp, main };
+
+src/routes.js: |
+  const express = require('express');
+  const router = express.Router();
+
+  router.get('/health', (req, res) => {
+    res.json({ status: 'ok' });
+  });
+
+  router.get('/users', (req, res) => {
+    res.json([]);
+  });
+
+  router.post('/users', (req, res) => {
+    const { name, email } = req.body;
+    res.status(201).json({ id: 1, name, email });
+  });
+
+  module.exports = { router };
+
+src/logger.js: |
+  class Logger {
+    constructor(name) {
+      this.name = name;
+    }
+
+    info(message) {
+      console.log(`[${this.name}] INFO: ${message}`);
+    }
+
+    error(message) {
+      console.error(`[${this.name}] ERROR: ${message}`);
+    }
+  }
+
+  module.exports = { Logger };
+
+garbage_socket.js: |
+  const GARBAGE_CICD_011_SOCKET_MARKER_A = "websocket";
+  const GARBAGE_CICD_011_PORT_MARKER_B = 8080;
+
+  class GarbageSocketServer {
+    static GARBAGE_CICD_011_PROTOCOL_MARKER_C = "ws";
+
+    connect() {}
+  }
+
+  module.exports = { GarbageSocketServer };
+
+garbage_queue.js: |
+  const GARBAGE_CICD_011_QUEUE_MARKER_D = "redis";
+  const GARBAGE_CICD_011_MAX_MARKER_E = 1000;
+
+  class GarbageQueueManager {
+    static GARBAGE_CICD_011_RETRY_MARKER_F = 3;
+
+    push() {}
+  }
+
+  module.exports = { GarbageQueueManager };

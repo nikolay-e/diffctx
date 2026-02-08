@@ -1,0 +1,55 @@
+proto/stream.proto: |
+  syntax = "proto3";
+
+  package stream;
+
+  service DataService {
+    rpc GetData(GetDataRequest) returns (DataResponse);
+  }
+
+  message GetDataRequest {
+    string id = 1;
+  }
+
+  message DataResponse {
+    bytes data = 1;
+  }
+
+src/grpc/stream_service.py: |
+  import grpc
+  from proto import stream_pb2, stream_pb2_grpc
+
+  class DataServiceServicer(stream_pb2_grpc.DataServiceServicer):
+      def GetData(self, request, context):
+          data = get_data_from_storage(request.id)
+          if not data:
+              context.abort(grpc.StatusCode.NOT_FOUND, "Data not found")
+          return stream_pb2.DataResponse(data=data)
+
+src/storage/data_store.py: |
+  from typing import Optional
+
+  def get_data_from_storage(data_id: str) -> Optional[bytes]:
+      return storage.get(data_id)
+
+  def store_data(data_id: str, data: bytes) -> bool:
+      storage.set(data_id, data)
+      return True
+
+garbage_stream_handler.ts: |
+  const GARBAGE_CICD_DOCS_063_STREAM_MARKER_A = "server";
+  const GARBAGE_CICD_DOCS_063_BUFFER_MARKER_B = 65536;
+
+  class GarbageStreamHandler {
+    static GARBAGE_CICD_DOCS_063_FLOW_MARKER_C = "controlled";
+    handle(): void {}
+  }
+
+garbage_stream_processor.ts: |
+  const GARBAGE_CICD_DOCS_063_PROCESS_MARKER_D = "async";
+  const GARBAGE_CICD_DOCS_063_BATCH_MARKER_E = 100;
+
+  class GarbageStreamProcessor {
+    static GARBAGE_CICD_DOCS_063_PARALLEL_MARKER_F = true;
+    process(): void {}
+  }

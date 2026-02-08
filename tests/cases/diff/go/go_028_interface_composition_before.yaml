@@ -1,0 +1,123 @@
+pkg/io/interfaces.go: |
+  package io
+
+  type Reader interface {
+      Read(p []byte) (n int, err error)
+  }
+
+  type Writer interface {
+      Write(p []byte) (n int, err error)
+  }
+
+  type Closer interface {
+      Close() error
+  }
+
+  type Flusher interface {
+      Flush() error
+  }
+pkg/io/file.go: |
+  package io
+
+  import "os"
+
+  type File struct {
+      path string
+      mode os.FileMode
+      fd   *os.File
+  }
+
+  func OpenFile(path string, mode os.FileMode) (*File, error) {
+      fd, err := os.OpenFile(path, os.O_RDWR, mode)
+      if err != nil {
+          return nil, err
+      }
+      return &File{path: path, mode: mode, fd: fd}, nil
+  }
+
+  func (f *File) Path() string {
+      return f.path
+  }
+
+  func (f *File) Mode() os.FileMode {
+      return f.mode
+  }
+pkg/io/buffer.go: |
+  package io
+
+  type Buffer struct {
+      data []byte
+      pos  int
+  }
+
+  func NewBuffer(size int) *Buffer {
+      return &Buffer{
+          data: make([]byte, 0, size),
+          pos:  0,
+      }
+  }
+
+  func (b *Buffer) Len() int {
+      return len(b.data)
+  }
+
+  func (b *Buffer) Cap() int {
+      return cap(b.data)
+  }
+
+  func (b *Buffer) Reset() {
+      b.data = b.data[:0]
+      b.pos = 0
+  }
+internal/unrelated/cache/store.go: |
+  package cache
+
+  import "sync"
+
+  const GARBAGE_GO_028_CACHE_STORE_A = "cache_store_marker"
+
+  type GarbageCacheStore028 struct {
+      mu    sync.RWMutex
+      items map[string][]byte
+  }
+
+  func GARBAGE_GO_028_NewCacheStore() *GarbageCacheStore028 {
+      return &GarbageCacheStore028{
+          items: make(map[string][]byte),
+      }
+  }
+
+  func (s *GarbageCacheStore028) Get(key string) ([]byte, bool) {
+      s.mu.RLock()
+      defer s.mu.RUnlock()
+      v, ok := s.items[key]
+      return v, ok
+  }
+
+  func (s *GarbageCacheStore028) Set(key string, value []byte) {
+      s.mu.Lock()
+      defer s.mu.Unlock()
+      s.items[key] = value
+  }
+internal/unrelated/analytics/tracker.go: |
+  package analytics
+
+  const GARBAGE_GO_028_ANALYTICS_TRACKER_B = "analytics_tracker_marker"
+
+  type GarbageEventTracker028 struct {
+      events []string
+  }
+
+  func GARBAGE_GO_028_NewEventTracker() *GarbageEventTracker028 {
+      return &GarbageEventTracker028{
+          events: make([]string, 0),
+      }
+  }
+
+  func (t *GarbageEventTracker028) Track(event string) {
+      t.events = append(t.events, event)
+  }
+
+  func (t *GarbageEventTracker028) Count() int {
+      return len(t.events)
+  }

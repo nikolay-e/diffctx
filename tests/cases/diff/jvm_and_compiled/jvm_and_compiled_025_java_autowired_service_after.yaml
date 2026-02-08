@@ -1,0 +1,50 @@
+src/main/java/com/example/UserService.java: |
+  package com.example;
+
+  import org.springframework.stereotype.Service;
+  import java.util.List;
+
+  @Service
+  public class UserService {
+      public User findById(Long id) {
+          return new User(id, "John");
+      }
+
+      public List<User> findAll() {
+          return List.of(new User(1L, "John"), new User(2L, "Jane"));
+      }
+
+      public User save(User user) {
+          return user;
+      }
+  }
+src/main/java/com/example/UserController.java: |
+  package com.example;
+
+  import org.springframework.beans.factory.annotation.Autowired;
+  import org.springframework.web.bind.annotation.*;
+
+  @RestController
+  @RequestMapping("/users")
+  public class UserController {
+
+      @Autowired
+      private UserService userService;
+
+      @GetMapping("/{id}")
+      public User getUser(@PathVariable Long id) {
+          return userService.findById(id);
+      }
+  }
+GarbageCacheManager.java: |
+  public class GarbageCacheManager {
+      public static final String GARBAGE_JVM_025_CACHE_MARKER_A = "marker";
+      public static final String GARBAGE_JVM_025_EVICT_MARKER_B = "marker";
+      public void noop() {}
+  }
+GarbageProxyHandler.java: |
+  public class GarbageProxyHandler {
+      public static final String GARBAGE_JVM_025_PROXY_MARKER_C = "marker";
+      public static final String GARBAGE_JVM_025_INTERCEPT_MARKER_D = "marker";
+      public void noop() {}
+  }

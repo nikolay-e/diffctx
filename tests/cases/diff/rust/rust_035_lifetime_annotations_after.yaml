@@ -1,0 +1,324 @@
+src/lib.rs: |
+  pub mod parser;
+  pub mod unrelated;
+src/parser.rs: |
+  use std::collections::HashMap;
+
+  pub struct Parser<'a> {
+      input: &'a str,
+      position: usize,
+  }
+
+  impl<'a> Parser<'a> {
+      pub fn new(input: &'a str) -> Self {
+          Self { input, position: 0 }
+      }
+
+      pub fn parse(&self) -> Vec<&'a str> {
+          self.input.split_whitespace().collect()
+      }
+
+      pub fn first_word(&self) -> Option<&'a str> {
+          self.input.split_whitespace().next()
+      }
+
+      pub fn position(&self) -> usize {
+          self.position
+      }
+
+      pub fn remaining(&self) -> &'a str {
+          &self.input[self.position..]
+      }
+
+      pub fn advance(&mut self, n: usize) {
+          self.position = (self.position + n).min(self.input.len());
+      }
+
+      pub fn peek(&self, n: usize) -> Option<&'a str> {
+          if self.position + n <= self.input.len() {
+              Some(&self.input[self.position..self.position + n])
+          } else {
+              None
+          }
+      }
+  }
+
+  pub struct Token<'a> {
+      kind: TokenKind,
+      value: &'a str,
+      span: Span,
+  }
+
+  #[derive(Debug, Clone, Copy)]
+  pub struct Span {
+      pub start: usize,
+      pub end: usize,
+  }
+
+  impl Span {
+      pub fn new(start: usize, end: usize) -> Self {
+          Self { start, end }
+      }
+
+      pub fn len(&self) -> usize {
+          self.end - self.start
+      }
+
+      pub fn is_empty(&self) -> bool {
+          self.start == self.end
+      }
+  }
+
+  #[derive(Debug, Clone, PartialEq)]
+  pub enum TokenKind {
+      Identifier,
+      Number,
+      Operator,
+      Whitespace,
+      Eof,
+  }
+
+  impl<'a> Token<'a> {
+      pub fn new(kind: TokenKind, value: &'a str, span: Span) -> Self {
+          Self { kind, value, span }
+      }
+
+      pub fn kind(&self) -> &TokenKind {
+          &self.kind
+      }
+
+      pub fn value(&self) -> &'a str {
+          self.value
+      }
+
+      pub fn span(&self) -> Span {
+          self.span
+      }
+  }
+
+  pub fn tokenize<'a>(input: &'a str) -> Vec<Token<'a>> {
+      let mut tokens = Vec::new();
+      let mut pos = 0;
+
+      for word in input.split_whitespace() {
+          let start = input[pos..].find(word).map(|i| pos + i).unwrap_or(pos);
+          let end = start + word.len();
+          let span = Span::new(start, end);
+          tokens.push(Token::new(TokenKind::Identifier, word, span));
+          pos = end;
+      }
+
+      tokens
+  }
+
+  pub fn longest<'a>(x: &'a str, y: &'a str) -> &'a str {
+      if x.len() > y.len() { x } else { y }
+  }
+
+  pub fn first_matching<'a, 'b>(
+      items: &'a [&'b str],
+      predicate: impl Fn(&str) -> bool,
+  ) -> Option<&'b str> {
+      items.iter().copied().find(|s| predicate(s))
+  }
+
+  pub struct StringInterner<'a> {
+      strings: HashMap<&'a str, u32>,
+      next_id: u32,
+  }
+
+  impl<'a> StringInterner<'a> {
+      pub fn new() -> Self {
+          Self {
+              strings: HashMap::new(),
+              next_id: 0,
+          }
+      }
+
+      pub fn intern(&mut self, s: &'a str) -> u32 {
+          if let Some(&id) = self.strings.get(s) {
+              id
+          } else {
+              let id = self.next_id;
+              self.strings.insert(s, id);
+              self.next_id += 1;
+              id
+          }
+      }
+
+      pub fn lookup(&self, s: &str) -> Option<u32> {
+          self.strings.get(s).copied()
+      }
+
+      pub fn len(&self) -> usize {
+          self.strings.len()
+      }
+
+      pub fn is_empty(&self) -> bool {
+          self.strings.is_empty()
+      }
+  }
+
+  impl<'a> Default for StringInterner<'a> {
+      fn default() -> Self {
+          Self::new()
+      }
+  }
+
+  pub trait Parseable<'a>: Sized {
+      fn parse_from(parser: &mut Parser<'a>) -> Option<Self>;
+  }
+
+  pub struct Identifier<'a> {
+      name: &'a str,
+      span: Span,
+  }
+
+  impl<'a> Identifier<'a> {
+      pub fn name(&self) -> &'a str {
+          self.name
+      }
+
+      pub fn span(&self) -> Span {
+          self.span
+      }
+  }
+
+  impl<'a> Parseable<'a> for Identifier<'a> {
+      fn parse_from(parser: &mut Parser<'a>) -> Option<Self> {
+          let word = parser.first_word()?;
+          let span = Span::new(parser.position(), parser.position() + word.len());
+          parser.advance(word.len());
+          Some(Identifier { name: word, span })
+      }
+  }
+src/unrelated/mod.rs: |
+  pub mod network;
+  pub mod crypto;
+  pub mod config;
+src/unrelated/network.rs: |
+  // GARBAGE_RUST_NET_life001
+  pub const GARBAGE_XYZPORT_life002: u16 = 8080;
+  pub const GARBAGE_XYZBUFFER_life003: i32 = 4096;
+  pub const GARBAGE_XYZTIMEOUT_life004: u64 = 30;
+
+  pub struct GarbageXyzNetData_life005 {
+      xyzfield_life006: i64,
+      xyzflag_life007: bool,
+  }
+
+  impl GarbageXyzNetData_life005 {
+      pub fn garbage_xyzinit_life008(xyzval_life009: i64) -> GarbageXyzNetData_life005 {
+          GarbageXyzNetData_life005 {
+              xyzfield_life006: xyzval_life009,
+              xyzflag_life007: false,
+          }
+      }
+
+      pub fn garbage_xyzprocess_life010(&mut self) {
+          self.xyzflag_life007 = true;
+      }
+
+      pub fn garbage_xyzcheck_life011(&self) -> bool {
+          self.xyzflag_life007
+      }
+  }
+
+  pub struct GarbageXyzServer_life012 {
+      xyzport_life013: u16,
+      xyzactive_life014: bool,
+  }
+
+  impl GarbageXyzServer_life012 {
+      pub fn garbage_xyzcreate_life015(xyzp_life016: u16) -> GarbageXyzServer_life012 {
+          GarbageXyzServer_life012 {
+              xyzport_life013: xyzp_life016,
+              xyzactive_life014: false,
+          }
+      }
+
+      pub fn garbage_xyzactivate_life017(&mut self) {
+          self.xyzactive_life014 = true;
+      }
+
+      pub fn garbage_xyzdeactivate_life018(&mut self) {
+          self.xyzactive_life014 = false;
+      }
+  }
+src/unrelated/crypto.rs: |
+  // GARBAGE_RUST_CRYPTO_life019
+  pub const GARBAGE_QWERTY_life020: u64 = 32;
+  pub const GARBAGE_ASDFGH_life021: u64 = 16;
+
+  pub struct GarbageQwertyData_life022 {
+      qwerty_life023: [u8; 32],
+      asdfgh_life024: [u8; 16],
+  }
+
+  impl GarbageQwertyData_life022 {
+      pub fn garbage_qwerty_init_life025(qval_life026: [u8; 32], aval_life027: [u8; 16]) -> GarbageQwertyData_life022 {
+          GarbageQwertyData_life022 {
+              qwerty_life023: qval_life026,
+              asdfgh_life024: aval_life027,
+          }
+      }
+
+      pub fn garbage_qwerty_transform_life028(&mut self) {
+          for xyz_life029 in 0..32 {
+              self.qwerty_life023[xyz_life029] ^= 0x55;
+          }
+      }
+  }
+
+  pub struct GarbageZxcvbnState_life030 {
+      zxcvbn_life031: [u8; 32],
+  }
+
+  impl GarbageZxcvbnState_life030 {
+      pub fn garbage_zxcvbn_create_life032() -> GarbageZxcvbnState_life030 {
+          GarbageZxcvbnState_life030 {
+              zxcvbn_life031: [0u8; 32],
+          }
+      }
+
+      pub fn garbage_zxcvbn_modify_life033(&mut self, qqq_life034: u8) {
+          self.zxcvbn_life031[0] = qqq_life034;
+      }
+  }
+src/unrelated/config.rs: |
+  // GARBAGE_RUST_CONFIG_life035
+  pub const GARBAGE_MNBVCX_life036: i64 = 1048576;
+
+  pub struct GarbageMnbvcxEntry_life037 {
+      mnbvcx_life038: i64,
+      poiuyt_life039: bool,
+  }
+
+  impl GarbageMnbvcxEntry_life037 {
+      pub fn garbage_mnbvcx_make_life040(mval_life041: i64) -> GarbageMnbvcxEntry_life037 {
+          GarbageMnbvcxEntry_life037 {
+              mnbvcx_life038: mval_life041,
+              poiuyt_life039: false,
+          }
+      }
+
+      pub fn garbage_mnbvcx_toggle_life042(&mut self) {
+          self.poiuyt_life039 = !self.poiuyt_life039;
+      }
+
+      pub fn garbage_mnbvcx_check_life043(&self) -> bool {
+          self.poiuyt_life039
+      }
+  }
+
+  pub struct GarbageLkjhgfHolder_life044 {
+      lkjhgf_life045: u32,
+  }
+
+  impl GarbageLkjhgfHolder_life044 {
+      pub fn garbage_lkjhgf_build_life046(lval_life047: u32) -> GarbageLkjhgfHolder_life044 {
+          GarbageLkjhgfHolder_life044 {
+              lkjhgf_life045: lval_life047,
+          }
+      }
+  }

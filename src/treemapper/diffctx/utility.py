@@ -40,7 +40,7 @@ def _phi(x: float) -> float:
     return math.sqrt(x) if x > 0 else 0.0
 
 
-_MIN_REL_FOR_BONUS = 0.10
+_MIN_REL_FOR_BONUS = 0.03
 _RELATEDNESS_BONUS = 0.25
 _NO_CONCEPTS_FALLBACK_FACTOR = 0.1
 

@@ -1,0 +1,154 @@
+models/config.py: |
+  import json
+  import os
+  from typing import Dict, Any, Optional, List, TypeVar
+  from dataclasses import dataclass, field
+  from pathlib import Path
+  from enum import Enum
+  import logging
+
+  logger = logging.getLogger(__name__)
+
+  T = TypeVar('T', bound='Config')
+
+  class ConfigFormat(Enum):
+      JSON = "json"
+      YAML = "yaml"
+      ENV = "env"
+
+  class ConfigError(Exception):
+      pass
+
+  class ConfigValidationError(ConfigError):
+      def __init__(self, errors: List[str]):
+          self.errors = errors
+          super().__init__(f"Config validation failed: {', '.join(errors)}")
+
+  @dataclass
+  class ConfigSchema:
+      required_fields: List[str] = field(default_factory=list)
+      optional_fields: List[str] = field(default_factory=list)
+      field_types: Dict[str, type] = field(default_factory=dict)
+
+  class Config:
+      _schema: Optional[ConfigSchema] = None
+
+      def __init__(self, data: Dict[str, Any]):
+          self.data = data
+          self._source: Optional[str] = None
+          self._format: Optional[ConfigFormat] = None
+          self._loaded_at: Optional[str] = None
+
+      @classmethod
+      def from_json(cls: type[T], json_str: str) -> T:
+          try:
+              data = json.loads(json_str)
+              instance = cls(data)
+              instance._format = ConfigFormat.JSON
+              return instance
+          except json.JSONDecodeError as e:
+              raise ConfigError(f"Invalid JSON: {e}")
+
+      @classmethod
+      def from_file(cls: type[T], path: str) -> T:
+          file_path = Path(path)
+          if not file_path.exists():
+              raise ConfigError(f"Config file not found: {path}")
+
+          logger.info(f"Loading config from {path}")
+          with open(file_path, encoding='utf-8') as f:
+              instance = cls.from_json(f.read())
+              instance._source = path
+              return instance
+
+      @classmethod
+      def from_env(cls: type[T], prefix: str = "APP_") -> T:
+          data = {}
+          for key, value in os.environ.items():
+              if key.startswith(prefix):
+                  config_key = key[len(prefix):].lower()
+                  data[config_key] = value
+          instance = cls(data)
+          instance._format = ConfigFormat.ENV
+          return instance
+
+      @classmethod
+      def from_dict(cls: type[T], data: Dict[str, Any]) -> T:
+          return cls(data)
+
+      @classmethod
+      def get_schema(cls) -> Optional[ConfigSchema]:
+          return cls._schema
+
+      def get(self, key: str, default: Any = None) -> Any:
+          return self.data.get(key, default)
+
+      def validate(self) -> List[str]:
+          errors = []
+          schema = self.get_schema()
+          if schema:
+              for field_name in schema.required_fields:
+                  if field_name not in self.data:
+                      errors.append(f"Missing required field: {field_name}")
+          return errors
+
+      def to_json(self) -> str:
+          return json.dumps(self.data, indent=2)
+
+      def merge(self, other: "Config") -> "Config":
+          merged_data = {**self.data, **other.data}
+          return Config(merged_data)
+loader.py: |
+  from typing import Optional, Dict, Any
+  from dataclasses import dataclass
+  from pathlib import Path
+
+  @dataclass
+  class LoaderConfig:
+      config_dir: str = "config"
+      default_file: str = "config.json"
+
+  class ConfigLoader:
+      def __init__(self, config: LoaderConfig):
+          self.config = config
+
+      def load(self) -> Dict[str, Any]:
+          return {}
+garbage_parser.py: |
+  GARBAGE_MARKER_PARSER_001 = "parser garbage"
+  UNRELATED_PARSE_MODE_002 = "strict"
+
+  class YamlParser:
+      GARBAGE_YAML_CLASS_003 = "yaml class marker"
+
+      def parse(self, content: str) -> dict:
+          return {}
+
+      def dump(self, data: dict) -> str:
+          return ""
+
+  class TomlParser:
+      GARBAGE_TOML_MARKER_004 = "toml marker"
+
+      def parse(self, content: str) -> dict:
+          return {}
+garbage_watcher.py: |
+  GARBAGE_MARKER_WATCHER_005 = "watcher garbage"
+  UNRELATED_POLL_INTERVAL_006 = 5
+
+  class FileWatcher:
+      GARBAGE_WATCHER_CLASS_007 = True
+
+      def __init__(self, path: str):
+          self.path = path
+          self._callbacks: List[callable] = []
+
+      def watch(self) -> None:
+          pass
+
+      def on_change(self, callback: callable) -> None:
+          self._callbacks.append(callback)
+
+  def format_watch_event(event_type: str, path: str) -> str:
+      GARBAGE_FORMAT_WATCH_008 = "format watch marker"
+      return f"{event_type}: {path}"

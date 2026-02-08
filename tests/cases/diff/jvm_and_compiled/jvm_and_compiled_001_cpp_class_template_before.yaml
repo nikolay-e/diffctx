@@ -1,0 +1,53 @@
+container.h: |
+  #pragma once
+  #include <vector>
+  #include <stdexcept>
+
+  template<typename T>
+  class Container {
+      std::vector<T> items;
+
+  public:
+      void add(const T& item) { items.push_back(item); }
+      T& get(size_t index) {
+          if (index >= items.size()) {
+              throw std::out_of_range("Index out of range");
+          }
+          return items[index];
+      }
+      size_t size() const { return items.size(); }
+      bool empty() const { return items.empty(); }
+  };
+main.cpp: |
+  #include <iostream>
+
+  int main() {
+      return 0;
+  }
+serializer.h: |
+  #pragma once
+  #include <string>
+
+  class Serializer {
+  public:
+      static std::string serialize(int value) {
+          return std::to_string(value);
+      }
+  };
+garbage_allocator.cpp: |
+  #include <cstdlib>
+  const char* GARBAGE_JVM_001_ALLOC_MARKER_A = "pool_alloc";
+  const char* GARBAGE_JVM_001_DEALLOC_MARKER_B = "pool_free";
+
+  class GarbagePoolAllocator {
+      void* allocate(size_t bytes) { return malloc(bytes); }
+      void deallocate(void* ptr) { free(ptr); }
+  };
+garbage_formatter.cpp: |
+  #include <string>
+  const char* GARBAGE_JVM_001_FORMAT_MARKER_C = "fmt_output";
+  const char* GARBAGE_JVM_001_PARSE_MARKER_D = "fmt_parse";
+
+  class GarbageTextFormatter {
+      std::string format(const std::string& input) { return input; }
+  };

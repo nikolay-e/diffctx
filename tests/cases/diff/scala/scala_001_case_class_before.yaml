@@ -1,0 +1,58 @@
+src/models/User.scala: |
+  package models
+
+  case class User(id: Long, name: String, age: Int, email: String) {
+    def isAdult: Boolean = age >= 18
+
+    def displayName: String = s"$name (id=$id)"
+
+    def withEmail(newEmail: String): User = copy(email = newEmail)
+  }
+
+  object User {
+    def apply(name: String): User = User(0L, name, 0, "")
+
+    def fromTuple(t: (Long, String, Int, String)): User =
+      User(t._1, t._2, t._3, t._4)
+
+    val anonymous: User = User(0L, "Anonymous", 0, "anon@example.com")
+  }
+src/services/UserService.scala: |
+  package services
+
+  import models.User
+
+  class UserService {
+    private var users: Map[Long, User] = Map.empty
+    private var nextId: Long = 1L
+
+    def findById(id: Long): Option[User] = users.get(id)
+
+    def findAll(): List[User] = users.values.toList
+  }
+unrelated/EventPublisher.scala: |
+  package events
+  // GARBAGE_SCALA_001_MARKER_A
+  object EventPublisher {
+    val GARBAGE_SCALA_001_TOPIC = "GARBAGE_SCALA_001_MARKER_B"
+
+    def publish(event: String): Unit = {
+      println(s"Publishing to $GARBAGE_SCALA_001_TOPIC: $event")
+    }
+
+    def subscribe(handler: String => Unit): Unit = {
+      println("GARBAGE_SCALA_001_MARKER_C subscribing")
+    }
+  }
+unrelated/MetricsCollector.scala: |
+  package metrics
+  // GARBAGE_SCALA_001_MARKER_D
+  class MetricsCollector {
+    private val GARBAGE_SCALA_001_COUNTER = 0
+
+    def record(name: String, value: Double): Unit = {
+      println(s"GARBAGE_SCALA_001_MARKER_E metric=$name val=$value")
+    }
+
+    def flush(): Unit = println("GARBAGE_SCALA_001_MARKER_F flushing")
+  }

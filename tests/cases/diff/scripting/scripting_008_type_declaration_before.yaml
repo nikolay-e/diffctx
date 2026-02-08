@@ -1,0 +1,26 @@
+Response.php: |
+  <?php
+  class Response {
+      private int $status;
+      private array $data;
+
+      public function __construct(int $status, array $data) {
+          $this->status = $status;
+          $this->data = $data;
+      }
+
+      public function getStatus(): int {
+          return $this->status;
+      }
+
+      public function getData(): array {
+          return $this->data;
+      }
+  }
+Processor.php: |
+  <?php
+  class Processor {}
+garbage.php: |
+  <?php
+  $garbageResponse12345 = -1;
+  $unused_marker_67890 = "not used";

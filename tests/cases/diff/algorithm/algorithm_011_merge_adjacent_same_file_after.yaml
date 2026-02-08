@@ -1,0 +1,55 @@
+src/validators/input_validators.py: |
+  from typing import Any, Optional, List
+  import re
+
+  def validate_email(email: str) -> bool:
+      if not email or '@' not in email:
+          return False
+      pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+      return bool(re.match(pattern, email.lower()))
+
+  def validate_phone(phone: str) -> bool:
+      cleaned = re.sub(r'[\s\-\(\)]', '', phone)
+      pattern = r'^\+?[1-9]\d{1,14}$'
+      return bool(re.match(pattern, cleaned))
+
+  def validate_username(username: str) -> bool:
+      if len(username) < 3 or len(username) > 20:
+          return False
+      pattern = r'^[a-zA-Z][a-zA-Z0-9_]*$'
+      return bool(re.match(pattern, username))
+
+  def validate_password(password: str) -> bool:
+      if len(password) < 8:
+          return False
+      has_upper = any(c.isupper() for c in password)
+      has_lower = any(c.islower() for c in password)
+      has_digit = any(c.isdigit() for c in password)
+      return has_upper and has_lower and has_digit
+
+  def validate_age(age: int) -> bool:
+      return 0 <= age <= 150
+
+  def validate_url(url: str) -> bool:
+      pattern = r'^https?://[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}'
+      return bool(re.match(pattern, url))
+
+garbage_transformers.py: |
+  GARBAGE_ALGO_011_TRANSFORM_MARKER_A = "transform"
+  GARBAGE_ALGO_011_CONVERT_MARKER_B = True
+
+  class DataTransformer:
+      GARBAGE_ALGO_011_MAPPER_MARKER_C = {}
+
+      def transform(self, data: dict) -> dict:
+          return data
+
+garbage_serializers.py: |
+  GARBAGE_ALGO_011_SERIAL_MARKER_D = "serialize"
+  GARBAGE_ALGO_011_FORMAT_MARKER_E = "json"
+
+  class JSONSerializer:
+      GARBAGE_ALGO_011_ENCODE_MARKER_F = True
+
+      def serialize(self, obj: object) -> str:
+          return "{}"

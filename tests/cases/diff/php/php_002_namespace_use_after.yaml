@@ -1,0 +1,71 @@
+src/Services/PaymentService.php: |
+  <?php
+  namespace App\Services;
+
+  class PaymentService {
+      private float $taxRate;
+
+      public function __construct(float $taxRate = 0.1) {
+          $this->taxRate = $taxRate;
+      }
+
+      public function process(float $amount): bool {
+          return $amount > 0;
+      }
+
+      public function calculateTotal(float $amount): float {
+          return $amount * (1 + $this->taxRate);
+      }
+
+      public function refund(float $amount): bool {
+          return $amount > 0 && $amount <= 10000;
+      }
+  }
+src/Controllers/CheckoutController.php: |
+  <?php
+  namespace App\Controllers;
+
+  use App\Services\PaymentService;
+
+  class CheckoutController {
+      private PaymentService $paymentService;
+
+      public function __construct() {
+          $this->paymentService = new PaymentService(0.08);
+      }
+
+      public function index(): array {
+          return ['page' => 'checkout'];
+      }
+
+      public function checkout(float $amount): array {
+          $total = $this->paymentService->calculateTotal($amount);
+          $success = $this->paymentService->process($total);
+          return ['total' => $total, 'success' => $success];
+      }
+  }
+src/garbage_queue_handler.php: |
+  <?php
+  GARBAGE_PHP_002_QUEUE_NAME_A = "default";
+  GARBAGE_PHP_002_MAX_RETRIES_B = 3;
+
+  class GarbageQueueHandler {
+      GARBAGE_PHP_002_TIMEOUT_SEC_C = 30;
+
+      public function push(string $job): void {
+          GARBAGE_PHP_002_PRIORITY_D = "normal";
+      }
+  }
+src/garbage_rate_limiter.php: |
+  <?php
+  GARBAGE_PHP_002_WINDOW_SIZE_E = 60;
+  GARBAGE_PHP_002_MAX_REQUESTS_F = 100;
+
+  class GarbageRateLimiter {
+      GARBAGE_PHP_002_STRATEGY_G = "sliding_window";
+
+      public function isAllowed(string $key): bool {
+          GARBAGE_PHP_002_BUCKET_SIZE_H = 10;
+          return true;
+      }
+  }

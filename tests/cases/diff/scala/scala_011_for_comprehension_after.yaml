@@ -1,0 +1,25 @@
+Repository.scala: |
+  case class User(id: String, name: String)
+  case class Order(id: String, userId: String, total: Double)
+
+  class Repository {
+    def getUser(id: String): Option[User] = Some(User(id, "John"))
+    def getOrders(user: User): Option[List[Order]] = Some(List(Order("o1", user.id, 100.0)))
+  }
+OrderService.scala: |
+  class OrderService(repo: Repository) {
+    def getUserOrders(userId: String): Option[List[Order]] = {
+      for {
+        user <- repo.getUser(userId)
+        orders <- repo.getOrders(user)
+      } yield orders
+    }
+
+    def getTotalForUser(userId: String): Option[Double] = {
+      for {
+        user <- repo.getUser(userId)
+        orders <- repo.getOrders(user)
+        total = orders.map(_.total).sum
+      } yield total
+    }
+  }

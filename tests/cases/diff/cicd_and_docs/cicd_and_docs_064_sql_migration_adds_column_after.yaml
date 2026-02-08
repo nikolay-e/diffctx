@@ -1,0 +1,65 @@
+migrations/001_create_users.sql: |
+  CREATE TABLE users (
+      id SERIAL PRIMARY KEY,
+      name VARCHAR(255) NOT NULL,
+      email VARCHAR(255) UNIQUE NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE INDEX idx_users_email ON users(email);
+
+migrations/002_add_user_status.sql: |
+  ALTER TABLE users
+  ADD COLUMN status VARCHAR(50) DEFAULT 'active' NOT NULL;
+
+  ALTER TABLE users
+  ADD COLUMN last_login_at TIMESTAMP;
+
+  ALTER TABLE users
+  ADD COLUMN is_verified BOOLEAN DEFAULT FALSE;
+
+  CREATE INDEX idx_users_status ON users(status);
+  CREATE INDEX idx_users_last_login ON users(last_login_at);
+
+src/models/user.py: |
+  from dataclasses import dataclass
+  from datetime import datetime
+  from typing import Optional
+
+  @dataclass
+  class User:
+      id: int
+      name: str
+      email: str
+      created_at: Optional[datetime] = None
+
+src/repositories/user_repository.py: |
+  from typing import List, Optional
+  from models.user import User
+
+  class UserRepository:
+      def find_by_id(self, user_id: int) -> Optional[User]:
+          result = db.execute("SELECT * FROM users WHERE id = %s", (user_id,))
+          return User(**result) if result else None
+
+      def find_all(self) -> List[User]:
+          results = db.execute("SELECT * FROM users")
+          return [User(**r) for r in results]
+
+garbage_migration_runner.ts: |
+  const GARBAGE_CICD_DOCS_064_RUNNER_MARKER_A = "flyway";
+  const GARBAGE_CICD_DOCS_064_VERSION_MARKER_B = "9.0.0";
+
+  class GarbageMigrationRunner {
+    static GARBAGE_CICD_DOCS_064_BASELINE_MARKER_C = true;
+    run(): void {}
+  }
+
+garbage_migration_validator.ts: |
+  const GARBAGE_CICD_DOCS_064_VALIDATE_MARKER_D = "checksum";
+  const GARBAGE_CICD_DOCS_064_REPAIR_MARKER_E = false;
+
+  class GarbageMigrationValidator {
+    static GARBAGE_CICD_DOCS_064_STRICT_MARKER_F = true;
+    validate(): boolean { return true; }
+  }

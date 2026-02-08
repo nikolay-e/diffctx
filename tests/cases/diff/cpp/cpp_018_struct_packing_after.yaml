@@ -1,0 +1,146 @@
+include/net/packet.hpp: |
+  #pragma once
+  #include <cstdint>
+  #include <cstddef>
+
+  namespace net {
+
+  #pragma pack(push, 1)
+  struct PacketHeader {
+      uint8_t version;
+      uint8_t type;
+      uint16_t length;
+      uint32_t sequence;
+      uint32_t checksum;
+  };
+
+  struct DataPayload {
+      uint16_t fieldId;
+      uint16_t fieldLen;
+      uint8_t data[512];
+  };
+  #pragma pack(pop)
+
+  constexpr uint8_t PROTOCOL_VERSION = 2;
+  constexpr uint8_t PKT_TYPE_DATA = 0x01;
+  constexpr uint8_t PKT_TYPE_ACK = 0x02;
+  constexpr uint8_t PKT_TYPE_KEEPALIVE = 0x03;
+
+  uint32_t computeChecksum(const void* data, size_t len);
+
+  }
+src/net/serializer.cpp: |
+  #include "net/packet.hpp"
+  #include <cstring>
+  #include <vector>
+
+  namespace net {
+
+  class PacketSerializer {
+  public:
+      std::vector<uint8_t> serializeData(uint32_t seq, const void* payload,
+                                          uint16_t payloadLen) {
+          PacketHeader header{};
+          header.version = PROTOCOL_VERSION;
+          header.type = PKT_TYPE_DATA;
+          header.length = sizeof(PacketHeader) + payloadLen;
+          header.sequence = seq;
+
+          std::vector<uint8_t> buffer(header.length);
+          std::memcpy(buffer.data(), &header, sizeof(header));
+          std::memcpy(buffer.data() + sizeof(header), payload, payloadLen);
+
+          header.checksum = computeChecksum(buffer.data(), buffer.size());
+          std::memcpy(buffer.data(), &header, sizeof(header));
+
+          return buffer;
+      }
+
+      std::vector<uint8_t> serializeAck(uint32_t seq) {
+          PacketHeader header{};
+          header.version = PROTOCOL_VERSION;
+          header.type = PKT_TYPE_ACK;
+          header.length = sizeof(PacketHeader);
+          header.sequence = seq;
+          header.checksum = computeChecksum(&header, sizeof(header));
+
+          std::vector<uint8_t> buffer(sizeof(header));
+          std::memcpy(buffer.data(), &header, sizeof(header));
+          return buffer;
+      }
+
+      bool deserializeHeader(const uint8_t* data, size_t len,
+                              PacketHeader& out) {
+          if (len < sizeof(PacketHeader)) return false;
+          std::memcpy(&out, data, sizeof(PacketHeader));
+          return out.version == PROTOCOL_VERSION;
+      }
+  };
+
+  }
+include/unrelated/image_loader.hpp: |
+  #pragma once
+  // GARBAGE_CPP_018_IMAGE_A
+  #include <cstdint>
+  #include <vector>
+
+  namespace unrelated {
+
+  // GARBAGE_CPP_018_IMAGE_B
+  struct Pixel {
+      uint8_t r, g, b, a;
+  };
+
+  // GARBAGE_CPP_018_LOADER_C
+  class ImageLoader {
+  public:
+      bool load(const char* filename) {
+          width_ = 0;
+          height_ = 0;
+          return false;
+      }
+      int width() const { return width_; }
+      int height() const { return height_; }
+      const std::vector<Pixel>& pixels() const { return pixels_; }
+  private:
+      int width_ = 0;
+      int height_ = 0;
+      std::vector<Pixel> pixels_;
+  };
+
+  }
+src/unrelated/hash_table.cpp: |
+  // GARBAGE_CPP_018_HASH_D
+  #include <vector>
+  #include <list>
+  #include <string>
+  #include <functional>
+
+  namespace unrelated {
+
+  // GARBAGE_CPP_018_HASH_E
+  class SimpleHashTable {
+  public:
+      explicit SimpleHashTable(size_t buckets = 64) : table_(buckets) {}
+
+      void insert(const std::string& key, int value) {
+          // GARBAGE_CPP_018_INSERT_F
+          size_t idx = std::hash<std::string>{}(key) % table_.size();
+          for (auto& [k, v] : table_[idx]) {
+              if (k == key) { v = value; return; }
+          }
+          table_[idx].emplace_back(key, value);
+      }
+
+      int* find(const std::string& key) {
+          size_t idx = std::hash<std::string>{}(key) % table_.size();
+          for (auto& [k, v] : table_[idx]) {
+              if (k == key) return &v;
+          }
+          return nullptr;
+      }
+  private:
+      std::vector<std::list<std::pair<std::string, int>>> table_;
+  };
+
+  }

@@ -1,0 +1,58 @@
+internal/http/types.go: |
+  package http
+
+  type Request struct {
+      Path    string
+      Method  string
+      Headers map[string]string
+      Body    []byte
+  }
+
+  type Response struct {
+      Status  int
+      Headers map[string]string
+      Body    []byte
+  }
+
+  type Handler func(req Request) Response
+  type Middleware func(Handler) Handler
+internal/http/router.go: |
+  package http
+
+  type Router struct {
+      handlers map[string]Handler
+  }
+
+  func NewRouter() *Router {
+      return &Router{
+          handlers: make(map[string]Handler),
+      }
+  }
+
+  func (r *Router) Handle(path string, handler Handler) {
+      r.handlers[path] = handler
+  }
+internal/unrelated/grpc/interceptor.go: |
+  package grpc
+
+  const GARBAGE_GO_GRPC_INTERCEPT_001 = "grpc_garbage"
+
+  type GARBAGE_GO_TYPE_INTERCEPT_002 struct {
+      timeout int
+  }
+
+  func GARBAGE_GO_FUNC_INTERCEPT_003() string {
+      return "GARBAGE_GO_INTERCEPT_UNUSED_004"
+  }
+internal/unrelated/grpc/codec.go: |
+  package grpc
+
+  const GARBAGE_GO_GRPC_CODEC_005 = "codec_garbage"
+
+  type GARBAGE_GO_TYPE_CODEC_006 struct {
+      encoding string
+  }
+
+  func GARBAGE_GO_FUNC_CODEC_007() {
+      println("GARBAGE_GO_CODEC_OUTPUT_008")
+  }

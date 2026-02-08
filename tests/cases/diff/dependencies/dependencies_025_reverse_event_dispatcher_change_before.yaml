@@ -1,0 +1,31 @@
+events/dispatcher.py: |
+  class EventDispatcher:
+      def __init__(self):
+          self.handlers = {}
+
+      def register(self, event_type: str, handler):
+          if event_type not in self.handlers:
+              self.handlers[event_type] = []
+          self.handlers[event_type].append(handler)
+
+      def emit(self, event_type: str, data: dict) -> None:
+          for handler in self.handlers.get(event_type, []):
+              handler(data)
+handlers/user_created_handler.py: |
+  from events.dispatcher import EventDispatcher
+
+  def on_user_created(data: dict) -> None:
+      user_id = data.get("user_id")
+      print(f"User {user_id} created, sending welcome email")
+
+  def setup_handlers(dispatcher: EventDispatcher) -> None:
+      dispatcher.register("user.created", on_user_created)
+handlers/audit_handler.py: |
+  from events.dispatcher import EventDispatcher
+
+  def on_any_event(data: dict) -> None:
+      print(f"Audit log: {data}")
+
+  def setup_handlers(dispatcher: EventDispatcher) -> None:
+      dispatcher.register("user.created", on_any_event)
+      dispatcher.register("order.placed", on_any_event)

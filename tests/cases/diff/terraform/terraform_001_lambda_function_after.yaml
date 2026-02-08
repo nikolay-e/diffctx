@@ -1,0 +1,143 @@
+modules/lambda/main.tf: |
+  resource "aws_lambda_function" "api" {
+    function_name = var.function_name
+    role          = aws_iam_role.lambda_exec.arn
+    handler       = var.handler
+    runtime       = var.runtime
+    timeout       = var.timeout
+    memory_size   = var.memory_size
+
+    filename         = data.archive_file.lambda_zip.output_path
+    source_code_hash = data.archive_file.lambda_zip.output_base64sha256
+
+    vpc_config {
+      subnet_ids         = var.subnet_ids
+      security_group_ids = var.security_group_ids
+    }
+
+    environment {
+      variables = var.environment_variables
+    }
+
+    tags = var.tags
+  }
+
+  resource "aws_iam_role" "lambda_exec" {
+    name = "${var.function_name}-exec-role"
+
+    assume_role_policy = jsonencode({
+      Version = "2012-10-17"
+      Statement = [{
+        Effect    = "Allow"
+        Principal = { Service = "lambda.amazonaws.com" }
+        Action    = "sts:AssumeRole"
+      }]
+    })
+  }
+
+  data "archive_file" "lambda_zip" {
+    type        = "zip"
+    source_dir  = var.source_dir
+    output_path = "${path.module}/lambda.zip"
+  }
+modules/lambda/variables.tf: |
+  variable "function_name" {
+    type = string
+  }
+
+  variable "handler" {
+    type    = string
+    default = "index.handler"
+  }
+
+  variable "runtime" {
+    type    = string
+    default = "nodejs18.x"
+  }
+
+  variable "timeout" {
+    type    = number
+    default = 30
+  }
+
+  variable "memory_size" {
+    type    = number
+    default = 128
+  }
+
+  variable "source_dir" {
+    type = string
+  }
+
+  variable "subnet_ids" {
+    type    = list(string)
+    default = []
+  }
+
+  variable "security_group_ids" {
+    type    = list(string)
+    default = []
+  }
+
+  variable "environment_variables" {
+    type    = map(string)
+    default = {}
+  }
+
+  variable "tags" {
+    type    = map(string)
+    default = {}
+  }
+src/main.py: |
+  def handler(event, context):
+      return {'statusCode': 200, 'body': 'Hello'}
+infrastructure/lambda.tf: |
+  module "api_lambda" {
+    source        = "./modules/lambda"
+    function_name = "api-handler"
+    handler       = "main.handler"
+    runtime       = "python3.9"
+    source_dir    = "${path.module}/../src"
+    timeout       = 60
+    memory_size   = 256
+
+    environment_variables = {
+      PYTHON_ENV   = "production"
+      LOG_LEVEL    = "INFO"
+      API_ENDPOINT = var.api_endpoint
+    }
+
+    subnet_ids         = module.vpc.private_subnet_ids
+    security_group_ids = [aws_security_group.lambda.id]
+
+    tags = local.common_tags
+  }
+unrelated/monitoring.tf: |
+  # GARBAGE_TF_MONITORING_441_001
+  variable "GARBAGE_TF_LAMBDA_MARKER_441_002" {
+    default = "unrelated-monitoring-config"
+  }
+
+  resource "aws_cloudwatch_dashboard" "unrelated_dashboard" {
+    dashboard_name = "GARBAGE_DASHBOARD_441_003"
+    dashboard_body = jsonencode({
+      widgets = []
+    })
+  }
+
+  resource "aws_cloudwatch_log_group" "unrelated_logs" {
+    name              = "/aws/unrelated/GARBAGE_LOGS_441_004"
+    retention_in_days = 7
+  }
+unrelated/batch.tf: |
+  # GARBAGE_TF_BATCH_441_005
+  resource "aws_batch_job_definition" "unrelated_batch" {
+    name = "GARBAGE_BATCH_JOB_441_006"
+    type = "container"
+    container_properties = jsonencode({
+      image   = "busybox"
+      vcpus   = 1
+      memory  = 512
+      command = ["echo", "GARBAGE_BATCH_441_007"]
+    })
+  }

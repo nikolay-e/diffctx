@@ -1,0 +1,217 @@
+src/main/java/com/zoo/model/Animal.java: |
+  package com.zoo.model;
+
+  import java.time.LocalDate;
+
+  public abstract class Animal {
+      protected String name;
+      protected LocalDate birthDate;
+      protected String habitat;
+      protected double weightKg;
+
+      public Animal(String name, LocalDate birthDate) {
+          this.name = name;
+          this.birthDate = birthDate;
+      }
+
+      public abstract String speak();
+
+      public abstract String getSpecies();
+
+      public void eat(String food) {
+          System.out.println(name + " is eating " + food);
+      }
+
+      public void sleep() {
+          System.out.println(name + " is sleeping");
+      }
+
+      public int getAgeInYears() {
+          return LocalDate.now().getYear() - birthDate.getYear();
+      }
+
+      public String getName() { return name; }
+      public LocalDate getBirthDate() { return birthDate; }
+      public String getHabitat() { return habitat; }
+      public void setHabitat(String habitat) { this.habitat = habitat; }
+      public double getWeightKg() { return weightKg; }
+      public void setWeightKg(double weightKg) { this.weightKg = weightKg; }
+
+      @Override
+      public String toString() {
+          return getClass().getSimpleName() + "{name='" + name + "'}";
+      }
+  }
+src/main/java/com/zoo/model/Dog.java: |
+  package com.zoo.model;
+
+  import java.time.LocalDate;
+  import java.util.ArrayList;
+  import java.util.List;
+
+  public class Dog extends Animal {
+      private String breed;
+      private boolean trained;
+      private List<String> tricks;
+      private String ownerName;
+      private boolean serviceAnimal;
+
+      public Dog(String name, LocalDate birthDate) {
+          super(name, birthDate);
+          this.trained = false;
+          this.tricks = new ArrayList<>();
+          this.serviceAnimal = false;
+      }
+
+      public Dog(String name, LocalDate birthDate, String breed) {
+          this(name, birthDate);
+          this.breed = breed;
+      }
+
+      @Override
+      public String speak() {
+          if (breed != null && (breed.contains("Husky") || breed.contains("Malamute"))) {
+              return "Awoooo!";
+          }
+          return "Woof! I'm " + name + ", a " + (breed != null ? breed : "mixed breed");
+      }
+
+      @Override
+      public String getSpecies() {
+          return "Canis familiaris";
+      }
+
+      @Override
+      public void eat(String food) {
+          if (food.toLowerCase().contains("chocolate")) {
+              System.out.println(name + " cannot eat " + food + " - it's toxic for dogs!");
+              return;
+          }
+          System.out.println(name + " the " + (breed != null ? breed : "dog") + " is happily eating " + food);
+          if (trained) {
+              System.out.println(name + " says thank you!");
+          }
+      }
+
+      @Override
+      public void sleep() {
+          System.out.println(name + " the " + (breed != null ? breed : "dog") + " is curled up and sleeping");
+          if (serviceAnimal) {
+              System.out.println("(Alert mode: still partially aware of surroundings)");
+          }
+      }
+
+      @Override
+      public int getAgeInYears() {
+          int humanYears = super.getAgeInYears();
+          return humanYears * 7;
+      }
+
+      public void learnTrick(String trick) {
+          if (!tricks.contains(trick)) {
+              tricks.add(trick);
+              trained = true;
+          }
+      }
+
+      public void performTrick(String trick) {
+          if (tricks.contains(trick)) {
+              System.out.println(name + " performs: " + trick);
+          } else {
+              System.out.println(name + " doesn't know how to " + trick);
+          }
+      }
+
+      public String getBreed() { return breed; }
+      public void setBreed(String breed) { this.breed = breed; }
+      public boolean isTrained() { return trained; }
+      public void setTrained(boolean trained) { this.trained = trained; }
+      public List<String> getTricks() { return new ArrayList<>(tricks); }
+      public String getOwnerName() { return ownerName; }
+      public void setOwnerName(String ownerName) { this.ownerName = ownerName; }
+      public boolean isServiceAnimal() { return serviceAnimal; }
+      public void setServiceAnimal(boolean serviceAnimal) { this.serviceAnimal = serviceAnimal; }
+
+      @Override
+      public String toString() {
+          return "Dog{name='" + name + "', breed='" + breed + "', age=" + getAgeInYears() + " dog years}";
+      }
+  }
+src/main/java/com/zoo/model/Cat.java: |
+  package com.zoo.model;
+
+  import java.time.LocalDate;
+
+  public class Cat extends Animal {
+      private boolean indoor;
+
+      public Cat(String name, LocalDate birthDate) {
+          super(name, birthDate);
+      }
+
+      @Override
+      public String speak() {
+          return "Meow!";
+      }
+
+      @Override
+      public String getSpecies() {
+          return "Felis catus";
+      }
+
+      public boolean isIndoor() { return indoor; }
+      public void setIndoor(boolean indoor) { this.indoor = indoor; }
+  }
+src/main/java/com/zoo/unrelated/TicketPricing.java: |
+  package com.zoo.unrelated;
+
+  import java.math.BigDecimal;
+  import java.time.DayOfWeek;
+  import java.time.LocalDate;
+
+  public class TicketPricing {
+      public static final String GARBAGE_JAVA_TICKET_301 = "ticket_marker_theta";
+      private static final String GARBAGE_JAVA_PRICE_302 = "price_marker_iota";
+
+      private final BigDecimal basePrice;
+
+      public TicketPricing(BigDecimal basePrice) {
+          this.basePrice = basePrice;
+      }
+
+      public BigDecimal calculatePrice(LocalDate visitDate, int visitorAge) {
+          BigDecimal price = basePrice;
+          if (visitDate.getDayOfWeek() == DayOfWeek.SATURDAY || visitDate.getDayOfWeek() == DayOfWeek.SUNDAY) {
+              price = price.multiply(new BigDecimal("1.25"));
+          }
+          if (visitorAge < 12) {
+              price = price.multiply(new BigDecimal("0.5"));
+          }
+          logGarbageMarkers();
+          return price;
+      }
+
+      private void logGarbageMarkers() {
+          System.out.println(GARBAGE_JAVA_TICKET_301 + GARBAGE_JAVA_PRICE_302);
+      }
+  }
+src/main/java/com/zoo/unrelated/MaintenanceScheduler.java: |
+  package com.zoo.unrelated;
+
+  import java.time.LocalDateTime;
+  import java.util.ArrayList;
+  import java.util.List;
+
+  public class MaintenanceScheduler {
+      public static final String GARBAGE_JAVA_MAINT_303 = "maintenance_marker_kappa";
+
+      private final List<MaintenanceTask> tasks = new ArrayList<>();
+
+      public void scheduleTask(String description, LocalDateTime scheduledTime) {
+          tasks.add(new MaintenanceTask(description, scheduledTime));
+          String GARBAGE_JAVA_TASK_304 = "task_marker_lambda";
+          System.out.println(GARBAGE_JAVA_MAINT_303 + GARBAGE_JAVA_TASK_304);
+      }
+
+      private record MaintenanceTask(String description, LocalDateTime scheduledTime) {}
+  }

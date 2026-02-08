@@ -1,0 +1,23 @@
+User.cs: |
+  public class User
+  {
+      public int Id { get; set; }
+      public string Name { get; set; }
+  }
+UserRepository.cs: |
+  // Initial
+  class UserRepository { }
+GarbageGuardClause.cs: |
+  public class GarbageGuardClause
+  {
+      public const string GARBAGE_JVM_021_GUARD_MARKER_A = "marker";
+      public const string GARBAGE_JVM_021_CHECK_MARKER_B = "marker";
+      public void Noop() {}
+  }
+GarbageAssertHelper.cs: |
+  public class GarbageAssertHelper
+  {
+      public const string GARBAGE_JVM_021_ASSERT_MARKER_C = "marker";
+      public const string GARBAGE_JVM_021_VERIFY_MARKER_D = "marker";
+      public void Noop() {}
+  }

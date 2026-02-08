@@ -1,0 +1,72 @@
+internal/database/connection.go: |
+  package database
+
+  import (
+      "database/sql"
+      "log"
+  )
+
+  type Connection struct {
+      db *sql.DB
+  }
+
+  func NewConnection(dsn string) (*Connection, error) {
+      db, err := sql.Open("postgres", dsn)
+      if err != nil {
+          return nil, err
+      }
+      return &Connection{db: db}, nil
+  }
+
+  func (c *Connection) Close() error {
+      log.Println("Closing database connection")
+      return c.db.Close()
+  }
+
+  func (c *Connection) Query(query string) (*sql.Rows, error) {
+      return c.db.Query(query)
+  }
+internal/service/user_service.go: |
+  package service
+
+  import (
+      "myproject/internal/database"
+  )
+
+  type UserService struct {
+      conn *database.Connection
+  }
+
+  func NewUserService(conn *database.Connection) *UserService {
+      return &UserService{conn: conn}
+  }
+
+  func (s *UserService) process() {
+      defer s.conn.Close()
+      rows, _ := s.conn.Query("SELECT * FROM users")
+      defer rows.Close()
+  }
+internal/unrelated/cleanup/garbage_collector.go: |
+  package cleanup
+
+  const GARBAGE_GO_CLEANUP_GC_001 = "cleanup_garbage"
+
+  type GARBAGE_GO_TYPE_CLEANUP_002 struct {
+      interval int
+  }
+
+  func GARBAGE_GO_FUNC_CLEANUP_003() string {
+      return "GARBAGE_GO_CLEANUP_UNUSED_004"
+  }
+internal/unrelated/shutdown/graceful.go: |
+  package shutdown
+
+  const GARBAGE_GO_SHUTDOWN_GRACE_005 = "shutdown_garbage"
+
+  type GARBAGE_GO_TYPE_SHUTDOWN_006 struct {
+      timeout int
+  }
+
+  func GARBAGE_GO_FUNC_SHUTDOWN_007() {
+      println("GARBAGE_GO_SHUTDOWN_OUTPUT_008")
+  }

@@ -1,0 +1,113 @@
+internal/worker/pool.go: |
+  package worker
+
+  import (
+      "context"
+      "sync"
+  )
+
+  type Job struct {
+      ID      int
+      Payload interface{}
+  }
+
+  type Result struct {
+      JobID int
+      Data  interface{}
+      Error error
+  }
+
+  type Worker struct {
+      id   int
+      jobs <-chan Job
+  }
+
+  func NewWorker(id int, jobs <-chan Job) *Worker {
+      return &Worker{id: id, jobs: jobs}
+  }
+
+  func (w *Worker) Start(ctx context.Context, wg *sync.WaitGroup) {
+      defer wg.Done()
+      for {
+          select {
+          case job, ok := <-w.jobs:
+              if !ok {
+                  return
+              }
+              w.process(job)
+          case <-ctx.Done():
+              return
+          }
+      }
+  }
+
+  func (w *Worker) process(job Job) {
+      println("Processing job", job.ID)
+  }
+internal/worker/dispatcher.go: |
+  package worker
+
+  type Dispatcher struct {
+      workerCount int
+      jobQueue    chan Job
+  }
+
+  func NewDispatcher(workerCount int) *Dispatcher {
+      return &Dispatcher{
+          workerCount: workerCount,
+          jobQueue:    make(chan Job, 100),
+      }
+  }
+
+  func (d *Dispatcher) Submit(job Job) {
+      d.jobQueue <- job
+  }
+cmd/main.go: |
+  package main
+
+  import (
+      "context"
+      "myproject/internal/worker"
+      "sync"
+  )
+
+  func main() {
+      jobs := make(chan worker.Job, 100)
+      var wg sync.WaitGroup
+
+      for i := 0; i < 3; i++ {
+          w := worker.NewWorker(i, jobs)
+          wg.Add(1)
+          go w.Start(context.Background(), &wg)
+      }
+
+      for j := 0; j < 10; j++ {
+          jobs <- worker.Job{ID: j}
+      }
+      close(jobs)
+      wg.Wait()
+  }
+internal/unrelated/scheduler/cron.go: |
+  package scheduler
+
+  const GARBAGE_GO_SCHEDULER_CRON_001 = "scheduler_garbage"
+
+  type GARBAGE_GO_TYPE_CRON_002 struct {
+      expression string
+  }
+
+  func GARBAGE_GO_FUNC_CRON_003() string {
+      return "GARBAGE_GO_CRON_UNUSED_004"
+  }
+internal/unrelated/taskqueue/rabbitmq.go: |
+  package taskqueue
+
+  const GARBAGE_GO_TASKQUEUE_RABBIT_005 = "taskqueue_garbage"
+
+  type GARBAGE_GO_TYPE_RABBIT_006 struct {
+      url string
+  }
+
+  func GARBAGE_GO_FUNC_RABBIT_007() {
+      println("GARBAGE_GO_RABBIT_OUTPUT_008")
+  }

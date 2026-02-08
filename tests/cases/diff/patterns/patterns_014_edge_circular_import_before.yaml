@@ -1,0 +1,16 @@
+src/module_a.py: |
+  from module_b import func_b
+
+  def func_a():
+      return "a"
+
+  def call_b():
+      return func_b()
+src/module_b.py: |
+  from module_a import func_a
+
+  def func_b():
+      return "b"
+
+  def call_a():
+      return func_a()

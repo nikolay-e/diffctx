@@ -1,0 +1,45 @@
+Resources/AsyncResource.cs: |
+  namespace MyApp.Resources;
+
+  public class AsyncResource : IAsyncDisposable
+  {
+      private readonly HttpClient _client;
+
+      public AsyncResource()
+      {
+          _client = new HttpClient();
+      }
+
+      public async Task<string> FetchAsync(string url)
+      {
+          return await _client.GetStringAsync(url);
+      }
+
+      public async ValueTask DisposeAsync()
+      {
+          _client.Dispose();
+          await Task.CompletedTask;
+      }
+  }
+Services/AsyncService.cs: |
+  namespace MyApp.Services;
+
+  public class AsyncService { }
+Unrelated/SnapshotService.cs: |
+  namespace MyApp.Unrelated;
+
+  public class SnapshotService
+  {
+      private const string GARBAGE_CS_026_SNAPSHOT_SERVICE_A = "snapshot_service_marker";
+
+      public void TakeSnapshot() => _ = GARBAGE_CS_026_SNAPSHOT_SERVICE_A;
+  }
+Unrelated/ReplayBuffer.cs: |
+  namespace MyApp.Unrelated;
+
+  public class ReplayBuffer
+  {
+      public const string GARBAGE_CS_026_REPLAY_BUFFER_B = "replay_buffer_marker";
+
+      public void Replay() => _ = GARBAGE_CS_026_REPLAY_BUFFER_B;
+  }

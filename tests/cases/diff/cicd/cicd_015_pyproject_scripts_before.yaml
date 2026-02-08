@@ -1,0 +1,108 @@
+pyproject.toml: |
+  [build-system]
+  requires = ["hatchling"]
+  build-backend = "hatchling.build"
+
+  [project]
+  name = "myapp"
+  version = "1.0.0"
+  description = "A sample application"
+  requires-python = ">=3.10"
+  dependencies = [
+      "click>=8.0",
+      "rich>=13.0",
+  ]
+
+  [project.scripts]
+  myapp = "src.cli:main"
+
+src/cli.py: |
+  import click
+  from rich.console import Console
+
+  from .commands import process, export
+  from .config import load_config
+
+  console = Console()
+
+  @click.group()
+  @click.version_option()
+  @click.pass_context
+  def cli(ctx):
+      ctx.ensure_object(dict)
+      ctx.obj["config"] = load_config()
+
+  @cli.command()
+  @click.argument("input_file", type=click.Path(exists=True))
+  @click.option("--output", "-o", type=click.Path(), help="Output file")
+  @click.pass_context
+  def run(ctx, input_file, output):
+      config = ctx.obj["config"]
+      result = process(input_file, config)
+      if output:
+          export(result, output)
+      else:
+          console.print(result)
+
+  @cli.command()
+  @click.pass_context
+  def status(ctx):
+      console.print("[green]Application is running[/green]")
+
+  def main():
+      cli(obj={})
+
+  if __name__ == "__main__":
+      main()
+
+src/commands.py: |
+  from pathlib import Path
+  from typing import Any, Dict
+
+  def process(input_file: str, config: Dict[str, Any]) -> Dict[str, Any]:
+      path = Path(input_file)
+      content = path.read_text()
+      lines = content.splitlines()
+
+      return {
+          "file": input_file,
+          "lines": len(lines),
+          "characters": len(content),
+          "config": config.get("name", "default"),
+      }
+
+  def export(data: Dict[str, Any], output_file: str) -> None:
+      import json
+      path = Path(output_file)
+      path.write_text(json.dumps(data, indent=2))
+
+src/config.py: |
+  import os
+  from typing import Dict, Any
+
+  def load_config() -> Dict[str, Any]:
+      return {
+          "name": os.getenv("APP_NAME", "myapp"),
+          "debug": os.getenv("DEBUG", "false").lower() == "true",
+          "log_level": os.getenv("LOG_LEVEL", "info"),
+      }
+
+garbage_plugin.py: |
+  GARBAGE_CICD_015_PLUGIN_MARKER_A = "extension"
+  GARBAGE_CICD_015_HOOK_MARKER_B = "pre_process"
+
+  class GarbagePluginManager:
+      GARBAGE_CICD_015_ENABLED_MARKER_C = True
+
+      def load(self) -> None:
+          pass
+
+garbage_cache.py: |
+  GARBAGE_CICD_015_CACHE_MARKER_D = "memory"
+  GARBAGE_CICD_015_SIZE_MARKER_E = 1000
+
+  class GarbageCacheBackend:
+      GARBAGE_CICD_015_TTL_MARKER_F = 3600
+
+      def get(self, key: str) -> None:
+          pass

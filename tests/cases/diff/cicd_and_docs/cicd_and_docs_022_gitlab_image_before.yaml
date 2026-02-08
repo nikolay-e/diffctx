@@ -1,0 +1,44 @@
+.gitlab-ci.yml: |
+  build:
+    script:
+      - npm run build
+
+package.json: |
+  {
+    "name": "gitlab-docker-app",
+    "version": "1.0.0",
+    "scripts": {
+      "build": "tsc",
+      "test": "jest"
+    },
+    "engines": {
+      "node": ">=18"
+    }
+  }
+
+Dockerfile: |
+  FROM node:18-alpine
+  WORKDIR /app
+  COPY package*.json ./
+  RUN npm ci
+  COPY . .
+  RUN npm run build
+  CMD ["node", "dist/index.js"]
+
+garbage_registry.ts: |
+  const GARBAGE_CICD_DOCS_022_REGISTRY_MARKER_A = "docker.io";
+  const GARBAGE_CICD_DOCS_022_TAG_MARKER_B = "latest";
+
+  class GarbageRegistryClient {
+    static GARBAGE_CICD_DOCS_022_AUTH_MARKER_C = true;
+    pull(): void {}
+  }
+
+garbage_image.ts: |
+  const GARBAGE_CICD_DOCS_022_IMAGE_MARKER_D = "alpine";
+  const GARBAGE_CICD_DOCS_022_SIZE_MARKER_E = "100MB";
+
+  class GarbageImageBuilder {
+    static GARBAGE_CICD_DOCS_022_CACHE_MARKER_F = true;
+    build(): void {}
+  }

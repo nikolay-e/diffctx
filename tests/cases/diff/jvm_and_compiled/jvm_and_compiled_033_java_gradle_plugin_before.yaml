@@ -1,0 +1,21 @@
+build.gradle: |
+  plugins {
+      id 'java'
+      id 'org.springframework.boot' version '3.0.0'
+  }
+
+  dependencies {
+      implementation 'org.springframework.boot:spring-boot-starter-web'
+  }
+GarbageTaskRunner.java: |
+  public class GarbageTaskRunner {
+      public static final String GARBAGE_JVM_033_TASK_MARKER_A = "marker";
+      public static final String GARBAGE_JVM_033_EXEC_MARKER_B = "marker";
+      public void noop() {}
+  }
+GarbageBuildConfig.java: |
+  public class GarbageBuildConfig {
+      public static final String GARBAGE_JVM_033_BUILD_MARKER_C = "marker";
+      public static final String GARBAGE_JVM_033_COMPILE_MARKER_D = "marker";
+      public void noop() {}
+  }

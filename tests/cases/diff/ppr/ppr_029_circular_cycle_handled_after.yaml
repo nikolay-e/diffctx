@@ -1,0 +1,15 @@
+cycle_a.py: |
+  from cycle_b import func_b
+
+  def func_a():
+      return func_b() + 1
+cycle_b.py: |
+  from cycle_c import func_c
+
+  def func_b():
+      return func_c()
+cycle_c.py: |
+  from cycle_a import func_a
+
+  def func_c():
+      return func_a()

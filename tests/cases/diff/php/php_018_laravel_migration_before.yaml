@@ -1,0 +1,28 @@
+Blueprint.php: |
+  <?php
+  class Blueprint {
+      private array $columns = [];
+
+      public function id(): self {
+          $this->columns[] = ['name' => 'id', 'type' => 'bigint'];
+          return $this;
+      }
+
+      public function string(string $name, int $length = 255): self {
+          $this->columns[] = ['name' => $name, 'type' => 'string', 'length' => $length];
+          return $this;
+      }
+
+      public function unique(): self {
+          return $this;
+      }
+
+      public function timestamps(): self {
+          $this->columns[] = ['name' => 'created_at', 'type' => 'timestamp'];
+          $this->columns[] = ['name' => 'updated_at', 'type' => 'timestamp'];
+          return $this;
+      }
+  }
+CreateUsersTable.php: |
+  <?php
+  class CreateUsersTable {}

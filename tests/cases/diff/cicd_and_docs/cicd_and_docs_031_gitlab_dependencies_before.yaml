@@ -1,0 +1,51 @@
+.gitlab-ci.yml: |
+  stages:
+    - build
+    - deploy
+
+  build:
+    stage: build
+    script:
+      - npm ci
+      - npm run build
+    artifacts:
+      paths:
+        - dist/
+
+  deploy:
+    stage: deploy
+    script:
+      - ./deploy.sh
+
+deploy.sh: |
+  #!/bin/bash
+  set -e
+  echo "Deploying from dist/"
+  scp -r dist/* server:/var/www/app/
+
+package.json: |
+  {
+    "name": "gitlab-dependencies-app",
+    "version": "1.0.0",
+    "scripts": {
+      "build": "webpack --mode production"
+    }
+  }
+
+garbage_artifact_store.ts: |
+  const GARBAGE_CICD_DOCS_031_STORE_MARKER_A = "s3";
+  const GARBAGE_CICD_DOCS_031_BUCKET_MARKER_B = "artifacts";
+
+  class GarbageArtifactStore {
+    static GARBAGE_CICD_DOCS_031_COMPRESS_MARKER_C = true;
+    upload(): void {}
+  }
+
+garbage_artifact_fetcher.ts: |
+  const GARBAGE_CICD_DOCS_031_FETCH_MARKER_D = "http";
+  const GARBAGE_CICD_DOCS_031_RETRY_MARKER_E = 3;
+
+  class GarbageArtifactFetcher {
+    static GARBAGE_CICD_DOCS_031_TIMEOUT_MARKER_F = 30000;
+    fetch(): void {}
+  }

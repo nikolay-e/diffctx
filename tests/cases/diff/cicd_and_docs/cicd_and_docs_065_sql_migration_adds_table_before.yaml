@@ -1,0 +1,55 @@
+migrations/001_create_orders.sql: |
+  CREATE TABLE orders (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER REFERENCES users(id),
+      total DECIMAL(10, 2),
+      status VARCHAR(50) DEFAULT 'pending',
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE INDEX idx_orders_user_id ON orders(user_id);
+  CREATE INDEX idx_orders_status ON orders(status);
+
+src/models/order.py: |
+  from dataclasses import dataclass
+  from datetime import datetime
+  from decimal import Decimal
+  from typing import Optional
+
+  @dataclass
+  class Order:
+      id: int
+      user_id: int
+      total: Decimal
+      status: str = 'pending'
+      created_at: Optional[datetime] = None
+
+src/repositories/order_repository.py: |
+  from typing import List, Optional
+  from models.order import Order
+
+  class OrderRepository:
+      def find_by_user(self, user_id: int) -> List[Order]:
+          results = db.execute(
+              "SELECT * FROM orders WHERE user_id = %s",
+              (user_id,)
+          )
+          return [Order(**r) for r in results]
+
+garbage_table_builder.ts: |
+  const GARBAGE_CICD_DOCS_065_BUILDER_MARKER_A = "knex";
+  const GARBAGE_CICD_DOCS_065_CHARSET_MARKER_B = "utf8mb4";
+
+  class GarbageTableBuilder {
+    static GARBAGE_CICD_DOCS_065_ENGINE_MARKER_C = "InnoDB";
+    build(): void {}
+  }
+
+garbage_table_migrator.ts: |
+  const GARBAGE_CICD_DOCS_065_MIGRATOR_MARKER_D = "liquibase";
+  const GARBAGE_CICD_DOCS_065_CHANGELOG_MARKER_E = "xml";
+
+  class GarbageTableMigrator {
+    static GARBAGE_CICD_DOCS_065_CONTEXT_MARKER_F = "production";
+    migrate(): void {}
+  }

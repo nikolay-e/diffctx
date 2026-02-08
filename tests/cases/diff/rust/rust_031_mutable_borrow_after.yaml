@@ -1,0 +1,94 @@
+src/lib.rs: |
+  pub mod data;
+  pub mod processor;
+  pub mod unrelated;
+src/data.rs: |
+  pub struct Data {
+      values: Vec<i32>,
+      label: String,
+  }
+
+  impl Data {
+      pub fn new(label: &str) -> Self {
+          Self {
+              values: Vec::new(),
+              label: label.to_string(),
+          }
+      }
+
+      pub fn add(&mut self, value: i32) {
+          self.values.push(value);
+      }
+
+      pub fn get(&self, index: usize) -> Option<&i32> {
+          self.values.get(index)
+      }
+
+      pub fn len(&self) -> usize {
+          self.values.len()
+      }
+
+      pub fn label(&self) -> &str {
+          &self.label
+      }
+  }
+src/processor.rs: |
+  use crate::data::Data;
+
+  pub fn process(data: &mut Data) {
+      data.add(42);
+      if let Some(val) = data.get(0) {
+          println!("[{}] First value: {}", data.label(), val);
+      }
+  }
+
+  pub fn process_multiple(data: &mut Data, count: usize) {
+      for i in 0..count {
+          data.add(i as i32);
+      }
+      println!("[{}] Added {} items, total: {}", data.label(), count, data.len());
+  }
+
+  pub fn transform_in_place(data: &mut Data, multiplier: i32) {
+      let len = data.len();
+      for i in 0..len {
+          if let Some(&val) = data.get(i) {
+              data.add(val * multiplier);
+          }
+      }
+  }
+src/unrelated/mod.rs: |
+  pub mod parser;
+  pub mod serializer;
+src/unrelated/parser.rs: |
+  // GARBAGE_RUST_031_PARSER_A
+  pub const GARBAGE_RUST_031_PARSE_DELIM_B: &str = ",";
+
+  pub struct GarbageCsvParser031 {
+      has_header: bool,
+  }
+
+  impl GarbageCsvParser031 {
+      pub fn garbage_parse_row_031(&self, row: &str) -> Vec<String> {
+          row.split(',').map(|s| s.to_string()).collect()
+      }
+
+      pub fn garbage_parse_header_031(&self, header: &str) -> Vec<String> {
+          self.garbage_parse_row_031(header)
+      }
+  }
+src/unrelated/serializer.rs: |
+  // GARBAGE_RUST_031_SERIALIZER_C
+  pub const GARBAGE_RUST_031_SER_FMT_D: &str = "json";
+
+  pub struct GarbageJsonSerializer031;
+
+  impl GarbageJsonSerializer031 {
+      pub fn garbage_serialize_031(&self, data: &str) -> String {
+          format!("{{\"data\":\"{}\"}}", data)
+      }
+
+      pub fn garbage_deserialize_031(&self, json: &str) -> String {
+          json.replace("{\"data\":\"", "").replace("\"}", "")
+      }
+  }

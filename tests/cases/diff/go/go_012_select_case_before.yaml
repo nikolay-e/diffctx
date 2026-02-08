@@ -1,0 +1,74 @@
+internal/mux/multiplexer.go: |
+  package mux
+
+  import (
+      "context"
+      "time"
+  )
+
+  type Event struct {
+      Source  string
+      Payload interface{}
+  }
+
+  type Multiplexer struct {
+      inputs  []<-chan Event
+      output  chan<- Event
+      timeout time.Duration
+  }
+
+  func NewMultiplexer(output chan<- Event, timeout time.Duration) *Multiplexer {
+      return &Multiplexer{
+          output:  output,
+          timeout: timeout,
+      }
+  }
+
+  func (m *Multiplexer) AddInput(ch <-chan Event) {
+      m.inputs = append(m.inputs, ch)
+  }
+
+  func (m *Multiplexer) Run(ctx context.Context) {
+      for {
+          select {
+          case <-ctx.Done():
+              return
+          default:
+              m.processInputs(ctx)
+          }
+      }
+  }
+
+  func (m *Multiplexer) processInputs(ctx context.Context) {
+      for _, ch := range m.inputs {
+          select {
+          case evt := <-ch:
+              m.output <- evt
+          default:
+          }
+      }
+  }
+internal/unrelated/router/fanout.go: |
+  package router
+
+  const GARBAGE_GO_ROUTER_FANOUT_001 = "router_garbage"
+
+  type GARBAGE_GO_TYPE_FANOUT_002 struct {
+      subscribers []chan interface{}
+  }
+
+  func GARBAGE_GO_FUNC_FANOUT_003() string {
+      return "GARBAGE_GO_FANOUT_UNUSED_004"
+  }
+internal/unrelated/router/loadbalancer.go: |
+  package router
+
+  const GARBAGE_GO_ROUTER_LB_005 = "loadbalancer_garbage"
+
+  type GARBAGE_GO_TYPE_LB_006 struct {
+      backends []string
+  }
+
+  func GARBAGE_GO_FUNC_LB_007() {
+      println("GARBAGE_GO_LB_OUTPUT_008")
+  }

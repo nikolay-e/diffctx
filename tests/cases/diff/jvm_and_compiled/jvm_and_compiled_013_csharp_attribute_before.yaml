@@ -1,0 +1,43 @@
+User.cs: |
+  public class User
+  {
+      public int Id { get; set; }
+      public string Name { get; set; }
+  }
+UsersController.cs: |
+  class UsersController { }
+GarbageSlugGenerator.cs: |
+  public static class GarbageSlugGenerator
+  {
+      public const string GARBAGE_JVM_013_SLUG_MARKER_A = "gen_slug";
+      public const string GARBAGE_JVM_013_SANITIZE_MARKER_B = "sanitize_slug";
+
+      public static string Generate(string input) => input.ToLower().Replace(" ", "-");
+  }
+GarbageCircuitBreaker.cs: |
+  public class GarbageCircuitBreaker
+  {
+      public const string GARBAGE_JVM_013_BREAKER_MARKER_C = "circuit_open";
+      public const string GARBAGE_JVM_013_RESET_MARKER_D = "circuit_reset";
+
+      private int _failures;
+      private readonly int _threshold;
+      public GarbageCircuitBreaker(int threshold) { _threshold = threshold; }
+      public bool IsOpen => _failures >= _threshold;
+      public void RecordFailure() { _failures++; }
+      public void Reset() { _failures = 0; }
+  }
+GarbageAuthFilter.cs: |
+  public class GarbageAuthFilter
+  {
+      public const string GARBAGE_JVM_013_AUTH_MARKER_A = "marker";
+      public const string GARBAGE_JVM_013_FILTER_MARKER_B = "marker";
+      public void Noop() {}
+  }
+GarbageCacheHeader.cs: |
+  public class GarbageCacheHeader
+  {
+      public const string GARBAGE_JVM_013_CACHE_MARKER_C = "marker";
+      public const string GARBAGE_JVM_013_HEADER_MARKER_D = "marker";
+      public void Noop() {}
+  }

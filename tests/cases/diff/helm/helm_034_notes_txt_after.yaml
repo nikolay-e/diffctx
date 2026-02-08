@@ -1,0 +1,17 @@
+templates/service.yaml: |
+  apiVersion: v1
+  kind: Service
+  metadata:
+    name: {{ .Release.Name }}
+templates/NOTES.txt: |
+  Thank you for installing {{ .Chart.Name }}.
+
+  Get the application URL by running these commands:
+  {{- if .Values.ingress.enabled }}
+    http{{ if .Values.ingress.tls }}s{{ end }}://{{ .Values.ingress.host }}
+  {{- else }}
+    kubectl port-forward svc/{{ .Release.Name }} 8080:80
+  {{- end }}
+unrelated.py: |
+  garbage_marker_12345 = True
+  unused_marker_67890 = False

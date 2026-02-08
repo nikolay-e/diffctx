@@ -1,0 +1,18 @@
+must_include_files:
+  - src/Controllers/ProfileController.php
+must_include_content:
+  - |
+    $profile->name = $data['name']
+must_not_include:
+  - GARBAGE_PHP_007_ROWS_A
+  - GARBAGE_PHP_007_COLS_B
+  - GARBAGE_PHP_007_EPSILON_C
+  - GARBAGE_PHP_007_DETERMINANT_D
+  - GARBAGE_PHP_007_MAX_BACKTRACK_E
+  - GARBAGE_PHP_007_FLAGS_F
+  - GARBAGE_PHP_007_TIMEOUT_G
+  - GARBAGE_PHP_007_CAPTURES_H
+  - GarbageMatrixOps
+  - GarbageRegexEngine
+  - garbage_matrix_ops.php
+  - garbage_regex_engine.php

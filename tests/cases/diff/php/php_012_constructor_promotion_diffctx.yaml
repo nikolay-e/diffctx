@@ -1,0 +1,18 @@
+must_include_files:
+  - src/Services/ConnectionManager.php
+must_include_content:
+  - |
+    $this->config->getDsn()
+must_not_include:
+  - GARBAGE_PHP_012_HUE_RANGE_A
+  - GARBAGE_PHP_012_SAT_RANGE_B
+  - GARBAGE_PHP_012_LIGHT_RANGE_C
+  - GARBAGE_PHP_012_GAMMA_D
+  - GARBAGE_PHP_012_SAFE_MODE_E
+  - GARBAGE_PHP_012_BREAKS_F
+  - GARBAGE_PHP_012_ESCAPE_HTML_G
+  - GARBAGE_PHP_012_MAX_NESTING_H
+  - GarbageHslConverter
+  - GarbageMarkdownRenderer
+  - garbage_hsl_converter.php
+  - garbage_markdown_renderer.php

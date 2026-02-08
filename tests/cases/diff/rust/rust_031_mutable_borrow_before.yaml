@@ -1,0 +1,77 @@
+src/lib.rs: |
+  pub mod data;
+  pub mod processor;
+  pub mod unrelated;
+src/data.rs: |
+  pub struct Data {
+      values: Vec<i32>,
+      label: String,
+  }
+
+  impl Data {
+      pub fn new(label: &str) -> Self {
+          Self {
+              values: Vec::new(),
+              label: label.to_string(),
+          }
+      }
+
+      pub fn add(&mut self, value: i32) {
+          self.values.push(value);
+      }
+
+      pub fn get(&self, index: usize) -> Option<&i32> {
+          self.values.get(index)
+      }
+
+      pub fn len(&self) -> usize {
+          self.values.len()
+      }
+
+      pub fn label(&self) -> &str {
+          &self.label
+      }
+  }
+src/processor.rs: |
+  use crate::data::Data;
+
+  pub fn process(data: &Data) {
+      if let Some(val) = data.get(0) {
+          println!("[{}] First value: {}", data.label(), val);
+      }
+  }
+src/unrelated/mod.rs: |
+  pub mod parser;
+  pub mod serializer;
+src/unrelated/parser.rs: |
+  // GARBAGE_RUST_031_PARSER_A
+  pub const GARBAGE_RUST_031_PARSE_DELIM_B: &str = ",";
+
+  pub struct GarbageCsvParser031 {
+      has_header: bool,
+  }
+
+  impl GarbageCsvParser031 {
+      pub fn garbage_parse_row_031(&self, row: &str) -> Vec<String> {
+          row.split(',').map(|s| s.to_string()).collect()
+      }
+
+      pub fn garbage_parse_header_031(&self, header: &str) -> Vec<String> {
+          self.garbage_parse_row_031(header)
+      }
+  }
+src/unrelated/serializer.rs: |
+  // GARBAGE_RUST_031_SERIALIZER_C
+  pub const GARBAGE_RUST_031_SER_FMT_D: &str = "json";
+
+  pub struct GarbageJsonSerializer031;
+
+  impl GarbageJsonSerializer031 {
+      pub fn garbage_serialize_031(&self, data: &str) -> String {
+          format!("{{\"data\":\"{}\"}}", data)
+      }
+
+      pub fn garbage_deserialize_031(&self, json: &str) -> String {
+          json.replace("{\"data\":\"", "").replace("\"}", "")
+      }
+  }

@@ -1,0 +1,53 @@
+IUserService.cs: |
+  public interface IUserService
+  {
+      User GetUser(int id);
+      void CreateUser(User user);
+  }
+UserService.cs: |
+  public class UserService : IUserService
+  {
+      public User GetUser(int id)
+      {
+          return new User { Id = id, Name = "User" };
+      }
+
+      public void CreateUser(User user)
+      {
+      }
+  }
+Startup.cs: |
+  class Startup { }
+GarbageBase64Helper.cs: |
+  public static class GarbageBase64Helper
+  {
+      public const string GARBAGE_JVM_015_ENCODE_MARKER_A = "b64_encode";
+      public const string GARBAGE_JVM_015_DECODE_MARKER_B = "b64_decode";
+
+      public static string Encode(byte[] data) => Convert.ToBase64String(data);
+      public static byte[] Decode(string s) => Convert.FromBase64String(s);
+  }
+GarbageStopwatch.cs: |
+  public class GarbageStopwatch
+  {
+      public const string GARBAGE_JVM_015_START_MARKER_C = "sw_start";
+      public const string GARBAGE_JVM_015_STOP_MARKER_D = "sw_stop";
+
+      private DateTime _start;
+      public void Start() { _start = DateTime.UtcNow; }
+      public TimeSpan Elapsed => DateTime.UtcNow - _start;
+  }
+GarbageLogSink.cs: |
+  public class GarbageLogSink
+  {
+      public const string GARBAGE_JVM_015_LOGGER_MARKER_A = "marker";
+      public const string GARBAGE_JVM_015_SINK_MARKER_B = "marker";
+      public void Noop() {}
+  }
+GarbageMetricCounter.cs: |
+  public class GarbageMetricCounter
+  {
+      public const string GARBAGE_JVM_015_METRIC_MARKER_C = "marker";
+      public const string GARBAGE_JVM_015_COUNTER_MARKER_D = "marker";
+      public void Noop() {}
+  }

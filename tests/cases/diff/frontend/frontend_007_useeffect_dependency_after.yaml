@@ -1,0 +1,88 @@
+src/api.ts: |
+  export async function fetchData(endpoint: string): Promise<any> {
+      const response = await fetch(`/api/${endpoint}`);
+      return response.json();
+  }
+
+  export async function fetchUsers(): Promise<any[]> {
+      return fetchData('users');
+  }
+
+  export async function fetchDashboard(filter: string): Promise<any> {
+      return fetchData(`dashboard?filter=${filter}`);
+  }
+src/Dashboard.tsx: |
+  import React, { useEffect, useState } from 'react';
+  import { fetchDashboard } from './api';
+
+  interface DashboardProps {
+      filter: string;
+  }
+
+  export function Dashboard({ filter }: DashboardProps) {
+      const [data, setData] = useState(null);
+      const [loading, setLoading] = useState(false);
+
+      useEffect(() => {
+          let cancelled = false;
+          setLoading(true);
+
+          fetchDashboard(filter).then(result => {
+              if (!cancelled) {
+                  setData(result);
+                  setLoading(false);
+              }
+          });
+
+          return () => { cancelled = true; };
+      }, [filter]);
+
+      return (
+          <div>
+              {loading ? <p>Loading...</p> : null}
+              {data ? <pre>{JSON.stringify(data)}</pre> : null}
+          </div>
+      );
+  }
+src/unrelated/date_formatter.ts: |
+  // GARBAGE_FE_007_DATE_A
+  export type DateFormat = 'short' | 'long' | 'iso';
+
+  // GARBAGE_FE_007_DATE_B
+  export function formatDate(date: Date, format: DateFormat): string {
+      switch (format) {
+          case 'short':
+              return date.toLocaleDateString();
+          case 'long':
+              return date.toLocaleDateString('en-US', {
+                  weekday: 'long', year: 'numeric',
+                  month: 'long', day: 'numeric',
+              });
+          case 'iso':
+              return date.toISOString();
+      }
+  }
+
+  // GARBAGE_FE_007_RELATIVE_C
+  export function relativeTime(date: Date): string {
+      const diff = Date.now() - date.getTime();
+      const minutes = Math.floor(diff / 60000);
+      if (minutes < 60) return `${minutes}m ago`;
+      return `${Math.floor(minutes / 60)}h ago`;
+  }
+src/unrelated/string_utils.ts: |
+  // GARBAGE_FE_007_STRING_D
+  export function capitalize(str: string): string {
+      return str.charAt(0).toUpperCase() + str.slice(1);
+  }
+
+  // GARBAGE_FE_007_STRING_E
+  export function slugify(str: string): string {
+      return str.toLowerCase().replace(/\s+/g, '-').replace(/[^\w-]/g, '');
+  }
+
+  // GARBAGE_FE_007_TRUNCATE_F
+  export function truncate(str: string, maxLen: number): string {
+      if (str.length <= maxLen) return str;
+      return str.slice(0, maxLen - 3) + '...';
+  }

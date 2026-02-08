@@ -1,0 +1,17 @@
+dns.tf: |
+  resource "aws_route53_record" "www" {
+    zone_id = "Z123456"
+    name    = "www.example.com"
+    type    = "A"
+    ttl     = 300
+    records = ["1.2.3.4"]
+  }
+src/health.py: |
+  import requests
+
+  def check_domain(domain: str) -> bool:
+      try:
+          r = requests.get(f"https://{domain}/health")
+          return r.status_code == 200
+      except Exception:
+          return False

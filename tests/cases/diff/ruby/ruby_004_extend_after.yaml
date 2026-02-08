@@ -1,0 +1,74 @@
+lib/class_methods.rb: |
+  module ClassMethods
+    def find(id)
+      all_records = storage
+      all_records.detect { |r| r[:id] == id }
+    end
+
+    def all
+      storage.dup
+    end
+
+    def where(conditions)
+      storage.select do |record|
+        conditions.all? { |k, v| record[k] == v }
+      end
+    end
+
+    def count
+      storage.size
+    end
+
+    private
+
+    def storage
+      @storage ||= []
+    end
+  end
+lib/model.rb: |
+  require_relative 'class_methods'
+
+  class Model
+    extend ClassMethods
+
+    attr_reader :id, :name
+
+    def initialize(id:, name: nil)
+      @id = id
+      @name = name
+    end
+
+    def save
+      true
+    end
+
+    def to_h
+      { id: @id, name: @name }
+    end
+  end
+
+  model = Model.find(1)
+  all_models = Model.all
+  filtered = Model.where(name: "test")
+lib/garbage_encryption.rb: |
+  GARBAGE_RUBY_004_CIPHER_MODE_A = "aes_256_gcm"
+  GARBAGE_RUBY_004_KEY_DERIVATION_B = "pbkdf2"
+
+  class GarbageEncryptionService
+    GARBAGE_RUBY_004_IV_LENGTH_C = 16
+
+    def encrypt(plaintext)
+      GARBAGE_RUBY_004_CIPHER_MODE_A
+    end
+  end
+lib/garbage_scheduler.rb: |
+  GARBAGE_RUBY_004_CRON_PATTERN_D = "daily_midnight"
+  GARBAGE_RUBY_004_TIMEZONE_OFFSET_E = "utc_plus_3"
+
+  class GarbageTaskScheduler
+    GARBAGE_RUBY_004_MAX_CONCURRENT_F = 4
+
+    def schedule(job_name)
+      GARBAGE_RUBY_004_CRON_PATTERN_D
+    end
+  end

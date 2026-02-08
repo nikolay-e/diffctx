@@ -110,7 +110,7 @@ class ShellEdgeBuilder(EdgeBuilder):
             return []
 
         refs = _collect_shell_refs(shell_files)
-        discovered = discover_files_by_refs(refs, changed_files, all_candidate_files)
+        discovered = discover_files_by_refs(refs, changed_files, all_candidate_files, repo_root)
         changed_set = set(changed_files)
         env_files = [c for c in all_candidate_files if c.name.startswith(".env") and c not in changed_set]
         return list(set(discovered + env_files))

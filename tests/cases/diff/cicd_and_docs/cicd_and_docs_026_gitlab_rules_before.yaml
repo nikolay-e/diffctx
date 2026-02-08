@@ -1,0 +1,38 @@
+.gitlab-ci.yml: |
+  deploy:
+    script:
+      - npm ci
+      - ./deploy.sh
+
+deploy.sh: |
+  #!/bin/bash
+  set -e
+  echo "Deploying to production..."
+  aws ecs update-service --cluster main --service app
+
+package.json: |
+  {
+    "name": "gitlab-rules-app",
+    "version": "1.0.0",
+    "scripts": {
+      "deploy": "./deploy.sh"
+    }
+  }
+
+garbage_condition.ts: |
+  const GARBAGE_CICD_DOCS_026_CONDITION_MARKER_A = "branch";
+  const GARBAGE_CICD_DOCS_026_PATTERN_MARKER_B = "main";
+
+  class GarbageConditionEvaluator {
+    static GARBAGE_CICD_DOCS_026_STRICT_MARKER_C = true;
+    evaluate(): boolean { return false; }
+  }
+
+garbage_trigger.ts: |
+  const GARBAGE_CICD_DOCS_026_TRIGGER_MARKER_D = "manual";
+  const GARBAGE_CICD_DOCS_026_WHEN_MARKER_E = "on_success";
+
+  class GarbageTriggerHandler {
+    static GARBAGE_CICD_DOCS_026_ALLOW_MARKER_F = true;
+    trigger(): void {}
+  }

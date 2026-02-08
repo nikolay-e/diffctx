@@ -1,0 +1,29 @@
+src/main/java/com/example/UserRepository.java: |
+  package com.example;
+
+  import java.util.HashMap;
+  import java.util.Map;
+
+  public class UserRepository {
+      private final Map<Long, User> storage = new HashMap<>();
+
+      public void save(User user) {
+          storage.put(user.getId(), user);
+      }
+
+      public User findById(Long id) {
+          return storage.get(id);
+      }
+  }
+GarbageMapper.java: |
+  public class GarbageMapper {
+      public static final String GARBAGE_JVM_032_MAPPER_MARKER_A = "marker";
+      public static final String GARBAGE_JVM_032_TRANSFORM_MARKER_B = "marker";
+      public void noop() {}
+  }
+GarbageTransformer.java: |
+  public class GarbageTransformer {
+      public static final String GARBAGE_JVM_032_CONVERT_MARKER_C = "marker";
+      public static final String GARBAGE_JVM_032_ADAPT_MARKER_D = "marker";
+      public void noop() {}
+  }

@@ -1,0 +1,116 @@
+internal/database/connection.go: |
+  package database
+
+  import (
+      "context"
+      "database/sql"
+      "log"
+      "time"
+  )
+
+  type Connection struct {
+      db     *sql.DB
+      logger *log.Logger
+  }
+
+  func NewConnection(dsn string, logger *log.Logger) (*Connection, error) {
+      db, err := sql.Open("postgres", dsn)
+      if err != nil {
+          return nil, err
+      }
+      db.SetMaxOpenConns(25)
+      db.SetMaxIdleConns(5)
+      db.SetConnMaxLifetime(5 * time.Minute)
+      return &Connection{db: db, logger: logger}, nil
+  }
+
+  func (c *Connection) Close() error {
+      c.logger.Println("Closing database connection")
+      return c.db.Close()
+  }
+
+  func (c *Connection) Query(query string) (*sql.Rows, error) {
+      return c.db.Query(query)
+  }
+
+  func (c *Connection) QueryContext(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {
+      return c.db.QueryContext(ctx, query, args...)
+  }
+
+  func (c *Connection) Transaction(ctx context.Context, fn func(*sql.Tx) error) error {
+      tx, err := c.db.BeginTx(ctx, nil)
+      if err != nil {
+          return err
+      }
+
+      defer func() {
+          if p := recover(); p != nil {
+              tx.Rollback()
+              c.logger.Printf("Transaction rolled back due to panic: %v", p)
+              panic(p)
+          }
+      }()
+
+      if err := fn(tx); err != nil {
+          if rbErr := tx.Rollback(); rbErr != nil {
+              c.logger.Printf("Rollback failed: %v", rbErr)
+          }
+          return err
+      }
+
+      return tx.Commit()
+  }
+
+  func (c *Connection) WithTimeout(ctx context.Context, timeout time.Duration, fn func(context.Context) error) error {
+      ctx, cancel := context.WithTimeout(ctx, timeout)
+      defer cancel()
+      return fn(ctx)
+  }
+
+  func (c *Connection) FlushLogs() {
+      c.logger.Println("Flushing database logs")
+  }
+internal/service/user_service.go: |
+  package service
+
+  import (
+      "myproject/internal/database"
+  )
+
+  type UserService struct {
+      conn *database.Connection
+  }
+
+  func NewUserService(conn *database.Connection) *UserService {
+      return &UserService{conn: conn}
+  }
+
+  func (s *UserService) process() {
+      defer s.conn.Close()
+      rows, _ := s.conn.Query("SELECT * FROM users")
+      defer rows.Close()
+  }
+internal/unrelated/cleanup/garbage_collector.go: |
+  package cleanup
+
+  const GARBAGE_GO_CLEANUP_GC_001 = "cleanup_garbage"
+
+  type GARBAGE_GO_TYPE_CLEANUP_002 struct {
+      interval int
+  }
+
+  func GARBAGE_GO_FUNC_CLEANUP_003() string {
+      return "GARBAGE_GO_CLEANUP_UNUSED_004"
+  }
+internal/unrelated/shutdown/graceful.go: |
+  package shutdown
+
+  const GARBAGE_GO_SHUTDOWN_GRACE_005 = "shutdown_garbage"
+
+  type GARBAGE_GO_TYPE_SHUTDOWN_006 struct {
+      timeout int
+  }
+
+  func GARBAGE_GO_FUNC_SHUTDOWN_007() {
+      println("GARBAGE_GO_SHUTDOWN_OUTPUT_008")
+  }

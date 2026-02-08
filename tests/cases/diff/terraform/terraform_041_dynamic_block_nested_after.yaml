@@ -1,0 +1,26 @@
+lb.tf: |
+  variable "redirects" {
+    default = [
+      { host = "old.example.com", target = "new.example.com" },
+      { host = "legacy.example.com", target = "app.example.com" }
+    ]
+  }
+
+  resource "aws_lb_listener" "https" {
+    load_balancer_arn = aws_lb.main.arn
+    port              = 443
+    protocol          = "HTTPS"
+
+    dynamic "default_action" {
+      for_each = var.redirects
+      content {
+        type = "redirect"
+        redirect {
+          host        = default_action.value.target
+          port        = "443"
+          protocol    = "HTTPS"
+          status_code = "HTTP_301"
+        }
+      }
+    }
+  }

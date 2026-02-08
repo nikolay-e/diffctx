@@ -1,0 +1,12 @@
+Event.scala: 'sealed trait Event
+
+  case class UserCreated(name: String) extends Event
+
+  case class UserDeleted(id: String) extends Event
+
+  case class OrderPlaced(orderId: String, amount: Double) extends Event
+
+  '
+EventHandler.scala: 'class EventHandler {}
+
+  '

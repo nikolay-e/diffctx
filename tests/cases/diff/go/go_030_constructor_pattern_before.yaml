@@ -1,0 +1,102 @@
+pkg/config/config.go: |
+  package config
+
+  import "time"
+
+  type Config struct {
+      Host         string
+      Port         int
+      ReadTimeout  time.Duration
+      WriteTimeout time.Duration
+      MaxConns     int
+  }
+
+  func DefaultConfig() *Config {
+      return &Config{
+          Host:         "localhost",
+          Port:         8080,
+          ReadTimeout:  30 * time.Second,
+          WriteTimeout: 30 * time.Second,
+          MaxConns:     100,
+      }
+  }
+
+  func (c *Config) Address() string {
+      return c.Host + ":" + string(rune(c.Port))
+  }
+pkg/server/server.go: |
+  package server
+
+  import "myapp/pkg/config"
+
+  type Server struct {
+      config config.Config
+  }
+pkg/server/logger.go: |
+  package server
+
+  type Logger interface {
+      Info(msg string, args ...interface{})
+      Error(msg string, args ...interface{})
+      Debug(msg string, args ...interface{})
+  }
+
+  type noopLogger struct{}
+
+  func (l *noopLogger) Info(msg string, args ...interface{})  {}
+  func (l *noopLogger) Error(msg string, args ...interface{}) {}
+  func (l *noopLogger) Debug(msg string, args ...interface{}) {}
+
+  func NewNoopLogger() Logger {
+      return &noopLogger{}
+  }
+internal/unrelated/migration/runner.go: |
+  package migration
+
+  const GARBAGE_GO_030_MIGRATION_RUNNER_A = "migration_runner_marker"
+
+  type GarbageMigrationRunner030 struct {
+      version  int
+      executed []string
+  }
+
+  func GARBAGE_GO_030_NewMigrationRunner() *GarbageMigrationRunner030 {
+      return &GarbageMigrationRunner030{
+          version:  0,
+          executed: make([]string, 0),
+      }
+  }
+
+  func (r *GarbageMigrationRunner030) Run(name string) error {
+      r.executed = append(r.executed, name)
+      r.version++
+      return nil
+  }
+
+  func (r *GarbageMigrationRunner030) Version() int {
+      return r.version
+  }
+internal/unrelated/backup/archiver.go: |
+  package backup
+
+  const GARBAGE_GO_030_BACKUP_ARCHIVER_B = "backup_archiver_marker"
+
+  type GarbageArchiver030 struct {
+      destination string
+      compressed  bool
+  }
+
+  func GARBAGE_GO_030_NewArchiver(dest string) *GarbageArchiver030 {
+      return &GarbageArchiver030{
+          destination: dest,
+          compressed:  true,
+      }
+  }
+
+  func (a *GarbageArchiver030) Archive(path string) error {
+      return nil
+  }
+
+  func (a *GarbageArchiver030) IsCompressed() bool {
+      return a.compressed
+  }

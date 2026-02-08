@@ -1,0 +1,95 @@
+src/types/auth.ts: |
+  export interface User {
+    id: string;
+    email: string;
+    displayName: string;
+    role: 'admin' | 'user' | 'guest';
+  }
+
+  export interface AuthTokens {
+    accessToken: string;
+    refreshToken: string;
+    expiresIn: number;
+  }
+
+  export interface LoginCredentials {
+    email: string;
+    password: string;
+  }
+
+  export interface AuthError {
+    code: string;
+    message: string;
+  }
+src/api/authApi.ts: |
+  import { User, AuthTokens, LoginCredentials, AuthError } from '../types/auth';
+
+  export interface AuthResponse {
+    user: User;
+    tokens: AuthTokens;
+  }
+
+  export interface ApiResult<T> {
+    data?: T;
+    error?: AuthError;
+  }
+
+  export async function loginApi(credentials: LoginCredentials): Promise<ApiResult<AuthResponse>> {
+    try {
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(credentials),
+      });
+      const data = await response.json();
+      return response.ok ? { data } : { error: data };
+    } catch {
+      return { error: { code: 'NETWORK_ERROR', message: 'Failed to connect' } };
+    }
+  }
+
+  export async function logoutApi(): Promise<void> {
+    await fetch('/api/auth/logout', { method: 'POST' });
+  }
+src/store/authSlice.ts: |
+  console.log('placeholder');
+src/unrelated/storage.ts: |
+  // GARBAGE_TS_006_STORAGE_001 - storage utilities
+  export const GARBAGE_TS_006_STORAGE_KEY_002 = 'app_storage_';
+
+  export class GARBAGE_TS_006_StorageManager_003 {
+    private readonly GARBAGE_TS_006_VERSION_004 = 1;
+
+    set<T>(key: string, value: T): void {
+      localStorage.setItem(GARBAGE_TS_006_STORAGE_KEY_002 + key, JSON.stringify(value));
+    }
+
+    get<T>(key: string): T | null {
+      const raw = localStorage.getItem(GARBAGE_TS_006_STORAGE_KEY_002 + key);
+      return raw ? JSON.parse(raw) : null;
+    }
+
+    remove(key: string): void {
+      localStorage.removeItem(GARBAGE_TS_006_STORAGE_KEY_002 + key);
+    }
+  }
+
+  export const GARBAGE_TS_006_storageManager_005 = new GARBAGE_TS_006_StorageManager_003();
+src/unrelated/i18n.ts: |
+  // GARBAGE_TS_006_I18N_006 - internationalization
+  export type GARBAGE_TS_006_Locale_007 = 'en' | 'es' | 'fr' | 'de';
+
+  export class GARBAGE_TS_006_I18n_008 {
+    private translations = new Map<GARBAGE_TS_006_Locale_007, Record<string, string>>();
+    private currentLocale: GARBAGE_TS_006_Locale_007 = 'en';
+
+    setLocale(locale: GARBAGE_TS_006_Locale_007): void {
+      this.currentLocale = locale;
+    }
+
+    t(key: string): string {
+      return this.translations.get(this.currentLocale)?.[key] || key;
+    }
+  }
+
+  export const GARBAGE_TS_006_i18n_009 = new GARBAGE_TS_006_I18n_008();

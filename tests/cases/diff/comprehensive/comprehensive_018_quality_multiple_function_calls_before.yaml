@@ -1,0 +1,42 @@
+src/utils.py: |
+  from typing import Any
+
+  def validate(x: Any) -> bool:
+      return x is not None and x > 0
+
+  def transform(x: float) -> float:
+      return x * 2.5
+
+  def save(x: Any) -> str:
+      return f"saved: {x}"
+
+  def format_output(value: Any) -> str:
+      return f"[{value}]"
+
+src/main.py: |
+  def process():
+      pass
+
+  def get_pipeline_config():
+      return {"steps": 3, "parallel": False}
+
+  def log_step(step_name, status):
+      print(f"Step {step_name}: {status}")
+
+garbage_pipeline_orchestrator.py: |
+  GARBAGE_COMP_018_DAG_EXECUTOR_A = "topological"
+  GARBAGE_COMP_018_TASK_QUEUE_B = "priority"
+
+  class GarbagePipelineOrchestrator:
+      GARBAGE_COMP_018_CONCURRENCY_LIMIT_C = True
+      def orchestrate(self):
+          pass
+
+garbage_workflow_engine.py: |
+  GARBAGE_COMP_018_STATE_MACHINE_D = "finite"
+  GARBAGE_COMP_018_TRANSITION_LOG_E = "audit"
+
+  class GarbageWorkflowEngine:
+      GARBAGE_COMP_018_COMPENSATION_F = False
+      def execute(self):
+          pass

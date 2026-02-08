@@ -1,0 +1,52 @@
+exceptions.py: |
+  class ValidationError(Exception):
+      pass
+
+  class NotFoundError(Exception):
+      def __init__(self, resource: str, identifier: str):
+          self.resource = resource
+          self.identifier = identifier
+          super().__init__(f"{resource} {identifier} not found")
+validators.py: |
+  from exceptions import ValidationError
+
+  def validate_user_data(data):
+      if not data:
+          raise ValidationError("Data is empty")
+      if "email" not in data:
+          raise ValidationError("Email is required")
+      if "name" not in data:
+          raise ValidationError("Name is required")
+      return True
+
+  def validate_order_data(data):
+      if not data.get("items"):
+          raise ValidationError("Order must have items")
+      if data.get("total", 0) <= 0:
+          raise ValidationError("Total must be positive")
+      return True
+handlers.py: |
+  from exceptions import ValidationError
+
+  def handle_request(data):
+      try:
+          return process(data)
+      except ValidationError:
+          return {"error": "Validation failed"}
+
+  def process(data):
+      return data
+utils/garbage_formatter.py: |
+  # GARBAGE_PAT_003_FORMATTER_A
+  GARBAGE_PAT_003_DATE_FORMAT_B = "%Y-%m-%d"
+
+  class GarbageFormatter:
+      def format_date(self, dt):
+          return str(dt)
+utils/garbage_hasher.py: |
+  # GARBAGE_PAT_003_HASHER_A
+  GARBAGE_PAT_003_HASH_ALGO_B = "sha256"
+
+  class GarbageHasher:
+      def hash(self, data):
+          return data

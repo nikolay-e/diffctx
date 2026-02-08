@@ -1,0 +1,21 @@
+Response.swift: |
+  struct Response {
+      let data: Data?
+      let error: Error?
+      let statusCode: Int
+  }
+NetworkHandler.swift: |
+  // Initial
+  struct NetworkHandler {}
+GarbagePrecondChecker.swift: |
+  class GarbagePrecondChecker {
+      static let GARBAGE_JVM_066_PRECOND_MARKER_A = "marker"
+      static let GARBAGE_JVM_066_ASSERT_MARKER_B = "marker"
+      func noop() {}
+  }
+GarbageFatalHandler.swift: |
+  class GarbageFatalHandler {
+      static let GARBAGE_JVM_066_FATAL_MARKER_C = "marker"
+      static let GARBAGE_JVM_066_TRAP_MARKER_D = "marker"
+      func noop() {}
+  }

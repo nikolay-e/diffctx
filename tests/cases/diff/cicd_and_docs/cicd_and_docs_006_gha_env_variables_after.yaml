@@ -1,0 +1,51 @@
+app.js: |
+  const isCI = process.env.CI === 'true';
+  const nodeEnv = process.env.NODE_ENV || 'development';
+
+  console.log('Running in CI:', isCI);
+  console.log('Environment:', nodeEnv);
+
+  function startServer() {
+    const port = process.env.PORT || 3000;
+    console.log(`Server starting on port ${port}`);
+  }
+
+  startServer();
+
+.github/workflows/ci.yml: |
+  name: CI
+  on: [push, pull_request]
+  jobs:
+    test:
+      runs-on: ubuntu-latest
+      env:
+        CI: true
+        NODE_ENV: test
+      steps:
+        - uses: actions/checkout@v4
+        - run: node app.js
+
+config/settings.ts: |
+  export const config = {
+    apiUrl: process.env.API_URL || 'http://localhost:8080',
+    debug: process.env.DEBUG === 'true',
+    logLevel: process.env.LOG_LEVEL || 'info'
+  };
+
+garbage_feature_flags.ts: |
+  const GARBAGE_CICD_DOCS_006_FLAG_MARKER_A = "launchdarkly";
+  const GARBAGE_CICD_DOCS_006_SEGMENT_MARKER_B = "beta_users";
+
+  class GarbageFeatureFlagService {
+    static GARBAGE_CICD_DOCS_006_CACHE_MARKER_C = 60000;
+    evaluate(): boolean { return false; }
+  }
+
+garbage_experiments.ts: |
+  const GARBAGE_CICD_DOCS_006_EXPERIMENT_MARKER_D = "ab_test";
+  const GARBAGE_CICD_DOCS_006_VARIANT_MARKER_E = "control";
+
+  class GarbageExperimentManager {
+    static GARBAGE_CICD_DOCS_006_BUCKET_MARKER_F = 1000;
+    assignVariant(): string { return ""; }
+  }

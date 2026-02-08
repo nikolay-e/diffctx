@@ -1,0 +1,21 @@
+src/module.py: |
+  def func():
+      return 1
+garbage_encryption.py: |
+  GARBAGE_OUT_010_ENCRYPT_MARKER_A = "encryption"
+  GARBAGE_OUT_010_CIPHER_MARKER_B = True
+
+  class CipherService:
+      GARBAGE_OUT_010_CIPHER_CLASS_C = "cipher"
+
+      def encrypt(self, plaintext: str) -> bytes:
+          return b""
+garbage_hashing.py: |
+  GARBAGE_OUT_010_HASH_MARKER_D = "hashing"
+  GARBAGE_OUT_010_DIGEST_MARKER_E = 512
+
+  class HashGenerator:
+      GARBAGE_OUT_010_GENERATOR_CLASS_F = True
+
+      def compute(self, data: bytes) -> str:
+          return ""

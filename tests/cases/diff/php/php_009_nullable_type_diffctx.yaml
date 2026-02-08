@@ -1,0 +1,18 @@
+must_include_files:
+  - src/Repositories/UserRepository.php
+must_include_content:
+  - |
+    public function find(int $id): ?User
+must_not_include:
+  - GARBAGE_PHP_009_TTL_SECONDS_A
+  - GARBAGE_PHP_009_MAX_ENTRIES_B
+  - GARBAGE_PHP_009_NEGATIVE_TTL_C
+  - GARBAGE_PHP_009_STALE_OK_D
+  - GARBAGE_PHP_009_TIMEZONE_E
+  - GARBAGE_PHP_009_MAX_JOBS_F
+  - GARBAGE_PHP_009_OVERLAP_G
+  - GARBAGE_PHP_009_LOCK_TTL_H
+  - GarbageDnsCache
+  - GarbageCronScheduler
+  - garbage_dns_cache.php
+  - garbage_cron_scheduler.php

@@ -1,0 +1,13 @@
+templates/secret.yaml: |
+  {{- $secret := lookup "v1" "Secret" .Release.Namespace "existing-secret" -}}
+  apiVersion: v1
+  kind: Secret
+  data:
+    {{- if $secret }}
+    password: {{ index $secret.data "password" }}
+    {{- else }}
+    password: {{ randAlphaNum 20 | b64enc }}
+    {{- end }}
+junk.md: |
+  garbage_marker_12345
+  unused_marker_67890

@@ -1,0 +1,120 @@
+pkg/httpclient/client.go: |
+  package httpclient
+
+  import (
+      "net/http"
+      "time"
+  )
+
+  type Client struct {
+      baseURL    string
+      httpClient *http.Client
+      timeout    time.Duration
+  }
+
+  func NewClient(baseURL string) *Client {
+      return &Client{
+          baseURL:    baseURL,
+          httpClient: &http.Client{},
+          timeout:    30 * time.Second,
+      }
+  }
+
+  func (c *Client) BaseURL() string {
+      return c.baseURL
+  }
+pkg/httpclient/request.go: |
+  package httpclient
+
+  import (
+      "io"
+      "net/http"
+  )
+
+  type Request struct {
+      method  string
+      path    string
+      body    io.Reader
+      headers map[string]string
+  }
+
+  func NewRequest(method, path string) *Request {
+      return &Request{
+          method:  method,
+          path:    path,
+          headers: make(map[string]string),
+      }
+  }
+
+  func (r *Request) WithHeader(key, value string) *Request {
+      r.headers[key] = value
+      return r
+  }
+
+  func (r *Request) WithBody(body io.Reader) *Request {
+      r.body = body
+      return r
+  }
+
+  func (r *Request) Build(baseURL string) (*http.Request, error) {
+      req, err := http.NewRequest(r.method, baseURL+r.path, r.body)
+      if err != nil {
+          return nil, err
+      }
+      for k, v := range r.headers {
+          req.Header.Set(k, v)
+      }
+      return req, nil
+  }
+internal/unrelated/pool/worker.go: |
+  package pool
+
+  const GARBAGE_GO_031_POOL_WORKER_A = "pool_worker_marker"
+
+  type GarbageWorkerPool031 struct {
+      size    int
+      running bool
+  }
+
+  func GARBAGE_GO_031_NewWorkerPool(size int) *GarbageWorkerPool031 {
+      return &GarbageWorkerPool031{
+          size:    size,
+          running: false,
+      }
+  }
+
+  func (p *GarbageWorkerPool031) Start() {
+      p.running = true
+  }
+
+  func (p *GarbageWorkerPool031) Stop() {
+      p.running = false
+  }
+
+  func (p *GarbageWorkerPool031) IsRunning() bool {
+      return p.running
+  }
+internal/unrelated/queue/broker.go: |
+  package queue
+
+  const GARBAGE_GO_031_QUEUE_BROKER_B = "queue_broker_marker"
+
+  type GarbageBroker031 struct {
+      topic    string
+      messages []string
+  }
+
+  func GARBAGE_GO_031_NewBroker(topic string) *GarbageBroker031 {
+      return &GarbageBroker031{
+          topic:    topic,
+          messages: make([]string, 0),
+      }
+  }
+
+  func (b *GarbageBroker031) Publish(msg string) {
+      b.messages = append(b.messages, msg)
+  }
+
+  func (b *GarbageBroker031) Topic() string {
+      return b.topic
+  }

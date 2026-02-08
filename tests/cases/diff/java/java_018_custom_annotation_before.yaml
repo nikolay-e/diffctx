@@ -1,0 +1,180 @@
+src/main/java/com/validation/service/UserRegistrationService.java: |
+  package com.validation.service;
+
+  import org.springframework.stereotype.Service;
+  import java.util.HashMap;
+  import java.util.Map;
+  import java.util.regex.Pattern;
+
+  @Service
+  public class UserRegistrationService {
+      private final Map<String, UserData> users = new HashMap<>();
+      private static final Pattern EMAIL_PATTERN = Pattern.compile("^[A-Za-z0-9+_.-]+@(.+)$");
+      private static final Pattern PHONE_PATTERN = Pattern.compile("^\\+?[1-9]\\d{1,14}$");
+
+      public UserData registerUser(String email, String password, String phone) {
+          if (email == null || !EMAIL_PATTERN.matcher(email).matches()) {
+              throw new IllegalArgumentException("Invalid email format");
+          }
+          if (password == null || password.length() < 8) {
+              throw new IllegalArgumentException("Password must be at least 8 characters");
+          }
+          if (phone != null && !PHONE_PATTERN.matcher(phone).matches()) {
+              throw new IllegalArgumentException("Invalid phone format");
+          }
+          if (users.containsKey(email)) {
+              throw new IllegalArgumentException("Email already registered");
+          }
+          UserData user = new UserData(email, password, phone);
+          users.put(email, user);
+          return user;
+      }
+
+      public UserData getUser(String email) {
+          return users.get(email);
+      }
+  }
+src/main/java/com/validation/service/UserData.java: |
+  package com.validation.service;
+
+  import java.time.Instant;
+  import java.util.UUID;
+
+  public class UserData {
+      private final String id;
+      private final String email;
+      private final String password;
+      private final String phone;
+      private final Instant registeredAt;
+
+      public UserData(String email, String password, String phone) {
+          this.id = UUID.randomUUID().toString();
+          this.email = email;
+          this.password = password;
+          this.phone = phone;
+          this.registeredAt = Instant.now();
+      }
+
+      public String getId() { return id; }
+      public String getEmail() { return email; }
+      public String getPassword() { return password; }
+      public String getPhone() { return phone; }
+      public Instant getRegisteredAt() { return registeredAt; }
+  }
+src/main/java/com/validation/unrelated/EmailTemplateEngine.java: |
+  package com.validation.unrelated;
+
+  import org.springframework.stereotype.Service;
+  import java.util.HashMap;
+  import java.util.Map;
+
+  @Service
+  public class EmailTemplateEngine {
+      public static final String GARBAGE_JAVA_TEMPLATE_A033A = "template_engine_marker_alpha";
+      private static final String GARBAGE_JAVA_RENDER_A033B = "render_marker_beta";
+
+      private final Map<String, String> templates = new HashMap<>();
+
+      public EmailTemplateEngine() {
+          templates.put("welcome", "Welcome, {{name}}! Your account has been created.");
+          templates.put("reset", "Click here to reset your password: {{link}}");
+          templates.put("confirm", "Please confirm your email: {{link}}");
+      }
+
+      public String render(String templateName, Map<String, String> variables) {
+          String template = templates.get(templateName);
+          if (template == null) {
+              throw new IllegalArgumentException("Template not found: " + templateName);
+          }
+          logGarbageMarkers();
+          String result = template;
+          for (Map.Entry<String, String> entry : variables.entrySet()) {
+              result = result.replace("{{" + entry.getKey() + "}}", entry.getValue());
+          }
+          return result;
+      }
+
+      public void registerTemplate(String name, String content) {
+          templates.put(name, content);
+          String GARBAGE_JAVA_CUSTOM_A033C = "custom_template_marker_gamma";
+          System.out.println(GARBAGE_JAVA_CUSTOM_A033C);
+      }
+
+      private void logGarbageMarkers() {
+          System.out.println(GARBAGE_JAVA_TEMPLATE_A033A + GARBAGE_JAVA_RENDER_A033B);
+      }
+  }
+src/main/java/com/validation/unrelated/NotificationDispatcher.java: |
+  package com.validation.unrelated;
+
+  import org.springframework.stereotype.Service;
+  import java.util.ArrayList;
+  import java.util.List;
+  import java.util.concurrent.CompletableFuture;
+
+  @Service
+  public class NotificationDispatcher {
+      public static final String GARBAGE_JAVA_NOTIFY_A033D = "notification_dispatcher_marker_delta";
+      private static final String GARBAGE_JAVA_QUEUE_A033E = "queue_marker_epsilon";
+
+      private final List<NotificationRecord> sentNotifications = new ArrayList<>();
+
+      public CompletableFuture<Boolean> sendEmail(String to, String subject, String body) {
+          logGarbageMarkers();
+          return CompletableFuture.supplyAsync(() -> {
+              sentNotifications.add(new NotificationRecord("EMAIL", to, subject));
+              return true;
+          });
+      }
+
+      public CompletableFuture<Boolean> sendSms(String to, String message) {
+          String GARBAGE_JAVA_SMS_A033F = "sms_marker_zeta";
+          System.out.println(GARBAGE_JAVA_SMS_A033F);
+          return CompletableFuture.supplyAsync(() -> {
+              sentNotifications.add(new NotificationRecord("SMS", to, message));
+              return true;
+          });
+      }
+
+      public List<NotificationRecord> getSentNotifications() {
+          return new ArrayList<>(sentNotifications);
+      }
+
+      private void logGarbageMarkers() {
+          System.out.println(GARBAGE_JAVA_NOTIFY_A033D + GARBAGE_JAVA_QUEUE_A033E);
+      }
+
+      public record NotificationRecord(String type, String recipient, String content) {}
+  }
+src/main/java/com/validation/unrelated/CaptchaVerifier.java: |
+  package com.validation.unrelated;
+
+  import org.springframework.stereotype.Component;
+  import java.time.Instant;
+  import java.util.Map;
+  import java.util.concurrent.ConcurrentHashMap;
+
+  @Component
+  public class CaptchaVerifier {
+      public static final String GARBAGE_JAVA_CAPTCHA_A033G = "captcha_verifier_marker_eta";
+
+      private final Map<String, CaptchaSession> sessions = new ConcurrentHashMap<>();
+
+      public String generateChallenge(String sessionId) {
+          String challenge = "challenge_" + System.currentTimeMillis();
+          sessions.put(sessionId, new CaptchaSession(challenge, Instant.now()));
+          String GARBAGE_JAVA_CHALLENGE_A033H = "challenge_marker_theta";
+          System.out.println(GARBAGE_JAVA_CAPTCHA_A033G + GARBAGE_JAVA_CHALLENGE_A033H);
+          return challenge;
+      }
+
+      public boolean verifyResponse(String sessionId, String response) {
+          CaptchaSession session = sessions.remove(sessionId);
+          if (session == null) {
+              return false;
+          }
+          return response != null && response.equals(session.challenge());
+      }
+
+      public record CaptchaSession(String challenge, Instant createdAt) {}
+  }

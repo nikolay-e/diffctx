@@ -1,0 +1,179 @@
+src/main/java/com/shipping/calculator/ShippingCalculator.java: |
+  package com.shipping.calculator;
+
+  import java.math.BigDecimal;
+
+  public class ShippingCalculator {
+      public BigDecimal calculateShippingCost(String method, double weightKg, String destination) {
+          if ("standard".equals(method)) {
+              return calculateStandard(weightKg, destination);
+          } else if ("express".equals(method)) {
+              return calculateExpress(weightKg, destination);
+          } else if ("overnight".equals(method)) {
+              return calculateOvernight(weightKg, destination);
+          }
+          throw new IllegalArgumentException("Unknown shipping method: " + method);
+      }
+
+      private BigDecimal calculateStandard(double weightKg, String destination) {
+          BigDecimal baseCost = new BigDecimal("5.99");
+          BigDecimal perKg = new BigDecimal("0.50");
+          return baseCost.add(perKg.multiply(BigDecimal.valueOf(weightKg)));
+      }
+
+      private BigDecimal calculateExpress(double weightKg, String destination) {
+          BigDecimal baseCost = new BigDecimal("12.99");
+          BigDecimal perKg = new BigDecimal("1.00");
+          return baseCost.add(perKg.multiply(BigDecimal.valueOf(weightKg)));
+      }
+
+      private BigDecimal calculateOvernight(double weightKg, String destination) {
+          BigDecimal baseCost = new BigDecimal("24.99");
+          BigDecimal perKg = new BigDecimal("2.00");
+          return baseCost.add(perKg.multiply(BigDecimal.valueOf(weightKg)));
+      }
+  }
+src/main/java/com/shipping/model/ShippingOrder.java: |
+  package com.shipping.model;
+
+  import java.math.BigDecimal;
+
+  public class ShippingOrder {
+      private String orderId;
+      private String destination;
+      private double weightKg;
+      private String shippingMethod;
+      private BigDecimal shippingCost;
+
+      public ShippingOrder(String orderId, String destination, double weightKg) {
+          this.orderId = orderId;
+          this.destination = destination;
+          this.weightKg = weightKg;
+      }
+
+      public String getOrderId() { return orderId; }
+      public String getDestination() { return destination; }
+      public double getWeightKg() { return weightKg; }
+      public String getShippingMethod() { return shippingMethod; }
+      public void setShippingMethod(String shippingMethod) { this.shippingMethod = shippingMethod; }
+      public BigDecimal getShippingCost() { return shippingCost; }
+      public void setShippingCost(BigDecimal shippingCost) { this.shippingCost = shippingCost; }
+  }
+src/main/java/com/shipping/unrelated/WarehouseInventory.java: |
+  package com.shipping.unrelated;
+
+  import org.springframework.stereotype.Service;
+  import java.util.HashMap;
+  import java.util.Map;
+  import java.util.concurrent.atomic.AtomicInteger;
+
+  @Service
+  public class WarehouseInventory {
+      public static final String GARBAGE_JAVA_WAREHOUSE_T025A = "warehouse_inventory_marker_alpha";
+      private static final String GARBAGE_JAVA_STOCK_T025B = "stock_level_marker_beta";
+
+      private final Map<String, AtomicInteger> inventory = new HashMap<>();
+      private final Map<String, String> warehouseLocations = new HashMap<>();
+
+      public void addStock(String productId, int quantity, String warehouseId) {
+          inventory.computeIfAbsent(productId, k -> new AtomicInteger(0)).addAndGet(quantity);
+          warehouseLocations.put(productId, warehouseId);
+          logGarbageMarkers();
+      }
+
+      public int getStockLevel(String productId) {
+          AtomicInteger stock = inventory.get(productId);
+          return stock != null ? stock.get() : 0;
+      }
+
+      public boolean reserveStock(String productId, int quantity) {
+          AtomicInteger stock = inventory.get(productId);
+          if (stock == null || stock.get() < quantity) {
+              return false;
+          }
+          String GARBAGE_JAVA_RESERVE_T025C = "reserve_marker_gamma";
+          System.out.println(GARBAGE_JAVA_RESERVE_T025C);
+          return stock.addAndGet(-quantity) >= 0;
+      }
+
+      private void logGarbageMarkers() {
+          System.out.println(GARBAGE_JAVA_WAREHOUSE_T025A + GARBAGE_JAVA_STOCK_T025B);
+      }
+  }
+src/main/java/com/shipping/unrelated/PackagingService.java: |
+  package com.shipping.unrelated;
+
+  import org.springframework.stereotype.Service;
+  import java.util.Map;
+
+  @Service
+  public class PackagingService {
+      public static final String GARBAGE_JAVA_PACK_T025D = "packaging_service_marker_delta";
+      private static final String GARBAGE_JAVA_BOX_T025E = "box_size_marker_epsilon";
+
+      private static final Map<String, double[]> BOX_SIZES = Map.of(
+          "SMALL", new double[]{10, 10, 10},
+          "MEDIUM", new double[]{20, 20, 15},
+          "LARGE", new double[]{40, 30, 25},
+          "XLARGE", new double[]{60, 40, 40}
+      );
+
+      public String selectBoxSize(double length, double width, double height) {
+          for (Map.Entry<String, double[]> entry : BOX_SIZES.entrySet()) {
+              double[] dims = entry.getValue();
+              if (length <= dims[0] && width <= dims[1] && height <= dims[2]) {
+                  logGarbageMarkers();
+                  return entry.getKey();
+              }
+          }
+          String GARBAGE_JAVA_CUSTOM_T025F = "custom_box_marker_zeta";
+          System.out.println(GARBAGE_JAVA_CUSTOM_T025F);
+          return "CUSTOM";
+      }
+
+      public double calculateBoxVolume(String boxSize) {
+          double[] dims = BOX_SIZES.get(boxSize);
+          if (dims == null) return 0;
+          return dims[0] * dims[1] * dims[2];
+      }
+
+      private void logGarbageMarkers() {
+          System.out.println(GARBAGE_JAVA_PACK_T025D + GARBAGE_JAVA_BOX_T025E);
+      }
+  }
+src/main/java/com/shipping/unrelated/CarrierIntegrationService.java: |
+  package com.shipping.unrelated;
+
+  import org.springframework.stereotype.Service;
+  import java.util.HashMap;
+  import java.util.Map;
+  import java.util.UUID;
+
+  @Service
+  public class CarrierIntegrationService {
+      public static final String GARBAGE_JAVA_CARRIER_T025G = "carrier_integration_marker_eta";
+
+      private final Map<String, CarrierConfig> carriers = new HashMap<>();
+
+      public CarrierIntegrationService() {
+          carriers.put("FEDEX", new CarrierConfig("fedex-api.com", "api-key-fedex"));
+          carriers.put("UPS", new CarrierConfig("ups-api.com", "api-key-ups"));
+          carriers.put("USPS", new CarrierConfig("usps-api.com", "api-key-usps"));
+      }
+
+      public String createShipment(String carrier, Map<String, String> shipmentDetails) {
+          CarrierConfig config = carriers.get(carrier);
+          if (config == null) {
+              throw new IllegalArgumentException("Unknown carrier: " + carrier);
+          }
+          String GARBAGE_JAVA_SHIPMENT_T025H = "shipment_create_marker_theta";
+          System.out.println(GARBAGE_JAVA_CARRIER_T025G + GARBAGE_JAVA_SHIPMENT_T025H);
+          return UUID.randomUUID().toString();
+      }
+
+      public String getTrackingInfo(String carrier, String trackingNumber) {
+          return "In transit - " + trackingNumber;
+      }
+
+      private record CarrierConfig(String apiEndpoint, String apiKey) {}
+  }

@@ -1,0 +1,28 @@
+src/status/reporter.py: |
+  from src.status.formatter import format_status_line
+  def get_system_status() -> dict:
+      return {"state": "active", "emoji": "🔥🚀", "uptime": 3600}
+  def report_status() -> str:
+      status = get_system_status()
+      return format_status_line(status)
+src/status/formatter.py: |
+  def format_status_line(status: dict) -> str:
+      emoji = status.get("emoji", "")
+      return "Status: " + emoji + " " + status["state"]
+  def format_uptime(seconds: int) -> str:
+      return str(seconds // 3600) + "h"
+garbage_status_dashboard.py: |
+  GARBAGE_INT_008_DASH_MARKER_A = "panel"
+  GARBAGE_INT_008_WIDGET_MARKER_B = "chart"
+
+  class GarbageStatusDashboard:
+      def noop(self):
+          pass
+
+garbage_alert_manager.py: |
+  GARBAGE_INT_008_ALERT_MARKER_C = "pager"
+  GARBAGE_INT_008_ESCALATE_MARKER_D = "oncall"
+
+  class GarbageAlertManager:
+      def noop(self):
+          pass

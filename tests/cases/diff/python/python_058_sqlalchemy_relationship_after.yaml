@@ -1,0 +1,103 @@
+models/order.py: |
+  from sqlalchemy import Column, Integer, ForeignKey, String, DateTime, Enum
+  from sqlalchemy.orm import relationship
+  from database import Base
+  from datetime import datetime
+  import enum
+
+  class OrderStatus(enum.Enum):
+      PENDING = "pending"
+      CONFIRMED = "confirmed"
+      SHIPPED = "shipped"
+      DELIVERED = "delivered"
+
+  class Order(Base):
+      __tablename__ = "orders"
+
+      id = Column(Integer, primary_key=True)
+      user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+      status = Column(Enum(OrderStatus), default=OrderStatus.PENDING)
+      created_at = Column(DateTime, default=datetime.utcnow)
+      shipping_address = Column(String(500))
+      user = relationship("User", back_populates="orders")
+      items = relationship("OrderItem", back_populates="order", cascade="all, delete-orphan")
+
+      def item_count(self) -> int:
+          return len(self.items)
+
+models/item.py: |
+  from sqlalchemy import Column, Integer, ForeignKey, Float, String
+  from sqlalchemy.orm import relationship
+  from database import Base
+
+  class OrderItem(Base):
+      __tablename__ = "order_items"
+
+      id = Column(Integer, primary_key=True)
+      order_id = Column(Integer, ForeignKey("orders.id"), nullable=False)
+      product_name = Column(String(200), nullable=False)
+      quantity = Column(Integer, default=1)
+      unit_price = Column(Float, nullable=False)
+      order = relationship("Order", back_populates="items")
+
+      @property
+      def subtotal(self) -> float:
+          return self.quantity * self.unit_price
+
+services/order.py: |
+  from typing import Optional
+  from models.order import Order, OrderStatus
+  from models.item import OrderItem
+
+  def calculate_total(order: Order) -> float:
+      return sum(item.subtotal for item in order.items)
+
+  def get_order_summary(order: Order) -> dict:
+      return {
+          "order_id": order.id,
+          "status": order.status.value,
+          "items": order.item_count(),
+          "total": calculate_total(order),
+          "shipping_address": order.shipping_address,
+      }
+
+  def update_order_status(order: Order, status: OrderStatus) -> None:
+      order.status = status
+
+garbage_shipping.py: |
+  GARBAGE_PY_058_SHIP_A = "shipping provider marker"
+  GARBAGE_PY_058_CARRIER_B = "carrier selection marker"
+
+  class ShippingCalculator:
+      GARBAGE_PY_058_RATE_C = "rate calculation marker"
+
+      def __init__(self, origin_zip: str = "10001"):
+          self.origin_zip = origin_zip
+
+      def calculate_rate(self, dest_zip: str, weight: float) -> float:
+          return weight * 2.5
+
+      def estimate_delivery(self, dest_zip: str) -> int:
+          GARBAGE_PY_058_ETA_D = "eta estimation marker"
+          return 5
+
+garbage_inventory.py: |
+  GARBAGE_PY_058_INV_E = "inventory system marker"
+  GARBAGE_PY_058_STOCK_F = "stock level marker"
+
+  class InventoryManager:
+      GARBAGE_PY_058_RESERVE_G = True
+
+      def __init__(self):
+          self._stock: dict[str, int] = {}
+
+      def check_availability(self, sku: str) -> int:
+          return self._stock.get(sku, 0)
+
+      def reserve(self, sku: str, quantity: int) -> bool:
+          GARBAGE_PY_058_DEDUCT_H = "stock deduction marker"
+          available = self._stock.get(sku, 0)
+          if available >= quantity:
+              self._stock[sku] = available - quantity
+              return True
+          return False

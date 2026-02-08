@@ -1,0 +1,13 @@
+hub.py: |
+  from leaf1 import leaf1_func
+  from leaf2 import leaf2_func
+
+  def hub_func():
+      leaf1_func()
+      leaf2_func()
+leaf1.py: |
+  def leaf1_func():
+      return "leaf1"
+leaf2.py: |
+  def leaf2_func():
+      return "leaf2"

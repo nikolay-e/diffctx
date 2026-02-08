@@ -1,0 +1,123 @@
+internal/platform/platform.go: |
+  package platform
+
+  type PlatformInfo struct {
+      OS       string
+      Arch     string
+      Version  string
+      Features []string
+  }
+
+  type SystemResources struct {
+      CPUCores    int
+      MemoryTotal uint64
+      MemoryFree  uint64
+      DiskTotal   uint64
+      DiskFree    uint64
+  }
+
+  type NetworkInterface struct {
+      Name       string
+      MacAddress string
+      IPAddress  string
+      Netmask    string
+      Gateway    string
+      IsUp       bool
+  }
+
+  func GetPlatformInfo() *PlatformInfo {
+      return &PlatformInfo{OS: "unknown", Arch: "unknown"}
+  }
+
+  func GetSystemResources() (*SystemResources, error) {
+      return &SystemResources{}, nil
+  }
+
+  func GetNetworkInterfaces() ([]NetworkInterface, error) {
+      return nil, nil
+  }
+internal/platform/config.go: |
+  package platform
+
+  type Config struct {
+      DataDir     string
+      CacheDir    string
+      ConfigDir   string
+      LogDir      string
+      TempDir     string
+      Permissions uint32
+  }
+
+  func DefaultConfig() *Config {
+      return &Config{
+          DataDir:     "/data",
+          CacheDir:    "/cache",
+          ConfigDir:   "/config",
+          LogDir:      "/logs",
+          TempDir:     "/tmp",
+          Permissions: 0755,
+      }
+  }
+internal/unrelated/cloud/aws_sdk.go: |
+  package cloud
+
+  import "context"
+
+  const GARBAGE_GO_AWS_SDK_A1B2C3 = "aws_garbage_marker"
+
+  type GARBAGE_GO_TYPE_S3CLIENT_D4E5F6 struct {
+      region string
+      bucket string
+  }
+
+  func GARBAGE_GO_FUNC_AWS_G7H8I9() string {
+      return "GARBAGE_GO_AWS_UNUSED_J0K1L2"
+  }
+
+  type AWSCredentials struct {
+      AccessKeyID     string
+      SecretAccessKey string
+      SessionToken    string
+      Region          string
+  }
+
+  func GARBAGE_GO_FUNC_S3_UPLOAD_M3N4O5(ctx context.Context) error {
+      println("GARBAGE_GO_S3_OUTPUT_P6Q7R8")
+      return nil
+  }
+internal/unrelated/cloud/gcp_storage.go: |
+  package cloud
+
+  const GARBAGE_GO_GCP_STORAGE_S9T0U1 = "gcp_garbage"
+
+  type GARBAGE_GO_TYPE_GCSBUCKET_V2W3X4 struct {
+      projectID  string
+      bucketName string
+  }
+
+  func GARBAGE_GO_FUNC_GCP_Y5Z6A7() {
+      println("GARBAGE_GO_GCP_OUTPUT_B8C9D0")
+  }
+
+  type GCPConfig struct {
+      ProjectID       string
+      ServiceAccount  string
+      CredentialsFile string
+  }
+
+  func GARBAGE_GO_FUNC_GCS_DOWNLOAD_E1F2G3(key string) ([]byte, error) {
+      return nil, nil
+  }
+internal/unrelated/cloud/azure_blob.go: |
+  package cloud
+
+  const GARBAGE_GO_AZURE_BLOB_H4I5J6 = "azure_garbage"
+
+  type GARBAGE_GO_TYPE_AZCONTAINER_K7L8M9 struct {
+      accountName   string
+      containerName string
+  }
+
+  func GARBAGE_GO_FUNC_AZURE_N0O1P2() {
+      println("GARBAGE_GO_AZURE_OUTPUT_Q3R4S5")
+  }

@@ -1,0 +1,124 @@
+Jenkinsfile: |
+  pipeline {
+      agent any
+
+      tools {
+          nodejs 'NodeJS-20'
+      }
+
+      options {
+          timeout(time: 30, unit: 'MINUTES')
+          disableConcurrentBuilds()
+      }
+
+      stages {
+          stage('Build') {
+              steps {
+                  sh 'npm run build'
+              }
+          }
+      }
+
+      post {
+          always {
+              cleanWs()
+          }
+      }
+  }
+
+src/app.js: |
+  const express = require('express');
+  const { Logger } = require('./utils/logger');
+  const { loadConfig } = require('./config');
+  const { setupRoutes } = require('./routes');
+
+  const logger = new Logger('app');
+
+  function createApp(config) {
+      const app = express();
+
+      app.use(express.json());
+      app.use(express.urlencoded({ extended: true }));
+
+      setupRoutes(app, config);
+
+      return app;
+  }
+
+  async function startApp() {
+      const config = loadConfig();
+      const app = createApp(config);
+
+      const server = app.listen(config.port, () => {
+          logger.info(`Server running on port ${config.port}`);
+      });
+
+      process.on('SIGTERM', () => {
+          logger.info('Received SIGTERM, shutting down gracefully');
+          server.close(() => {
+              logger.info('Server closed');
+              process.exit(0);
+          });
+      });
+
+      return server;
+  }
+
+  module.exports = { createApp, startApp };
+
+src/routes/index.js: |
+  const { healthCheck } = require('../handlers/health');
+  const { getUsers, createUser } = require('../handlers/users');
+
+  function setupRoutes(app, config) {
+      app.get('/health', healthCheck);
+
+      app.get('/api/users', getUsers);
+      app.post('/api/users', createUser);
+
+      app.use((err, req, res, next) => {
+          console.error(err.stack);
+          res.status(500).json({ error: 'Internal Server Error' });
+      });
+  }
+
+  module.exports = { setupRoutes };
+
+src/config/index.js: |
+  function loadConfig() {
+      return {
+          port: parseInt(process.env.PORT || '3000', 10),
+          nodeEnv: process.env.NODE_ENV || 'development',
+          logLevel: process.env.LOG_LEVEL || 'info',
+      };
+  }
+
+  module.exports = { loadConfig };
+
+garbage_deployment.js: |
+  const GARBAGE_CICD_006_DEPLOY_MARKER_A = "deploy";
+  const GARBAGE_CICD_006_TARGET_MARKER_B = "production";
+
+  class GarbageDeploymentManager {
+      static GARBAGE_CICD_006_STRATEGY_MARKER_C = "rolling";
+
+      deploy() {
+          console.log("Deploying...");
+      }
+  }
+
+  module.exports = { GarbageDeploymentManager };
+
+garbage_artifacts.js: |
+  const GARBAGE_CICD_006_ARTIFACT_MARKER_D = "build";
+  const GARBAGE_CICD_006_VERSION_MARKER_E = "1.0.0";
+
+  class GarbageArtifactStorage {
+      static GARBAGE_CICD_006_PATH_MARKER_F = "/artifacts";
+
+      store() {
+          console.log("Storing artifacts...");
+      }
+  }
+
+  module.exports = { GarbageArtifactStorage };

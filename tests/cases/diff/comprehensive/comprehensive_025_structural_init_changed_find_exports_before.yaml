@@ -1,0 +1,9 @@
+mypackage/__init__.py: |
+  from .old_module import OldClass
+mypackage/old_module.py: |
+  class OldClass:
+      pass
+mypackage/new_module.py: |
+  class NewClass:
+      def __init__(self):
+          self.value = 42

@@ -1,0 +1,16 @@
+Container.swift: |
+  protocol Container {
+      associatedtype Item
+      var count: Int { get }
+      mutating func append(_ item: Item)
+      subscript(i: Int) -> Item { get }
+  }
+
+  protocol IterableContainer: Container {
+      associatedtype Iterator: IteratorProtocol where Iterator.Element == Item
+      func makeIterator() -> Iterator
+  }
+  // unused_marker_67890
+Stack.swift: |
+  // Initial
+  struct Stack {}

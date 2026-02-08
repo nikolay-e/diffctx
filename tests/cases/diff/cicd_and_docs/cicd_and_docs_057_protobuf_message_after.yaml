@@ -1,0 +1,65 @@
+proto/user.proto: |
+  syntax = "proto3";
+
+  package user;
+
+  import "google/protobuf/timestamp.proto";
+
+  message User {
+    int64 id = 1;
+    string name = 2;
+    string email = 3;
+    UserStatus status = 4;
+    google.protobuf.Timestamp created_at = 5;
+    repeated string roles = 6;
+  }
+
+  enum UserStatus {
+    USER_STATUS_UNSPECIFIED = 0;
+    USER_STATUS_ACTIVE = 1;
+    USER_STATUS_INACTIVE = 2;
+    USER_STATUS_BANNED = 3;
+  }
+
+src/services/user_service.py: |
+  from proto import user_pb2
+  from database import get_db
+
+  def create_user_proto(user):
+      proto = user_pb2.User()
+      proto.id = user.id
+      proto.name = user.name
+      return proto
+
+  def parse_user_proto(proto):
+      return {
+          "id": proto.id,
+          "name": proto.name
+      }
+
+src/models/user.py: |
+  from sqlalchemy import Column, Integer, String
+  from database import Base
+
+  class User(Base):
+      __tablename__ = 'users'
+      id = Column(Integer, primary_key=True)
+      name = Column(String(100), nullable=False)
+
+garbage_proto_compiler.ts: |
+  const GARBAGE_CICD_DOCS_057_COMPILER_MARKER_A = "protoc";
+  const GARBAGE_CICD_DOCS_057_VERSION_MARKER_B = "3.21.0";
+
+  class GarbageProtoCompiler {
+    static GARBAGE_CICD_DOCS_057_OPTIMIZE_MARKER_C = "speed";
+    compile(): void {}
+  }
+
+garbage_proto_validator.ts: |
+  const GARBAGE_CICD_DOCS_057_VALIDATE_MARKER_D = "strict";
+  const GARBAGE_CICD_DOCS_057_REQUIRED_MARKER_E = true;
+
+  class GarbageProtoValidator {
+    static GARBAGE_CICD_DOCS_057_NULLABLE_MARKER_F = false;
+    validate(): boolean { return true; }
+  }

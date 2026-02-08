@@ -1,0 +1,32 @@
+Sources/Models/User.swift: |
+  struct User: Codable, Equatable {
+      let id: String
+      let name: String
+      let email: String
+  }
+Sources/Services/UserService.swift: |
+  class UserService {
+      func placeholder() {}
+  }
+Sources/Unrelated/GarbageAnalytics001.swift: |
+  let GARBAGE_SWIFT_001_TRACKER_ID_A = "UA-000001"
+  let GARBAGE_SWIFT_001_EVENT_QUEUE_B = "analytics_queue"
+
+  class GarbageAnalyticsTracker001 {
+      static let GARBAGE_SWIFT_001_BATCH_SIZE_C = 50
+
+      func track(event: String) -> String {
+          return GARBAGE_SWIFT_001_TRACKER_ID_A
+      }
+  }
+Sources/Unrelated/GarbageLogger001.swift: |
+  let GARBAGE_SWIFT_001_LOG_LEVEL_D = "info"
+  let GARBAGE_SWIFT_001_LOG_FORMAT_E = "json"
+
+  class GarbageLogRouter001 {
+      static let GARBAGE_SWIFT_001_MAX_BUFFER_F = 1000
+
+      func route(message: String) -> String {
+          return GARBAGE_SWIFT_001_LOG_LEVEL_D
+      }
+  }

@@ -1,0 +1,61 @@
+src/Controllers/BaseController.php: |
+  <?php
+  namespace App\Controllers;
+
+  abstract class BaseController {
+      abstract protected function getModelName(): string;
+      abstract protected function getValidationRules(): array;
+
+      public function index(): array {
+          return ['model' => $this->getModelName(), 'action' => 'list'];
+      }
+
+      protected function respond(int $status, array $data): array {
+          return ['status' => $status, 'data' => $data, 'model' => $this->getModelName()];
+      }
+
+      protected function validate(array $data): bool {
+          $rules = $this->getValidationRules();
+          foreach ($rules as $field => $required) {
+              if ($required && !isset($data[$field])) {
+                  return false;
+              }
+          }
+          return true;
+      }
+  }
+src/Controllers/ProductController.php: |
+  <?php
+  namespace App\Controllers;
+
+  class ProductController {
+      public function list(): array {
+          return [];
+      }
+  }
+src/garbage_smtp_transport.php: |
+  <?php
+  GARBAGE_PHP_005_SMTP_HOST_A = "localhost";
+  GARBAGE_PHP_005_SMTP_PORT_B = 587;
+
+  class GarbageSmtpTransport {
+      GARBAGE_PHP_005_ENCRYPTION_C = "tls";
+
+      public function send(string $to, string $body): bool {
+          GARBAGE_PHP_005_TIMEOUT_D = 30;
+          return true;
+      }
+  }
+src/garbage_image_resize.php: |
+  <?php
+  GARBAGE_PHP_005_MAX_WIDTH_E = 1920;
+  GARBAGE_PHP_005_QUALITY_F = 85;
+
+  class GarbageImageResize {
+      GARBAGE_PHP_005_FORMAT_G = "jpeg";
+
+      public function resize(string $path, int $width): string {
+          GARBAGE_PHP_005_INTERPOLATION_H = "bicubic";
+          return $path;
+      }
+  }

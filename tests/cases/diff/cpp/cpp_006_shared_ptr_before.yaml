@@ -1,0 +1,138 @@
+include/data/data.hpp: |
+  #pragma once
+  #include <string>
+  #include <vector>
+  #include <memory>
+  #include <chrono>
+
+  namespace app::data {
+
+  struct DataRecord {
+      int64_t id;
+      std::string key;
+      std::vector<char> payload;
+      std::chrono::system_clock::time_point timestamp;
+      bool dirty;
+
+      DataRecord(int64_t id, const std::string& key)
+          : id(id)
+          , key(key)
+          , timestamp(std::chrono::system_clock::now())
+          , dirty(false) {}
+
+      size_t payloadSize() const { return payload.size(); }
+
+      void setPayload(const std::vector<char>& data) {
+          payload = data;
+          dirty = true;
+      }
+
+      void markClean() { dirty = false; }
+  };
+
+  class DataSource {
+  public:
+      virtual ~DataSource() = default;
+      virtual std::shared_ptr<DataRecord> load(int64_t id) = 0;
+      virtual bool save(std::shared_ptr<DataRecord> record) = 0;
+      virtual bool remove(int64_t id) = 0;
+  };
+
+  class InMemoryDataSource : public DataSource {
+  public:
+      std::shared_ptr<DataRecord> load(int64_t id) override {
+          auto it = records_.find(id);
+          return it != records_.end() ? it->second : nullptr;
+      }
+
+      bool save(std::shared_ptr<DataRecord> record) override {
+          records_[record->id] = record;
+          record->markClean();
+          return true;
+      }
+
+      bool remove(int64_t id) override {
+          return records_.erase(id) > 0;
+      }
+
+  private:
+      std::unordered_map<int64_t, std::shared_ptr<DataRecord>> records_;
+  };
+
+  }
+include/unrelated/json_parser.hpp: |
+  #pragma once
+  // GARBAGE_CPP_JSON_246_001
+  #define GARBAGE_CPP_JSON_DEPTH_246_002 64
+
+  namespace app::unrelated::json {
+
+  // GARBAGE_CPP_JSON_TYPE_246_003
+  enum class JsonType {
+      Null,
+      Boolean,
+      Number,
+      String,
+      Array,
+      Object
+  };
+
+  // GARBAGE_CPP_JSON_VALUE_246_004
+  struct JsonValue {
+      JsonType type;
+      // GARBAGE_CPP_JSON_DATA_246_005
+  };
+
+  // GARBAGE_CPP_JSON_PARSER_246_006
+  class JsonParser {
+  public:
+      // GARBAGE_CPP_JSON_PARSE_246_007
+      JsonValue parse(const char* json) {
+          // GARBAGE_CPP_JSON_PARSE_IMPL_246_008
+          return JsonValue{JsonType::Null};
+      }
+
+      // GARBAGE_CPP_JSON_STRINGIFY_246_009
+      std::string stringify(const JsonValue& value) {
+          // GARBAGE_CPP_JSON_STRINGIFY_IMPL_246_010
+          return "";
+      }
+
+  private:
+      int depth_ = 0;
+  };
+
+  }
+src/unrelated/xml_serializer.cpp: |
+  // GARBAGE_CPP_XML_246_011
+  #include <string>
+
+  namespace app::unrelated::xml {
+
+  // GARBAGE_CPP_XML_NODE_246_012
+  struct XmlNode {
+      std::string name;
+      std::string value;
+      // GARBAGE_CPP_XML_ATTR_246_013
+  };
+
+  // GARBAGE_CPP_XML_SERIALIZER_246_014
+  class XmlSerializer {
+  public:
+      // GARBAGE_CPP_XML_SERIALIZE_246_015
+      std::string serialize(const XmlNode& root) {
+          // GARBAGE_CPP_XML_SER_IMPL_246_016
+          return "";
+      }
+
+      // GARBAGE_CPP_XML_DESERIALIZE_246_017
+      XmlNode deserialize(const std::string& xml) {
+          // GARBAGE_CPP_XML_DESER_IMPL_246_018
+          return XmlNode{};
+      }
+  };
+
+  }
+src/cache.cpp: |
+  #include <iostream>
+  int main() { return 0; }

@@ -1,0 +1,23 @@
+user.py: |
+  class User:
+      def __init__(self, first, last, title=None):
+          self.first = first
+          self.last = last
+          self.title = title
+
+      def get_full_name(self, include_title=False):
+          if include_title and self.title:
+              return f"{self.title} {self.first} {self.last}"
+          return f"{self.first} {self.last}"
+templates/profile.py: |
+  from user import User
+
+  def render_profile(user):
+      name = user.get_full_name()
+      return f"<h1>{name}</h1>"
+emails/welcome.py: |
+  from user import User
+
+  def send_welcome(recipient):
+      name = recipient.get_full_name()
+      return f"Welcome, {name}!"

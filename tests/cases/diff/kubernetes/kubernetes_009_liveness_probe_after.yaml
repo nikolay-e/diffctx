@@ -1,0 +1,100 @@
+src/health.py: |
+  from fastapi import FastAPI, Response
+  from datetime import datetime
+  import psutil
+
+  app = FastAPI()
+
+  @app.get("/health")
+  def health():
+      return {
+          "status": "healthy",
+          "timestamp": datetime.utcnow().isoformat(),
+          "uptime_seconds": psutil.boot_time()
+      }
+
+  @app.get("/ready")
+  def ready():
+      return {"ready": True}
+
+  @app.get("/live")
+  def live():
+      return {"alive": True}
+k8s/apps/api/deployment.yaml: |
+  apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    name: api-server
+    namespace: production
+    labels:
+      app: api-server
+      tier: backend
+  spec:
+    replicas: 3
+    selector:
+      matchLabels:
+        app: api-server
+    template:
+      metadata:
+        labels:
+          app: api-server
+          tier: backend
+      spec:
+        containers:
+        - name: api
+          image: api-server:v1.0.0
+          ports:
+          - containerPort: 8080
+            name: http
+          - containerPort: 9090
+            name: metrics
+          livenessProbe:
+            httpGet:
+              path: /live
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+            successThreshold: 1
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+k8s/apps/api/service.yaml: |
+  apiVersion: v1
+  kind: Service
+  metadata:
+    name: api-server
+    namespace: production
+  spec:
+    selector:
+      app: api-server
+    ports:
+    - name: http
+      port: 80
+      targetPort: 8080
+k8s/unrelated/linkerd/linkerd-proxy.yaml: |
+  # GARBAGE_K8S_409_LINKERD_PROXY
+  apiVersion: linkerd.io/v1alpha2
+  kind: ServiceProfile
+  metadata:
+    name: GARBAGE_K8S_409_LINKERD_PROFILE
+  spec:
+    routes:
+    - name: GARBAGE_K8S_409_ROUTE_NAME
+      condition:
+        method: GARBAGE_K8S_409_HTTP_METHOD
+        pathRegex: GARBAGE_K8S_409_PATH_REGEX
+k8s/unrelated/dapr/dapr-sidecar.yaml: |
+  # GARBAGE_K8S_409_DAPR_SIDECAR
+  apiVersion: dapr.io/v1alpha1
+  kind: Component
+  metadata:
+    name: GARBAGE_K8S_409_DAPR_COMPONENT
+  spec:
+    type: GARBAGE_K8S_409_DAPR_TYPE
+    version: GARBAGE_K8S_409_DAPR_VERSION

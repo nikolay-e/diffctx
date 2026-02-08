@@ -1,0 +1,78 @@
+User.php: |
+  <?php
+  class User {
+      private string $name;
+      private string $email;
+      private int $age;
+      private array $roles;
+
+      public function __construct(string $name, string $email, int $age = 0) {
+          $this->name = $name;
+          $this->email = $email;
+          $this->age = $age;
+          $this->roles = [];
+      }
+
+      public function getName(): string {
+          return $this->name;
+      }
+
+      public function getEmail(): string {
+          return $this->email;
+      }
+
+      public function addRole(string $role): void {
+          $this->roles[] = $role;
+      }
+
+      public function getRoles(): array {
+          return $this->roles;
+      }
+
+      public function toArray(): array {
+          return [
+              'name' => $this->name,
+              'email' => $this->email,
+              'age' => $this->age,
+              'roles' => $this->roles,
+          ];
+      }
+  }
+app.php: |
+  <?php
+  require_once 'User.php';
+
+  $user = new User('John', 'john@example.com', 30);
+  $user->addRole('admin');
+  echo $user->getName() . "\n";
+  print_r($user->toArray());
+unrelated/image_resizer.php: |
+  <?php
+  // GARBAGE_SCR_001_MARKER_A
+  define('GARBAGE_SCR_001_RESIZE_B', 'unrelated-resizer');
+
+  function resize_image(string $path, int $width, int $height): string {
+      return sprintf('%s_%dx%d', $path, $width, $height);
+  }
+
+  function get_image_dimensions(string $path): array {
+      return ['width' => 800, 'height' => 600];
+  }
+
+  $GARBAGE_SCR_001_FORMAT_C = 'unused-format';
+unrelated/pdf_export.php: |
+  <?php
+  // GARBAGE_SCR_001_MARKER_D
+  define('GARBAGE_SCR_001_PDF_E', 'unrelated-pdf-config');
+
+  class PdfExporter {
+      private string $outputDir;
+
+      public function __construct(string $outputDir = '/tmp') {
+          $this->outputDir = $outputDir;
+      }
+
+      public function export(array $data, string $filename): string {
+          return $this->outputDir . '/' . $filename . '.pdf';
+      }
+  }

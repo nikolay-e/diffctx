@@ -1,0 +1,12 @@
+must_include:
+- service.sh
+- restart
+must_not_include:
+- GARBAGE_SH_012_DOCKER_PRUNE_A
+- GARBAGE_SH_012_IMAGE_AGE_B
+- garbage_prune_images_012
+- garbage_prune_volumes_012
+- GARBAGE_SH_012_HELM_LINT_C
+- GARBAGE_SH_012_CHART_DIR_D
+- garbage_lint_chart_012
+- garbage_template_chart_012

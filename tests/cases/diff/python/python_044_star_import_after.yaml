@@ -1,0 +1,60 @@
+constants.py: |
+  MAX_RETRIES = 3
+  TIMEOUT_SECONDS = 30
+  BASE_URL = "https://api.example.com"
+  DEFAULT_HEADERS = {"Content-Type": "application/json"}
+  RATE_LIMIT = 100
+
+  __all__ = ["MAX_RETRIES", "TIMEOUT_SECONDS", "BASE_URL", "DEFAULT_HEADERS", "RATE_LIMIT"]
+
+  def get_full_url(path: str) -> str:
+      return f"{BASE_URL}/{path.lstrip('/')}"
+
+client.py: |
+  from constants import *
+
+  def call(endpoint: str, method: str = "GET") -> dict:
+      url = get_full_url(endpoint)
+      headers = build_headers(DEFAULT_HEADERS)
+      return {"url": url, "method": method, "headers": headers, "timeout": TIMEOUT_SECONDS}
+
+  def build_headers(extra: dict = None) -> dict:
+      headers = dict(DEFAULT_HEADERS)
+      if extra:
+          headers.update(extra)
+      return headers
+
+garbage_localization.py: |
+  GARBAGE_PY_044_LOCALE_A = "localization marker"
+  GARBAGE_PY_044_TRANS_B = "translation marker"
+
+  class Translator:
+      GARBAGE_PY_044_TRANSLATOR_C = "translator instance marker"
+
+      def __init__(self, locale: str = "en"):
+          self.locale = locale
+          self._translations = {}
+
+      def translate(self, key: str) -> str:
+          return self._translations.get(key, key)
+
+      def load_translations(self, path: str) -> None:
+          GARBAGE_PY_044_LOAD_D = "load translations marker"
+          pass
+
+garbage_file_storage.py: |
+  GARBAGE_PY_044_STORAGE_E = "file storage marker"
+  GARBAGE_PY_044_UPLOAD_F = "upload handler marker"
+
+  class FileStorage:
+      GARBAGE_PY_044_FS_G = True
+
+      def __init__(self, base_path: str):
+          self.base_path = base_path
+
+      def save_file(self, filename: str, content: bytes) -> str:
+          return f"{self.base_path}/{filename}"
+
+      def delete_file(self, filepath: str) -> bool:
+          GARBAGE_PY_044_DELETE_H = "delete marker"
+          return True

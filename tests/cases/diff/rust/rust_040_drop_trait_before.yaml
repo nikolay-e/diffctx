@@ -1,0 +1,255 @@
+src/lib.rs: |
+  pub mod connection;
+  pub mod unrelated;
+src/connection.rs: |
+  use std::sync::atomic::{AtomicUsize, Ordering};
+
+  static CONNECTION_COUNT: AtomicUsize = AtomicUsize::new(0);
+
+  pub struct Connection {
+      host: String,
+      port: u16,
+      connected: bool,
+      id: usize,
+  }
+
+  impl Connection {
+      pub fn new(host: &str, port: u16) -> Self {
+          let id = CONNECTION_COUNT.fetch_add(1, Ordering::SeqCst);
+          println!("Creating connection {} to {}:{}", id, host, port);
+          Self {
+              host: host.to_string(),
+              port,
+              connected: true,
+              id,
+          }
+      }
+
+      pub fn disconnect(&mut self) {
+          if self.connected {
+              println!("Disconnecting connection {} from {}:{}", self.id, self.host, self.port);
+              self.connected = false;
+          }
+      }
+
+      pub fn is_connected(&self) -> bool {
+          self.connected
+      }
+
+      pub fn host(&self) -> &str {
+          &self.host
+      }
+
+      pub fn port(&self) -> u16 {
+          self.port
+      }
+
+      pub fn id(&self) -> usize {
+          self.id
+      }
+  }
+
+  pub fn active_connections() -> usize {
+      CONNECTION_COUNT.load(Ordering::SeqCst)
+  }
+src/unrelated/mod.rs: |
+  pub mod threading;
+  pub mod memory;
+  pub mod protocol;
+src/unrelated/threading.rs: |
+  // GARBAGE_RUST_THREAD_drop001
+  use std::thread;
+  use std::time::Duration;
+
+  pub const GARBAGE_MAX_THREADS_drop002: usize = 64;
+  pub const GARBAGE_STACK_SIZE_drop003: usize = 2 * 1024 * 1024;
+
+  pub trait GarbageRunnable_drop004 {
+      fn garbage_run_drop005(&self);
+      fn garbage_name_drop006(&self) -> &str;
+  }
+
+  pub struct GarbageThread_drop007 {
+      name: String,
+      stack_size: usize,
+      priority: i32,
+  }
+
+  impl GarbageThread_drop007 {
+      pub fn garbage_new_drop008(name: &str) -> Self {
+          Self {
+              name: name.to_string(),
+              stack_size: GARBAGE_STACK_SIZE_drop003,
+              priority: 0,
+          }
+      }
+
+      pub fn garbage_set_stack_size_drop009(&mut self, size: usize) {
+          self.stack_size = size;
+      }
+
+      pub fn garbage_set_priority_drop010(&mut self, priority: i32) {
+          self.priority = priority;
+      }
+
+      pub fn garbage_spawn_drop011<F>(&self, f: F) -> Result<(), String>
+      where
+          F: FnOnce() + Send + 'static,
+      {
+          Err("GARBAGE_SPAWN_ERROR_drop012".to_string())
+      }
+  }
+
+  pub struct GarbageThreadPool_drop013 {
+      threads: Vec<GarbageThread_drop007>,
+      max_threads: usize,
+  }
+
+  impl GarbageThreadPool_drop013 {
+      pub fn garbage_new_drop014(max_threads: usize) -> Self {
+          Self {
+              threads: Vec::new(),
+              max_threads,
+          }
+      }
+
+      pub fn garbage_execute_drop015<F>(&mut self, f: F) -> Result<(), String>
+      where
+          F: FnOnce() + Send + 'static,
+      {
+          Err("GARBAGE_POOL_ERROR_drop016".to_string())
+      }
+
+      pub fn garbage_shutdown_drop017(&mut self) {
+          self.threads.clear();
+      }
+  }
+src/unrelated/memory.rs: |
+  // GARBAGE_RUST_MEM_drop018
+  use std::alloc::{alloc, dealloc, Layout};
+
+  pub const GARBAGE_PAGE_SIZE_drop019: usize = 4096;
+  pub const GARBAGE_ALIGNMENT_drop020: usize = 16;
+
+  pub trait GarbageAllocator_drop021 {
+      fn garbage_allocate_drop022(&mut self, size: usize) -> *mut u8;
+      fn garbage_deallocate_drop023(&mut self, ptr: *mut u8, size: usize);
+      fn garbage_allocated_drop024(&self) -> usize;
+  }
+
+  pub struct GarbageBumpAllocator_drop025 {
+      start: *mut u8,
+      current: usize,
+      capacity: usize,
+  }
+
+  impl GarbageBumpAllocator_drop025 {
+      pub fn garbage_new_drop026(capacity: usize) -> Self {
+          Self {
+              start: std::ptr::null_mut(),
+              current: 0,
+              capacity,
+          }
+      }
+
+      pub fn garbage_reset_drop027(&mut self) {
+          self.current = 0;
+      }
+
+      pub fn garbage_remaining_drop028(&self) -> usize {
+          self.capacity - self.current
+      }
+  }
+
+  impl GarbageAllocator_drop021 for GarbageBumpAllocator_drop025 {
+      fn garbage_allocate_drop022(&mut self, size: usize) -> *mut u8 {
+          if self.current + size > self.capacity {
+              return std::ptr::null_mut();
+          }
+          let ptr = unsafe { self.start.add(self.current) };
+          self.current += size;
+          ptr
+      }
+
+      fn garbage_deallocate_drop023(&mut self, _ptr: *mut u8, _size: usize) {
+          // GARBAGE_BUMP_NO_DEALLOC_drop029
+      }
+
+      fn garbage_allocated_drop024(&self) -> usize {
+          self.current
+      }
+  }
+
+  pub struct GarbagePoolAllocator_drop030 {
+      block_size: usize,
+      blocks: Vec<*mut u8>,
+  }
+
+  impl GarbagePoolAllocator_drop030 {
+      pub fn garbage_new_drop031(block_size: usize) -> Self {
+          Self {
+              block_size,
+              blocks: Vec::new(),
+          }
+      }
+  }
+src/unrelated/protocol.rs: |
+  // GARBAGE_RUST_PROTO_drop032
+  use std::collections::HashMap;
+
+  pub const GARBAGE_VERSION_drop033: u32 = 1;
+  pub const GARBAGE_MAX_MESSAGE_SIZE_drop034: usize = 65536;
+
+  #[derive(Debug, Clone)]
+  pub enum GarbageMessageType_drop035 {
+      Request,
+      Response,
+      Notification,
+      Error,
+  }
+
+  pub trait GarbageCodec_drop036 {
+      fn garbage_encode_drop037(&self, data: &[u8]) -> Result<Vec<u8>, String>;
+      fn garbage_decode_drop038(&self, data: &[u8]) -> Result<Vec<u8>, String>;
+  }
+
+  pub struct GarbageJsonCodec_drop039;
+
+  impl GarbageJsonCodec_drop039 {
+      pub fn garbage_new_drop040() -> Self {
+          Self
+      }
+  }
+
+  impl GarbageCodec_drop036 for GarbageJsonCodec_drop039 {
+      fn garbage_encode_drop037(&self, data: &[u8]) -> Result<Vec<u8>, String> {
+          Ok(data.to_vec())
+      }
+
+      fn garbage_decode_drop038(&self, data: &[u8]) -> Result<Vec<u8>, String> {
+          Ok(data.to_vec())
+      }
+  }
+
+  pub struct GarbageProtocol_drop041<C: GarbageCodec_drop036> {
+      codec: C,
+      version: u32,
+  }
+
+  impl<C: GarbageCodec_drop036> GarbageProtocol_drop041<C> {
+      pub fn garbage_new_drop042(codec: C) -> Self {
+          Self {
+              codec,
+              version: GARBAGE_VERSION_drop033,
+          }
+      }
+
+      pub fn garbage_send_drop043(&self, msg_type: GarbageMessageType_drop035, data: &[u8]) -> Result<Vec<u8>, String> {
+          self.codec.garbage_encode_drop037(data)
+      }
+
+      pub fn garbage_receive_drop044(&self, data: &[u8]) -> Result<(GarbageMessageType_drop035, Vec<u8>), String> {
+          let decoded = self.codec.garbage_decode_drop038(data)?;
+          Ok((GarbageMessageType_drop035::Response, decoded))
+      }
+  }

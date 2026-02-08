@@ -1,0 +1,51 @@
+config.sh: |
+  #!/bin/bash
+  export CONFIG_FILE="/etc/app/config.yaml"
+check.sh: |
+  #!/bin/bash
+  source ./config.sh
+
+  if [[ -f "$CONFIG_FILE" ]]; then
+      echo "Config file exists"
+      if [[ -r "$CONFIG_FILE" ]]; then
+          echo "Config file is readable"
+      else
+          echo "Config file is not readable"
+          exit 1
+      fi
+  elif [[ -d "$(dirname "$CONFIG_FILE")" ]]; then
+      echo "Config directory exists, but file is missing"
+      exit 1
+  else
+      echo "Config directory does not exist"
+      mkdir -p "$(dirname "$CONFIG_FILE")"
+  fi
+unrelated/garbage_s3_sync.sh: |
+  #!/bin/bash
+  # GARBAGE_SH_011_S3_SYNC_A
+  GARBAGE_SH_011_S3_BUCKET_B="s3://my-bucket"
+
+  garbage_upload_s3_011() {
+      local file=$1
+      echo "Uploading $file to $GARBAGE_SH_011_S3_BUCKET_B"
+  }
+
+  garbage_download_s3_011() {
+      local key=$1
+      echo "Downloading $key"
+  }
+unrelated/garbage_cloudwatch.sh: |
+  #!/bin/bash
+  # GARBAGE_SH_011_CLOUDWATCH_ALARM_C
+  GARBAGE_SH_011_NAMESPACE_D="Custom/App"
+
+  garbage_put_metric_011() {
+      local metric=$1
+      local value=$2
+      echo "Metric $metric=$value"
+  }
+
+  garbage_describe_alarm_011() {
+      local name=$1
+      echo "Alarm $name: OK"
+  }

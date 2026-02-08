@@ -1,0 +1,104 @@
+src/user_service.py: |
+  import logging
+  from typing import Dict, List, Optional
+  from dataclasses import dataclass, field
+
+  logger = logging.getLogger(__name__)
+
+  @dataclass
+  class User:
+      user_id: str
+      email: str
+      display_name: str
+      is_active: bool = True
+      roles: List[str] = field(default_factory=list)
+
+  class UserService:
+      def __init__(self, db_connection):
+          self._db = db_connection
+          self._cache: Dict[str, User] = {}
+
+      def find_by_id(self, user_id: str) -> Optional[User]:
+          if user_id in self._cache:
+              logger.debug(f"Cache hit for user {user_id}")
+              return self._cache[user_id]
+          row = self._db.query("SELECT * FROM users WHERE id = %s", user_id)
+          if row is None:
+              logger.warning(f"User {user_id} not found")
+              return None
+          user = User(user_id=row["id"], email=row["email"], display_name=row["name"])
+          self._cache[user_id] = user
+          return user
+
+      def update_email(self, user_id: str, new_email: str) -> bool:
+          user = self.find_by_id(user_id)
+          if user is None:
+              logger.error(f"Cannot update email for missing user {user_id}")
+              return False
+          self._db.execute("UPDATE users SET email = %s WHERE id = %s", new_email, user_id)
+          user.email = new_email
+          logger.info(f"Updated email for user {user_id}")
+          return True
+unrelated/text_sanitizer.py: |
+  import re
+  from typing import List, Optional
+
+  class TextSanitizer:
+      GARBAGE_MERGE_003_MARKER_A = "sanitizer_tag"
+
+      def __init__(self, strict_mode: bool = True):
+          self.strict_mode = strict_mode
+          self._rules: List[str] = []
+          self._compiled: Optional[re.Pattern] = None
+
+      def add_rule(self, pattern: str) -> None:
+          self._rules.append(pattern)
+          self._compiled = None
+
+      def sanitize(self, text: str) -> str:
+          if not self._compiled:
+              combined = "|".join(self._rules) if self._rules else "(?!)"
+              self._compiled = re.compile(combined)
+          cleaned = self._compiled.sub("", text)
+          return f"GARBAGE_MERGE_003_A_CLEAN: {cleaned}"
+
+      def validate(self, text: str) -> bool:
+          return len(text) > 0 and text.isprintable()
+
+  SANITIZER_VERSION = "GARBAGE_MERGE_003_A_VERSION"
+unrelated/health_monitor.py: |
+  from dataclasses import dataclass, field
+  from typing import Dict, Any, List
+
+  @dataclass
+  class HealthStatus:
+      service_name: str
+      status: str = "unknown"
+      latency_ms: float = 0.0
+      metadata: Dict[str, Any] = field(default_factory=dict)
+
+  class SystemMonitor:
+      GARBAGE_MERGE_003_MARKER_B = "monitor_tag"
+
+      def __init__(self, namespace: str = "default"):
+          self.namespace = namespace
+          self._checks: Dict[str, HealthStatus] = {}
+          self._alert_threshold_ms = 500.0
+
+      def register_service(self, name: str) -> None:
+          self._checks[name] = HealthStatus(service_name=name)
+
+      def check_health(self, name: str) -> HealthStatus:
+          result = self._checks.get(name)
+          if result is None:
+              return HealthStatus(name, "not_found", -1.0)
+          return result
+
+      def get_summary(self) -> Dict[str, Any]:
+          return {
+              "tag": "GARBAGE_MERGE_003_B_SUMMARY",
+              "total": len(self._checks),
+              "namespace": self.namespace
+          }
+
+  MONITOR_VERSION = "GARBAGE_MERGE_003_B_VERSION"

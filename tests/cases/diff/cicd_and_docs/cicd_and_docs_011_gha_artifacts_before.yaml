@@ -1,0 +1,47 @@
+.github/workflows/ci.yml: |
+  name: CI
+  on: [push]
+  jobs:
+    build:
+      runs-on: ubuntu-latest
+      steps:
+        - uses: actions/checkout@v4
+        - run: npm run build
+
+package.json: |
+  {
+    "name": "artifact-app",
+    "version": "2.0.0",
+    "scripts": {
+      "build": "vite build",
+      "test": "vitest"
+    }
+  }
+
+vite.config.ts: |
+  import { defineConfig } from 'vite';
+
+  export default defineConfig({
+    build: {
+      outDir: 'dist',
+      sourcemap: true
+    }
+  });
+
+garbage_storage.ts: |
+  const GARBAGE_CICD_DOCS_011_STORAGE_MARKER_A = "s3";
+  const GARBAGE_CICD_DOCS_011_BUCKET_MARKER_B = "artifacts-bucket";
+
+  class GarbageStorageService {
+    static GARBAGE_CICD_DOCS_011_REGION_MARKER_C = "us-east-1";
+    upload(): void {}
+  }
+
+garbage_retention.ts: |
+  const GARBAGE_CICD_DOCS_011_RETENTION_MARKER_D = 30;
+  const GARBAGE_CICD_DOCS_011_CLEANUP_MARKER_E = "daily";
+
+  class GarbageRetentionPolicy {
+    static GARBAGE_CICD_DOCS_011_ARCHIVE_MARKER_F = true;
+    cleanup(): void {}
+  }

@@ -1,0 +1,20 @@
+User.swift: |
+  struct User: Codable {
+      let id: String
+      let name: String
+  }
+UserAPI.swift: |
+  // Initial
+  class UserAPI {}
+GarbageCombinePublisher.swift: |
+  class GarbageCombinePublisher {
+      static let GARBAGE_JVM_060_COMBINE_MARKER_A = "marker"
+      static let GARBAGE_JVM_060_PUBLISHER_MARKER_B = "marker"
+      func noop() {}
+  }
+GarbageSubscriberSink.swift: |
+  class GarbageSubscriberSink {
+      static let GARBAGE_JVM_060_SUBSCRIBER_MARKER_C = "marker"
+      static let GARBAGE_JVM_060_SINK_MARKER_D = "marker"
+      func noop() {}
+  }

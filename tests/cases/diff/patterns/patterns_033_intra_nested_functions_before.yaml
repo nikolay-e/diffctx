@@ -1,0 +1,14 @@
+decorator.py: |
+  def outer_function(config):
+      def inner_validator(value):
+          return value is not None
+
+      def inner_transformer(value):
+          return value.upper()
+
+      def process(data):
+          if not inner_validator(data):
+              return None
+          return inner_transformer(data)
+
+      return process

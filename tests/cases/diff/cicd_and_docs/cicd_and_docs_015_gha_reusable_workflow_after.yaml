@@ -1,0 +1,66 @@
+.github/workflows/deploy.yml: |
+  name: Deploy
+  on:
+    workflow_call:
+      inputs:
+        environment:
+          required: true
+          type: string
+  jobs:
+    deploy:
+      runs-on: ubuntu-latest
+      environment: ${{ inputs.environment }}
+      steps:
+        - uses: actions/checkout@v4
+        - run: ./deploy.sh
+
+.github/workflows/ci.yml: |
+  name: CI
+  on: [push]
+  jobs:
+    build:
+      runs-on: ubuntu-latest
+      steps:
+        - uses: actions/checkout@v4
+        - run: npm ci
+        - run: npm run build
+    deploy:
+      needs: build
+      uses: ./.github/workflows/deploy.yml
+      with:
+        environment: production
+
+deploy.sh: |
+  #!/bin/bash
+  set -e
+  echo "Deploying to environment: $ENVIRONMENT"
+  aws ecs update-service --cluster prod --service app
+
+src/deploy/manager.ts: |
+  export interface DeploymentConfig {
+    environment: string;
+    region: string;
+    replicas: number;
+  }
+
+  export function createDeployment(config: DeploymentConfig): void {
+    console.log(`Deploying to ${config.environment}`);
+  }
+
+garbage_template.ts: |
+  const GARBAGE_CICD_DOCS_015_TEMPLATE_MARKER_A = "helm";
+  const GARBAGE_CICD_DOCS_015_VALUES_MARKER_B = "values.yaml";
+
+  class GarbageTemplateEngine {
+    static GARBAGE_CICD_DOCS_015_STRICT_MARKER_C = true;
+    render(): string { return ""; }
+  }
+
+garbage_manifest.ts: |
+  const GARBAGE_CICD_DOCS_015_MANIFEST_MARKER_D = "kustomize";
+  const GARBAGE_CICD_DOCS_015_OVERLAY_MARKER_E = "production";
+
+  class GarbageManifestBuilder {
+    static GARBAGE_CICD_DOCS_015_VALIDATE_MARKER_F = true;
+    build(): void {}
+  }

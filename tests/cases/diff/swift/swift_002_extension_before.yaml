@@ -1,0 +1,37 @@
+Sources/Extensions/StringExtensions.swift: |
+  extension String {
+      func isValidEmail() -> Bool {
+          let pattern = "[A-Z0-9a-z._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}"
+          return self.range(of: pattern, options: .regularExpression) != nil
+      }
+
+      var trimmed: String {
+          trimmingCharacters(in: .whitespacesAndNewlines)
+      }
+  }
+Sources/Validators/Validator.swift: |
+  struct Validator {
+      func placeholder() -> Bool { false }
+  }
+Sources/Unrelated/GarbageAnalytics002.swift: |
+  let GARBAGE_SWIFT_002_SESSION_KEY_A = "sess_analytics_v2"
+  let GARBAGE_SWIFT_002_FLUSH_INTERVAL_B = "30s"
+
+  class GarbageMetricsCollector002 {
+      static let GARBAGE_SWIFT_002_SAMPLE_RATE_C = 10
+
+      func collect(metric: String) -> String {
+          return GARBAGE_SWIFT_002_SESSION_KEY_A
+      }
+  }
+Sources/Unrelated/GarbageLogger002.swift: |
+  let GARBAGE_SWIFT_002_SINK_TYPE_D = "elasticsearch"
+  let GARBAGE_SWIFT_002_INDEX_NAME_E = "app-logs"
+
+  class GarbageLogSink002 {
+      static let GARBAGE_SWIFT_002_ROTATE_MB_F = 100
+
+      func write(entry: String) -> String {
+          return GARBAGE_SWIFT_002_SINK_TYPE_D
+      }
+  }

@@ -1,0 +1,85 @@
+src/lib.rs: |
+  pub mod cache;
+  pub mod unrelated;
+src/cache.rs: |
+  use std::collections::HashMap;
+  use std::sync::{Arc, RwLock};
+
+  pub struct Cache {
+      data: Arc<RwLock<HashMap<String, String>>>,
+  }
+
+  impl Cache {
+      pub fn new() -> Self {
+          Self {
+              data: Arc::new(RwLock::new(HashMap::new())),
+          }
+      }
+
+      pub fn get(&self, key: &str) -> Option<String> {
+          self.data.read().unwrap().get(key).cloned()
+      }
+
+      pub fn set(&self, key: String, value: String) {
+          self.data.write().unwrap().insert(key, value);
+      }
+
+      pub fn contains(&self, key: &str) -> bool {
+          self.data.read().unwrap().contains_key(key)
+      }
+
+      pub fn len(&self) -> usize {
+          self.data.read().unwrap().len()
+      }
+
+      pub fn is_empty(&self) -> bool {
+          self.data.read().unwrap().is_empty()
+      }
+
+      pub fn clone_handle(&self) -> Arc<RwLock<HashMap<String, String>>> {
+          Arc::clone(&self.data)
+      }
+  }
+
+  impl Clone for Cache {
+      fn clone(&self) -> Self {
+          Self {
+              data: Arc::clone(&self.data),
+          }
+      }
+  }
+src/unrelated/mod.rs: |
+  pub mod email_validator;
+  pub mod slug_generator;
+src/unrelated/email_validator.rs: |
+  // GARBAGE_RUST_037_EMAIL_VALIDATOR_A
+  pub const GARBAGE_RUST_037_EMAIL_REGEX_B: &str = r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$";
+
+  pub struct GarbageEmailValidator037 {
+      allowed_domains: Vec<String>,
+  }
+
+  impl GarbageEmailValidator037 {
+      pub fn garbage_validate_037(&self, email: &str) -> bool {
+          email.contains('@') && email.contains('.')
+      }
+
+      pub fn garbage_is_allowed_domain_037(&self, email: &str) -> bool {
+          self.allowed_domains.iter().any(|d| email.ends_with(d.as_str()))
+      }
+  }
+src/unrelated/slug_generator.rs: |
+  // GARBAGE_RUST_037_SLUG_GENERATOR_C
+  pub const GARBAGE_RUST_037_SEPARATOR_D: &str = "-";
+
+  pub struct GarbageSlugGenerator037;
+
+  impl GarbageSlugGenerator037 {
+      pub fn garbage_slugify_037(&self, input: &str) -> String {
+          input.to_lowercase().replace(' ', GARBAGE_RUST_037_SEPARATOR_D)
+      }
+
+      pub fn garbage_deslugify_037(&self, slug: &str) -> String {
+          slug.replace(GARBAGE_RUST_037_SEPARATOR_D, " ")
+      }
+  }

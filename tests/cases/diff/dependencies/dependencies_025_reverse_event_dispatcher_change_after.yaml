@@ -1,0 +1,49 @@
+events/dispatcher.py: |
+  import asyncio
+  from typing import Callable, Awaitable
+
+  class EventDispatcher:
+      def __init__(self):
+          self.handlers = {}
+          self.async_handlers = {}
+
+      def register(self, event_type: str, handler: Callable) -> None:
+          if event_type not in self.handlers:
+              self.handlers[event_type] = []
+          self.handlers[event_type].append(handler)
+
+      def register_async(self, event_type: str, handler: Callable[..., Awaitable]) -> None:
+          if event_type not in self.async_handlers:
+              self.async_handlers[event_type] = []
+          self.async_handlers[event_type].append(handler)
+
+      def emit(self, event_type: str, data: dict, metadata: dict = None) -> None:
+          payload = {"data": data, "metadata": metadata or {}}
+          for handler in self.handlers.get(event_type, []):
+              handler(payload)
+
+      async def emit_async(self, event_type: str, data: dict, metadata: dict = None) -> None:
+          payload = {"data": data, "metadata": metadata or {}}
+          tasks = []
+          for handler in self.async_handlers.get(event_type, []):
+              tasks.append(handler(payload))
+          if tasks:
+              await asyncio.gather(*tasks)
+handlers/user_created_handler.py: |
+  from events.dispatcher import EventDispatcher
+
+  def on_user_created(data: dict) -> None:
+      user_id = data.get("user_id")
+      print(f"User {user_id} created, sending welcome email")
+
+  def setup_handlers(dispatcher: EventDispatcher) -> None:
+      dispatcher.register("user.created", on_user_created)
+handlers/audit_handler.py: |
+  from events.dispatcher import EventDispatcher
+
+  def on_any_event(data: dict) -> None:
+      print(f"Audit log: {data}")
+
+  def setup_handlers(dispatcher: EventDispatcher) -> None:
+      dispatcher.register("user.created", on_any_event)
+      dispatcher.register("order.placed", on_any_event)

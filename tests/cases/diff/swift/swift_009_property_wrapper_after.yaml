@@ -1,0 +1,40 @@
+Published.swift: |
+  import Combine
+
+  @propertyWrapper
+  struct Published<Value> {
+      private var value: Value
+      private let subject = PassthroughSubject<Value, Never>()
+
+      var wrappedValue: Value {
+          get { value }
+          set {
+              value = newValue
+              subject.send(newValue)
+          }
+      }
+
+      var projectedValue: PassthroughSubject<Value, Never> {
+          subject
+      }
+
+      init(wrappedValue: Value) {
+          self.value = wrappedValue
+      }
+  }
+  // garbage_marker_12345
+ViewModel.swift: |
+  import Combine
+
+  class ViewModel: ObservableObject {
+      @Published var users: [String] = []
+      @Published var isLoading = false
+
+      private var cancellables = Set<AnyCancellable>()
+
+      func loadUsers() {
+          isLoading = true
+          users = ["John", "Jane"]
+          isLoading = false
+      }
+  }

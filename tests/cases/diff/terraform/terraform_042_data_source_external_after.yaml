@@ -1,0 +1,11 @@
+scripts/get_ami.sh: |
+  #!/bin/bash
+  echo '{"ami_id": "ami-12345678"}'
+main.tf: |
+  data "external" "ami" {
+    program = ["${path.module}/scripts/get_ami.sh"]
+  }
+
+  resource "aws_instance" "web" {
+    ami = data.external.ami.result.ami_id
+  }

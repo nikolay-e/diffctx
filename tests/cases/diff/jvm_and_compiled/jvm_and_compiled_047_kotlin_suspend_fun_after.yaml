@@ -1,0 +1,43 @@
+src/main/kotlin/com/example/UserService.kt: |
+  package com.example
+
+  import kotlinx.coroutines.delay
+
+  class UserService(private val repository: UserRepository) {
+      suspend fun getUser(id: Long): User? {
+          return repository.findById(id)
+      }
+
+      suspend fun getUserWithRetry(id: Long, retries: Int = 3): User? {
+          repeat(retries) { attempt ->
+              try {
+                  return repository.findById(id)
+              } catch (e: Exception) {
+                  delay(1000L * (attempt + 1))
+              }
+          }
+          return null
+      }
+  }
+src/main/kotlin/com/example/UserController.kt: |
+  package com.example
+
+  import kotlinx.coroutines.runBlocking
+
+  class UserController(private val service: UserService) {
+      fun getUser(id: Long): User? = runBlocking {
+          service.getUser(id)
+      }
+  }
+GarbageFlowCollector.kt: |
+  object GarbageFlowCollector {
+      const val GARBAGE_JVM_047_FLOW_MARKER_A = "marker"
+      const val GARBAGE_JVM_047_CHANNEL_MARKER_B = "marker"
+      fun noop() {}
+  }
+GarbageCoroutineMutex.kt: |
+  object GarbageCoroutineMutex {
+      const val GARBAGE_JVM_047_MUTEX_MARKER_C = "marker"
+      const val GARBAGE_JVM_047_SEMAPHORE_MARKER_D = "marker"
+      fun noop() {}
+  }

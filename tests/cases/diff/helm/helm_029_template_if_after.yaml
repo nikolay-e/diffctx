@@ -1,0 +1,16 @@
+values.yaml: |
+  ingress:
+    enabled: false
+templates/ingress.yaml: |
+  {{- if .Values.ingress.enabled -}}
+  apiVersion: networking.k8s.io/v1
+  kind: Ingress
+  metadata:
+    name: {{ .Release.Name }}-ingress
+  spec:
+    rules:
+      - host: {{ .Values.ingress.host }}
+  {{- end }}
+junk.txt: |
+  garbage_marker_12345
+  unused_marker_67890

@@ -1,0 +1,17 @@
+must_include_files:
+  - funcs.py
+must_include_content:
+  - |
+    def named_function():
+        return 1
+must_not_include:
+  - GARBAGE_OUT_004_EMAIL_MARKER_A
+  - GARBAGE_OUT_004_SMTP_MARKER_B
+  - GARBAGE_OUT_004_SENDER_CLASS_C
+  - GARBAGE_OUT_004_TEMPLATE_MARKER_D
+  - GARBAGE_OUT_004_RENDER_MARKER_E
+  - GARBAGE_OUT_004_ENGINE_CLASS_F
+  - EmailSender
+  - TemplateEngine
+  - garbage_email.py
+  - garbage_templates.py

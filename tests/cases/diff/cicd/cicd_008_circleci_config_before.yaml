@@ -1,0 +1,110 @@
+.circleci/config.yml: |
+  version: 2.1
+
+  orbs:
+    python: circleci/python@2.1
+
+  executors:
+    python-executor:
+      docker:
+        - image: cimg/python:3.11
+
+  jobs:
+    build:
+      executor: python-executor
+      steps:
+        - checkout
+        - python/install-packages:
+            pkg-manager: pip
+        - run: pip install .
+        - run: pytest
+
+src/calculator.py: |
+  from typing import Union
+  from decimal import Decimal
+
+  Number = Union[int, float, Decimal]
+
+  class Calculator:
+      def __init__(self, precision: int = 2):
+          self.precision = precision
+          self._history: list[tuple[str, Number, Number, Number]] = []
+
+      def add(self, a: Number, b: Number) -> Number:
+          result = a + b
+          self._history.append(("add", a, b, result))
+          return result
+
+      def subtract(self, a: Number, b: Number) -> Number:
+          result = a - b
+          self._history.append(("subtract", a, b, result))
+          return result
+
+      def multiply(self, a: Number, b: Number) -> Number:
+          result = a * b
+          self._history.append(("multiply", a, b, result))
+          return result
+
+      def divide(self, a: Number, b: Number) -> Number:
+          if b == 0:
+              raise ValueError("Cannot divide by zero")
+          result = round(a / b, self.precision)
+          self._history.append(("divide", a, b, result))
+          return result
+
+      def get_history(self) -> list[tuple[str, Number, Number, Number]]:
+          return self._history.copy()
+
+      def clear_history(self) -> None:
+          self._history.clear()
+
+  def add(a: int, b: int) -> int:
+      return a + b
+
+tests/test_calculator.py: |
+  import pytest
+  from src.calculator import Calculator, add
+
+  class TestCalculator:
+      def test_add_integers(self):
+          calc = Calculator()
+          assert calc.add(2, 3) == 5
+
+      def test_add_floats(self):
+          calc = Calculator()
+          assert calc.add(1.5, 2.5) == 4.0
+
+      def test_divide_by_zero(self):
+          calc = Calculator()
+          with pytest.raises(ValueError, match="Cannot divide by zero"):
+              calc.divide(10, 0)
+
+      def test_history(self):
+          calc = Calculator()
+          calc.add(1, 2)
+          calc.multiply(3, 4)
+          history = calc.get_history()
+          assert len(history) == 2
+
+  def test_add_function():
+      assert add(1, 2) == 3
+
+garbage_statistics.py: |
+  GARBAGE_CICD_008_STATS_MARKER_A = "mean"
+  GARBAGE_CICD_008_MODE_MARKER_B = "median"
+
+  class GarbageStatistics:
+      GARBAGE_CICD_008_SAMPLE_MARKER_C = 100
+
+      def compute(self, data: list) -> float:
+          return 0.0
+
+garbage_visualization.py: |
+  GARBAGE_CICD_008_CHART_MARKER_D = "bar"
+  GARBAGE_CICD_008_COLOR_MARKER_E = "blue"
+
+  class GarbageChartBuilder:
+      GARBAGE_CICD_008_SIZE_MARKER_F = (800, 600)
+
+      def build(self) -> None:
+          pass

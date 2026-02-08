@@ -1,0 +1,40 @@
+docs/architecture.md: |
+  # Architecture
+
+  ## Overview
+
+  The system consists of several modules:
+
+  - `auth` - Authentication
+  - `api` - REST API endpoints
+
+src/auth/login.py: |
+  def login(username, password):
+      return {"token": "abc123"}
+
+src/api/routes.py: |
+  from auth.login import login
+
+  def setup_routes(app):
+      app.post("/login", login)
+
+src/api/__init__.py: |
+  from .routes import setup_routes
+
+garbage_arch_analyzer.ts: |
+  const GARBAGE_CICD_DOCS_047_ANALYZER_MARKER_A = "madge";
+  const GARBAGE_CICD_DOCS_047_FORMAT_MARKER_B = "svg";
+
+  class GarbageArchAnalyzer {
+    static GARBAGE_CICD_DOCS_047_CIRCULAR_MARKER_C = true;
+    analyze(): void {}
+  }
+
+garbage_arch_validator.ts: |
+  const GARBAGE_CICD_DOCS_047_VALIDATOR_MARKER_D = "dependency-cruiser";
+  const GARBAGE_CICD_DOCS_047_RULES_MARKER_E = ".dependency-cruiser.js";
+
+  class GarbageArchValidator {
+    static GARBAGE_CICD_DOCS_047_STRICT_MARKER_F = false;
+    validate(): boolean { return true; }
+  }

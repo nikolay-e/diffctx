@@ -36,7 +36,9 @@ DEFINITION_PATTERNS = {
     "java_class": re.compile(r"^\s*(?:public\s+)?(?:abstract\s+)?(?:final\s+)?class\s+([A-Z]\w*)", re.MULTILINE),
     "java_interface": re.compile(r"^\s*(?:public\s+)?interface\s+([A-Z]\w*)", re.MULTILINE),
     "java_enum": re.compile(r"^\s*(?:public\s+)?enum\s+([A-Z]\w*)", re.MULTILINE),
-    "java_method": re.compile(r"^\s*(?:public|private|protected)?\s*(?:static\s+)?[\w<>\[\]]+\s+([a-z]\w*)\s*\(", re.MULTILINE),
+    "java_method": re.compile(
+        r"^\s{0,20}(?:(?:public|private|protected)\s+)?(?:static\s+)?[\w<>\[\]]{1,100}\s+([a-z]\w*)\s*\(", re.MULTILINE
+    ),
     "csharp_class": re.compile(r"^\s*(?:public\s+)?(?:partial\s+)?(?:abstract\s+)?class\s+([A-Z]\w*)", re.MULTILINE),
     "csharp_interface": re.compile(r"^\s*(?:public\s+)?interface\s+(I[A-Z]\w*)", re.MULTILINE),
     "c_function": re.compile(r"^(?:static\s+)?(?:\w+\s+)+(\w+)\s*\([^)]*\)\s*\{", re.MULTILINE),
@@ -68,5 +70,5 @@ CONFIG_KEY_PATTERNS: dict[str, list[re.Pattern[str]]] = {
 DOC_PATTERNS = {
     "citation": re.compile(r"\[@([a-zA-Z0-9_:-]+)\]"),
     "md_internal_link": re.compile(r"\[([^\]]+)\]\(#([^)]+)\)"),
-    "md_heading": re.compile(r"^#{1,6}\s+([^\n]+)$", re.MULTILINE),
+    "md_heading": re.compile(r"^#{1,6}\s+([^\n]{1,1000})$", re.MULTILINE),
 }

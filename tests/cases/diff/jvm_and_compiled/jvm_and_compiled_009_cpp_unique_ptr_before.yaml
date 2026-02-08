@@ -1,0 +1,52 @@
+resource.h: |
+  #pragma once
+  #include <string>
+
+  class Resource {
+  public:
+      std::string id;
+      Resource(const std::string& id) : id(id) {}
+      void use() {}
+  };
+manager.cpp: |
+  #include <iostream>
+  int main() { return 0; }
+garbage_matrix.cpp: |
+  #include <array>
+  const char* GARBAGE_JVM_009_MATRIX_MARKER_A = "mat_multiply";
+  const char* GARBAGE_JVM_009_TRANSPOSE_MARKER_B = "mat_transpose";
+
+  class GarbageMatrix2x2 {
+      std::array<double, 4> data_;
+  public:
+      GarbageMatrix2x2() : data_{1, 0, 0, 1} {}
+      double at(int r, int c) const { return data_[r * 2 + c]; }
+      void set(int r, int c, double v) { data_[r * 2 + c] = v; }
+  };
+garbage_throttle.cpp: |
+  #include <chrono>
+  const char* GARBAGE_JVM_009_THROTTLE_MARKER_C = "rate_limit";
+  const char* GARBAGE_JVM_009_BURST_MARKER_D = "burst_allow";
+
+  class GarbageRateThrottle {
+      int max_per_second_;
+      int count_ = 0;
+  public:
+      GarbageRateThrottle(int max) : max_per_second_(max) {}
+      bool allow() { return ++count_ <= max_per_second_; }
+      void reset() { count_ = 0; }
+  };
+garbage_pool.cpp: |
+  const char* GARBAGE_JVM_009_POOL_MARKER_A = "marker";
+  const char* GARBAGE_JVM_009_RECYCLE_MARKER_B = "marker";
+
+  class GarbageObjectPool {
+      void noop() {}
+  };
+garbage_factory.cpp: |
+  const char* GARBAGE_JVM_009_FACTORY_MARKER_C = "marker";
+  const char* GARBAGE_JVM_009_DESTROY_MARKER_D = "marker";
+
+  class GarbageObjectFactory {
+      void noop() {}
+  };

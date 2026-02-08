@@ -1,0 +1,114 @@
+vercel.json: |
+  {
+    "version": 2,
+    "builds": [
+      {"src": "api/*.js", "use": "@vercel/node"}
+    ],
+    "routes": [
+      {"src": "/api/(.*)", "dest": "/api/$1"},
+      {"src": "/(.*)", "dest": "/public/$1"}
+    ],
+    "env": {
+      "NODE_ENV": "production"
+    }
+  }
+api/hello.js: |
+  module.exports = (req, res) => {
+      const name = req.query.name || 'World';
+      res.json({ message: `Hello, ${name}!` });
+  };
+api/users.js: |
+  const { getUsers, createUser } = require('../lib/userService');
+
+  module.exports = async (req, res) => {
+      if (req.method === 'GET') {
+          const users = await getUsers();
+          return res.json({ users, count: users.length });
+      }
+
+      if (req.method === 'POST') {
+          const user = await createUser(req.body);
+          return res.status(201).json({ user });
+      }
+
+      res.status(405).json({ error: 'Method not allowed' });
+  };
+lib/userService.js: |
+  const users = [];
+
+  async function getUsers() {
+      return [...users];
+  }
+
+  async function createUser(data) {
+      const user = {
+          id: users.length + 1,
+          name: data.name,
+          email: data.email,
+          createdAt: new Date().toISOString(),
+      };
+      users.push(user);
+      return user;
+  }
+
+  module.exports = { getUsers, createUser };
+unrelated/deployer.js: |
+  const GARBAGE_JSON_013_DEPLOY_REGION_A = 'us-east-1';
+
+  class GARBAGE_JSON_013_APP_DEPLOYER_B {
+      constructor(region) {
+          this.region = region || GARBAGE_JSON_013_DEPLOY_REGION_A;
+          this.deployments = [];
+      }
+
+      deploy(appName, version) {
+          const deployment = {
+              appName,
+              version,
+              region: this.region,
+              status: 'deployed',
+              timestamp: Date.now(),
+          };
+          this.deployments.push(deployment);
+          return deployment;
+      }
+
+      rollback(appName) {
+          const latest = this.deployments.filter(d => d.appName === appName).pop();
+          if (latest) latest.status = 'rolled_back';
+          return latest;
+      }
+  }
+
+  function GARBAGE_JSON_013_DEPLOY_APP_C(appName, version) {
+      const deployer = new GARBAGE_JSON_013_APP_DEPLOYER_B();
+      return deployer.deploy(appName, version);
+  }
+
+  module.exports = { GARBAGE_JSON_013_APP_DEPLOYER_B, GARBAGE_JSON_013_DEPLOY_APP_C };
+unrelated/uploader.js: |
+  const GARBAGE_JSON_013_UPLOAD_CHUNK_D = 8192;
+
+  class GARBAGE_JSON_013_FILE_UPLOADER_E {
+      constructor(chunkSize) {
+          this.chunkSize = chunkSize || GARBAGE_JSON_013_UPLOAD_CHUNK_D;
+          this.uploads = [];
+      }
+
+      upload(filename, content) {
+          const chunks = Math.ceil(content.length / this.chunkSize);
+          this.uploads.push({ filename, size: content.length, chunks, status: 'complete' });
+          return { filename, chunks };
+      }
+
+      getUploads() {
+          return [...this.uploads];
+      }
+  }
+
+  function GARBAGE_JSON_013_UPLOAD_FILE_F(filename, content) {
+      const uploader = new GARBAGE_JSON_013_FILE_UPLOADER_E();
+      return uploader.upload(filename, content);
+  }
+
+  module.exports = { GARBAGE_JSON_013_FILE_UPLOADER_E, GARBAGE_JSON_013_UPLOAD_FILE_F };

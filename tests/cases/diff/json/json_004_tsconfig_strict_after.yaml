@@ -1,0 +1,136 @@
+tsconfig.json: |
+  {
+    "compilerOptions": {
+      "strict": true,
+      "target": "ES2022",
+      "module": "commonjs",
+      "noImplicitAny": true,
+      "outDir": "dist",
+      "rootDir": "src",
+      "esModuleInterop": true,
+      "skipLibCheck": true,
+      "resolveJsonModule": true
+    },
+    "include": ["src/**/*"],
+    "exclude": ["node_modules", "dist"]
+  }
+src/app.ts: |
+  interface UserRecord {
+      id: number;
+      name: string;
+      email: string;
+      metadata?: Record<string, any>;
+  }
+
+  function processData(data: any) {
+      return data.value;
+  }
+
+  function findUser(users: UserRecord[], predicate: any): UserRecord | undefined {
+      return users.find(predicate);
+  }
+
+  function transformRecords(records: any[]): UserRecord[] {
+      return records.map(r => ({
+          id: r.id,
+          name: r.name || 'Unknown',
+          email: r.email || '',
+          metadata: r.extra,
+      }));
+  }
+
+  function mergeConfigs(base: any, override: any): any {
+      return { ...base, ...override };
+  }
+
+  export { processData, findUser, transformRecords, mergeConfigs };
+src/database.ts: |
+  import { processData, transformRecords } from './app';
+
+  interface DatabaseConfig {
+      host: string;
+      port: number;
+      database: string;
+  }
+
+  class DatabaseClient {
+      private config: DatabaseConfig;
+
+      constructor(config: DatabaseConfig) {
+          this.config = config;
+      }
+
+      async query(sql: string, params: any[]): Promise<any[]> {
+          console.log(`Executing: ${sql} with ${params.length} params`);
+          return [];
+      }
+
+      async fetchUsers(): Promise<any[]> {
+          const raw = await this.query('SELECT * FROM users', []);
+          return transformRecords(raw);
+      }
+  }
+
+  export { DatabaseClient, DatabaseConfig };
+unrelated/compressor.js: |
+  const GARBAGE_JSON_004_COMPRESS_LEVEL_A = 6;
+
+  class GARBAGE_JSON_004_DATA_COMPRESSOR_B {
+      constructor(level) {
+          this.level = level || GARBAGE_JSON_004_COMPRESS_LEVEL_A;
+          this.stats = { inputBytes: 0, outputBytes: 0 };
+      }
+
+      compress(data) {
+          this.stats.inputBytes += data.length;
+          const result = Buffer.from(data).toString('base64');
+          this.stats.outputBytes += result.length;
+          return result;
+      }
+
+      getCompressionRatio() {
+          return this.stats.outputBytes / this.stats.inputBytes;
+      }
+  }
+
+  function GARBAGE_JSON_004_QUICK_COMPRESS_C(input) {
+      const compressor = new GARBAGE_JSON_004_DATA_COMPRESSOR_B();
+      return compressor.compress(input);
+  }
+
+  module.exports = { GARBAGE_JSON_004_DATA_COMPRESSOR_B, GARBAGE_JSON_004_QUICK_COMPRESS_C };
+unrelated/indexer.js: |
+  const GARBAGE_JSON_004_INDEX_CONFIG_D = { maxEntries: 10000 };
+
+  class GARBAGE_JSON_004_SEARCH_INDEXER_E {
+      constructor(config) {
+          this.config = { ...GARBAGE_JSON_004_INDEX_CONFIG_D, ...config };
+          this.index = new Map();
+      }
+
+      addDocument(id, text) {
+          const terms = text.toLowerCase().split(/\s+/);
+          for (const term of terms) {
+              if (!this.index.has(term)) this.index.set(term, new Set());
+              this.index.get(term).add(id);
+          }
+      }
+
+      search(query) {
+          const terms = query.toLowerCase().split(/\s+/);
+          const results = new Set();
+          for (const term of terms) {
+              const docs = this.index.get(term) || new Set();
+              docs.forEach(d => results.add(d));
+          }
+          return [...results];
+      }
+  }
+
+  function GARBAGE_JSON_004_BUILD_INDEX_F(documents) {
+      const indexer = new GARBAGE_JSON_004_SEARCH_INDEXER_E();
+      documents.forEach(doc => indexer.addDocument(doc.id, doc.text));
+      return indexer;
+  }
+
+  module.exports = { GARBAGE_JSON_004_SEARCH_INDEXER_E, GARBAGE_JSON_004_BUILD_INDEX_F };

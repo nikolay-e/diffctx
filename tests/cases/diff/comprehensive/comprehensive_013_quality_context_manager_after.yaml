@@ -1,0 +1,53 @@
+src/managers.py: |
+  class DatabaseConnection:
+      def __init__(self, connection_string="localhost:5432"):
+          self.connection_string = connection_string
+          self.conn = None
+
+      def __enter__(self):
+          self.conn = f"connected:{self.connection_string}"
+          return self
+
+      def __exit__(self, exc_type, exc_val, exc_tb):
+          self.conn = None
+          return False
+
+      def query(self, sql):
+          if not self.conn:
+              raise RuntimeError("Not connected")
+          return f"Result of {sql}"
+
+      def execute(self, sql, params=None):
+          if not self.conn:
+              raise RuntimeError("Not connected")
+          return True
+
+src/main.py: |
+  from src.managers import DatabaseConnection
+
+  with DatabaseConnection() as db:
+      data = db.query("SELECT * FROM users")
+
+  def get_config():
+      return {"host": "localhost", "port": 5432}
+
+  def format_results(raw_data):
+      return [str(item) for item in raw_data]
+
+garbage_session_store.py: |
+  GARBAGE_COMP_013_STORAGE_BACKEND_A = "memcached"
+  GARBAGE_COMP_013_SERIALIZER_B = "msgpack"
+
+  class GarbageSessionStore:
+      GARBAGE_COMP_013_EXPIRY_POLICY_C = True
+      def store(self):
+          pass
+
+garbage_token_bucket.py: |
+  GARBAGE_COMP_013_REFILL_INTERVAL_D = "milliseconds"
+  GARBAGE_COMP_013_BURST_CAPACITY_E = "overflow"
+
+  class GarbageTokenBucket:
+      GARBAGE_COMP_013_DRAIN_RATE_F = False
+      def consume(self):
+          pass

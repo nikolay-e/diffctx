@@ -1,0 +1,24 @@
+z_module.py: |
+  def z_func():
+      pass
+a_module.py: |
+  def a_func():
+      pass
+garbage_scheduling.py: |
+  GARBAGE_OUT_006_SCHEDULE_MARKER_A = "scheduling"
+  GARBAGE_OUT_006_CRON_MARKER_B = True
+
+  class CronScheduler:
+      GARBAGE_OUT_006_SCHEDULER_CLASS_C = "scheduler"
+
+      def schedule(self, expression: str, task: str) -> None:
+          pass
+garbage_tasks.py: |
+  GARBAGE_OUT_006_TASK_MARKER_D = "task"
+  GARBAGE_OUT_006_QUEUE_MARKER_E = 1024
+
+  class TaskQueue:
+      GARBAGE_OUT_006_QUEUE_CLASS_F = True
+
+      def enqueue(self, task_id: str, payload: dict) -> bool:
+          return True

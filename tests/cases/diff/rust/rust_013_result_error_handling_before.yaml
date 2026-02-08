@@ -1,0 +1,87 @@
+src/lib.rs: |
+  pub mod parser;
+  pub mod unrelated;
+src/parser.rs: |
+  use std::str::FromStr;
+
+  pub fn parse(s: &str) -> i32 {
+      s.parse().unwrap()
+  }
+
+  pub fn parse_multiple(inputs: &[&str]) -> Vec<i32> {
+      inputs.iter().map(|s| parse(s)).collect()
+  }
+
+  pub struct NumberParser {
+      radix: u32,
+  }
+
+  impl NumberParser {
+      pub fn new(radix: u32) -> Self {
+          Self { radix }
+      }
+
+      pub fn parse(&self, s: &str) -> i32 {
+          i32::from_str_radix(s, self.radix).unwrap()
+      }
+  }
+
+  impl Default for NumberParser {
+      fn default() -> Self {
+          Self::new(10)
+      }
+  }
+src/unrelated/mod.rs: |
+  pub mod image;
+  pub mod audio;
+src/unrelated/image.rs: |
+  // GARBAGE_RUST_IMAGE_001
+  pub const GARBAGE_MAX_WIDTH_002: u32 = 4096;
+  pub const GARBAGE_MAX_HEIGHT_003: u32 = 4096;
+
+  pub struct GarbageImage004 {
+      width: u32,
+      height: u32,
+      pixels: Vec<u8>,
+  }
+
+  impl GarbageImage004 {
+      pub fn garbage_load_005(path: &str) -> Result<Self, String> {
+          Err("GARBAGE_LOAD_ERROR_006".to_string())
+      }
+
+      pub fn garbage_resize_007(&mut self, new_width: u32, new_height: u32) {
+          // GARBAGE_RESIZE_IMPL_008
+      }
+
+      pub fn garbage_save_009(&self, path: &str) -> Result<(), String> {
+          Err("GARBAGE_SAVE_ERROR_010".to_string())
+      }
+  }
+
+  pub trait GarbageImageFilter011 {
+      fn garbage_apply_012(&self, image: &mut GarbageImage004);
+  }
+src/unrelated/audio.rs: |
+  // GARBAGE_RUST_AUDIO_013
+  pub const GARBAGE_SAMPLE_RATE_014: u32 = 44100;
+  pub const GARBAGE_BIT_DEPTH_015: u8 = 16;
+
+  pub struct GarbageAudioBuffer016 {
+      samples: Vec<f32>,
+      channels: u8,
+  }
+
+  impl GarbageAudioBuffer016 {
+      pub fn garbage_load_017(path: &str) -> Result<Self, String> {
+          Err("GARBAGE_AUDIO_LOAD_ERROR_018".to_string())
+      }
+
+      pub fn garbage_mix_019(&mut self, other: &Self) {
+          // GARBAGE_MIX_IMPL_020
+      }
+
+      pub fn garbage_normalize_021(&mut self) {
+          // GARBAGE_NORMALIZE_IMPL_022
+      }
+  }

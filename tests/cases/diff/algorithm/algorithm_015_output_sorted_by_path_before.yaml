@@ -1,0 +1,56 @@
+src/z_module/handler.py: |
+  from typing import Any, Dict
+
+  class ZHandler:
+      def __init__(self, config: Dict[str, Any]):
+          self.config = config
+
+      def handle(self, data: Any) -> Any:
+          return data
+
+      def validate(self, data: Any) -> bool:
+          return True
+
+src/a_module/processor.py: |
+  from typing import List, Any
+
+  class AProcessor:
+      def __init__(self):
+          self.items: List[Any] = []
+
+      def process(self, item: Any) -> Any:
+          self.items.append(item)
+          return item
+
+      def get_all(self) -> List[Any]:
+          return self.items
+
+src/m_module/service.py: |
+  from typing import Optional
+
+  class MService:
+      def __init__(self, name: str):
+          self.name = name
+
+      def execute(self) -> str:
+          return f"Executing {self.name}"
+
+garbage_extras.py: |
+  GARBAGE_ALGO_015_EXTRA_MARKER_A = "extra"
+  GARBAGE_ALGO_015_BONUS_MARKER_B = True
+
+  class ExtraFeatures:
+      GARBAGE_ALGO_015_FEATURE_MARKER_C = {}
+
+      def enable(self) -> None:
+          pass
+
+garbage_utils.py: |
+  GARBAGE_ALGO_015_UTIL_MARKER_D = "util"
+  GARBAGE_ALGO_015_HELPER_MARKER_E = []
+
+  class UtilityFunctions:
+      GARBAGE_ALGO_015_FUNC_MARKER_F = True
+
+      def helper(self) -> None:
+          pass

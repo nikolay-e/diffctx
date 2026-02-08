@@ -1,0 +1,70 @@
+Extensions/EnumerableExtensions.cs: |
+  namespace MyApp.Extensions;
+
+  public static class EnumerableExtensions
+  {
+      public static IEnumerable<T> WhereNotNull<T>(this IEnumerable<T?> source) where T : class
+      {
+          return source.Where(x => x != null)!;
+      }
+
+      public static IEnumerable<IEnumerable<T>> Batch<T>(this IEnumerable<T> source, int size)
+      {
+          var batch = new List<T>(size);
+          foreach (var item in source)
+          {
+              batch.Add(item);
+              if (batch.Count == size)
+              {
+                  yield return batch;
+                  batch = new List<T>(size);
+              }
+          }
+          if (batch.Count > 0)
+              yield return batch;
+      }
+  }
+Services/BatchProcessor.cs: |
+  using MyApp.Extensions;
+  using MyApp.Models;
+
+  namespace MyApp.Services;
+
+  public class BatchProcessor
+  {
+      public void ProcessUsers(IEnumerable<User?> users)
+      {
+          var validUsers = users.WhereNotNull();
+
+          foreach (var batch in validUsers.Batch(100))
+          {
+              ProcessBatch(batch);
+          }
+      }
+
+      private void ProcessBatch(IEnumerable<User> batch)
+      {
+          foreach (var user in batch)
+          {
+              Console.WriteLine(user.Name);
+          }
+      }
+  }
+Unrelated/HealthMonitor.cs: |
+  namespace MyApp.Unrelated;
+
+  public class HealthMonitor
+  {
+      private const string GARBAGE_CS_020_HEALTH_MONITOR_A = "health_monitor_marker";
+
+      public bool IsHealthy() => GARBAGE_CS_020_HEALTH_MONITOR_A.Length > 0;
+  }
+Unrelated/ConfigWatcher.cs: |
+  namespace MyApp.Unrelated;
+
+  public class ConfigWatcher
+  {
+      public const string GARBAGE_CS_020_CONFIG_WATCHER_B = "config_watcher_marker";
+
+      public void Watch(string path) => _ = GARBAGE_CS_020_CONFIG_WATCHER_B + path;
+  }

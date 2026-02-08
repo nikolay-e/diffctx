@@ -1,0 +1,12 @@
+must_include_files:
+  - core/dense_processor.py
+must_include_content:
+  - |
+    def process_batch(items):
+must_not_include:
+  - GARBAGE_PPR_006_STATS_CONSTANT_A
+  - garbage_ppr006_compute_mean
+  - GarbageStatisticsEngine006
+  - GARBAGE_PPR_006_REPORT_FLAG_B
+  - garbage_ppr006_generate_report
+  - GarbageReportFormatter006

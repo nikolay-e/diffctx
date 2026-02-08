@@ -1,0 +1,140 @@
+include/typecheck/type_check.hpp: |
+  #pragma once
+  #include <type_traits>
+  #include <utility>
+
+  namespace app::typecheck {
+
+  template<typename T, typename = void>
+  struct has_size : std::false_type {};
+
+  template<typename T>
+  struct has_size<T, std::void_t<decltype(std::declval<T>().size())>> : std::true_type {};
+
+  template<typename T, typename = void>
+  struct has_begin_end : std::false_type {};
+
+  template<typename T>
+  struct has_begin_end<T, std::void_t<
+      decltype(std::declval<T>().begin()),
+      decltype(std::declval<T>().end())
+  >> : std::true_type {};
+
+  template<typename T, typename = void>
+  struct has_push_back : std::false_type {};
+
+  template<typename T>
+  struct has_push_back<T, std::void_t<
+      decltype(std::declval<T>().push_back(std::declval<typename T::value_type>()))
+  >> : std::true_type {};
+
+  template<typename T, typename = void>
+  struct has_reserve : std::false_type {};
+
+  template<typename T>
+  struct has_reserve<T, std::void_t<
+      decltype(std::declval<T>().reserve(std::declval<size_t>()))
+  >> : std::true_type {};
+
+  template<typename T, typename = void>
+  struct is_streamable : std::false_type {};
+
+  template<typename T>
+  struct is_streamable<T, std::void_t<
+      decltype(std::declval<std::ostream&>() << std::declval<T>())
+  >> : std::true_type {};
+
+  template<typename T, typename = void>
+  struct has_to_string : std::false_type {};
+
+  template<typename T>
+  struct has_to_string<T, std::void_t<
+      decltype(std::declval<T>().to_string())
+  >> : std::true_type {};
+
+  template<typename T>
+  inline constexpr bool has_size_v = has_size<T>::value;
+
+  template<typename T>
+  inline constexpr bool has_begin_end_v = has_begin_end<T>::value;
+
+  template<typename T>
+  inline constexpr bool is_container_v = has_size_v<T> && has_begin_end_v<T>;
+
+  }
+include/unrelated/regex_engine.hpp: |
+  #pragma once
+  // GARBAGE_CPP_REGEX_265_001
+  #define GARBAGE_CPP_REGEX_MAX_GROUPS_265_002 32
+
+  namespace app::unrelated::regex {
+
+  // GARBAGE_CPP_REGEX_MATCH_265_003
+  struct RegexMatch {
+      const char* start;
+      size_t length;
+      // GARBAGE_CPP_REGEX_GROUP_265_004
+  };
+
+  // GARBAGE_CPP_REGEX_ENGINE_265_005
+  class RegexEngine {
+  public:
+      // GARBAGE_CPP_REGEX_COMPILE_265_006
+      bool compile(const char* pattern) {
+          // GARBAGE_CPP_REGEX_COMPILE_IMPL_265_007
+          return false;
+      }
+
+      // GARBAGE_CPP_REGEX_EXEC_265_008
+      RegexMatch execute(const char* input) {
+          // GARBAGE_CPP_REGEX_EXEC_IMPL_265_009
+          return RegexMatch{};
+      }
+
+      // GARBAGE_CPP_REGEX_REPLACE_265_010
+      const char* replace(const char* input, const char* replacement) {
+          // GARBAGE_CPP_REGEX_REPLACE_IMPL_265_011
+          return nullptr;
+      }
+  };
+
+  }
+src/unrelated/zip_archive.cpp: |
+  // GARBAGE_CPP_ZIP_265_012
+  #include <cstddef>
+
+  namespace app::unrelated::archive {
+
+  // GARBAGE_CPP_ZIP_ENTRY_265_013
+  struct ZipEntry {
+      const char* name;
+      size_t compressedSize;
+      size_t uncompressedSize;
+      // GARBAGE_CPP_ZIP_CRC_265_014
+  };
+
+  // GARBAGE_CPP_ZIP_ARCHIVE_265_015
+  class ZipArchive {
+  public:
+      // GARBAGE_CPP_ZIP_OPEN_265_016
+      bool open(const char* path) {
+          // GARBAGE_CPP_ZIP_OPEN_IMPL_265_017
+          return false;
+      }
+
+      // GARBAGE_CPP_ZIP_EXTRACT_265_018
+      bool extractFile(const char* entryName, const char* destPath) {
+          // GARBAGE_CPP_ZIP_EXTRACT_IMPL_265_019
+          return false;
+      }
+
+      // GARBAGE_CPP_ZIP_CLOSE_265_020
+      void close() {
+          // GARBAGE_CPP_ZIP_CLOSE_IMPL_265_021
+      }
+  };
+
+  }
+src/printer.cpp: |
+  #include <iostream>
+  int main() { return 0; }

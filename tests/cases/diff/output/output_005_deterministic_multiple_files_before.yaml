@@ -1,0 +1,27 @@
+a.py: |
+  def a():
+      pass
+b.py: |
+  def b():
+      pass
+c.py: |
+  def c():
+      pass
+garbage_logging.py: |
+  GARBAGE_OUT_005_LOG_MARKER_A = "logging"
+  GARBAGE_OUT_005_LEVEL_MARKER_B = True
+
+  class LogRouter:
+      GARBAGE_OUT_005_ROUTER_CLASS_C = "router"
+
+      def route(self, message: str, level: int) -> None:
+          pass
+garbage_monitoring.py: |
+  GARBAGE_OUT_005_MONITOR_MARKER_D = "monitoring"
+  GARBAGE_OUT_005_ALERT_MARKER_E = 500
+
+  class HealthMonitor:
+      GARBAGE_OUT_005_HEALTH_CLASS_F = True
+
+      def check(self, service: str) -> bool:
+          return True

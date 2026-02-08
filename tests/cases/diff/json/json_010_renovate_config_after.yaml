@@ -1,0 +1,116 @@
+renovate.json: |
+  {
+    "extends": ["config:base"],
+    "automerge": true,
+    "labels": ["dependencies"],
+    "schedule": ["every weekend"],
+    "prHourlyLimit": 5,
+    "prConcurrentLimit": 10,
+    "packageRules": [
+      {"matchPackagePatterns": ["*"], "enabled": true},
+      {"matchDepTypes": ["devDependencies"], "automerge": true}
+    ]
+  }
+package.json: |
+  {
+    "name": "webapp",
+    "version": "3.0.0",
+    "dependencies": {
+      "lodash": "^4.17.0",
+      "express": "^4.18.0",
+      "axios": "^1.4.0"
+    },
+    "devDependencies": {
+      "jest": "^29.6.0",
+      "eslint": "^8.45.0",
+      "typescript": "^5.2.0"
+    }
+  }
+src/app.js: |
+  const express = require('express');
+  const axios = require('axios');
+  const _ = require('lodash');
+
+  const app = express();
+
+  app.get('/api/data', async (req, res) => {
+      const response = await axios.get('https://api.example.com/data');
+      const filtered = _.pick(response.data, ['id', 'name', 'status']);
+      res.json(filtered);
+  });
+
+  app.get('/api/health', (req, res) => {
+      res.json({ status: 'ok', version: '3.0.0' });
+  });
+
+  function startServer(port) {
+      return app.listen(port, () => {
+          console.log(`Server started on port ${port}`);
+      });
+  }
+
+  module.exports = { app, startServer };
+unrelated/patcher.js: |
+  const GARBAGE_JSON_010_PATCH_VERSION_A = '0.0.1';
+
+  class GARBAGE_JSON_010_JSON_PATCHER_B {
+      constructor(version) {
+          this.version = version || GARBAGE_JSON_010_PATCH_VERSION_A;
+          this.operations = [];
+      }
+
+      add(path, value) {
+          this.operations.push({ op: 'add', path, value });
+      }
+
+      remove(path) {
+          this.operations.push({ op: 'remove', path });
+      }
+
+      apply(target) {
+          let result = JSON.parse(JSON.stringify(target));
+          for (const op of this.operations) {
+              if (op.op === 'add') result[op.path] = op.value;
+              if (op.op === 'remove') delete result[op.path];
+          }
+          return result;
+      }
+  }
+
+  function GARBAGE_JSON_010_APPLY_PATCHES_C(target, ops) {
+      const patcher = new GARBAGE_JSON_010_JSON_PATCHER_B();
+      ops.forEach(o => patcher[o.op](o.path, o.value));
+      return patcher.apply(target);
+  }
+
+  module.exports = { GARBAGE_JSON_010_JSON_PATCHER_B, GARBAGE_JSON_010_APPLY_PATCHES_C };
+unrelated/archiver.js: |
+  const GARBAGE_JSON_010_ARCHIVE_FORMAT_D = 'tar.gz';
+
+  class GARBAGE_JSON_010_FILE_ARCHIVER_E {
+      constructor(format) {
+          this.format = format || GARBAGE_JSON_010_ARCHIVE_FORMAT_D;
+          this.files = [];
+      }
+
+      addFile(name, content) {
+          this.files.push({ name, content, size: content.length });
+      }
+
+      getManifest() {
+          return {
+              format: this.format,
+              fileCount: this.files.length,
+              totalSize: this.files.reduce((sum, f) => sum + f.size, 0),
+              files: this.files.map(f => f.name),
+          };
+      }
+  }
+
+  function GARBAGE_JSON_010_CREATE_ARCHIVE_F(fileMap) {
+      const archiver = new GARBAGE_JSON_010_FILE_ARCHIVER_E();
+      Object.entries(fileMap).forEach(([name, content]) => archiver.addFile(name, content));
+      return archiver.getManifest();
+  }
+
+  module.exports = { GARBAGE_JSON_010_FILE_ARCHIVER_E, GARBAGE_JSON_010_CREATE_ARCHIVE_F };

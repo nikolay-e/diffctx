@@ -60,7 +60,7 @@ repos:
       - id: isort
 
   - repo: https://github.com/psf/black
-    rev: 25.1.0
+    rev: 26.1.0
     hooks:
       - id: black
         language_version: python3
@@ -165,7 +165,7 @@ repos:
     rev: v2.4.1
     hooks:
       - id: codespell
-        args: ["--write-changes", "--ignore-words-list=crate,nd,ser,llm,async,cli,theses,datas,hel"]
+        args: ["--write-changes", "--ignore-words-list=crate,nd,ser,llm,async,cli,theses,datas,hel,afterall,aftereach"]
         exclude: ^(\.git/|\.venv/|venv/)
 
   # ============================================================================

@@ -1,0 +1,75 @@
+errors.py: |
+  class DatabaseError(Exception):
+      def __init__(self, message: str, query: str = ""):
+          self.query = query
+          super().__init__(message)
+
+      def get_details(self) -> dict:
+          return {"error": str(self), "query": self.query}
+
+  class ConnectionError(DatabaseError):
+      def __init__(self, host: str, port: int):
+          self.host = host
+          self.port = port
+          super().__init__(f"Cannot connect to {host}:{port}")
+
+  class QueryError(DatabaseError):
+      def __init__(self, query: str, reason: str):
+          self.reason = reason
+          super().__init__(f"Query failed: {reason}", query=query)
+
+  class TimeoutError(DatabaseError):
+      def __init__(self, timeout_seconds: float):
+          self.timeout_seconds = timeout_seconds
+          super().__init__(f"Operation timed out after {timeout_seconds}s")
+
+handler.py: |
+  import logging
+
+  logger = logging.getLogger(__name__)
+
+  def handle_request(request_data: dict) -> dict:
+      return {"status": "ok", "data": request_data}
+
+  def execute_query(sql: str) -> list[dict]:
+      return [{"id": 1}]
+
+  def health_check() -> dict:
+      return {"database": "unknown"}
+
+garbage_metrics.py: |
+  GARBAGE_PY_048_METRICS_A = "metrics collector marker"
+  GARBAGE_PY_048_COUNTER_B = "counter type marker"
+
+  class MetricsCollector:
+      GARBAGE_PY_048_GAUGE_C = "gauge marker"
+
+      def __init__(self, prefix: str = "app"):
+          self.prefix = prefix
+          self._counters: dict[str, int] = {}
+
+      def increment(self, metric: str, value: int = 1) -> None:
+          self._counters[metric] = self._counters.get(metric, 0) + value
+
+      def get_value(self, metric: str) -> int:
+          GARBAGE_PY_048_HIST_D = "histogram marker"
+          return self._counters.get(metric, 0)
+
+garbage_scheduler.py: |
+  GARBAGE_PY_048_SCHED_E = "scheduler marker"
+  GARBAGE_PY_048_CRON_F = "cron expression marker"
+
+  class TaskScheduler:
+      GARBAGE_PY_048_QUEUE_G = True
+
+      def __init__(self, max_workers: int = 4):
+          self.max_workers = max_workers
+          self._tasks: list[dict] = []
+
+      def schedule(self, name: str, interval: int) -> None:
+          self._tasks.append({"name": name, "interval": interval})
+
+      def cancel(self, name: str) -> bool:
+          GARBAGE_PY_048_CANCEL_H = "cancel marker"
+          self._tasks = [t for t in self._tasks if t["name"] != name]
+          return True

@@ -1,0 +1,8 @@
+templates/secret.yaml: |
+  apiVersion: v1
+  kind: Secret
+  data:
+    password: {{ randAlphaNum 20 | b64enc }}
+junk.md: |
+  garbage_marker_12345
+  unused_marker_67890

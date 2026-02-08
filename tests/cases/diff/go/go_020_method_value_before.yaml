@@ -1,0 +1,53 @@
+internal/notification/notifier.go: |
+  package notification
+
+  import "log"
+
+  type Notifier struct {
+      prefix string
+      logger *log.Logger
+  }
+
+  func NewNotifier(prefix string, logger *log.Logger) *Notifier {
+      return &Notifier{prefix: prefix, logger: logger}
+  }
+
+  func (n *Notifier) Notify(msg string) {
+      n.logger.Printf("[%s] %s", n.prefix, msg)
+  }
+
+  func (n *Notifier) Alert(msg string) {
+      n.logger.Printf("[ALERT][%s] %s", n.prefix, msg)
+  }
+
+  func (n *Notifier) Error(msg string) {
+      n.logger.Printf("[ERROR][%s] %s", n.prefix, msg)
+  }
+internal/dispatch/dispatcher.go: |
+  package dispatch
+
+  func Dispatch() {}
+internal/unrelated/email/smtp.go: |
+  package email
+
+  const GARBAGE_GO_EMAIL_SMTP_001 = "email_garbage"
+
+  type GARBAGE_GO_TYPE_SMTP_002 struct {
+      host string
+  }
+
+  func GARBAGE_GO_FUNC_SMTP_003() string {
+      return "GARBAGE_GO_SMTP_UNUSED_004"
+  }
+internal/unrelated/email/template.go: |
+  package email
+
+  const GARBAGE_GO_EMAIL_TEMPLATE_005 = "template_garbage"
+
+  type GARBAGE_GO_TYPE_TEMPLATE_006 struct {
+      path string
+  }
+
+  func GARBAGE_GO_FUNC_TEMPLATE_007() {
+      println("GARBAGE_GO_TEMPLATE_OUTPUT_008")
+  }

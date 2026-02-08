@@ -1,0 +1,125 @@
+include/memory/allocator.hpp: |
+  #pragma once
+  #include <cstdlib>
+  #include <cstddef>
+  #include <new>
+
+  namespace app::memory {
+
+  class AllocatorStats {
+  public:
+      void recordAllocation(size_t bytes) {
+          totalAllocated_ += bytes;
+          ++allocationCount_;
+          if (totalAllocated_ > peakUsage_) {
+              peakUsage_ = totalAllocated_;
+          }
+      }
+
+      void recordDeallocation(size_t bytes) {
+          totalAllocated_ -= bytes;
+          ++deallocationCount_;
+      }
+
+      size_t totalAllocated() const { return totalAllocated_; }
+      size_t peakUsage() const { return peakUsage_; }
+      size_t allocationCount() const { return allocationCount_; }
+      size_t deallocationCount() const { return deallocationCount_; }
+
+  private:
+      size_t totalAllocated_ = 0;
+      size_t peakUsage_ = 0;
+      size_t allocationCount_ = 0;
+      size_t deallocationCount_ = 0;
+  };
+
+  inline void* safeMalloc(size_t size) {
+      void* ptr = malloc(size);
+      if (!ptr && size > 0) {
+          throw std::bad_alloc();
+      }
+      return ptr;
+  }
+
+  inline void* safeCalloc(size_t count, size_t size) {
+      void* ptr = calloc(count, size);
+      if (!ptr && count > 0 && size > 0) {
+          throw std::bad_alloc();
+      }
+      return ptr;
+  }
+
+  inline void* safeRealloc(void* ptr, size_t newSize) {
+      void* newPtr = realloc(ptr, newSize);
+      if (!newPtr && newSize > 0) {
+          throw std::bad_alloc();
+      }
+      return newPtr;
+  }
+
+  }
+include/unrelated/font_renderer.hpp: |
+  #pragma once
+  // GARBAGE_CPP_FONT_243_001
+  #define GARBAGE_CPP_FONT_SIZE_243_002 16
+
+  namespace app::unrelated::font {
+
+  // GARBAGE_CPP_FONT_STRUCT_243_003
+  struct GlyphMetrics {
+      // GARBAGE_CPP_FONT_GLYPH_243_004
+      int width;
+      int height;
+      int bearingX;
+      int bearingY;
+      int advance;
+  };
+
+  // GARBAGE_CPP_FONT_RENDERER_243_005
+  class FontRenderer {
+  public:
+      // GARBAGE_CPP_FONT_RENDER_243_006
+      void renderGlyph(char c, unsigned char* buffer, int bufferWidth) {
+          // GARBAGE_CPP_FONT_IMPL_243_007
+      }
+
+      // GARBAGE_CPP_FONT_METRICS_243_008
+      GlyphMetrics getGlyphMetrics(char c) const {
+          return GlyphMetrics{};
+      }
+
+  private:
+      // GARBAGE_CPP_FONT_PRIVATE_243_009
+      int fontSize_ = GARBAGE_CPP_FONT_SIZE_243_002;
+  };
+
+  }
+src/unrelated/physics_simulator.cpp: |
+  // GARBAGE_CPP_PHYSICS_243_010
+  namespace app::unrelated::physics {
+
+  // GARBAGE_CPP_PHYSICS_BODY_243_011
+  struct RigidBody {
+      float mass;
+      float velocity[3];
+      float position[3];
+  };
+
+  // GARBAGE_CPP_PHYSICS_SIM_243_012
+  class PhysicsSimulator {
+  public:
+      // GARBAGE_CPP_PHYSICS_STEP_243_013
+      void stepSimulation(float deltaTime) {
+          // GARBAGE_CPP_PHYSICS_UPDATE_243_014
+      }
+
+      // GARBAGE_CPP_PHYSICS_ADD_243_015
+      void addBody(const RigidBody& body) {
+          // GARBAGE_CPP_PHYSICS_ADD_IMPL_243_016
+      }
+  };
+
+  }
+src/array.c: |
+  #include <stdio.h>
+  int main() { return 0; }

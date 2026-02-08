@@ -1,0 +1,282 @@
+internal/errors/sentinel.go: |
+  package errors
+
+  import (
+      "errors"
+      "fmt"
+      "net/http"
+      "runtime"
+      "strings"
+      "time"
+  )
+
+  var (
+      ErrNotFound      = errors.New("not found")
+      ErrPermission    = errors.New("permission denied")
+      ErrInvalid       = errors.New("invalid input")
+      ErrTimeout       = errors.New("operation timeout")
+      ErrConflict      = errors.New("resource conflict")
+      ErrUnavailable   = errors.New("service unavailable")
+      ErrUnauthorized  = errors.New("unauthorized")
+      ErrRateLimited   = errors.New("rate limited")
+  )
+
+  func IsRetryable(err error) bool {
+      return errors.Is(err, ErrTimeout) || errors.Is(err, ErrUnavailable) || errors.Is(err, ErrRateLimited)
+  }
+
+  func IsClientError(err error) bool {
+      return errors.Is(err, ErrNotFound) || errors.Is(err, ErrPermission) ||
+          errors.Is(err, ErrInvalid) || errors.Is(err, ErrUnauthorized)
+  }
+
+  type AppError struct {
+      Code       ErrorCode
+      Message    string
+      Err        error
+      Details    map[string]interface{}
+      Stack      string
+      Timestamp  time.Time
+      RequestID  string
+      Operation  string
+  }
+
+  func (e *AppError) Error() string {
+      if e.Err != nil {
+          return fmt.Sprintf("[%s] %s: %v", e.Code, e.Message, e.Err)
+      }
+      return fmt.Sprintf("[%s] %s", e.Code, e.Message)
+  }
+
+  func (e *AppError) Unwrap() error {
+      return e.Err
+  }
+
+  func (e *AppError) Is(target error) bool {
+      t, ok := target.(*AppError)
+      if !ok {
+          return false
+      }
+      return e.Code == t.Code
+  }
+
+  func (e *AppError) WithDetails(key string, value interface{}) *AppError {
+      if e.Details == nil {
+          e.Details = make(map[string]interface{})
+      }
+      e.Details[key] = value
+      return e
+  }
+
+  func (e *AppError) WithRequestID(id string) *AppError {
+      e.RequestID = id
+      return e
+  }
+
+  func (e *AppError) WithOperation(op string) *AppError {
+      e.Operation = op
+      return e
+  }
+
+  func (e *AppError) HTTPStatus() int {
+      switch e.Code {
+      case CodeNotFound:
+          return http.StatusNotFound
+      case CodePermission:
+          return http.StatusForbidden
+      case CodeInvalid:
+          return http.StatusBadRequest
+      case CodeTimeout:
+          return http.StatusGatewayTimeout
+      case CodeConflict:
+          return http.StatusConflict
+      case CodeUnavailable:
+          return http.StatusServiceUnavailable
+      case CodeInternal:
+          return http.StatusInternalServerError
+      default:
+          return http.StatusInternalServerError
+      }
+  }
+
+  func captureStack() string {
+      var pcs [32]uintptr
+      n := runtime.Callers(3, pcs[:])
+      frames := runtime.CallersFrames(pcs[:n])
+      var b strings.Builder
+      for {
+          frame, more := frames.Next()
+          fmt.Fprintf(&b, "%s\n\t%s:%d\n", frame.Function, frame.File, frame.Line)
+          if !more {
+              break
+          }
+      }
+      return b.String()
+  }
+
+  func NewAppError(code ErrorCode, message string, err error) *AppError {
+      return &AppError{
+          Code:      code,
+          Message:   message,
+          Err:       err,
+          Timestamp: time.Now(),
+          Stack:     captureStack(),
+      }
+  }
+
+  func NewNotFoundError(resource string, id interface{}) *AppError {
+      return NewAppError(CodeNotFound, fmt.Sprintf("%s not found: %v", resource, id), ErrNotFound)
+  }
+
+  func NewValidationError(field string, reason string) *AppError {
+      return NewAppError(CodeInvalid, fmt.Sprintf("validation failed for %s: %s", field, reason), ErrInvalid)
+  }
+
+  func NewPermissionError(action, resource string) *AppError {
+      return NewAppError(CodePermission, fmt.Sprintf("permission denied: %s on %s", action, resource), ErrPermission)
+  }
+
+  func NewTimeoutError(operation string, duration time.Duration) *AppError {
+      return NewAppError(CodeTimeout, fmt.Sprintf("%s timed out after %v", operation, duration), ErrTimeout)
+  }
+
+  func NewConflictError(resource string, reason string) *AppError {
+      return NewAppError(CodeConflict, fmt.Sprintf("conflict on %s: %s", resource, reason), ErrConflict)
+  }
+
+  func NewInternalError(message string, err error) *AppError {
+      return NewAppError(CodeInternal, message, err)
+  }
+
+  func Wrap(err error, message string) *AppError {
+      if appErr, ok := err.(*AppError); ok {
+          return &AppError{
+              Code:      appErr.Code,
+              Message:   message + ": " + appErr.Message,
+              Err:       appErr.Err,
+              Details:   appErr.Details,
+              Stack:     appErr.Stack,
+              Timestamp: appErr.Timestamp,
+          }
+      }
+      return NewAppError(CodeInternal, message, err)
+  }
+
+  func GetCode(err error) ErrorCode {
+      var appErr *AppError
+      if errors.As(err, &appErr) {
+          return appErr.Code
+      }
+      return CodeUnknown
+  }
+
+  func GetHTTPStatus(err error) int {
+      var appErr *AppError
+      if errors.As(err, &appErr) {
+          return appErr.HTTPStatus()
+      }
+      return http.StatusInternalServerError
+  }
+internal/errors/codes.go: |
+  package errors
+
+  type ErrorCode int
+
+  const (
+      CodeUnknown ErrorCode = iota
+      CodeNotFound
+      CodePermission
+      CodeInvalid
+      CodeTimeout
+      CodeConflict
+      CodeUnavailable
+      CodeInternal
+  )
+
+  func (c ErrorCode) String() string {
+      switch c {
+      case CodeNotFound:
+          return "NOT_FOUND"
+      case CodePermission:
+          return "PERMISSION_DENIED"
+      case CodeInvalid:
+          return "INVALID_INPUT"
+      case CodeTimeout:
+          return "TIMEOUT"
+      case CodeConflict:
+          return "CONFLICT"
+      case CodeUnavailable:
+          return "UNAVAILABLE"
+      case CodeInternal:
+          return "INTERNAL"
+      default:
+          return "UNKNOWN"
+      }
+  }
+internal/service/service.go: |
+  package service
+
+  func Find(id int) (interface{}, error) {
+      return nil, nil
+  }
+internal/unrelated/telemetry/opentelemetry.go: |
+  package telemetry
+
+  import "context"
+
+  const GARBAGE_GO_OTEL_TRACER_A1B2C3 = "opentelemetry_garbage_marker"
+
+  type GARBAGE_GO_TYPE_SPAN_D4E5F6 struct {
+      traceID string
+      spanID  string
+  }
+
+  func GARBAGE_GO_FUNC_OTEL_G7H8I9() string {
+      return "GARBAGE_GO_OTEL_UNUSED_J0K1L2"
+  }
+
+  type TracerConfig struct {
+      ServiceName    string
+      Endpoint       string
+      SamplingRate   float64
+  }
+
+  func GARBAGE_GO_FUNC_START_SPAN_M3N4O5(ctx context.Context, name string) (context.Context, error) {
+      println("GARBAGE_GO_OTEL_OUTPUT_P6Q7R8")
+      return ctx, nil
+  }
+internal/unrelated/telemetry/jaeger.go: |
+  package telemetry
+
+  const GARBAGE_GO_JAEGER_CLIENT_S9T0U1 = "jaeger_garbage"
+
+  type GARBAGE_GO_TYPE_JAEGER_V2W3X4 struct {
+      agentHost string
+      agentPort int
+  }
+
+  func GARBAGE_GO_FUNC_JAEGER_Y5Z6A7() {
+      println("GARBAGE_GO_JAEGER_OUTPUT_B8C9D0")
+  }
+
+  type JaegerConfig struct {
+      AgentHost     string
+      AgentPort     int
+      CollectorURL  string
+  }
+
+  func GARBAGE_GO_FUNC_JAEGER_REPORT_E1F2G3(spans []interface{}) error {
+      return nil
+  }
+internal/unrelated/telemetry/zipkin.go: |
+  package telemetry
+
+  const GARBAGE_GO_ZIPKIN_CLIENT_H4I5J6 = "zipkin_garbage"
+
+  type GARBAGE_GO_TYPE_ZIPKIN_K7L8M9 struct {
+      endpoint string
+  }
+
+  func GARBAGE_GO_FUNC_ZIPKIN_N0O1P2() {
+      println("GARBAGE_GO_ZIPKIN_OUTPUT_Q3R4S5")
+  }

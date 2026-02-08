@@ -1,0 +1,60 @@
+sql/views/sales_summary_mv.sql: |
+  -- Materialized view for daily sales aggregation
+  CREATE MATERIALIZED VIEW sales_summary AS
+  SELECT
+      DATE_TRUNC('day', o.created_at) AS day,
+      COUNT(*) AS order_count,
+      SUM(o.total) AS revenue
+  FROM orders o
+  GROUP BY DATE_TRUNC('day', o.created_at)
+  WITH DATA;
+
+  CREATE UNIQUE INDEX idx_sales_summary_day ON sales_summary(day);
+
+sql/jobs/refresh_views.sql: |
+  -- Refresh materialized views
+  REFRESH MATERIALIZED VIEW CONCURRENTLY sales_summary;
+
+src/models/sales_summary.py: |
+  from dataclasses import dataclass
+  from datetime import date
+  from decimal import Decimal
+
+  @dataclass
+  class SalesSummary:
+      day: date
+      order_count: int
+      revenue: Decimal
+
+src/repositories/analytics_repository.py: |
+  from typing import List
+  from models.sales_summary import SalesSummary
+
+  class AnalyticsRepository:
+      def __init__(self, db):
+          self.db = db
+
+      def get_sales_summary(self) -> List[SalesSummary]:
+          results = self.db.execute("SELECT * FROM sales_summary ORDER BY day DESC")
+          return [SalesSummary(**r) for r in results]
+
+      def refresh_views(self):
+          self.db.execute_file('sql/jobs/refresh_views.sql')
+
+garbage_view_manager.ts: |
+  const GARBAGE_CICD_DOCS_078_VIEW_MARKER_A = "materialized";
+  const GARBAGE_CICD_DOCS_078_REFRESH_MARKER_B = "concurrent";
+
+  class GarbageViewManager {
+    static GARBAGE_CICD_DOCS_078_INDEX_MARKER_C = true;
+    manage(): void {}
+  }
+
+garbage_analytics_cache.ts: |
+  const GARBAGE_CICD_DOCS_078_CACHE_MARKER_D = "invalidate";
+  const GARBAGE_CICD_DOCS_078_TTL_MARKER_E = "expire";
+
+  class GarbageAnalyticsCache {
+    static GARBAGE_CICD_DOCS_078_PRECOMPUTE_MARKER_F = false;
+    cache(): void {}
+  }

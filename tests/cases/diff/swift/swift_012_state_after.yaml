@@ -1,0 +1,22 @@
+ContentView.swift: |
+  import SwiftUI
+
+  struct ContentView: View {
+      @State private var isLoading = false
+      @State private var items: [String] = []
+
+      var body: some View {
+          VStack {
+              if isLoading {
+                  ProgressView()
+              } else {
+                  List(items, id: \.self) { item in
+                      Text(item)
+                  }
+              }
+              Button("Load") {
+                  isLoading = true
+              }
+          }
+      }
+  }

@@ -1,0 +1,36 @@
+Events/OrderEventArgs.cs: |
+  namespace MyApp.Events;
+
+  public class OrderEventArgs : EventArgs
+  {
+      public int OrderId { get; }
+      public string Status { get; }
+
+      public OrderEventArgs(int orderId, string status)
+      {
+          OrderId = orderId;
+          Status = status;
+      }
+  }
+Services/OrderProcessor.cs: |
+  namespace MyApp.Services;
+
+  public class OrderProcessor { }
+Unrelated/CacheInvalidator.cs: |
+  namespace MyApp.Unrelated;
+
+  public class CacheInvalidator
+  {
+      private const string GARBAGE_CS_014_CACHE_INVALIDATOR_A = "cache_invalidator_marker";
+
+      public void Invalidate(string key) => _ = GARBAGE_CS_014_CACHE_INVALIDATOR_A + key;
+  }
+Unrelated/BackgroundScheduler.cs: |
+  namespace MyApp.Unrelated;
+
+  public class BackgroundScheduler
+  {
+      public const string GARBAGE_CS_014_BG_SCHEDULER_B = "background_scheduler_marker";
+
+      public void Schedule(TimeSpan interval) => _ = GARBAGE_CS_014_BG_SCHEDULER_B;
+  }

@@ -1,0 +1,29 @@
+Repository.swift: |
+  protocol Repository {
+      associatedtype Entity
+      func save(_ entity: Entity)
+      func find(id: String) -> Entity?
+      func delete(id: String)
+  }
+  // garbage_marker_12345
+CacheService.swift: |
+  class CacheService<T: Comparable & Hashable> {
+      private var cache: [String: T] = [:]
+
+      func store(_ value: T, forKey key: String) {
+          cache[key] = value
+      }
+
+      func retrieve(forKey key: String) -> T? {
+          return cache[key]
+      }
+
+      func process<U: Numeric>(_ items: [U]) -> U {
+          return items.reduce(0, +)
+      }
+
+      func filter<C: Collection>(items: C, predicate: (C.Element) -> Bool)
+          -> [C.Element] where C.Element: Comparable {
+          return items.filter(predicate).sorted()
+      }
+  }

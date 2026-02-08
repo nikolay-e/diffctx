@@ -1,0 +1,442 @@
+security.tf: |
+  variable "web_ingress_rules" {
+    type = list(object({
+      from_port   = number
+      to_port     = number
+      protocol    = string
+      cidr_blocks = list(string)
+      description = string
+    }))
+    default = [
+      {
+        from_port   = 80
+        to_port     = 80
+        protocol    = "tcp"
+        cidr_blocks = ["0.0.0.0/0"]
+        description = "HTTP from anywhere"
+      },
+      {
+        from_port   = 443
+        to_port     = 443
+        protocol    = "tcp"
+        cidr_blocks = ["0.0.0.0/0"]
+        description = "HTTPS from anywhere"
+      }
+    ]
+  }
+
+  variable "web_egress_rules" {
+    type = list(object({
+      from_port   = number
+      to_port     = number
+      protocol    = string
+      cidr_blocks = list(string)
+      description = string
+    }))
+    default = [
+      {
+        from_port   = 0
+        to_port     = 0
+        protocol    = "-1"
+        cidr_blocks = ["0.0.0.0/0"]
+        description = "Allow all outbound"
+      }
+    ]
+  }
+
+  variable "lb_target_groups" {
+    type = list(object({
+      name        = string
+      port        = number
+      protocol    = string
+      target_type = string
+      health_check = object({
+        enabled             = bool
+        healthy_threshold   = number
+        unhealthy_threshold = number
+        timeout             = number
+        interval            = number
+        path                = string
+        matcher             = string
+      })
+    }))
+    default = [
+      {
+        name        = "app"
+        port        = 8080
+        protocol    = "HTTP"
+        target_type = "ip"
+        health_check = {
+          enabled             = true
+          healthy_threshold   = 2
+          unhealthy_threshold = 3
+          timeout             = 5
+          interval            = 30
+          path                = "/health"
+          matcher             = "200"
+        }
+      },
+      {
+        name        = "api"
+        port        = 3000
+        protocol    = "HTTP"
+        target_type = "ip"
+        health_check = {
+          enabled             = true
+          healthy_threshold   = 2
+          unhealthy_threshold = 3
+          timeout             = 5
+          interval            = 30
+          path                = "/api/health"
+          matcher             = "200-299"
+        }
+      }
+    ]
+  }
+
+  variable "ecs_container_definitions" {
+    type = list(object({
+      name         = string
+      image        = string
+      cpu          = number
+      memory       = number
+      essential    = bool
+      port_mappings = list(object({
+        containerPort = number
+        hostPort      = number
+        protocol      = string
+      }))
+      environment = list(object({
+        name  = string
+        value = string
+      }))
+      secrets = list(object({
+        name      = string
+        valueFrom = string
+      }))
+      log_configuration = object({
+        logDriver = string
+        options   = map(string)
+      })
+    }))
+    default = []
+  }
+
+  resource "aws_security_group" "web" {
+    name        = "${var.environment}-web-sg"
+    description = "Security group for web servers"
+    vpc_id      = var.vpc_id
+
+    dynamic "ingress" {
+      for_each = var.web_ingress_rules
+      content {
+        from_port   = ingress.value.from_port
+        to_port     = ingress.value.to_port
+        protocol    = ingress.value.protocol
+        cidr_blocks = ingress.value.cidr_blocks
+        description = ingress.value.description
+      }
+    }
+
+    dynamic "egress" {
+      for_each = var.web_egress_rules
+      content {
+        from_port   = egress.value.from_port
+        to_port     = egress.value.to_port
+        protocol    = egress.value.protocol
+        cidr_blocks = egress.value.cidr_blocks
+        description = egress.value.description
+      }
+    }
+
+    tags = {
+      Name = "${var.environment}-web-sg"
+    }
+
+    lifecycle {
+      create_before_destroy = true
+    }
+  }
+
+  resource "aws_security_group" "ecs_tasks" {
+    name        = "${var.environment}-ecs-tasks-sg"
+    description = "Security group for ECS tasks"
+    vpc_id      = var.vpc_id
+
+    dynamic "ingress" {
+      for_each = var.lb_target_groups
+      content {
+        from_port       = ingress.value.port
+        to_port         = ingress.value.port
+        protocol        = "tcp"
+        security_groups = [aws_security_group.alb.id]
+        description     = "Traffic from ALB to ${ingress.value.name}"
+      }
+    }
+
+    egress {
+      from_port   = 0
+      to_port     = 0
+      protocol    = "-1"
+      cidr_blocks = ["0.0.0.0/0"]
+      description = "Allow all outbound"
+    }
+
+    tags = {
+      Name = "${var.environment}-ecs-tasks-sg"
+    }
+  }
+
+  resource "aws_security_group" "alb" {
+    name        = "${var.environment}-alb-sg"
+    description = "Security group for ALB"
+    vpc_id      = var.vpc_id
+
+    tags = {
+      Name = "${var.environment}-alb-sg"
+    }
+  }
+
+  resource "aws_lb_target_group" "main" {
+    for_each = { for tg in var.lb_target_groups : tg.name => tg }
+
+    name        = "${var.environment}-${each.value.name}-tg"
+    port        = each.value.port
+    protocol    = each.value.protocol
+    vpc_id      = var.vpc_id
+    target_type = each.value.target_type
+
+    dynamic "health_check" {
+      for_each = each.value.health_check.enabled ? [each.value.health_check] : []
+      content {
+        enabled             = health_check.value.enabled
+        healthy_threshold   = health_check.value.healthy_threshold
+        unhealthy_threshold = health_check.value.unhealthy_threshold
+        timeout             = health_check.value.timeout
+        interval            = health_check.value.interval
+        path                = health_check.value.path
+        port                = "traffic-port"
+        protocol            = each.value.protocol
+        matcher             = health_check.value.matcher
+      }
+    }
+
+    tags = {
+      Name = "${var.environment}-${each.value.name}-tg"
+    }
+
+    lifecycle {
+      create_before_destroy = true
+    }
+  }
+
+  resource "aws_ecs_task_definition" "main" {
+    family                   = "${var.environment}-app"
+    network_mode             = "awsvpc"
+    requires_compatibilities = ["FARGATE"]
+    cpu                      = var.task_cpu
+    memory                   = var.task_memory
+    execution_role_arn       = var.execution_role_arn
+    task_role_arn            = var.task_role_arn
+
+    dynamic "volume" {
+      for_each = var.efs_volumes
+      content {
+        name = volume.value.name
+
+        efs_volume_configuration {
+          file_system_id          = volume.value.file_system_id
+          root_directory          = volume.value.root_directory
+          transit_encryption      = "ENABLED"
+          transit_encryption_port = 2049
+
+          dynamic "authorization_config" {
+            for_each = volume.value.access_point_id != null ? [1] : []
+            content {
+              access_point_id = volume.value.access_point_id
+              iam             = "ENABLED"
+            }
+          }
+        }
+      }
+    }
+
+    container_definitions = jsonencode([
+      for container in var.ecs_container_definitions : {
+        name         = container.name
+        image        = container.image
+        cpu          = container.cpu
+        memory       = container.memory
+        essential    = container.essential
+        portMappings = container.port_mappings
+        environment  = container.environment
+        secrets      = container.secrets
+        logConfiguration = container.log_configuration
+        mountPoints = [
+          for vol in var.efs_volumes : {
+            sourceVolume  = vol.name
+            containerPath = vol.mount_path
+            readOnly      = vol.read_only
+          }
+        ]
+      }
+    ])
+
+    tags = {
+      Name = "${var.environment}-app-task"
+    }
+  }
+
+  resource "aws_ecs_service" "main" {
+    name                               = "${var.environment}-app"
+    cluster                            = var.ecs_cluster_id
+    task_definition                    = aws_ecs_task_definition.main.arn
+    desired_count                      = var.desired_count
+    launch_type                        = "FARGATE"
+    platform_version                   = "LATEST"
+    health_check_grace_period_seconds  = 60
+    enable_execute_command             = var.enable_exec
+
+    network_configuration {
+      subnets          = var.private_subnet_ids
+      security_groups  = [aws_security_group.ecs_tasks.id]
+      assign_public_ip = false
+    }
+
+    dynamic "load_balancer" {
+      for_each = var.lb_target_groups
+      content {
+        target_group_arn = aws_lb_target_group.main[load_balancer.value.name].arn
+        container_name   = load_balancer.value.name
+        container_port   = load_balancer.value.port
+      }
+    }
+
+    dynamic "service_registries" {
+      for_each = var.enable_service_discovery ? [1] : []
+      content {
+        registry_arn = var.service_discovery_arn
+      }
+    }
+
+    deployment_circuit_breaker {
+      enable   = true
+      rollback = true
+    }
+
+    deployment_controller {
+      type = var.deployment_controller_type
+    }
+
+    tags = {
+      Name = "${var.environment}-app-service"
+    }
+
+    lifecycle {
+      ignore_changes = [desired_count]
+    }
+  }
+legacy/hardcoded_rules_GARBAGE_TF_dyn476a.tf: |
+  # GARBAGE_TF_dyn476a - Hardcoded security group rules
+  resource "aws_security_group" "legacy_web_GARBAGE_TF_dyn476a" {
+    name = "legacy-web-sg-GARBAGE_TF_dyn476a"
+
+    ingress {
+      from_port   = 80
+      to_port     = 80
+      protocol    = "tcp"
+      cidr_blocks = ["0.0.0.0/0"]
+    }
+
+    ingress {
+      from_port   = 443
+      to_port     = 443
+      protocol    = "tcp"
+      cidr_blocks = ["0.0.0.0/0"]
+    }
+
+    ingress {
+      from_port   = 8080
+      to_port     = 8080
+      protocol    = "tcp"
+      cidr_blocks = ["10.0.0.0/8"]
+    }
+  }
+scripts/generate_rules_GARBAGE_TF_dyn476b.sh: |
+  #!/bin/bash
+  # GARBAGE_TF_dyn476b - Legacy rule generator
+  echo "Generating legacy security rules GARBAGE_TF_dyn476b"
+  for port in 80 443 8080 8443; do
+    echo "Creating rule for port $port GARBAGE_TF_dyn476b"
+  done
+variables.tf: |
+  variable "environment" {
+    type = string
+  }
+
+  variable "vpc_id" {
+    type = string
+  }
+
+  variable "private_subnet_ids" {
+    type = list(string)
+  }
+
+  variable "ecs_cluster_id" {
+    type = string
+  }
+
+  variable "task_cpu" {
+    type    = number
+    default = 256
+  }
+
+  variable "task_memory" {
+    type    = number
+    default = 512
+  }
+
+  variable "execution_role_arn" {
+    type = string
+  }
+
+  variable "task_role_arn" {
+    type = string
+  }
+
+  variable "desired_count" {
+    type    = number
+    default = 2
+  }
+
+  variable "enable_exec" {
+    type    = bool
+    default = false
+  }
+
+  variable "enable_service_discovery" {
+    type    = bool
+    default = false
+  }
+
+  variable "service_discovery_arn" {
+    type    = string
+    default = ""
+  }
+
+  variable "deployment_controller_type" {
+    type    = string
+    default = "ECS"
+  }
+
+  variable "efs_volumes" {
+    type = list(object({
+      name            = string
+      file_system_id  = string
+      root_directory  = string
+      access_point_id = string
+      mount_path      = string
+      read_only       = bool
+    }))
+    default = []
+  }

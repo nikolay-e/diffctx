@@ -1,0 +1,12 @@
+templates/configmap.yaml: |
+  apiVersion: v1
+  kind: ConfigMap
+  metadata:
+    name: {{ .Release.Name }}-config
+    namespace: {{ .Release.Namespace }}
+    labels:
+      app.kubernetes.io/managed-by: {{ .Release.Service }}
+      helm.sh/chart: {{ .Chart.Name }}-{{ .Chart.Version }}
+junk.md: |
+  garbage_marker_12345
+  unused_marker_67890

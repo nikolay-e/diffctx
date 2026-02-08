@@ -1,0 +1,16 @@
+must_include_files:
+  - lib/geometry.rb
+must_include_content:
+  - |
+    Point.new(x, y)
+must_not_include:
+  - GARBAGE_RUBY_012_WAREHOUSE_CODE_A
+  - GARBAGE_RUBY_012_STOCK_POLICY_B
+  - GARBAGE_RUBY_012_REORDER_POINT_C
+  - GARBAGE_RUBY_012_CARRIER_NAME_D
+  - GARBAGE_RUBY_012_TRACKING_PREFIX_E
+  - GARBAGE_RUBY_012_MAX_WEIGHT_KG_F
+  - GarbageInventoryTracker
+  - GarbageShipmentManager
+  - garbage_inventory.rb
+  - garbage_shipment.rb

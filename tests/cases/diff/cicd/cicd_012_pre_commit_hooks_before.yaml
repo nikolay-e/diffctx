@@ -1,0 +1,85 @@
+.pre-commit-config.yaml: |
+  repos:
+    - repo: https://github.com/pre-commit/pre-commit-hooks
+      rev: v4.5.0
+      hooks:
+        - id: trailing-whitespace
+
+src/code.py: |
+  from typing import Any, Optional
+  from dataclasses import dataclass
+
+  @dataclass
+  class ProcessResult:
+      success: bool
+      data: Optional[Any] = None
+      error: Optional[str] = None
+
+  class Processor:
+      def __init__(self, config: dict):
+          self.config = config
+          self._cache: dict = {}
+
+      def process(self, input_data: Any) -> ProcessResult:
+          try:
+              validated = self._validate(input_data)
+              transformed = self._transform(validated)
+              result = self._execute(transformed)
+              return ProcessResult(success=True, data=result)
+          except Exception as e:
+              return ProcessResult(success=False, error=str(e))
+
+      def _validate(self, data: Any) -> Any:
+          if data is None:
+              raise ValueError("Input cannot be None")
+          return data
+
+      def _transform(self, data: Any) -> Any:
+          if isinstance(data, dict):
+              return {k: v for k, v in data.items() if v is not None}
+          return data
+
+      def _execute(self, data: Any) -> Any:
+          return data
+
+  def process() -> bool:
+      return True
+
+tests/test_processor.py: |
+  import pytest
+  from src.code import Processor, ProcessResult, process
+
+  class TestProcessor:
+      def test_process_valid_data(self):
+          processor = Processor({})
+          result = processor.process({"key": "value"})
+          assert result.success is True
+
+      def test_process_none_fails(self):
+          processor = Processor({})
+          result = processor.process(None)
+          assert result.success is False
+          assert "None" in result.error
+
+  def test_process_function():
+      assert process() is True
+
+garbage_validator.py: |
+  GARBAGE_CICD_012_VALIDATOR_MARKER_A = "schema"
+  GARBAGE_CICD_012_STRICT_MARKER_B = True
+
+  class GarbageSchemaValidator:
+      GARBAGE_CICD_012_VERSION_MARKER_C = "draft-07"
+
+      def validate(self, data: dict) -> bool:
+          return True
+
+garbage_formatter.py: |
+  GARBAGE_CICD_012_FORMAT_MARKER_D = "json"
+  GARBAGE_CICD_012_INDENT_MARKER_E = 2
+
+  class GarbageOutputFormatter:
+      GARBAGE_CICD_012_PRETTY_MARKER_F = True
+
+      def format(self, data: dict) -> str:
+          return ""

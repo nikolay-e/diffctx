@@ -14,24 +14,29 @@ _CALL_WEIGHT = 0.85
 _SYMBOL_REF_WEIGHT = 0.95
 _TYPE_REF_WEIGHT = 0.60
 
-_PY_IMPORT_RE = re.compile(r"(?:from\s+(\.{0,3}[\w.]*)\s+import|import\s+([\w.]+))")
+_PY_IMPORT_RE = re.compile(r"(?:from\s{1,20}(\.{0,3}[\w.]{0,200})\s{1,20}import|import\s{1,20}([\w.]{1,200}))")
 
 
 def _is_python_file(path: Path) -> bool:
     return path.suffix.lower() in _PYTHON_EXTS
 
 
+def _count_leading_dots(s: str) -> int:
+    return len(s) - len(s.lstrip("."))
+
+
+def _strip_source_prefix(parts: list[str]) -> list[str]:
+    for i, part in enumerate(parts):
+        if part in ("src", "lib", "packages"):
+            return parts[i + 1 :]
+    return parts
+
+
 def _resolve_relative_import(imported: str, source_path: Path, repo_root: Path | None = None) -> str | None:
     if not imported.startswith("."):
         return imported
 
-    dots = 0
-    for c in imported:
-        if c == ".":
-            dots += 1
-        else:
-            break
-
+    dots = _count_leading_dots(imported)
     relative_module = imported[dots:]
 
     if repo_root and source_path.is_absolute():
@@ -40,12 +45,7 @@ def _resolve_relative_import(imported: str, source_path: Path, repo_root: Path |
         except ValueError:
             pass
 
-    parent_parts = list(source_path.parent.parts)
-
-    for i, part in enumerate(parent_parts):
-        if part in ("src", "lib", "packages"):
-            parent_parts = parent_parts[i + 1 :]
-            break
+    parent_parts = _strip_source_prefix(list(source_path.parent.parts))
 
     if parent_parts and parent_parts[-1] == "__pycache__":
         parent_parts = parent_parts[:-1]

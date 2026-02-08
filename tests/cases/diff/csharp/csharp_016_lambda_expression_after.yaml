@@ -1,0 +1,54 @@
+Services/Validator.cs: |
+  namespace MyApp.Services;
+
+  public class Validator<T>
+  {
+      private readonly List<Func<T, bool>> _rules = new();
+
+      public Validator<T> AddRule(Func<T, bool> rule)
+      {
+          _rules.Add(rule);
+          return this;
+      }
+
+      public bool Validate(T item)
+      {
+          return _rules.All(rule => rule(item));
+      }
+  }
+Program.cs: |
+  using System;
+  using MyApp.Services;
+  using MyApp.Models;
+
+  class Program
+  {
+      static void Main()
+      {
+          var validator = new Validator<User>()
+              .AddRule(u => !string.IsNullOrEmpty(u.Name))
+              .AddRule(u => u.Id > 0)
+              .AddRule(u => u.Name.Length <= 100);
+
+          var user = new User { Id = 1, Name = "John" };
+          var isValid = validator.Validate(user);
+      }
+  }
+Unrelated/RetryHandler.cs: |
+  namespace MyApp.Unrelated;
+
+  public class RetryHandler
+  {
+      private const string GARBAGE_CS_016_RETRY_HANDLER_A = "retry_handler_marker";
+
+      public void Retry(int attempts) => _ = GARBAGE_CS_016_RETRY_HANDLER_A;
+  }
+Unrelated/DeadLetterQueue.cs: |
+  namespace MyApp.Unrelated;
+
+  public class DeadLetterQueue
+  {
+      public const string GARBAGE_CS_016_DEAD_LETTER_B = "dead_letter_queue_marker";
+
+      public void Enqueue(string message) => _ = GARBAGE_CS_016_DEAD_LETTER_B + message;
+  }

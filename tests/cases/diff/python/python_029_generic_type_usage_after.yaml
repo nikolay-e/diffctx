@@ -1,0 +1,81 @@
+containers.py: |
+  from typing import Generic, TypeVar, Optional
+
+  K = TypeVar('K')
+  V = TypeVar('V')
+
+  class Cache(Generic[K, V]):
+      def __init__(self, max_size: int = 100):
+          self._data: dict[K, V] = {}
+          self._max_size = max_size
+          self._access_count: dict[K, int] = {}
+
+      def get(self, key: K) -> Optional[V]:
+          if key in self._data:
+              self._access_count[key] = self._access_count.get(key, 0) + 1
+              return self._data[key]
+          return None
+
+      def set(self, key: K, value: V) -> None:
+          if len(self._data) >= self._max_size and key not in self._data:
+              self._evict_least_used()
+          self._data[key] = value
+          self._access_count[key] = 0
+
+      def _evict_least_used(self) -> None:
+          if not self._access_count:
+              return
+          least_used = min(self._access_count, key=self._access_count.get)
+          del self._data[least_used]
+          del self._access_count[least_used]
+
+      def size(self) -> int:
+          return len(self._data)
+
+service.py: |
+  from containers import Cache
+
+  session_cache: Cache[str, dict] = Cache(max_size=500)
+
+  def run(session_id: str, payload: dict) -> dict:
+      cached = session_cache.get(session_id)
+      if cached is not None:
+          return cached
+      result = {"session": session_id, "data": payload}
+      session_cache.set(session_id, result)
+      return result
+
+garbage_scheduler.py: |
+  GARBAGE_PY_029_SCHEDULER_A = "scheduler module marker"
+  GARBAGE_PY_029_CRON_B = "cron expression marker"
+
+  class TaskScheduler:
+      GARBAGE_PY_029_TASK_C = "task scheduler marker"
+
+      def __init__(self):
+          self._tasks = []
+
+      def schedule(self, task_name: str, interval: int) -> None:
+          self._tasks.append({"name": task_name, "interval": interval})
+
+      def cancel(self, task_name: str) -> bool:
+          GARBAGE_PY_029_CANCEL_D = "cancel marker"
+          self._tasks = [t for t in self._tasks if t["name"] != task_name]
+          return True
+
+garbage_audit.py: |
+  GARBAGE_PY_029_AUDIT_E = "audit log marker"
+  GARBAGE_PY_029_TRAIL_F = "audit trail marker"
+
+  class AuditLogger:
+      GARBAGE_PY_029_LOGGER_G = True
+
+      def __init__(self):
+          self._entries = []
+
+      def log_action(self, user: str, action: str) -> None:
+          self._entries.append({"user": user, "action": action})
+
+      def get_recent(self, count: int = 10) -> list:
+          GARBAGE_PY_029_RECENT_H = "recent marker"
+          return self._entries[-count:]

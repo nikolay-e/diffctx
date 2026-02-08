@@ -1,0 +1,11 @@
+mylib/core.py: |
+  def process():
+      return "processed"
+mylib/__init__.py: |
+  from .core import process
+app.py: |
+  from mylib import process
+
+  def run():
+      result = process()
+      return result

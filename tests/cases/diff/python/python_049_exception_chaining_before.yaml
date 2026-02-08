@@ -1,0 +1,75 @@
+exceptions.py: |
+  class AppError(Exception):
+      def __init__(self, message: str, code: str = "UNKNOWN"):
+          self.code = code
+          super().__init__(message)
+
+      def to_response(self) -> dict:
+          return {"error": self.code, "message": str(self)}
+
+  class DataError(AppError):
+      def __init__(self, message: str, source: str = ""):
+          self.source = source
+          super().__init__(message, code="DATA_ERROR")
+
+  class ConfigError(AppError):
+      def __init__(self, key: str, reason: str):
+          self.key = key
+          super().__init__(f"Config key '{key}': {reason}", code="CONFIG_ERROR")
+
+  class NetworkError(AppError):
+      def __init__(self, url: str, status_code: int = 0):
+          self.url = url
+          self.status_code = status_code
+          super().__init__(f"Request to {url} failed (status={status_code})", code="NETWORK_ERROR")
+
+parser.py: |
+  import json
+  from typing import Any
+
+  def parse_json_config(raw: str) -> dict[str, Any]:
+      return json.loads(raw)
+
+  def parse_csv_row(line: str) -> list[str]:
+      return line.strip().split(",")
+
+  def load_data_file(path: str) -> dict[str, Any]:
+      with open(path) as f:
+          return json.load(f)
+
+garbage_logger.py: |
+  GARBAGE_PY_049_LOG_A = "logging framework marker"
+  GARBAGE_PY_049_HANDLER_B = "handler config marker"
+
+  class StructuredLogger:
+      GARBAGE_PY_049_LEVEL_C = "log level marker"
+
+      def __init__(self, service_name: str):
+          self.service_name = service_name
+          self._buffer: list[dict] = []
+
+      def info(self, message: str, **kwargs: object) -> None:
+          self._buffer.append({"level": "info", "msg": message, **kwargs})
+
+      def error(self, message: str, **kwargs: object) -> None:
+          GARBAGE_PY_049_FLUSH_D = "flush marker"
+          self._buffer.append({"level": "error", "msg": message, **kwargs})
+
+garbage_encoder.py: |
+  GARBAGE_PY_049_ENCODE_E = "encoding module marker"
+  GARBAGE_PY_049_CODEC_F = "codec registry marker"
+
+  class MessageEncoder:
+      GARBAGE_PY_049_SERIAL_G = True
+
+      def __init__(self, encoding: str = "utf-8"):
+          self.encoding = encoding
+
+      def encode(self, data: dict) -> bytes:
+          import json
+          return json.dumps(data).encode(self.encoding)
+
+      def decode(self, payload: bytes) -> dict:
+          GARBAGE_PY_049_DESER_H = "deserialize marker"
+          import json
+          return json.loads(payload.decode(self.encoding))

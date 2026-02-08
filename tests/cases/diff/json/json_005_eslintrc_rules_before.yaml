@@ -1,0 +1,124 @@
+.eslintrc.json: |
+  {
+    "env": {
+      "browser": true,
+      "es2021": true,
+      "node": true
+    },
+    "extends": ["eslint:recommended"],
+    "parserOptions": {
+      "ecmaVersion": "latest",
+      "sourceType": "module"
+    },
+    "rules": {
+      "semi": "error",
+      "quotes": ["error", "double"],
+      "indent": ["error", 2]
+    }
+  }
+src/main.js: |
+  function hello() {
+      console.log("Hello");
+  }
+
+  function calculateTotal(items) {
+      let total = 0;
+      for (const item of items) {
+          total += item.price * item.quantity;
+      }
+      return total;
+  }
+
+  function formatCurrency(amount, currency) {
+      const formatter = new Intl.NumberFormat("en-US", {
+          style: "currency",
+          currency: currency || "USD",
+      });
+      return formatter.format(amount);
+  }
+
+  function generateInvoice(items, taxRate) {
+      const subtotal = calculateTotal(items);
+      const tax = subtotal * taxRate;
+      const total = subtotal + tax;
+      return {
+          items,
+          subtotal: formatCurrency(subtotal),
+          tax: formatCurrency(tax),
+          total: formatCurrency(total),
+      };
+  }
+
+  export { hello, calculateTotal, formatCurrency, generateInvoice };
+src/utils.js: |
+  import { formatCurrency } from "./main";
+
+  function roundToDecimals(value, decimals) {
+      const factor = Math.pow(10, decimals);
+      return Math.round(value * factor) / factor;
+  }
+
+  function formatPrice(price) {
+      const rounded = roundToDecimals(price, 2);
+      return formatCurrency(rounded);
+  }
+
+  export { roundToDecimals, formatPrice };
+unrelated/sorter.js: |
+  const GARBAGE_JSON_005_SORT_CONFIG_A = { algorithm: 'quicksort', stable: true };
+
+  class GARBAGE_JSON_005_ARRAY_SORTER_B {
+      constructor(config) {
+          this.config = { ...GARBAGE_JSON_005_SORT_CONFIG_A, ...config };
+      }
+
+      sort(arr, compareFn) {
+          return [...arr].sort(compareFn);
+      }
+
+      sortByKey(arr, key) {
+          return this.sort(arr, (a, b) => {
+              if (a[key] < b[key]) return -1;
+              if (a[key] > b[key]) return 1;
+              return 0;
+          });
+      }
+  }
+
+  function GARBAGE_JSON_005_SORT_ITEMS_C(items, key) {
+      const sorter = new GARBAGE_JSON_005_ARRAY_SORTER_B();
+      return sorter.sortByKey(items, key);
+  }
+
+  module.exports = { GARBAGE_JSON_005_ARRAY_SORTER_B, GARBAGE_JSON_005_SORT_ITEMS_C };
+unrelated/counter.js: |
+  const GARBAGE_JSON_005_COUNTER_INITIAL_D = 0;
+
+  class GARBAGE_JSON_005_EVENT_COUNTER_E {
+      constructor() {
+          this.counts = new Map();
+          this.total = GARBAGE_JSON_005_COUNTER_INITIAL_D;
+      }
+
+      increment(event) {
+          const current = this.counts.get(event) || 0;
+          this.counts.set(event, current + 1);
+          this.total++;
+      }
+
+      getCount(event) {
+          return this.counts.get(event) || 0;
+      }
+
+      getTotal() {
+          return this.total;
+      }
+  }
+
+  function GARBAGE_JSON_005_COUNT_EVENTS_F(events) {
+      const counter = new GARBAGE_JSON_005_EVENT_COUNTER_E();
+      events.forEach(e => counter.increment(e));
+      return counter;
+  }
+
+  module.exports = { GARBAGE_JSON_005_EVENT_COUNTER_E, GARBAGE_JSON_005_COUNT_EVENTS_F };

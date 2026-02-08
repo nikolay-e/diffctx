@@ -1,0 +1,68 @@
+k8s/apps/deployment.yaml: |
+  apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    name: api-backend
+    namespace: production
+    labels:
+      app: api-backend
+      version: v2
+  spec:
+    replicas: 3
+    selector:
+      matchLabels:
+        app: api-backend
+    template:
+      metadata:
+        labels:
+          app: api-backend
+          version: v2
+          tier: backend
+      spec:
+        containers:
+        - name: api
+          image: api-backend:v2.0.0
+          ports:
+          - containerPort: 8080
+            name: http
+          - containerPort: 9090
+            name: grpc
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+k8s/apps/service.yaml: |
+  apiVersion: v1
+  kind: Service
+  metadata:
+    name: api-backend
+    namespace: production
+  spec:
+    selector:
+      app: old-api-backend
+    ports:
+    - name: http
+      port: 80
+      targetPort: 8080
+    - name: grpc
+      port: 9090
+      targetPort: 9090
+k8s/unrelated/service-mesh/consul-connect.yaml: |
+  # GARBAGE_K8S_421_CONSUL_CONNECT
+  apiVersion: consul.hashicorp.com/v1alpha1
+  kind: ServiceDefaults
+  metadata:
+    name: GARBAGE_K8S_421_CONSUL_SVC
+  spec:
+    protocol: GARBAGE_K8S_421_PROTOCOL
+    meshGateway:
+      mode: GARBAGE_K8S_421_GATEWAY_MODE
+k8s/unrelated/cilium/cilium-config.yaml: |
+  # GARBAGE_K8S_421_CILIUM_CONFIG
+  apiVersion: v1
+  kind: ConfigMap
+  metadata:
+    name: GARBAGE_K8S_421_CILIUM_CM
+  data:
+    enable-hubble: GARBAGE_K8S_421_HUBBLE_ENABLED
+    cluster-name: GARBAGE_K8S_421_CLUSTER_NAME

@@ -1,0 +1,47 @@
+app.js: |
+  const nodeEnv = process.env.NODE_ENV || 'development';
+  const debug = process.env.CI_DEBUG === 'true';
+
+  console.log('NODE_ENV:', nodeEnv);
+  console.log('Debug mode:', debug);
+
+  function main() {
+    if (debug) {
+      console.log('Debug information enabled');
+    }
+  }
+
+  main();
+
+.gitlab-ci.yml: |
+  test:
+    script:
+      - npm ci
+      - node app.js
+
+package.json: |
+  {
+    "name": "gitlab-variables-app",
+    "version": "1.0.0",
+    "scripts": {
+      "test": "jest"
+    }
+  }
+
+garbage_config.ts: |
+  const GARBAGE_CICD_DOCS_025_CONFIG_MARKER_A = "dotenv";
+  const GARBAGE_CICD_DOCS_025_OVERRIDE_MARKER_B = true;
+
+  class GarbageConfigLoader {
+    static GARBAGE_CICD_DOCS_025_MERGE_MARKER_C = "deep";
+    load(): void {}
+  }
+
+garbage_secrets.ts: |
+  const GARBAGE_CICD_DOCS_025_SECRETS_MARKER_D = "vault";
+  const GARBAGE_CICD_DOCS_025_PATH_MARKER_E = "/secret/data";
+
+  class GarbageSecretsManager {
+    static GARBAGE_CICD_DOCS_025_ROTATE_MARKER_F = 86400;
+    fetch(): void {}
+  }

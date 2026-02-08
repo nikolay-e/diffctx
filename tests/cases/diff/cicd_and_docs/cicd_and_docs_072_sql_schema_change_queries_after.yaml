@@ -1,0 +1,62 @@
+sql/queries/get_user_orders.sql: |
+  SELECT
+      o.id,
+      o.total,
+      o.status,
+      o.shipping_address,
+      o.created_at,
+      o.updated_at,
+      COUNT(oi.id) AS item_count,
+      SUM(oi.quantity) AS total_items
+  FROM orders o
+  LEFT JOIN order_items oi ON o.id = oi.order_id
+  WHERE o.user_id = :user_id
+    AND o.status != 'cancelled'
+    AND (:status IS NULL OR o.status = :status)
+    AND (:start_date IS NULL OR o.created_at >= :start_date)
+    AND (:end_date IS NULL OR o.created_at <= :end_date)
+  GROUP BY o.id, o.total, o.status, o.shipping_address, o.created_at, o.updated_at
+  ORDER BY o.created_at DESC
+  LIMIT :limit OFFSET :offset;
+
+sql/queries/count_user_orders.sql: |
+  SELECT COUNT(*) AS total_count
+  FROM orders o
+  WHERE o.user_id = :user_id
+    AND o.status != 'cancelled'
+    AND (:status IS NULL OR o.status = :status)
+    AND (:start_date IS NULL OR o.created_at >= :start_date)
+    AND (:end_date IS NULL OR o.created_at <= :end_date);
+
+src/repositories/order_repository.py: |
+  from typing import List
+  from models.order import Order
+
+  class OrderRepository:
+      def __init__(self, db):
+          self.db = db
+
+      def get_user_orders(self, user_id: int) -> List[Order]:
+          results = self.db.execute_file(
+              'sql/queries/get_user_orders.sql',
+              {'user_id': user_id}
+          )
+          return [Order(**r) for r in results]
+
+garbage_query_builder.ts: |
+  const GARBAGE_CICD_DOCS_072_BUILDER_MARKER_A = "sqlalchemy";
+  const GARBAGE_CICD_DOCS_072_DIALECT_MARKER_B = "postgresql";
+
+  class GarbageQueryBuilder {
+    static GARBAGE_CICD_DOCS_072_ESCAPE_MARKER_C = true;
+    build(): void {}
+  }
+
+garbage_query_optimizer.ts: |
+  const GARBAGE_CICD_DOCS_072_OPTIMIZE_MARKER_D = "explain";
+  const GARBAGE_CICD_DOCS_072_PLAN_MARKER_E = "analyze";
+
+  class GarbageQueryOptimizer {
+    static GARBAGE_CICD_DOCS_072_CACHE_MARKER_F = false;
+    optimize(): void {}
+  }

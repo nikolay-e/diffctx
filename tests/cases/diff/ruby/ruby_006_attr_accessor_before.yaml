@@ -1,0 +1,44 @@
+lib/user.rb: |
+  class User
+    attr_accessor :name, :email
+    attr_reader :id, :created_at
+
+    def initialize(name:, email:, id: nil)
+      @id = id || SecureRandom.uuid
+      @name = name
+      @email = email
+      @created_at = Time.now
+    end
+
+    def to_h
+      { id: @id, name: @name, email: @email, created_at: @created_at }
+    end
+
+    def valid?
+      !@name.nil? && !@name.empty? && @email&.include?('@')
+    end
+  end
+app.rb: |
+  puts 'Hello'
+lib/garbage_rate_limiter.rb: |
+  GARBAGE_RUBY_006_BUCKET_SIZE_A = "token_bucket"
+  GARBAGE_RUBY_006_REFILL_RATE_B = "per_second"
+
+  class GarbageRateLimiter
+    GARBAGE_RUBY_006_WINDOW_SIZE_C = 60
+
+    def allow?(client_id)
+      GARBAGE_RUBY_006_BUCKET_SIZE_A
+    end
+  end
+lib/garbage_feature_flag.rb: |
+  GARBAGE_RUBY_006_FLAG_STORE_D = "redis_backed"
+  GARBAGE_RUBY_006_DEFAULT_STATE_E = "disabled"
+
+  class GarbageFeatureFlagService
+    GARBAGE_RUBY_006_CACHE_TTL_F = 300
+
+    def enabled?(flag_name)
+      GARBAGE_RUBY_006_DEFAULT_STATE_E
+    end
+  end

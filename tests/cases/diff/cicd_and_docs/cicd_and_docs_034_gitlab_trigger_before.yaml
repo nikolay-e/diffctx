@@ -1,0 +1,48 @@
+.gitlab-ci.yml: |
+  stages:
+    - build
+    - deploy
+
+  build:
+    stage: build
+    script:
+      - npm ci
+      - npm run build
+
+  deploy:
+    stage: deploy
+    script:
+      - ./deploy.sh
+
+deploy.sh: |
+  #!/bin/bash
+  set -e
+  echo "Running local deploy..."
+  rsync -avz dist/ server:/app/
+
+package.json: |
+  {
+    "name": "gitlab-trigger-app",
+    "version": "1.0.0",
+    "scripts": {
+      "build": "esbuild src/index.ts --bundle --outdir=dist"
+    }
+  }
+
+garbage_pipeline_orchestrator.ts: |
+  const GARBAGE_CICD_DOCS_034_ORCHESTRATOR_MARKER_A = "dag";
+  const GARBAGE_CICD_DOCS_034_QUEUE_MARKER_B = "rabbitmq";
+
+  class GarbagePipelineOrchestrator {
+    static GARBAGE_CICD_DOCS_034_ASYNC_MARKER_C = true;
+    orchestrate(): void {}
+  }
+
+garbage_pipeline_monitor.ts: |
+  const GARBAGE_CICD_DOCS_034_MONITOR_MARKER_D = "prometheus";
+  const GARBAGE_CICD_DOCS_034_ALERT_MARKER_E = "slack";
+
+  class GarbagePipelineMonitor {
+    static GARBAGE_CICD_DOCS_034_INTERVAL_MARKER_F = 30;
+    monitor(): void {}
+  }

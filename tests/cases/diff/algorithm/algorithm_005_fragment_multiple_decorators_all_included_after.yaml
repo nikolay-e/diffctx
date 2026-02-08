@@ -1,0 +1,79 @@
+decorators/base.py: |
+  from functools import wraps
+  from typing import Callable, Any, TypeVar
+  import time
+  import logging
+
+  F = TypeVar('F', bound=Callable[..., Any])
+
+  def timing(func: F) -> F:
+      @wraps(func)
+      def wrapper(*args: Any, **kwargs: Any) -> Any:
+          start = time.perf_counter()
+          result = func(*args, **kwargs)
+          elapsed = time.perf_counter() - start
+          logging.info(f"{func.__name__} took {elapsed:.4f}s")
+          return result
+      return wrapper
+
+  def validate_input(func: F) -> F:
+      @wraps(func)
+      def wrapper(*args: Any, **kwargs: Any) -> Any:
+          if not args and not kwargs:
+              raise ValueError("No input provided")
+          return func(*args, **kwargs)
+      return wrapper
+
+  def cache_result(func: F) -> F:
+      cache = {}
+      @wraps(func)
+      def wrapper(*args: Any, **kwargs: Any) -> Any:
+          key = (args, tuple(sorted(kwargs.items())))
+          if key not in cache:
+              cache[key] = func(*args, **kwargs)
+          return cache[key]
+      return wrapper
+
+services/data_processor.py: |
+  from decorators.base import timing, validate_input, cache_result
+  from typing import List, Dict, Any, Optional
+
+  class DataProcessor:
+      def __init__(self, config: Dict[str, Any]):
+          self.config = config
+          self.batch_size = config.get("batch_size", 100)
+
+      @timing
+      @validate_input
+      @cache_result
+      def process_batch(self, items: List[Dict], filter_fn: Optional[Callable] = None) -> List[Dict]:
+          results = []
+          for item in items:
+              if filter_fn and not filter_fn(item):
+                  continue
+              processed = self._transform_item(item)
+              results.append(processed)
+          return results
+
+      def _transform_item(self, item: Dict) -> Dict:
+          return {"id": item.get("id"), "processed": True, "version": 2}
+
+garbage_logging.py: |
+  GARBAGE_ALGO_005_LOGGING_MARKER_A = "logging"
+  GARBAGE_ALGO_005_HANDLER_MARKER_B = True
+
+  class LogHandler:
+      GARBAGE_ALGO_005_LEVEL_MARKER_C = "DEBUG"
+
+      def log(self, message: str) -> None:
+          pass
+
+garbage_events.py: |
+  GARBAGE_ALGO_005_EVENT_MARKER_D = "event"
+  GARBAGE_ALGO_005_LISTENER_MARKER_E = []
+
+  class EventEmitter:
+      GARBAGE_ALGO_005_EMIT_MARKER_F = True
+
+      def emit(self, event: str) -> None:
+          pass

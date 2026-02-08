@@ -1,0 +1,13 @@
+rds.tf: |
+  resource "aws_db_instance" "main" {
+    identifier        = "mydb"
+    engine            = "postgres"
+    engine_version    = "15.4"
+    instance_class    = "db.t3.medium"
+    allocated_storage = 50
+  }
+src/db.py: |
+  import psycopg2
+
+  def connect():
+      return psycopg2.connect(host="mydb.example.com", database="mydb")

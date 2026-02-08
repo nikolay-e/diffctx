@@ -1,0 +1,56 @@
+src/api_handlers.py: |
+  from dataclasses import dataclass
+  from typing import Optional
+  import json
+
+  @dataclass
+  class ApiResponse:
+      status: str
+      data: Optional[dict] = None
+      error: Optional[str] = None
+      meta: Optional[dict] = None
+
+      def to_json(self) -> str:
+          result = {"status": self.status}
+          if self.data is not None:
+              result["data"] = self.data
+          if self.error is not None:
+              result["error"] = self.error
+          if self.meta is not None:
+              result["meta"] = self.meta
+          return json.dumps(result, indent=2)
+
+  class UserApiHandler:
+      def __init__(self):
+          self.users = {
+              1: {"id": 1, "name": "Admin", "role": "admin"},
+              2: {"id": 2, "name": "User", "role": "user"},
+          }
+
+      def get_user(self, user_id: int) -> ApiResponse:
+          if user_id not in self.users:
+              return ApiResponse(
+                  status="error",
+                  error=f"User {user_id} not found",
+                  meta={"request_id": "req_123"}
+              )
+          return ApiResponse(
+              status="success",
+              data=self.users[user_id],
+              meta={"request_id": "req_123", "cached": False}
+          )
+
+      def list_users(self, page: int = 1, limit: int = 10) -> ApiResponse:
+          users = list(self.users.values())
+          return ApiResponse(
+              status="success",
+              data={"users": users, "total": len(users)},
+              meta={"page": page, "limit": limit}
+          )
+tests/test_api_handlers.py: |
+  from src.api_handlers import UserApiHandler
+
+  def test_get_user_exists():
+      handler = UserApiHandler()
+      response = handler.get_user(1)
+      assert response.status == "success"

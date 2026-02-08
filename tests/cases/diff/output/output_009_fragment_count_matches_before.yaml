@@ -1,0 +1,24 @@
+a.py: |
+  def a():
+      pass
+b.py: |
+  def b():
+      pass
+garbage_auditing.py: |
+  GARBAGE_OUT_009_AUDIT_MARKER_A = "auditing"
+  GARBAGE_OUT_009_TRAIL_MARKER_B = True
+
+  class AuditLogger:
+      GARBAGE_OUT_009_LOGGER_CLASS_C = "logger"
+
+      def log_action(self, user: str, action: str) -> None:
+          pass
+garbage_compliance.py: |
+  GARBAGE_OUT_009_COMPLIANCE_MARKER_D = "compliance"
+  GARBAGE_OUT_009_POLICY_MARKER_E = 7
+
+  class ComplianceChecker:
+      GARBAGE_OUT_009_CHECKER_CLASS_F = True
+
+      def validate(self, record: dict) -> bool:
+          return True

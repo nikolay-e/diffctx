@@ -1,0 +1,41 @@
+config.sh: |
+  #!/bin/bash
+
+  export DB_HOST="localhost"
+  export DB_PORT="5432"
+  export DB_NAME="myapp"
+  export LOG_LEVEL="info"
+
+  get_connection_string() {
+      echo "postgres://${DB_HOST}:${DB_PORT}/${DB_NAME}"
+  }
+deploy.sh: |
+  #!/bin/bash
+  source ./config.sh
+  echo "Deploying..."
+unrelated/garbage_prometheus.sh: |
+  #!/bin/bash
+  # GARBAGE_SH_007_PROMETHEUS_SCRAPE_A
+  GARBAGE_SH_007_METRICS_PORT_B="9090"
+
+  garbage_scrape_metrics_007() {
+      local target=$1
+      echo "Scraping $target:$GARBAGE_SH_007_METRICS_PORT_B"
+  }
+
+  garbage_push_gateway_007() {
+      local metric=$1
+      echo "Pushed: $metric"
+  }
+unrelated/garbage_vault_seal.sh: |
+  #!/bin/bash
+  # GARBAGE_SH_007_VAULT_SEAL_C
+  GARBAGE_SH_007_VAULT_ADDR_D="http://127.0.0.1:8200"
+
+  garbage_seal_status_007() {
+      echo "Vault sealed: false"
+  }
+
+  garbage_rotate_key_007() {
+      echo "Key rotated"
+  }

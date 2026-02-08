@@ -1,0 +1,17 @@
+Chart.yaml: |
+  apiVersion: v2
+  name: myapp
+  version: 1.0.0
+  dependencies:
+    - name: frontend
+      version: 1.0.0
+      repository: file://./charts/frontend
+    - name: backend
+      version: 1.0.0
+      repository: file://./charts/backend
+    - name: redis
+      version: 17.0.0
+      repository: https://charts.bitnami.com/bitnami
+unrelated.py: |
+  garbage_marker_12345 = True
+  unused_marker_67890 = False

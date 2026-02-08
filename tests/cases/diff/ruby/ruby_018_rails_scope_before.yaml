@@ -1,0 +1,55 @@
+lib/scopes.rb: |
+  module Scopes
+    def self.included(base)
+      base.extend(ClassMethods)
+    end
+
+    module ClassMethods
+      def scope(name, body)
+        define_singleton_method(name, &body)
+      end
+    end
+  end
+app/models/product.rb: |
+  class Product
+    attr_accessor :name, :price, :active, :category
+
+    def initialize(name:, price:, active: true, category: nil)
+      @name = name
+      @price = price
+      @active = active
+      @category = category
+    end
+
+    def self.all
+      []
+    end
+  end
+app/models/user.rb: |
+  class User
+    def initialize(name:)
+      @name = name
+    end
+  end
+lib/garbage_qr_code.rb: |
+  GARBAGE_RUBY_018_QR_VERSION_A = "version_10"
+  GARBAGE_RUBY_018_ERROR_LEVEL_B = "H"
+
+  class GarbageQrCodeRenderer
+    GARBAGE_RUBY_018_MODULE_SIZE_C = 4
+
+    def render(data)
+      GARBAGE_RUBY_018_QR_VERSION_A
+    end
+  end
+lib/garbage_captcha.rb: |
+  GARBAGE_RUBY_018_CAPTCHA_TYPE_D = "recaptcha_v3"
+  GARBAGE_RUBY_018_SITE_KEY_E = "6LeIxAcTAAAA"
+
+  class GarbageCaptchaValidator
+    GARBAGE_RUBY_018_MIN_SCORE_F = 5
+
+    def validate(token)
+      GARBAGE_RUBY_018_CAPTCHA_TYPE_D
+    end
+  end

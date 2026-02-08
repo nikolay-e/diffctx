@@ -1,0 +1,24 @@
+User.cs: |
+  public class User
+  {
+      public string Name { get; set; }
+      public int Age { get; set; }
+      public bool IsActive { get; set; }
+  }
+Validator.cs: |
+  // Initial
+  class Validator { }
+GarbageVisitor.cs: |
+  public class GarbageVisitor
+  {
+      public const string GARBAGE_JVM_022_VISITOR_MARKER_A = "marker";
+      public const string GARBAGE_JVM_022_ACCEPT_MARKER_B = "marker";
+      public void Noop() {}
+  }
+GarbageTreeWalker.cs: |
+  public class GarbageTreeWalker
+  {
+      public const string GARBAGE_JVM_022_TRAVERSE_MARKER_C = "marker";
+      public const string GARBAGE_JVM_022_WALK_MARKER_D = "marker";
+      public void Noop() {}
+  }

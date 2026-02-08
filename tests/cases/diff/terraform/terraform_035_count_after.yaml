@@ -1,0 +1,14 @@
+main.tf: |
+  variable "instance_count" {
+    default = 3
+  }
+
+  resource "aws_instance" "web" {
+    count         = var.instance_count
+    ami           = var.ami_id
+    instance_type = "t3.micro"
+
+    tags = {
+      Name = "web-${count.index}"
+    }
+  }

@@ -1,0 +1,64 @@
+src/userHandler.ts: |
+  import { Request, Response } from 'express';
+
+  export interface UserDTO {
+      id: string;
+      name: string;
+      email: string;
+  }
+
+  export async function getUserHandler(req: Request, res: Response): Promise<void> {
+      const { id } = req.params;
+      const user: UserDTO = { id, name: 'John Doe', email: 'john@example.com' };
+      res.json(user);
+  }
+
+  export async function listUsersHandler(req: Request, res: Response): Promise<void> {
+      const page = parseInt(req.query.page as string) || 1;
+      const limit = parseInt(req.query.limit as string) || 10;
+      res.json({ page, limit, users: [] });
+  }
+src/routes.ts: |
+  import { Router } from 'express';
+  import { getUserHandler, listUsersHandler } from './userHandler';
+
+  export const userRouter = Router();
+
+  userRouter.get('/users', listUsersHandler);
+  userRouter.get('/users/:id', getUserHandler);
+src/unrelated/cors.ts: |
+  const GARBAGE_JSX_022_CORS_CONFIG_A = 'cors_garbage_marker';
+
+  export class GarbageCorsHandler {
+      private allowedOrigins: string[] = [];
+
+      addOrigin(origin: string): void {
+          this.allowedOrigins.push(origin);
+      }
+
+      isAllowed(origin: string): boolean {
+          return this.allowedOrigins.includes(origin);
+      }
+  }
+
+  export function GARBAGE_JSX_022_APPLY_CORS_B(): void {
+      console.log('GARBAGE_JSX_022_CORS_OUTPUT_C');
+  }
+src/unrelated/session.ts: |
+  const GARBAGE_JSX_022_SESSION_STORE_D = { ttl: 3600, secure: true };
+
+  export class GARBAGE_JSX_022_SESSION_MANAGER_E {
+      private sessions: Map<string, unknown> = new Map();
+
+      create(id: string): void {
+          this.sessions.set(id, { created: Date.now() });
+      }
+
+      destroy(id: string): void {
+          this.sessions.delete(id);
+      }
+  }
+
+  export function GARBAGE_JSX_022_CLEANUP_SESSIONS_F(): void {
+      console.log('cleaning up sessions');
+  }

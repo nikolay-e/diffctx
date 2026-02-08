@@ -1,0 +1,100 @@
+build.gradle: |
+  plugins {
+      id 'java'
+      id 'org.springframework.boot' version '3.2.0'
+  }
+
+  group = 'com.example'
+  version = '1.0.0'
+
+  java {
+      sourceCompatibility = JavaVersion.VERSION_17
+      targetCompatibility = JavaVersion.VERSION_17
+  }
+
+  repositories {
+      mavenCentral()
+  }
+
+  dependencies {
+      implementation 'org.springframework.boot:spring-boot-starter-web'
+  }
+
+  test {
+      useJUnitPlatform()
+  }
+src/main/java/com/example/webapp/WebApplication.java: |
+  package com.example.webapp;
+
+  import org.springframework.boot.SpringApplication;
+  import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+  @SpringBootApplication
+  public class WebApplication {
+      public static void main(String[] args) {
+          SpringApplication.run(WebApplication.class, args);
+      }
+  }
+src/main/java/com/example/webapp/controller/IndexController.java: |
+  package com.example.webapp.controller;
+
+  import org.springframework.web.bind.annotation.GetMapping;
+  import org.springframework.web.bind.annotation.RestController;
+
+  @RestController
+  public class IndexController {
+      @GetMapping("/")
+      public String index() {
+          return "Welcome to the web application";
+      }
+  }
+src/main/java/com/example/webapp/unrelated/MetricsExporter.java: |
+  package com.example.webapp.unrelated;
+
+  import java.util.concurrent.ConcurrentHashMap;
+  import java.util.Map;
+
+  public class MetricsExporter {
+      public static final String GARBAGE_JAVA_022_METRICS_A = "metrics_export_marker";
+      private static final String GARBAGE_JAVA_022_METRICS_B = "metrics_internal_tag";
+
+      private final Map<String, Long> counters = new ConcurrentHashMap<>();
+
+      public void increment(String metric) {
+          counters.merge(metric, 1L, Long::sum);
+      }
+
+      public long getCount(String metric) {
+          return counters.getOrDefault(metric, 0L);
+      }
+
+      public void reset() {
+          counters.clear();
+          System.out.println(GARBAGE_JAVA_022_METRICS_A + GARBAGE_JAVA_022_METRICS_B);
+      }
+  }
+src/main/java/com/example/webapp/unrelated/FeatureFlags.java: |
+  package com.example.webapp.unrelated;
+
+  import java.util.Set;
+  import java.util.HashSet;
+
+  public class FeatureFlags {
+      public static final String GARBAGE_JAVA_022_FLAGS_C = "feature_flags_marker";
+      private static final String GARBAGE_JAVA_022_FLAGS_D = "flags_internal_tag";
+
+      private final Set<String> enabledFlags = new HashSet<>();
+
+      public void enable(String flag) {
+          enabledFlags.add(flag);
+      }
+
+      public boolean isEnabled(String flag) {
+          return enabledFlags.contains(flag);
+      }
+
+      public void disableAll() {
+          enabledFlags.clear();
+          System.out.println(GARBAGE_JAVA_022_FLAGS_C + GARBAGE_JAVA_022_FLAGS_D);
+      }
+  }

@@ -1,0 +1,53 @@
+src/models.py: |
+  class User:
+      def __init__(self, name, email):
+          self.name = name
+          self.email = email
+
+      def display_name(self):
+          return f"{self.name} <{self.email}>"
+
+      def is_valid(self):
+          return "@" in self.email and len(self.name) > 0
+
+      def to_dict(self):
+          return {"name": self.name, "email": self.email}
+
+tests/test_models.py: |
+  import pytest
+  from src.models import User
+
+  @pytest.fixture
+  def sample_user():
+      return User("Alice", "alice@example.com")
+
+  @pytest.fixture
+  def admin_user():
+      return User("Admin", "admin@example.com")
+
+  def test_display_name(sample_user):
+      assert sample_user.display_name() == "Alice <alice@example.com>"
+
+  def test_is_valid(sample_user):
+      assert sample_user.is_valid() is True
+
+  def test_to_dict(sample_user):
+      assert sample_user.to_dict() == {"name": "Alice", "email": "alice@example.com"}
+
+garbage_fixture_factory.py: |
+  GARBAGE_COMP_019_FAKER_LOCALE_A = "en_US"
+  GARBAGE_COMP_019_SEED_VALUE_B = "deterministic"
+
+  class GarbageFixtureFactory:
+      GARBAGE_COMP_019_LAZY_BUILD_C = True
+      def create(self):
+          pass
+
+garbage_snapshot_manager.py: |
+  GARBAGE_COMP_019_DIFF_FORMAT_D = "unified"
+  GARBAGE_COMP_019_UPDATE_FLAG_E = "interactive"
+
+  class GarbageSnapshotManager:
+      GARBAGE_COMP_019_PRUNE_STALE_F = False
+      def snapshot(self):
+          pass

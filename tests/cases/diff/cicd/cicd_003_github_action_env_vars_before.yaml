@@ -1,0 +1,155 @@
+.github/workflows/deploy.yml: |
+  name: Deploy
+  on:
+    push:
+      branches: [main]
+    workflow_dispatch:
+      inputs:
+        environment:
+          description: 'Target environment'
+          required: true
+          default: 'staging'
+          type: choice
+          options:
+            - staging
+            - production
+  jobs:
+    deploy:
+      runs-on: ubuntu-latest
+      env:
+        NODE_ENV: production
+      steps:
+        - uses: actions/checkout@v4
+        - name: Setup Node.js
+          uses: actions/setup-node@v4
+          with:
+            node-version: '20'
+            cache: 'npm'
+        - run: npm ci
+        - run: npm run build
+        - run: npm run deploy
+
+src/deploy.ts: |
+  import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+  import { CloudFrontClient, CreateInvalidationCommand } from '@aws-sdk/client-cloudfront';
+  import * as fs from 'fs';
+  import * as path from 'path';
+
+  interface DeployConfig {
+    environment: string;
+    region: string;
+    bucket: string;
+    distributionId: string;
+  }
+
+  function getConfig(): DeployConfig {
+    const env = process.env.NODE_ENV || 'development';
+    return {
+      environment: env,
+      region: process.env.AWS_REGION || 'us-east-1',
+      bucket: process.env.S3_BUCKET || `app-${env}`,
+      distributionId: process.env.CLOUDFRONT_ID || '',
+    };
+  }
+
+  async function uploadToS3(config: DeployConfig, filePath: string): Promise<void> {
+    const client = new S3Client({ region: config.region });
+    const content = fs.readFileSync(filePath);
+    const key = path.basename(filePath);
+
+    await client.send(new PutObjectCommand({
+      Bucket: config.bucket,
+      Key: key,
+      Body: content,
+    }));
+
+    console.log(`Uploaded ${key} to ${config.bucket}`);
+  }
+
+  async function invalidateCache(config: DeployConfig): Promise<void> {
+    if (!config.distributionId) {
+      console.log('No CloudFront distribution configured');
+      return;
+    }
+
+    const client = new CloudFrontClient({ region: config.region });
+    await client.send(new CreateInvalidationCommand({
+      DistributionId: config.distributionId,
+      InvalidationBatch: {
+        CallerReference: Date.now().toString(),
+        Paths: { Quantity: 1, Items: ['/*'] },
+      },
+    }));
+
+    console.log('Cache invalidation started');
+  }
+
+  async function main(): Promise<void> {
+    const config = getConfig();
+    console.log(`Deploying to ${config.environment}`);
+
+    const distDir = './dist';
+    const files = fs.readdirSync(distDir);
+
+    for (const file of files) {
+      await uploadToS3(config, path.join(distDir, file));
+    }
+
+    await invalidateCache(config);
+    console.log('Deployment completed');
+  }
+
+  main().catch(console.error);
+
+src/config/environments.ts: |
+  export interface EnvironmentConfig {
+    apiUrl: string;
+    logLevel: string;
+    enableMetrics: boolean;
+  }
+
+  export const environments: Record<string, EnvironmentConfig> = {
+    development: {
+      apiUrl: 'http://localhost:3000',
+      logLevel: 'debug',
+      enableMetrics: false,
+    },
+    staging: {
+      apiUrl: 'https://staging-api.example.com',
+      logLevel: 'info',
+      enableMetrics: true,
+    },
+    production: {
+      apiUrl: 'https://api.example.com',
+      logLevel: 'warn',
+      enableMetrics: true,
+    },
+  };
+
+  export function getEnvironmentConfig(env: string): EnvironmentConfig {
+    return environments[env] || environments.development;
+  }
+
+garbage_rollback.ts: |
+  GARBAGE_CICD_003_ROLLBACK_MARKER_A = "rollback";
+  GARBAGE_CICD_003_VERSION_MARKER_B = "v1.0.0";
+
+  class GarbageRollbackManager {
+    GARBAGE_CICD_003_HISTORY_MARKER_C: string[] = [];
+
+    rollback(): void {
+      console.log("Rolling back...");
+    }
+  }
+
+garbage_notifications.ts: |
+  GARBAGE_CICD_003_SLACK_MARKER_D = "webhook";
+  GARBAGE_CICD_003_EMAIL_MARKER_E = true;
+
+  class GarbageNotificationService {
+    GARBAGE_CICD_003_CHANNELS_MARKER_F: string[] = [];
+
+    notify(): void {
+      console.log("Notifying...");
+    }
+  }

@@ -1,0 +1,91 @@
+src/utils.ts: |
+  export function formatPrice(price: number): string {
+      return new Intl.NumberFormat('en-US', {
+          style: 'currency',
+          currency: 'USD',
+      }).format(price);
+  }
+
+  export function calculateDiscount(price: number, discount: number): number {
+      return price * (1 - discount / 100);
+  }
+src/PriceCalculator.vue: |
+  <template>
+      <div class="price-calculator">
+          <input v-model.number="basePrice" type="number" placeholder="Price" />
+          <input v-model.number="discountPercent" type="number" placeholder="Discount" />
+          <p>Original: {{ formattedPrice }}</p>
+          <p>Discounted: {{ formattedDiscountedPrice }}</p>
+          <p>Savings: {{ formattedSavings }}</p>
+      </div>
+  </template>
+
+  <script setup lang="ts">
+  import { ref, computed } from 'vue';
+  import { formatPrice, calculateDiscount } from './utils';
+
+  const basePrice = ref(100);
+  const discountPercent = ref(10);
+
+  const discountedPrice = computed(() => {
+      return calculateDiscount(basePrice.value, discountPercent.value);
+  });
+
+  const savings = computed(() => {
+      return basePrice.value - discountedPrice.value;
+  });
+
+  const formattedPrice = computed(() => formatPrice(basePrice.value));
+  const formattedDiscountedPrice = computed(() => formatPrice(discountedPrice.value));
+  const formattedSavings = computed(() => formatPrice(savings.value));
+  </script>
+src/unrelated/color_utils.ts: |
+  // GARBAGE_FE_027_COLOR_A
+  export interface HSL {
+      h: number;
+      s: number;
+      l: number;
+  }
+
+  // GARBAGE_FE_027_COLOR_B
+  export function hslToHex(hsl: HSL): string {
+      const { h, s, l } = hsl;
+      const a = s * Math.min(l, 1 - l);
+      const f = (n: number) => {
+          const k = (n + h / 30) % 12;
+          return l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1);
+      };
+      return '#' + [f(0), f(8), f(4)]
+          .map(x => Math.round(x * 255).toString(16).padStart(2, '0'))
+          .join('');
+  }
+
+  // GARBAGE_FE_027_CONTRAST_C
+  export function contrastRatio(fg: HSL, bg: HSL): number {
+      return Math.abs(fg.l - bg.l);
+  }
+src/unrelated/debounce_utils.ts: |
+  // GARBAGE_FE_027_DEBOUNCE_D
+  export function debounce<T extends (...args: any[]) => void>(
+      fn: T, delay: number
+  ): T {
+      let timer: ReturnType<typeof setTimeout>;
+      return ((...args: any[]) => {
+          clearTimeout(timer);
+          timer = setTimeout(() => fn(...args), delay);
+      }) as T;
+  }
+
+  // GARBAGE_FE_027_THROTTLE_E
+  export function throttle<T extends (...args: any[]) => void>(
+      fn: T, limit: number
+  ): T {
+      let inThrottle = false;
+      return ((...args: any[]) => {
+          if (!inThrottle) {
+              fn(...args);
+              inThrottle = true;
+              setTimeout(() => { inThrottle = false; }, limit);
+          }
+      }) as T;
+  }

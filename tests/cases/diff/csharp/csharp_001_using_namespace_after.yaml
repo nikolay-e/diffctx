@@ -1,0 +1,70 @@
+Utilities/StringHelper.cs: |
+  using System;
+  using System.Linq;
+
+  namespace MyApp.Utilities;
+
+  public static class StringHelper
+  {
+      public static string Capitalize(string input)
+      {
+          if (string.IsNullOrEmpty(input)) return input;
+          return char.ToUpper(input[0]) + input.Substring(1);
+      }
+
+      public static string Reverse(string input)
+      {
+          char[] chars = input.ToCharArray();
+          Array.Reverse(chars);
+          return new string(chars);
+      }
+
+      public static string ToCamelCase(string input)
+      {
+          var words = input.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+          return string.Join("", words.Select((w, i) =>
+              i == 0 ? w.ToLower() : Capitalize(w)));
+      }
+  }
+Program.cs: |
+  using System;
+  using MyApp.Utilities;
+
+  class Program
+  {
+      static void Main()
+      {
+          var result = StringHelper.Capitalize("hello");
+          var camel = StringHelper.ToCamelCase("hello world example");
+          Console.WriteLine($"{result} - {camel}");
+      }
+  }
+Unrelated/CacheWarmer.cs: |
+  using System;
+
+  namespace MyApp.Unrelated;
+
+  public class CacheWarmer
+  {
+      private const string GARBAGE_CS_001_CACHE_WARMER_A = "cache_warmup_marker";
+
+      public void WarmUp()
+      {
+          Console.WriteLine(GARBAGE_CS_001_CACHE_WARMER_A);
+      }
+  }
+Unrelated/HealthCheck.cs: |
+  using System;
+
+  namespace MyApp.Unrelated;
+
+  public class HealthCheck
+  {
+      private const string GARBAGE_CS_001_HEALTH_CHECK_B = "health_check_marker";
+
+      public bool IsHealthy()
+      {
+          Console.WriteLine(GARBAGE_CS_001_HEALTH_CHECK_B);
+          return true;
+      }
+  }

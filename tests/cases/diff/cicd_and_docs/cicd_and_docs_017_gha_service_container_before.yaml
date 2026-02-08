@@ -1,0 +1,64 @@
+tests/db.test.js: |
+  const { Pool } = require('pg');
+
+  describe('Database', () => {
+    let pool;
+
+    beforeAll(() => {
+      pool = new Pool({ connectionString: process.env.DATABASE_URL });
+    });
+
+    after all(async () => {
+      await pool.end();
+    });
+
+    test('connects to database', async () => {
+      const result = await pool.query('SELECT 1 as value');
+      expect(result.rows[0].value).toBe(1);
+    });
+
+    test('creates table', async () => {
+      await pool.query('CREATE TABLE IF NOT EXISTS test_table (id SERIAL PRIMARY KEY)');
+    });
+  });
+
+.github/workflows/test.yml: |
+  name: Test
+  on: [push, pull_request]
+  jobs:
+    test:
+      runs-on: ubuntu-latest
+      steps:
+        - uses: actions/checkout@v4
+        - run: npm ci
+        - run: npm test
+
+package.json: |
+  {
+    "name": "database-tests-app",
+    "version": "1.0.0",
+    "scripts": {
+      "test": "jest"
+    },
+    "dependencies": {
+      "pg": "^8.11.0"
+    }
+  }
+
+garbage_docker.ts: |
+  const GARBAGE_CICD_DOCS_017_DOCKER_MARKER_A = "compose";
+  const GARBAGE_CICD_DOCS_017_NETWORK_MARKER_B = "bridge";
+
+  class GarbageDockerService {
+    static GARBAGE_CICD_DOCS_017_VOLUME_MARKER_C = "/data";
+    start(): void {}
+  }
+
+garbage_container.ts: |
+  const GARBAGE_CICD_DOCS_017_CONTAINER_MARKER_D = "alpine";
+  const GARBAGE_CICD_DOCS_017_ENTRYPOINT_MARKER_E = "/bin/sh";
+
+  class GarbageContainerManager {
+    static GARBAGE_CICD_DOCS_017_MEMORY_MARKER_F = "512m";
+    run(): void {}
+  }

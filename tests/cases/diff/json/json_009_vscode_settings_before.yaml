@@ -1,0 +1,91 @@
+.vscode/settings.json: |
+  {
+    "editor.formatOnSave": true,
+    "editor.tabSize": 4,
+    "python.linting.enabled": true,
+    "python.defaultInterpreterPath": "./venv/bin/python",
+    "files.exclude": {
+      "**/__pycache__": true,
+      "**/*.pyc": true
+    }
+  }
+src/main.py: |
+  import os
+  from pathlib import Path
+  from typing import Optional
+
+  from src.config import load_config
+  from src.processor import DataProcessor
+
+
+  def main():
+      config_path = Path(os.environ.get("CONFIG_PATH", "config.yaml"))
+      config = load_config(config_path)
+      processor = DataProcessor(config)
+      results = processor.run()
+      print(f"Processed {len(results)} items")
+      return results
+
+
+  def find_project_root(start: Optional[Path] = None) -> Path:
+      current = start or Path.cwd()
+      while current != current.parent:
+          if (current / "pyproject.toml").exists():
+              return current
+          current = current.parent
+      raise FileNotFoundError("Could not find project root")
+src/config.py: |
+  import yaml
+  from pathlib import Path
+  from typing import Any
+
+
+  def load_config(path: Path) -> dict[str, Any]:
+      with open(path) as f:
+          raw = yaml.safe_load(f)
+      return validate_config(raw)
+
+
+  def validate_config(raw: dict) -> dict[str, Any]:
+      required = ["input_dir", "output_dir", "format"]
+      missing = [k for k in required if k not in raw]
+      if missing:
+          raise ValueError(f"Missing config keys: {', '.join(missing)}")
+      return raw
+unrelated/scraper.py: |
+  GARBAGE_JSON_009_SCRAPE_TIMEOUT_A = 30
+
+  class GARBAGE_JSON_009_WEB_SCRAPER_B:
+      def __init__(self, timeout=None):
+          self.timeout = timeout or GARBAGE_JSON_009_SCRAPE_TIMEOUT_A
+          self.visited = set()
+
+      def fetch(self, url):
+          self.visited.add(url)
+          return f"<html>content of {url}</html>"
+
+      def get_visited(self):
+          return list(self.visited)
+
+  def GARBAGE_JSON_009_SCRAPE_URLS_C(urls):
+      scraper = GARBAGE_JSON_009_WEB_SCRAPER_B()
+      return [scraper.fetch(u) for u in urls]
+unrelated/converter.py: |
+  GARBAGE_JSON_009_CONVERT_FORMAT_D = "utf-8"
+
+  class GARBAGE_JSON_009_FILE_CONVERTER_E:
+      def __init__(self, encoding=None):
+          self.encoding = encoding or GARBAGE_JSON_009_CONVERT_FORMAT_D
+          self.converted = []
+
+      def convert(self, content):
+          result = content.encode(self.encoding).decode(self.encoding)
+          self.converted.append(result)
+          return result
+
+      def get_stats(self):
+          return {"total": len(self.converted)}
+
+  def GARBAGE_JSON_009_BATCH_CONVERT_F(files):
+      converter = GARBAGE_JSON_009_FILE_CONVERTER_E()
+      return [converter.convert(f) for f in files]

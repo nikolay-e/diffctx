@@ -1,0 +1,50 @@
+.github/workflows/release.yml: |
+  name: Release
+  on:
+    push:
+      tags: ['v*']
+  jobs:
+    release:
+      runs-on: ubuntu-latest
+      permissions:
+        contents: write
+        packages: write
+      steps:
+        - uses: actions/checkout@v4
+        - run: npm run build
+        - name: Create Release
+          uses: softprops/action-gh-release@v1
+
+package.json: |
+  {
+    "name": "release-automation",
+    "version": "1.0.0",
+    "scripts": {
+      "build": "tsc",
+      "release": "./scripts/release.sh"
+    }
+  }
+
+scripts/release.sh: |
+  #!/bin/bash
+  set -e
+  echo "Creating release..."
+  npm pack
+
+garbage_rbac.ts: |
+  const GARBAGE_CICD_DOCS_014_RBAC_MARKER_A = "admin";
+  const GARBAGE_CICD_DOCS_014_SCOPE_MARKER_B = "repo:write";
+
+  class GarbageRBACService {
+    static GARBAGE_CICD_DOCS_014_INHERIT_MARKER_C = true;
+    checkPermission(): boolean { return false; }
+  }
+
+garbage_access.ts: |
+  const GARBAGE_CICD_DOCS_014_ACCESS_MARKER_D = "token";
+  const GARBAGE_CICD_DOCS_014_EXPIRY_MARKER_E = 3600;
+
+  class GarbageAccessControl {
+    static GARBAGE_CICD_DOCS_014_AUDIT_MARKER_F = true;
+    grant(): void {}
+  }

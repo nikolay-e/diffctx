@@ -1,0 +1,30 @@
+modules/vpc/main.tf: |
+  resource "aws_vpc" "main" {
+    cidr_block = var.cidr_block
+  }
+
+  output "vpc_id" {
+    value = aws_vpc.main.id
+  }
+modules/vpc/variables.tf: |
+  variable "cidr_block" {
+    type = string
+  }
+main.tf: |
+  # Main configuration placeholder
+deprecated/old_modules_GARBAGE_TF_mod468a.tf: |
+  # GARBAGE_TF_mod468a - Legacy module references
+  module "legacy_vpc_GARBAGE_TF_mod468a" {
+    source = "git::https://github.com/old-org/terraform-modules.git//vpc?ref=v0.1.0"
+    cidr   = "172.31.0.0/16"
+  }
+
+  module "legacy_rds_GARBAGE_TF_mod468a" {
+    source     = "./modules/legacy-rds"
+    vpc_id     = module.legacy_vpc_GARBAGE_TF_mod468a.vpc_id
+    db_name    = "legacy_db_GARBAGE_TF_mod468a"
+  }
+scripts/migrate_modules_GARBAGE_TF_mod468b.py: |
+  # GARBAGE_TF_mod468b - Module migration script
+  def migrate_legacy_modules_GARBAGE_TF_mod468b():
+      print("Migrating legacy modules GARBAGE_TF_mod468b")

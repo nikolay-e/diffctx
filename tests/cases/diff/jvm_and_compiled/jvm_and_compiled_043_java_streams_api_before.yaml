@@ -1,0 +1,29 @@
+src/main/java/com/example/DataProcessor.java: |
+  package com.example;
+
+  import java.util.ArrayList;
+  import java.util.List;
+
+  public class DataProcessor {
+      public List<String> filterActive(List<User> users) {
+          List<String> result = new ArrayList<>();
+          for (User user : users) {
+              if (user.isActive()) {
+                  result.add(user.getName());
+              }
+          }
+          return result;
+      }
+  }
+GarbageIterator.java: |
+  public class GarbageIterator {
+      public static final String GARBAGE_JVM_043_ITER_MARKER_A = "marker";
+      public static final String GARBAGE_JVM_043_CURSOR_MARKER_B = "marker";
+      public void noop() {}
+  }
+GarbageReducer.java: |
+  public class GarbageReducer {
+      public static final String GARBAGE_JVM_043_REDUCE_MARKER_C = "marker";
+      public static final String GARBAGE_JVM_043_FOLD_MARKER_D = "marker";
+      public void noop() {}
+  }

@@ -1,0 +1,32 @@
+User.swift: |
+  struct User: Codable, Equatable {
+      let id: String
+      let name: String
+      let email: String
+  }
+UserService.swift: |
+  import Foundation
+
+  class UserService {
+      func encode(user: User) throws -> Data {
+          let encoder = JSONEncoder()
+          return try encoder.encode(user)
+      }
+
+      func decode(data: Data) throws -> User {
+          let decoder = JSONDecoder()
+          return try decoder.decode(User.self, from: data)
+      }
+  }
+GarbageDelegatePattern.swift: |
+  class GarbageDelegatePattern {
+      static let GARBAGE_JVM_069_DELEGATE_MARKER_A = "marker"
+      static let GARBAGE_JVM_069_DATASOURCE_MARKER_B = "marker"
+      func noop() {}
+  }
+GarbageTargetAction.swift: |
+  class GarbageTargetAction {
+      static let GARBAGE_JVM_069_TARGET_MARKER_C = "marker"
+      static let GARBAGE_JVM_069_ACTION_MARKER_D = "marker"
+      func noop() {}
+  }

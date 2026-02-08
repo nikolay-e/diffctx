@@ -1,0 +1,39 @@
+Sources/Extensions/NumericExtensions.swift: |
+  extension Collection where Element: Numeric {
+      var sum: Element {
+          reduce(0, +)
+      }
+  }
+
+  extension Collection where Element: BinaryInteger {
+      var average: Double {
+          guard !isEmpty else { return 0 }
+          return Double(sum) / Double(count)
+      }
+  }
+Sources/Services/Calculator.swift: |
+  struct Calculator {
+      func placeholder() -> Int { 0 }
+  }
+Sources/Unrelated/GarbageAnalytics003.swift: |
+  let GARBAGE_SWIFT_003_FUNNEL_ID_A = "checkout_v3"
+  let GARBAGE_SWIFT_003_COHORT_SIZE_B = "1000"
+
+  class GarbageFunnelTracker003 {
+      static let GARBAGE_SWIFT_003_STEP_LIMIT_C = 20
+
+      func trackStep(step: Int) -> String {
+          return GARBAGE_SWIFT_003_FUNNEL_ID_A
+      }
+  }
+Sources/Unrelated/GarbageLogger003.swift: |
+  let GARBAGE_SWIFT_003_TRANSPORT_D = "grpc"
+  let GARBAGE_SWIFT_003_ENDPOINT_E = "logs.internal"
+
+  class GarbageLogTransport003 {
+      static let GARBAGE_SWIFT_003_TIMEOUT_MS_F = 5000
+
+      func send(payload: String) -> String {
+          return GARBAGE_SWIFT_003_TRANSPORT_D
+      }
+  }

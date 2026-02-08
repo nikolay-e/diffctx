@@ -1,0 +1,19 @@
+events.tf: |
+  resource "aws_cloudwatch_event_rule" "schedule" {
+    name                = "daily-cleanup"
+    schedule_expression = "cron(0 2 * * ? *)"
+  }
+
+  resource "aws_cloudwatch_event_target" "lambda" {
+    rule      = aws_cloudwatch_event_rule.schedule.name
+    target_id = "cleanup-lambda"
+    arn       = aws_lambda_function.cleanup.arn
+  }
+
+  resource "aws_lambda_permission" "eventbridge" {
+    statement_id  = "AllowEventBridge"
+    action        = "lambda:InvokeFunction"
+    function_name = aws_lambda_function.cleanup.function_name
+    principal     = "events.amazonaws.com"
+    source_arn    = aws_cloudwatch_event_rule.schedule.arn
+  }

@@ -1,0 +1,14 @@
+ExpensiveComputation.scala: |
+  object ExpensiveComputation {
+    def compute(input: Int): Int = {
+      Thread.sleep(100)
+      input * 2
+    }
+
+    def computeString(input: String): String = {
+      Thread.sleep(100)
+      input.toUpperCase
+    }
+  }
+AsyncProcessor.scala: |
+  class AsyncProcessor {}

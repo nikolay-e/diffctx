@@ -1,0 +1,109 @@
+openapi.yaml: |
+  openapi: 3.0.0
+  info:
+    title: Product API
+    version: 1.0.0
+  paths:
+    /products/{id}:
+      get:
+        summary: Get product by ID
+        parameters:
+          - name: id
+            in: path
+            required: true
+            schema:
+              type: integer
+        responses:
+          '200':
+            description: Product found
+            content:
+              application/json:
+                schema:
+                  $ref: '#/components/schemas/ProductResponse'
+          '404':
+            description: Product not found
+            content:
+              application/json:
+                schema:
+                  $ref: '#/components/schemas/Error'
+          '500':
+            description: Internal server error
+            content:
+              application/json:
+                schema:
+                  $ref: '#/components/schemas/Error'
+  components:
+    schemas:
+      ProductResponse:
+        type: object
+        required:
+          - id
+          - name
+          - price
+        properties:
+          id:
+            type: integer
+          name:
+            type: string
+          price:
+            type: number
+            format: float
+          description:
+            type: string
+      Error:
+        type: object
+        required:
+          - code
+          - message
+        properties:
+          code:
+            type: string
+          message:
+            type: string
+          details:
+            type: object
+
+src/serializers/product.py: |
+  from dataclasses import dataclass
+  from typing import Optional
+
+  @dataclass
+  class Product:
+      id: int
+      name: str
+      price: float
+      description: Optional[str] = None
+
+  def serialize_product(product: Product) -> dict:
+      return {
+          "id": product.id,
+          "name": product.name,
+          "price": product.price,
+          "description": product.description
+      }
+
+src/handlers/products.py: |
+  from flask import jsonify
+  from serializers.product import serialize_product
+
+  def get_product(product_id: int):
+      product = find_product_by_id(product_id)
+      return jsonify(serialize_product(product))
+
+garbage_response_formatter.ts: |
+  const GARBAGE_CICD_DOCS_053_FORMAT_MARKER_A = "json";
+  const GARBAGE_CICD_DOCS_053_MIME_MARKER_B = "application/json";
+
+  class GarbageResponseFormatter {
+    static GARBAGE_CICD_DOCS_053_PRETTY_MARKER_C = true;
+    format(): string { return ""; }
+  }
+
+garbage_response_validator.ts: |
+  const GARBAGE_CICD_DOCS_053_SCHEMA_MARKER_D = "draft-07";
+  const GARBAGE_CICD_DOCS_053_STRICT_MARKER_E = "strict";
+
+  class GarbageResponseValidator {
+    static GARBAGE_CICD_DOCS_053_COERCE_MARKER_F = false;
+    validate(): boolean { return true; }
+  }

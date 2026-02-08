@@ -1,0 +1,169 @@
+models/user.py: |
+  from typing import Optional, List, Dict, Any
+  from dataclasses import dataclass, field
+  from datetime import datetime, timedelta
+  from enum import Enum
+  import hashlib
+
+  class AccountStatus(Enum):
+      ACTIVE = "active"
+      SUSPENDED = "suspended"
+      PENDING = "pending"
+      DELETED = "deleted"
+
+  @dataclass
+  class UserPreferences:
+      theme: str = "light"
+      language: str = "en"
+      timezone: str = "UTC"
+      notifications_enabled: bool = True
+      email_digest: bool = False
+
+  @dataclass
+  class UserSession:
+      token: str
+      created_at: datetime
+      expires_at: datetime
+      ip_address: str
+
+      def is_expired(self) -> bool:
+          return datetime.now() > self.expires_at
+
+  class User:
+      def __init__(self, name: str, email: str):
+          self.id: Optional[int] = None
+          self.name = name
+          self.email = email
+          self.active = True
+          self.status = AccountStatus.PENDING
+          self.preferences = UserPreferences()
+          self.created_at = datetime.now()
+          self._password_hash: Optional[str] = None
+          self._sessions: List[UserSession] = []
+          self._login_attempts = 0
+
+      def set_password(self, password: str) -> None:
+          self._password_hash = hashlib.sha256(password.encode()).hexdigest()
+
+      def verify_password(self, password: str) -> bool:
+          if self._password_hash is None:
+              return False
+          return self._password_hash == hashlib.sha256(password.encode()).hexdigest()
+
+      def update_profile(self, data: Dict[str, Any]) -> None:
+          if "name" in data:
+              self.name = data["name"]
+          if "email" in data:
+              self.email = data["email"]
+          if "preferences" in data:
+              prefs = data["preferences"]
+              if "theme" in prefs:
+                  self.preferences.theme = prefs["theme"]
+              if "language" in prefs:
+                  self.preferences.language = prefs["language"]
+              if "timezone" in prefs:
+                  self.preferences.timezone = prefs["timezone"]
+
+      def activate(self) -> bool:
+          if self.status == AccountStatus.PENDING:
+              self.status = AccountStatus.ACTIVE
+              self.active = True
+              return True
+          return False
+
+      def suspend(self, reason: str = "") -> None:
+          self.status = AccountStatus.SUSPENDED
+          self.active = False
+
+      def create_session(self, ip_address: str, duration_hours: int = 24) -> UserSession:
+          token = hashlib.sha256(f"{self.id}{datetime.now().isoformat()}{ip_address}".encode()).hexdigest()
+          session = UserSession(
+              token=token,
+              created_at=datetime.now(),
+              expires_at=datetime.now() + timedelta(hours=duration_hours),
+              ip_address=ip_address
+          )
+          self._sessions.append(session)
+          return session
+
+      def invalidate_sessions(self) -> int:
+          count = len(self._sessions)
+          self._sessions.clear()
+          return count
+
+      def get_active_sessions(self) -> List[UserSession]:
+          return [s for s in self._sessions if not s.is_expired()]
+handlers/profile.py: |
+  from typing import Dict, Any, Optional, List
+  from dataclasses import dataclass
+  from datetime import datetime
+  from models.user import User, AccountStatus
+
+  @dataclass
+  class ProfileUpdateRequest:
+      name: Optional[str] = None
+      email: Optional[str] = None
+      preferences: Optional[Dict[str, Any]] = None
+
+  class ProfileHandler:
+      def __init__(self):
+          self._validators: List[callable] = []
+
+      def handle_update(self, user: User, data: Dict[str, Any]) -> User:
+          if not user.active:
+              raise ValueError("Cannot update inactive user profile")
+          user.update_profile(data)
+          return user
+
+      def validate_email(self, email: str) -> bool:
+          return "@" in email and "." in email
+
+      def format_response(self, data: Dict[str, Any]) -> Dict[str, Any]:
+          return {"data": data, "timestamp": datetime.now().isoformat()}
+
+      def handle_activation(self, user: User) -> Dict[str, Any]:
+          success = user.activate()
+          return {
+              "success": success,
+              "status": user.status.value
+          }
+garbage_auth.py: |
+  GARBAGE_MARKER_AUTH_001 = "auth garbage"
+  UNRELATED_TOKEN_EXPIRY_002 = 3600
+
+  class AuthManager:
+      GARBAGE_AUTH_CLASS_003 = "auth class marker"
+
+      def __init__(self, secret_key: str = "secret"):
+          self.secret_key = secret_key
+
+      def generate_token(self, user_id: int) -> str:
+          return f"token_{user_id}"
+
+      def verify_token(self, token: str) -> Optional[int]:
+          return None
+
+  class OAuthProvider:
+      GARBAGE_OAUTH_MARKER_004 = "oauth marker"
+
+      def get_authorization_url(self) -> str:
+          return "https://oauth.example.com/auth"
+garbage_permissions.py: |
+  GARBAGE_MARKER_PERM_005 = "permissions garbage"
+  UNRELATED_ADMIN_ROLE_006 = "admin"
+
+  class PermissionChecker:
+      GARBAGE_PERM_CLASS_007 = True
+
+      def __init__(self):
+          self._permissions: Dict[str, List[str]] = {}
+
+      def has_permission(self, user_id: int, permission: str) -> bool:
+          return True
+
+      def grant_permission(self, user_id: int, permission: str) -> None:
+          pass
+
+  def format_permission_error(permission: str) -> str:
+      GARBAGE_FORMAT_PERM_008 = "format perm marker"
+      return f"Missing permission: {permission}"

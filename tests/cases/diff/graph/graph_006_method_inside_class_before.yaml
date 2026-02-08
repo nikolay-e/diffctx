@@ -1,0 +1,107 @@
+module.py: |
+  class MyClass:
+      def __init__(self):
+          self.state = {}
+
+      def method(self):
+          return self._internal_process()
+
+      def _internal_process(self):
+          return self._helper()
+
+      def _helper(self):
+          return 42
+
+      class NestedProcessor:
+          def nested_method(self):
+              return "nested"
+
+          def _nested_private(self):
+              return "private_nested"
+inheritance/base.py: |
+  class BaseClass:
+      def base_method(self):
+          return "base"
+
+      def template_method(self):
+          return self._hook()
+
+      def _hook(self):
+          raise NotImplementedError
+inheritance/derived.py: |
+  from inheritance.base import BaseClass
+
+  class DerivedClass(BaseClass):
+      def _hook(self):
+          return "derived_hook"
+
+      def derived_method(self):
+          return self.base_method() + "_derived"
+
+      def override_example(self):
+          return super().template_method()
+complex/multi_level.py: |
+  class OuterClass:
+      class MiddleClass:
+          class InnerClass:
+              def deep_method(self):
+                  return "deep"
+
+          def middle_method(self):
+              inner = self.InnerClass()
+              return inner.deep_method()
+
+      def outer_method(self):
+          middle = self.MiddleClass()
+          return middle.middle_method()
+garbage/unrelated_class_GARBAGE_GRAPH_pqr001.py: |
+  class Calculator_GARBAGE_GRAPH_pqr001:
+      def add(self, a, b):
+          return a + b
+
+      def subtract(self, a, b):
+          return a - b
+
+      def multiply(self, a, b):
+          return a * b
+
+      def divide(self, a, b):
+          if b == 0:
+              raise ValueError("Cannot divide by zero")
+          return a / b
+
+      class AdvancedOps_GARBAGE_GRAPH_pqr001:
+          def power(self, base, exp):
+              return base ** exp
+
+          def sqrt(self, n):
+              return n ** 0.5
+garbage/state_machine_GARBAGE_GRAPH_pqr002.py: |
+  class StateMachine_GARBAGE_GRAPH_pqr002:
+      def __init__(self):
+          self.state = "initial"
+
+      def transition(self, event):
+          if self.state == "initial" and event == "start":
+              self.state = "running"
+          elif self.state == "running" and event == "stop":
+              self.state = "stopped"
+          return self.state
+
+      def reset(self):
+          self.state = "initial"
+garbage/visitor_pattern_GARBAGE_GRAPH_pqr003.py: |
+  class Visitor_GARBAGE_GRAPH_pqr003:
+      def visit_node_a(self, node):
+          pass
+
+      def visit_node_b(self, node):
+          pass
+
+  class NodeA_GARBAGE_GRAPH_pqr003:
+      def accept(self, visitor):
+          return visitor.visit_node_a(self)
+
+  class NodeB_GARBAGE_GRAPH_pqr003:
+      def accept(self, visitor):
+          return visitor.visit_node_b(self)

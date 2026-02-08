@@ -1,0 +1,16 @@
+variables.tf: |
+  variable "environment" {
+    default = "dev"
+  }
+
+  variable "instance_type" {
+    default = "t3.micro"
+  }
+main.tf: |
+  resource "aws_instance" "web" {
+    ami           = "ami-12345678"
+    instance_type = var.instance_type
+    tags = {
+      Environment = var.environment
+    }
+  }

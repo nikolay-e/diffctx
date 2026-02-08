@@ -1,0 +1,17 @@
+base.py: |
+  class BaseProcessor:
+      def process(self, data):
+          return data
+processors/json.py: |
+  from base import BaseProcessor
+
+  class JsonProcessor(BaseProcessor):
+      def process(self, data):
+          import json
+          return json.loads(data)
+processors/xml.py: |
+  from base import BaseProcessor
+
+  class XmlProcessor(BaseProcessor):
+      def process(self, data):
+          return f"<xml>{data}</xml>"

@@ -1,0 +1,25 @@
+src/main/java/com/example/ScheduledTasks.java: |
+  package com.example;
+
+  import org.springframework.scheduling.annotation.Scheduled;
+  import org.springframework.stereotype.Component;
+
+  @Component
+  public class ScheduledTasks {
+      @Scheduled(fixedRate = 60000)
+      public void cleanupTask() {
+          System.out.println("Running cleanup");
+      }
+  }
+GarbageCronScheduler.java: |
+  public class GarbageCronScheduler {
+      public static final String GARBAGE_JVM_040_CRON_MARKER_A = "marker";
+      public static final String GARBAGE_JVM_040_QUARTZ_MARKER_B = "marker";
+      public void noop() {}
+  }
+GarbageTimerTask.java: |
+  public class GarbageTimerTask {
+      public static final String GARBAGE_JVM_040_TIMER_MARKER_C = "marker";
+      public static final String GARBAGE_JVM_040_INTERVAL_MARKER_D = "marker";
+      public void noop() {}
+  }

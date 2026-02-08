@@ -1,0 +1,146 @@
+src/main/java/com/payment/api/PaymentProcessor.java: |
+  package com.payment.api;
+
+  import java.math.BigDecimal;
+
+  public interface PaymentProcessor {
+      PaymentResult process(PaymentRequest request);
+      RefundResult refund(String transactionId, BigDecimal amount);
+      boolean supports(PaymentMethod method);
+  }
+src/main/java/com/payment/api/PaymentRequest.java: |
+  package com.payment.api;
+
+  import java.math.BigDecimal;
+
+  public class PaymentRequest {
+      private final String customerId;
+      private final BigDecimal amount;
+      private final String currency;
+      private final PaymentMethod method;
+
+      public PaymentRequest(String customerId, BigDecimal amount, String currency, PaymentMethod method) {
+          this.customerId = customerId;
+          this.amount = amount;
+          this.currency = currency;
+          this.method = method;
+      }
+
+      public String getCustomerId() { return customerId; }
+      public BigDecimal getAmount() { return amount; }
+      public String getCurrency() { return currency; }
+      public PaymentMethod getMethod() { return method; }
+  }
+src/main/java/com/payment/api/PaymentMethod.java: |
+  package com.payment.api;
+
+  public enum PaymentMethod {
+      CREDIT_CARD,
+      DEBIT_CARD,
+      BANK_TRANSFER
+  }
+src/main/java/com/payment/api/PaymentResult.java: |
+  package com.payment.api;
+
+  public class PaymentResult {
+      private final String transactionId;
+      private final boolean success;
+      private final String message;
+
+      public PaymentResult(String transactionId, boolean success, String message) {
+          this.transactionId = transactionId;
+          this.success = success;
+          this.message = message;
+      }
+
+      public String getTransactionId() { return transactionId; }
+      public boolean isSuccess() { return success; }
+      public String getMessage() { return message; }
+  }
+src/main/java/com/payment/api/RefundResult.java: |
+  package com.payment.api;
+
+  public class RefundResult {
+      private final String refundId;
+      private final boolean success;
+
+      public RefundResult(String refundId, boolean success) {
+          this.refundId = refundId;
+          this.success = success;
+      }
+
+      public String getRefundId() { return refundId; }
+      public boolean isSuccess() { return success; }
+  }
+src/main/java/com/payment/providers/StripeProcessor.java: |
+  package com.payment.providers;
+
+  import com.payment.api.*;
+  import java.math.BigDecimal;
+  import java.util.UUID;
+
+  public class StripeProcessor implements PaymentProcessor {
+      private final String apiKey;
+
+      public StripeProcessor(String apiKey) {
+          this.apiKey = apiKey;
+      }
+
+      @Override
+      public PaymentResult process(PaymentRequest request) {
+          String txId = "stripe_" + UUID.randomUUID();
+          return new PaymentResult(txId, true, "Payment processed via Stripe");
+      }
+
+      @Override
+      public RefundResult refund(String transactionId, BigDecimal amount) {
+          String refundId = "refund_" + UUID.randomUUID();
+          return new RefundResult(refundId, true);
+      }
+
+      @Override
+      public boolean supports(PaymentMethod method) {
+          return method == PaymentMethod.CREDIT_CARD || method == PaymentMethod.DEBIT_CARD;
+      }
+  }
+src/main/java/com/payment/unrelated/InventoryManager.java: |
+  package com.payment.unrelated;
+
+  import java.util.HashMap;
+  import java.util.Map;
+
+  public class InventoryManager {
+      public static final String GARBAGE_JAVA_INVENTORY_101 = "inventory_marker_alpha";
+      private static final String GARBAGE_JAVA_STOCK_102 = "stock_marker_beta";
+
+      private final Map<String, Integer> stockLevels = new HashMap<>();
+
+      public void updateStock(String productId, int quantity) {
+          stockLevels.merge(productId, quantity, Integer::sum);
+          logGarbageMarker();
+      }
+
+      public int getStockLevel(String productId) {
+          return stockLevels.getOrDefault(productId, 0);
+      }
+
+      private void logGarbageMarker() {
+          System.out.println(GARBAGE_JAVA_INVENTORY_101 + GARBAGE_JAVA_STOCK_102);
+      }
+  }
+src/main/java/com/payment/unrelated/ShippingCalculator.java: |
+  package com.payment.unrelated;
+
+  import java.math.BigDecimal;
+
+  public class ShippingCalculator {
+      public static final String GARBAGE_JAVA_SHIPPING_103 = "shipping_marker_gamma";
+
+      private static final BigDecimal BASE_RATE = new BigDecimal("5.99");
+
+      public BigDecimal calculateShippingCost(double weightKg, String destination) {
+          String marker = GARBAGE_JAVA_SHIPPING_103;
+          System.out.println(marker);
+          return BASE_RATE.multiply(BigDecimal.valueOf(weightKg));
+      }
+  }

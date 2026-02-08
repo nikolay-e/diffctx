@@ -1,0 +1,103 @@
+include/compute/aligned_storage.hpp: |
+  #pragma once
+  #include <cstddef>
+  #include <cstdint>
+
+  namespace compute {
+
+  template<typename T, size_t Alignment>
+  struct AlignedArray {
+      alignas(Alignment) T data[4];
+
+      T* ptr() { return data; }
+      const T* ptr() const { return data; }
+      size_t size() const { return 4; }
+  };
+
+  using AlignedFloat4 = AlignedArray<float, 16>;
+  using AlignedDouble2 = AlignedArray<double, 16>;
+  using AlignedInt4 = AlignedArray<int32_t, 16>;
+
+  void multiplyVectors(const float* a, const float* b,
+                        float* result, size_t count);
+
+  float dotProduct(const float* a, const float* b, size_t count);
+
+  }
+src/compute/vector_math.cpp: |
+  #include <iostream>
+  int main() { return 0; }
+include/unrelated/logger_sink.hpp: |
+  #pragma once
+  // GARBAGE_CPP_019_LOGGER_A
+  #include <string>
+  #include <fstream>
+
+  namespace unrelated {
+
+  // GARBAGE_CPP_019_LOGGER_B
+  enum class LogLevel { Debug, Info, Warning, Error };
+
+  // GARBAGE_CPP_019_SINK_C
+  class LoggerSink {
+  public:
+      explicit LoggerSink(const std::string& filename)
+          : file_(filename, std::ios::app) {}
+
+      void write(LogLevel level, const std::string& message) {
+          if (level >= minLevel_) {
+              file_ << levelName(level) << ": " << message << "\n";
+          }
+      }
+      void setMinLevel(LogLevel level) { minLevel_ = level; }
+  private:
+      const char* levelName(LogLevel l) {
+          switch (l) {
+              case LogLevel::Debug: return "DEBUG";
+              case LogLevel::Info: return "INFO";
+              case LogLevel::Warning: return "WARN";
+              case LogLevel::Error: return "ERROR";
+          }
+          return "UNKNOWN";
+      }
+      std::ofstream file_;
+      LogLevel minLevel_ = LogLevel::Info;
+  };
+
+  }
+src/unrelated/config_reader.cpp: |
+  // GARBAGE_CPP_019_CONFIG_D
+  #include <string>
+  #include <map>
+  #include <fstream>
+  #include <sstream>
+
+  namespace unrelated {
+
+  // GARBAGE_CPP_019_CONFIG_E
+  class ConfigReader {
+  public:
+      bool load(const std::string& filename) {
+          // GARBAGE_CPP_019_LOAD_F
+          std::ifstream file(filename);
+          if (!file.is_open()) return false;
+          std::string line;
+          while (std::getline(file, line)) {
+              auto pos = line.find('=');
+              if (pos != std::string::npos) {
+                  auto key = line.substr(0, pos);
+                  auto val = line.substr(pos + 1);
+                  entries_[key] = val;
+              }
+          }
+          return true;
+      }
+      std::string get(const std::string& key) const {
+          auto it = entries_.find(key);
+          return it != entries_.end() ? it->second : "";
+      }
+  private:
+      std::map<std::string, std::string> entries_;
+  };
+
+  }

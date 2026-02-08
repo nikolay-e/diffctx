@@ -1,0 +1,34 @@
+.github/workflows/ci.yml: |
+  name: CI
+  on: [push]
+
+src/server.ts: |
+  import express from 'express';
+
+  const app = express();
+
+  app.get('/health', (req, res) => {
+    res.json({ status: 'ok' });
+  });
+
+  app.listen(3000, () => {
+    console.log('Server started');
+  });
+
+garbage_monitor.ts: |
+  const GARBAGE_CICD_DOCS_002_MONITOR_MARKER_A = "prometheus";
+  const GARBAGE_CICD_DOCS_002_METRIC_MARKER_B = "counter";
+
+  class GarbageMetricsMonitor {
+    static GARBAGE_CICD_DOCS_002_INTERVAL_MARKER_C = 10000;
+    collect(): void {}
+  }
+
+garbage_alerting.ts: |
+  const GARBAGE_CICD_DOCS_002_ALERT_MARKER_D = "slack";
+  const GARBAGE_CICD_DOCS_002_THRESHOLD_MARKER_E = 0.9;
+
+  class GarbageAlertManager {
+    static GARBAGE_CICD_DOCS_002_CHANNEL_MARKER_F = "#alerts";
+    send(): void {}
+  }

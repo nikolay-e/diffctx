@@ -1,0 +1,61 @@
+src/macros.rs: |
+  #[macro_export]
+  macro_rules! vec_of_strings {
+      ($($x:expr),*) => {
+          vec![$($x.to_string()),*]
+      };
+  }
+
+  #[macro_export]
+  macro_rules! log_info {
+      ($($arg:tt)*) => {
+          println!("[INFO] {}", format!($($arg)*));
+      };
+  }
+src/main.rs: |
+  mod macros;
+
+  fn main() {
+      let v = vec_of_strings!["hello", "world", "rust"];
+      for item in &v {
+          log_info!("Item: {}", item);
+      }
+      println!("Total items: {}", v.len());
+  }
+src/unrelated/mod.rs: |
+  pub mod formatter;
+  pub mod validator;
+src/unrelated/formatter.rs: |
+  // GARBAGE_RUST_023_FORMATTER_A
+  pub const GARBAGE_RUST_023_FMT_PREFIX_B: &str = "fmt_prefix";
+
+  pub struct GarbageTextFormatter023 {
+      indent: usize,
+  }
+
+  impl GarbageTextFormatter023 {
+      pub fn garbage_format_line_023(&self, text: &str) -> String {
+          format!("{}{}", " ".repeat(self.indent), text)
+      }
+
+      pub fn garbage_format_block_023(&self, lines: &[&str]) -> String {
+          lines.iter().map(|l| self.garbage_format_line_023(l)).collect::<Vec<_>>().join("\n")
+      }
+  }
+src/unrelated/validator.rs: |
+  // GARBAGE_RUST_023_VALIDATOR_C
+  pub const GARBAGE_RUST_023_MAX_LEN_D: usize = 255;
+
+  pub struct GarbageInputValidator023 {
+      allow_empty: bool,
+  }
+
+  impl GarbageInputValidator023 {
+      pub fn garbage_validate_023(&self, input: &str) -> bool {
+          !input.is_empty() || self.allow_empty
+      }
+
+      pub fn garbage_sanitize_023(&self, input: &str) -> String {
+          input.trim().to_string()
+      }
+  }

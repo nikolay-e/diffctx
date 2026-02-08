@@ -1,0 +1,16 @@
+must_include_files:
+  - lib/worker.rb
+must_include_content:
+  - |
+    include Logging
+must_not_include:
+  - GARBAGE_RUBY_003_FORMAT_TYPE_A
+  - GARBAGE_RUBY_003_ENCODING_MODE_B
+  - GARBAGE_RUBY_003_MAX_DEPTH_C
+  - GARBAGE_RUBY_003_ALGORITHM_TYPE_D
+  - GARBAGE_RUBY_003_COMPRESSION_LEVEL_E
+  - GARBAGE_RUBY_003_BUFFER_SIZE_F
+  - GarbageSerializerEngine
+  - GarbageCompressorService
+  - garbage_serializer.rb
+  - garbage_compressor.rb

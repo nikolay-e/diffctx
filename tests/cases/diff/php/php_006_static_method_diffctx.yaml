@@ -1,0 +1,18 @@
+must_include_files:
+  - src/Services/UserRegistration.php
+must_include_content:
+  - |
+    User::create($name, $email)
+must_not_include:
+  - GARBAGE_PHP_006_BITRATE_A
+  - GARBAGE_PHP_006_SAMPLE_RATE_B
+  - GARBAGE_PHP_006_CHANNELS_C
+  - GARBAGE_PHP_006_CODEC_D
+  - GARBAGE_PHP_006_PAGE_SIZE_E
+  - GARBAGE_PHP_006_ORIENTATION_F
+  - GARBAGE_PHP_006_COMPRESSION_G
+  - GARBAGE_PHP_006_METADATA_H
+  - GarbageAudioEncoder
+  - GarbagePdfMerger
+  - garbage_audio_encoder.php
+  - garbage_pdf_merger.php

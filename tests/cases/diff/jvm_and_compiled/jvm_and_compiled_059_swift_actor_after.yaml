@@ -1,0 +1,37 @@
+Item.swift: |
+  struct Item: Identifiable {
+      let id: String
+      let name: String
+  }
+DataStore.swift: |
+  actor DataStore {
+      private var items: [Item] = []
+
+      func add(_ item: Item) {
+          items.append(item)
+      }
+
+      func remove(id: String) {
+          items.removeAll { $0.id == id }
+      }
+
+      func getAll() -> [Item] {
+          return items
+      }
+
+      var count: Int {
+          items.count
+      }
+  }
+GarbageDispatchQueue.swift: |
+  class GarbageDispatchQueue {
+      static let GARBAGE_JVM_059_DISPATCH_MARKER_A = "marker"
+      static let GARBAGE_JVM_059_QUEUE_MARKER_B = "marker"
+      func noop() {}
+  }
+GarbageSerialExecutor.swift: |
+  class GarbageSerialExecutor {
+      static let GARBAGE_JVM_059_SERIAL_MARKER_C = "marker"
+      static let GARBAGE_JVM_059_CONCURRENT_MARKER_D = "marker"
+      func noop() {}
+  }

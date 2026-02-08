@@ -1,0 +1,16 @@
+must_include_files:
+  - lib/report.rb
+must_include_content:
+  - |
+    @users.map(&:name)
+must_not_include:
+  - GARBAGE_RUBY_011_RESOLVER_TYPE_A
+  - GARBAGE_RUBY_011_CACHE_POLICY_B
+  - GARBAGE_RUBY_011_TIMEOUT_SEC_C
+  - GARBAGE_RUBY_011_STORE_BACKEND_D
+  - GARBAGE_RUBY_011_EXPIRY_HOURS_E
+  - GARBAGE_RUBY_011_MAX_SESSIONS_F
+  - GarbageDnsResolver
+  - GarbageSessionStore
+  - garbage_dns_resolver.rb
+  - garbage_session_store.rb

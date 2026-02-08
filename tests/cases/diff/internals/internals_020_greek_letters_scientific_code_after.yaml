@@ -1,0 +1,7 @@
+greek_science.py: |
+  def calculate_Δ(θ, φ):
+      import math
+      return θ * math.cos(φ)
+
+  def compute_σ(μ, data):
+      return sum((x - μ)**2 for x in data)

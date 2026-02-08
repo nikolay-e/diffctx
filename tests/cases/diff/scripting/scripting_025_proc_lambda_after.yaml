@@ -1,0 +1,20 @@
+validators.rb: |
+  module Validators
+    POSITIVE = ->(x) { x > 0 }
+    NON_EMPTY = ->(s) { !s.nil? && !s.empty? }
+    EMAIL_FORMAT = ->(e) { e =~ /\A[^@\s]+@[^@\s]+\z/ }
+  end
+form.rb: |
+  require_relative 'validators'
+
+  class Form
+    def validate(data)
+      return false unless Validators::POSITIVE.call(data[:age])
+      return false unless Validators::NON_EMPTY.call(data[:name])
+      return false unless Validators::EMAIL_FORMAT.call(data[:email])
+      true
+    end
+  end
+garbage.rb: |
+  GARBAGE_VALIDATOR_UNUSED = "never_used_12345"
+  unused_marker_67890 = "not used"

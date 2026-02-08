@@ -1,0 +1,18 @@
+counter.py: |
+  def make_counter(start=0):
+      count = start
+
+      def increment():
+          nonlocal count
+          count += 1
+          return count
+
+      def decrement():
+          nonlocal count
+          count -= 1
+          return count
+
+      def get_value():
+          return count
+
+      return increment, decrement, get_value

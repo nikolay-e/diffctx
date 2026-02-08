@@ -1,0 +1,142 @@
+internal/stream/producer.go: |
+  package stream
+
+  import (
+      "context"
+      "log"
+      "sync/atomic"
+      "time"
+  )
+
+  type Message struct {
+      ID        int64
+      Payload   []byte
+      Timestamp time.Time
+      Priority  int
+      Headers   map[string]string
+  }
+
+  type ProducerStats struct {
+      Sent      int64
+      Dropped   int64
+      Errors    int64
+      AvgLatency time.Duration
+  }
+
+  type Producer struct {
+      output  chan<- Message
+      rate    time.Duration
+      logger  *log.Logger
+      counter int64
+      stats   ProducerStats
+  }
+
+  func NewProducer(output chan<- Message, rate time.Duration, logger *log.Logger) *Producer {
+      return &Producer{
+          output: output,
+          rate:   rate,
+          logger: logger,
+      }
+  }
+
+  func (p *Producer) Start(ctx context.Context, count int) {
+      ticker := time.NewTicker(p.rate)
+      defer ticker.Stop()
+
+      for i := 0; i < count; i++ {
+          select {
+          case <-ctx.Done():
+              p.logger.Printf("Producer stopped: %v", ctx.Err())
+              return
+          case <-ticker.C:
+              msg := p.createMessage()
+              if err := p.send(ctx, msg); err != nil {
+                  atomic.AddInt64(&p.stats.Errors, 1)
+                  p.logger.Printf("Failed to send message %d: %v", msg.ID, err)
+              }
+          }
+      }
+  }
+
+  func (p *Producer) createMessage() Message {
+      id := atomic.AddInt64(&p.counter, 1)
+      return Message{
+          ID:        id,
+          Payload:   []byte("data"),
+          Timestamp: time.Now(),
+          Priority:  1,
+          Headers:   make(map[string]string),
+      }
+  }
+
+  func (p *Producer) send(ctx context.Context, msg Message) error {
+      select {
+      case p.output <- msg:
+          atomic.AddInt64(&p.stats.Sent, 1)
+          return nil
+      case <-ctx.Done():
+          atomic.AddInt64(&p.stats.Dropped, 1)
+          return ctx.Err()
+      default:
+          atomic.AddInt64(&p.stats.Dropped, 1)
+          return nil
+      }
+  }
+
+  func (p *Producer) Stats() ProducerStats {
+      return ProducerStats{
+          Sent:    atomic.LoadInt64(&p.stats.Sent),
+          Dropped: atomic.LoadInt64(&p.stats.Dropped),
+          Errors:  atomic.LoadInt64(&p.stats.Errors),
+      }
+  }
+internal/stream/consumer.go: |
+  package stream
+
+  import "context"
+
+  type Consumer struct {
+      input <-chan Message
+  }
+
+  func NewConsumer(input <-chan Message) *Consumer {
+      return &Consumer{input: input}
+  }
+
+  func (c *Consumer) Process(ctx context.Context) {
+      for {
+          select {
+          case msg, ok := <-c.input:
+              if !ok {
+                  return
+              }
+              println("Received:", msg.ID)
+          case <-ctx.Done():
+              return
+          }
+      }
+  }
+internal/unrelated/pubsub/kafka.go: |
+  package pubsub
+
+  const GARBAGE_GO_PUBSUB_KAFKA_001 = "pubsub_garbage"
+
+  type GARBAGE_GO_TYPE_KAFKA_002 struct {
+      brokers []string
+  }
+
+  func GARBAGE_GO_FUNC_KAFKA_003() string {
+      return "GARBAGE_GO_KAFKA_UNUSED_004"
+  }
+internal/unrelated/pubsub/nats.go: |
+  package pubsub
+
+  const GARBAGE_GO_PUBSUB_NATS_005 = "nats_garbage"
+
+  type GARBAGE_GO_TYPE_NATS_006 struct {
+      url string
+  }
+
+  func GARBAGE_GO_FUNC_NATS_007() {
+      println("GARBAGE_GO_NATS_OUTPUT_008")
+  }

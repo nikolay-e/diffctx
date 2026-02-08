@@ -1,0 +1,55 @@
+src/conversions/Implicits.scala: |
+  package conversions
+
+  case class User(name: String, age: Int)
+  case class UserProfile(displayName: String, isMinor: Boolean)
+
+  object Implicits {
+    implicit def stringToUser(s: String): User = User(s, 0)
+
+    implicit def intToUser(id: Int): User = User(s"user-$id", id)
+
+    implicit def userToProfile(u: User): UserProfile =
+      UserProfile(u.name, u.age < 18)
+  }
+src/services/UserProcessor.scala: |
+  package services
+
+  import conversions.{User, Implicits}
+  import Implicits._
+
+  class UserProcessor {
+    def greet(user: User): String = s"Hello, ${user.name}"
+
+    def processString(): String = {
+      val user: User = "John"
+      greet(user)
+    }
+
+    def processId(): String = {
+      val user: User = 42
+      greet(user)
+    }
+
+    def getProfile(user: User): String = {
+      val profile: conversions.UserProfile = user
+      if (profile.isMinor) s"${profile.displayName} is a minor"
+      else s"${profile.displayName} is an adult"
+    }
+  }
+unrelated/EmailSender.scala: |
+  package email
+  // GARBAGE_SCALA_005_MARKER_A
+  class EmailSender {
+    val GARBAGE_SCALA_005_SMTP = "GARBAGE_SCALA_005_MARKER_B"
+    def send(to: String, body: String): Unit =
+      println(s"GARBAGE_SCALA_005_MARKER_C sending to $to")
+  }
+unrelated/RateLimiter.scala: |
+  package ratelimit
+  // GARBAGE_SCALA_005_MARKER_D
+  object RateLimiter {
+    val GARBAGE_SCALA_005_LIMIT = 100
+    def check(key: String): Boolean = { println("GARBAGE_SCALA_005_MARKER_E"); true }
+    def reset(): Unit = println("GARBAGE_SCALA_005_MARKER_F")
+  }

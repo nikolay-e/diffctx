@@ -1,0 +1,47 @@
+User.swift: |
+  struct User: Codable {
+      let id: String
+      let name: String
+      let email: String
+  }
+APIResponse.swift: |
+  struct APIResponse<T: Codable>: Decodable {
+      let data: T
+      let status: String
+      let timestamp: Date
+  }
+APIClient.swift: |
+  import Foundation
+
+  class APIClient {
+      func fetchUsers(completion: @escaping (Result<APIResponse<[User]>, Error>) -> Void) {
+          let url = URL(string: "https://api.example.com/users")!
+          URLSession.shared.dataTask(with: url) { data, _, error in
+              if let error = error {
+                  completion(.failure(error))
+                  return
+              }
+              guard let data = data else { return }
+              do {
+                  let decoder = JSONDecoder()
+                  decoder.dateDecodingStrategy = .iso8601
+                  let response = try decoder.decode(APIResponse<[User]>.self, from: data)
+                  completion(.success(response))
+              } catch {
+                  completion(.failure(error))
+              }
+          }.resume()
+      }
+  }
+GarbageArchiver.swift: |
+  class GarbageArchiver {
+      static let GARBAGE_JVM_061_ARCHIVE_MARKER_A = "marker"
+      static let GARBAGE_JVM_061_UNARCHIVE_MARKER_B = "marker"
+      func noop() {}
+  }
+GarbagePlistCoder.swift: |
+  class GarbagePlistCoder {
+      static let GARBAGE_JVM_061_PLIST_MARKER_C = "marker"
+      static let GARBAGE_JVM_061_BINARY_MARKER_D = "marker"
+      func noop() {}
+  }

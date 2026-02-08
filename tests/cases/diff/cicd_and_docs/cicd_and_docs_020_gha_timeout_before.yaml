@@ -1,0 +1,51 @@
+.github/workflows/ci.yml: |
+  name: CI
+  on: [push, pull_request]
+  jobs:
+    build:
+      runs-on: ubuntu-latest
+      steps:
+        - uses: actions/checkout@v4
+        - run: npm ci
+        - run: npm run build
+
+package.json: |
+  {
+    "name": "long-build-app",
+    "version": "1.0.0",
+    "scripts": {
+      "build": "webpack --mode production",
+      "test": "jest --testTimeout=60000"
+    }
+  }
+
+src/build/config.ts: |
+  export interface BuildConfig {
+    timeout: number;
+    retries: number;
+    parallel: boolean;
+  }
+
+  export const defaultConfig: BuildConfig = {
+    timeout: 30 * 60 * 1000,
+    retries: 3,
+    parallel: true
+  };
+
+garbage_watchdog.ts: |
+  const GARBAGE_CICD_DOCS_020_WATCHDOG_MARKER_A = "process";
+  const GARBAGE_CICD_DOCS_020_SIGNAL_MARKER_B = "SIGTERM";
+
+  class GarbageWatchdogService {
+    static GARBAGE_CICD_DOCS_020_GRACE_MARKER_C = 30000;
+    monitor(): void {}
+  }
+
+garbage_deadline.ts: |
+  const GARBAGE_CICD_DOCS_020_DEADLINE_MARKER_D = "absolute";
+  const GARBAGE_CICD_DOCS_020_EXTEND_MARKER_E = false;
+
+  class GarbageDeadlineManager {
+    static GARBAGE_CICD_DOCS_020_WARN_MARKER_F = 60000;
+    check(): boolean { return false; }
+  }

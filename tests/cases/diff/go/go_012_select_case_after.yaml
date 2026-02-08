@@ -1,0 +1,133 @@
+internal/mux/multiplexer.go: |
+  package mux
+
+  import (
+      "context"
+      "log"
+      "sync"
+      "time"
+  )
+
+  type Event struct {
+      Source    string
+      Payload   interface{}
+      Timestamp time.Time
+      Priority  int
+  }
+
+  type MultiplexerStats struct {
+      Received  int64
+      Forwarded int64
+      Dropped   int64
+      Timeouts  int64
+  }
+
+  type Multiplexer struct {
+      inputs   []<-chan Event
+      output   chan<- Event
+      timeout  time.Duration
+      done     chan struct{}
+      logger   *log.Logger
+      stats    MultiplexerStats
+      mu       sync.RWMutex
+  }
+
+  func NewMultiplexer(output chan<- Event, timeout time.Duration, logger *log.Logger) *Multiplexer {
+      return &Multiplexer{
+          output:  output,
+          timeout: timeout,
+          done:    make(chan struct{}),
+          logger:  logger,
+      }
+  }
+
+  func (m *Multiplexer) AddInput(ch <-chan Event) {
+      m.mu.Lock()
+      defer m.mu.Unlock()
+      m.inputs = append(m.inputs, ch)
+  }
+
+  func (m *Multiplexer) Run(ctx context.Context) {
+      var wg sync.WaitGroup
+
+      for i, ch := range m.inputs {
+          wg.Add(1)
+          go m.handleInput(ctx, ch, i, &wg)
+      }
+
+      wg.Wait()
+      close(m.done)
+  }
+
+  func (m *Multiplexer) handleInput(ctx context.Context, ch <-chan Event, idx int, wg *sync.WaitGroup) {
+      defer wg.Done()
+
+      for {
+          select {
+          case evt, ok := <-ch:
+              if !ok {
+                  m.logger.Printf("Input %d closed", idx)
+                  return
+              }
+              m.stats.Received++
+              m.forward(ctx, evt)
+
+          case <-ctx.Done():
+              m.logger.Printf("Context cancelled for input %d", idx)
+              return
+
+          case <-m.done:
+              return
+
+          case <-time.After(m.timeout):
+              m.stats.Timeouts++
+              m.logger.Printf("Timeout on input %d", idx)
+          }
+      }
+  }
+
+  func (m *Multiplexer) forward(ctx context.Context, evt Event) {
+      select {
+      case m.output <- evt:
+          m.stats.Forwarded++
+      case <-ctx.Done():
+          m.stats.Dropped++
+      case <-time.After(100 * time.Millisecond):
+          m.stats.Dropped++
+          m.logger.Printf("Dropped event from %s: output full", evt.Source)
+      }
+  }
+
+  func (m *Multiplexer) Stats() MultiplexerStats {
+      m.mu.RLock()
+      defer m.mu.RUnlock()
+      return m.stats
+  }
+
+  func (m *Multiplexer) Stop() {
+      close(m.done)
+  }
+internal/unrelated/router/fanout.go: |
+  package router
+
+  const GARBAGE_GO_ROUTER_FANOUT_001 = "router_garbage"
+
+  type GARBAGE_GO_TYPE_FANOUT_002 struct {
+      subscribers []chan interface{}
+  }
+
+  func GARBAGE_GO_FUNC_FANOUT_003() string {
+      return "GARBAGE_GO_FANOUT_UNUSED_004"
+  }
+internal/unrelated/router/loadbalancer.go: |
+  package router
+
+  const GARBAGE_GO_ROUTER_LB_005 = "loadbalancer_garbage"
+
+  type GARBAGE_GO_TYPE_LB_006 struct {
+      backends []string
+  }
+
+  func GARBAGE_GO_FUNC_LB_007() {
+      println("GARBAGE_GO_LB_OUTPUT_008")
+  }

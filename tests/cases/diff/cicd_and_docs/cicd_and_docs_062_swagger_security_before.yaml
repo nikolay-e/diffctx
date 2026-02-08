@@ -1,0 +1,56 @@
+swagger.yaml: |
+  swagger: "2.0"
+  info:
+    title: User API
+    version: 1.0.0
+  basePath: /api/v1
+  securityDefinitions:
+    apiKey:
+      type: apiKey
+      in: header
+      name: X-API-Key
+  paths:
+    /users:
+      get:
+        summary: List users
+        security:
+          - apiKey: []
+        responses:
+          200:
+            description: Success
+
+src/middleware/auth.py: |
+  from functools import wraps
+  from flask import request, jsonify
+
+  def require_api_key(func):
+      @wraps(func)
+      def wrapper(*args, **kwargs):
+          api_key = request.headers.get('X-API-Key')
+          if not api_key:
+              return jsonify({'error': 'API key required'}), 401
+          if not validate_api_key(api_key):
+              return jsonify({'error': 'Invalid API key'}), 403
+          return func(*args, **kwargs)
+      return wrapper
+
+  def validate_api_key(api_key: str) -> bool:
+      return api_key in get_valid_api_keys()
+
+garbage_auth_handler.ts: |
+  const GARBAGE_CICD_DOCS_062_AUTH_MARKER_A = "jwt";
+  const GARBAGE_CICD_DOCS_062_EXPIRE_MARKER_B = 3600;
+
+  class GarbageAuthHandler {
+    static GARBAGE_CICD_DOCS_062_REFRESH_MARKER_C = true;
+    authenticate(): void {}
+  }
+
+garbage_security_validator.ts: |
+  const GARBAGE_CICD_DOCS_062_VALIDATE_MARKER_D = "strict";
+  const GARBAGE_CICD_DOCS_062_SCOPE_MARKER_E = "read";
+
+  class GarbageSecurityValidator {
+    static GARBAGE_CICD_DOCS_062_AUDIT_MARKER_F = false;
+    validate(): boolean { return true; }
+  }

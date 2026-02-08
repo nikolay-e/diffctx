@@ -1,0 +1,34 @@
+ContentView.swift: |
+  import SwiftUI
+
+  struct ContentView: View {
+      @State private var isLoading = false
+      @State private var items: [String] = []
+
+      var body: some View {
+          VStack {
+              if isLoading {
+                  ProgressView()
+              } else {
+                  List(items, id: \.self) { item in
+                      Text(item)
+                  }
+              }
+              Button("Load") {
+                  isLoading = true
+              }
+          }
+      }
+  }
+GarbageAppStorage.swift: |
+  class GarbageAppStorage {
+      static let GARBAGE_JVM_071_APPSTATE_MARKER_A = "marker"
+      static let GARBAGE_JVM_071_SCENE_MARKER_B = "marker"
+      func noop() {}
+  }
+GarbageScenePersist.swift: |
+  class GarbageScenePersist {
+      static let GARBAGE_JVM_071_STORAGE_MARKER_C = "marker"
+      static let GARBAGE_JVM_071_PERSIST_MARKER_D = "marker"
+      func noop() {}
+  }

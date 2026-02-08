@@ -1,0 +1,29 @@
+accurate.py: |
+  def first():
+      pass
+
+  def second():
+      x = 10
+      y = 20
+      return x + y
+
+  def third():
+      pass
+garbage_ratelimit.py: |
+  GARBAGE_OUT_007_RATELIMIT_MARKER_A = "ratelimit"
+  GARBAGE_OUT_007_WINDOW_MARKER_B = True
+
+  class RateLimiter:
+      GARBAGE_OUT_007_LIMITER_CLASS_C = "limiter"
+
+      def is_allowed(self, client_id: str) -> bool:
+          return True
+garbage_throttle.py: |
+  GARBAGE_OUT_007_THROTTLE_MARKER_D = "throttle"
+  GARBAGE_OUT_007_BACKOFF_MARKER_E = 120
+
+  class RequestThrottler:
+      GARBAGE_OUT_007_THROTTLER_CLASS_F = True
+
+      def throttle(self, request_count: int) -> float:
+          return 0.0

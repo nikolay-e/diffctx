@@ -1,0 +1,15 @@
+user.rb: |
+  class User
+    attr_accessor :name, :email
+
+    def initialize(name:, email:)
+      @name = name
+      @email = email
+    end
+  end
+app.rb: |
+  # Initial
+  puts 'Hello'
+garbage.rb: |
+  garbage_user_unused_99999 = "never accessed"
+  unused_marker_12345 = "not used"

@@ -1,0 +1,17 @@
+must_include_files:
+  - src/module.py
+must_include_content:
+  - |
+    def func():
+        return 1
+must_not_include:
+  - GARBAGE_OUT_010_ENCRYPT_MARKER_A
+  - GARBAGE_OUT_010_CIPHER_MARKER_B
+  - GARBAGE_OUT_010_CIPHER_CLASS_C
+  - GARBAGE_OUT_010_HASH_MARKER_D
+  - GARBAGE_OUT_010_DIGEST_MARKER_E
+  - GARBAGE_OUT_010_GENERATOR_CLASS_F
+  - CipherService
+  - HashGenerator
+  - garbage_encryption.py
+  - garbage_hashing.py

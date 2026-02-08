@@ -1,0 +1,42 @@
+indirect.sh: |
+  #!/bin/bash
+
+  swap_values() {
+      local -n ref_a=$1
+      local -n ref_b=$2
+      local tmp="$ref_a"
+      ref_a="$ref_b"
+      ref_b="$tmp"
+  }
+
+  x="hello"
+  y="world"
+  swap_values x y
+  echo "x=$x y=$y"
+unrelated/garbage_weather.sh: |
+  #!/bin/bash
+  # GARBAGE_SH_002_WEATHER_SERVICE_A
+  GARBAGE_SH_002_API_ENDPOINT_B="http://weather.example.com"
+
+  garbage_fetch_forecast_002() {
+      local city=$1
+      echo "Forecast for $city: sunny"
+  }
+
+  garbage_parse_temp_002() {
+      local raw=$1
+      echo "${raw}C"
+  }
+unrelated/garbage_calendar.sh: |
+  #!/bin/bash
+  # GARBAGE_SH_002_CALENDAR_SYNC_C
+  GARBAGE_SH_002_TIMEZONE_D="UTC"
+
+  garbage_next_event_002() {
+      echo "No upcoming events"
+  }
+
+  garbage_add_reminder_002() {
+      local msg=$1
+      echo "Reminder: $msg"
+  }

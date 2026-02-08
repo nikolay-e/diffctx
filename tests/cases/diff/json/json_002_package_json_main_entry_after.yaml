@@ -1,0 +1,110 @@
+package.json: |
+  {
+    "name": "mylib",
+    "version": "2.1.0",
+    "description": "Utility library for string manipulation",
+    "main": "dist/index.cjs",
+    "module": "dist/index.mjs",
+    "types": "dist/index.d.ts",
+    "exports": {
+      ".": {
+        "require": "./dist/index.cjs",
+        "import": "./dist/index.mjs",
+        "types": "./dist/index.d.ts"
+      }
+    },
+    "scripts": {
+      "build": "tsc",
+      "prepublishOnly": "npm run build"
+    },
+    "keywords": ["string", "utils"],
+    "license": "MIT",
+    "devDependencies": {
+      "typescript": "^5.2.0"
+    }
+  }
+src/index.ts: |
+  export function greet(name: string): string {
+      return `Hello, ${name}!`;
+  }
+
+  export function capitalize(str: string): string {
+      if (str.length === 0) return str;
+      return str.charAt(0).toUpperCase() + str.slice(1);
+  }
+
+  export function slugify(text: string): string {
+      return text
+          .toLowerCase()
+          .replace(/\s+/g, '-')
+          .replace(/[^a-z0-9-]/g, '');
+  }
+
+  export function truncate(str: string, maxLength: number): string {
+      if (str.length <= maxLength) return str;
+      return str.slice(0, maxLength - 3) + '...';
+  }
+src/types.ts: |
+  export interface StringTransformOptions {
+      preserveCase: boolean;
+      trimWhitespace: boolean;
+      maxLength: number;
+  }
+
+  export type TransformFn = (input: string) => string;
+
+  export interface TransformPipeline {
+      transforms: TransformFn[];
+      apply(input: string): string;
+  }
+unrelated/validator.js: |
+  const GARBAGE_JSON_002_VALIDATION_RULES_A = { maxLength: 255, minLength: 1 };
+
+  class GARBAGE_JSON_002_INPUT_VALIDATOR_B {
+      constructor(rules) {
+          this.rules = { ...GARBAGE_JSON_002_VALIDATION_RULES_A, ...rules };
+      }
+
+      validate(input) {
+          if (input.length < this.rules.minLength) return false;
+          if (input.length > this.rules.maxLength) return false;
+          return true;
+      }
+
+      sanitize(input) {
+          return input.replace(/[<>]/g, '');
+      }
+  }
+
+  function GARBAGE_JSON_002_CHECK_INPUT_C(value) {
+      const validator = new GARBAGE_JSON_002_INPUT_VALIDATOR_B();
+      return validator.validate(value);
+  }
+
+  module.exports = { GARBAGE_JSON_002_INPUT_VALIDATOR_B, GARBAGE_JSON_002_CHECK_INPUT_C };
+unrelated/transformer.js: |
+  const GARBAGE_JSON_002_TRANSFORM_PRESET_D = { encoding: 'utf-8' };
+
+  class GARBAGE_JSON_002_DATA_TRANSFORMER_E {
+      constructor(preset) {
+          this.preset = { ...GARBAGE_JSON_002_TRANSFORM_PRESET_D, ...preset };
+          this.history = [];
+      }
+
+      transform(data) {
+          const result = JSON.parse(JSON.stringify(data));
+          this.history.push({ timestamp: Date.now(), data: result });
+          return result;
+      }
+
+      getHistory() {
+          return [...this.history];
+      }
+  }
+
+  function GARBAGE_JSON_002_BATCH_TRANSFORM_F(items) {
+      const t = new GARBAGE_JSON_002_DATA_TRANSFORMER_E();
+      return items.map(item => t.transform(item));
+  }
+
+  module.exports = { GARBAGE_JSON_002_DATA_TRANSFORMER_E, GARBAGE_JSON_002_BATCH_TRANSFORM_F };

@@ -1,0 +1,113 @@
+database.py: |
+  class Session:
+      def __init__(self, url: str = "sqlite:///test.db"):
+          self.url = url
+          self._data: dict[str, list] = {}
+
+      def add(self, obj: object) -> None:
+          table = type(obj).__name__
+          if table not in self._data:
+              self._data[table] = []
+          self._data[table].append(obj)
+
+      def commit(self) -> None:
+          pass
+
+      def rollback(self) -> None:
+          self._data.clear()
+
+      def close(self) -> None:
+          self._data.clear()
+
+      def query(self, model_class: type) -> list:
+          return self._data.get(model_class.__name__, [])
+
+models.py: |
+  class User:
+      def __init__(self, name: str, email: str, is_active: bool = True):
+          self.name = name
+          self.email = email
+          self.is_active = is_active
+
+  class Project:
+      def __init__(self, name: str, owner: User):
+          self.name = name
+          self.owner = owner
+
+conftest.py: |
+  import pytest
+
+  @pytest.fixture
+  def db_session():
+      from database import Session
+      session = Session()
+      yield session
+      session.close()
+
+  @pytest.fixture
+  def test_user(db_session):
+      from models import User
+      user = User(name="Alice", email="alice@example.com")
+      db_session.add(user)
+      db_session.commit()
+      return user
+
+  @pytest.fixture
+  def test_project(db_session, test_user):
+      from models import Project
+      project = Project(name="Test Project", owner=test_user)
+      db_session.add(project)
+      db_session.commit()
+      return project
+
+test_service.py: |
+  def test_create_user(db_session, test_user):
+      assert test_user.name == "Alice"
+      assert test_user.email == "alice@example.com"
+      users = db_session.query(type(test_user))
+      assert len(users) == 1
+
+  def test_create_project(db_session, test_project, test_user):
+      assert test_project.name == "Test Project"
+      assert test_project.owner is test_user
+
+  def test_user_is_active(test_user):
+      assert test_user.is_active is True
+
+garbage_migration.py: |
+  GARBAGE_PY_060_MIGRATE_A = "migration runner marker"
+  GARBAGE_PY_060_SCHEMA_B = "schema version marker"
+
+  class MigrationRunner:
+      GARBAGE_PY_060_ROLLBACK_C = "rollback marker"
+
+      def __init__(self, db_url: str = ""):
+          self.db_url = db_url
+          self._applied: list[str] = []
+
+      def apply(self, migration_id: str) -> None:
+          self._applied.append(migration_id)
+
+      def rollback(self, migration_id: str) -> bool:
+          GARBAGE_PY_060_UNDO_D = "undo migration marker"
+          if migration_id in self._applied:
+              self._applied.remove(migration_id)
+              return True
+          return False
+
+garbage_seed.py: |
+  GARBAGE_PY_060_SEED_E = "data seeder marker"
+  GARBAGE_PY_060_FIXTURE_F = "fixture generator marker"
+
+  class DataSeeder:
+      GARBAGE_PY_060_FACTORY_G = True
+
+      def __init__(self, locale: str = "en_US"):
+          self.locale = locale
+
+      def seed_users(self, count: int = 10) -> list[dict]:
+          return [{"id": i, "name": f"User_{i}"} for i in range(count)]
+
+      def seed_products(self, count: int = 20) -> list[dict]:
+          GARBAGE_PY_060_PRODUCT_H = "product seed marker"
+          return [{"id": i, "name": f"Product_{i}"} for i in range(count)]

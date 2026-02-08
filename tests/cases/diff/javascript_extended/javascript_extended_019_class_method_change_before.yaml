@@ -1,0 +1,70 @@
+src/base.ts: |
+  export class BaseService {
+      protected log(message: string): void {
+          console.log(message);
+      }
+
+      process(data: string): string {
+          this.log(`Processing: ${data}`);
+          return data.toUpperCase();
+      }
+
+      validate(data: string): boolean {
+          return data.length > 0 && data.length < 1000;
+      }
+
+      sanitize(data: string): string {
+          return data.trim().replace(/[<>]/g, '');
+      }
+  }
+src/derived.ts: |
+  import { BaseService } from './base';
+
+  export class ExtendedService extends BaseService {
+      process(data: string): string {
+          const result = super.process(data);
+          return `[Extended] ${result}`;
+      }
+
+      processAll(items: string[]): string[] {
+          return items.map(item => this.process(item));
+      }
+  }
+src/unrelated/healthCheck.ts: |
+  const GARBAGE_JSX_019_HEALTH_CONFIG_A = 'health_check_garbage_marker';
+
+  export class GarbageHealthChecker {
+      private services: Map<string, boolean> = new Map();
+
+      register(service: string): void {
+          this.services.set(service, true);
+      }
+
+      checkAll(): boolean {
+          return Array.from(this.services.values()).every(v => v);
+      }
+  }
+
+  export function GARBAGE_JSX_019_PING_SERVICE_B(): boolean {
+      console.log('GARBAGE_JSX_019_PING_OUTPUT_C');
+      return true;
+  }
+src/unrelated/retry.ts: |
+  const GARBAGE_JSX_019_RETRY_CONFIG_D = { maxAttempts: 3, delay: 1000 };
+
+  export class GARBAGE_JSX_019_RETRY_HANDLER_E {
+      private attempts = 0;
+
+      async execute<T>(fn: () => Promise<T>): Promise<T> {
+          this.attempts++;
+          return fn();
+      }
+
+      getAttempts(): number {
+          return this.attempts;
+      }
+  }
+
+  export function GARBAGE_JSX_019_RESET_RETRY_F(): void {
+      console.log('resetting retry state');
+  }

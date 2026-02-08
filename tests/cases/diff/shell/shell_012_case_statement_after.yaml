@@ -1,0 +1,51 @@
+service.sh: |
+  #!/bin/bash
+
+  case "$1" in
+      start)
+          echo "Starting service..."
+          ./bin/app start
+          ;;
+      stop)
+          echo "Stopping service..."
+          ./bin/app stop
+          ;;
+      restart)
+          $0 stop
+          sleep 2
+          $0 start
+          ;;
+      status)
+          ./bin/app status
+          ;;
+      *)
+          echo "Usage: $0 {start|stop|restart|status}"
+          exit 1
+          ;;
+  esac
+unrelated/garbage_docker_prune.sh: |
+  #!/bin/bash
+  # GARBAGE_SH_012_DOCKER_PRUNE_A
+  GARBAGE_SH_012_IMAGE_AGE_B="30d"
+
+  garbage_prune_images_012() {
+      echo "Pruning images older than $GARBAGE_SH_012_IMAGE_AGE_B"
+  }
+
+  garbage_prune_volumes_012() {
+      echo "Pruning dangling volumes"
+  }
+unrelated/garbage_helm_lint.sh: |
+  #!/bin/bash
+  # GARBAGE_SH_012_HELM_LINT_C
+  GARBAGE_SH_012_CHART_DIR_D="./charts"
+
+  garbage_lint_chart_012() {
+      local chart=$1
+      echo "Linting $chart: passed"
+  }
+
+  garbage_template_chart_012() {
+      local chart=$1
+      echo "Rendering $chart templates"
+  }

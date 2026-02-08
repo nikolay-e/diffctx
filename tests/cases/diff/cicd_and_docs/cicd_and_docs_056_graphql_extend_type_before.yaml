@@ -1,0 +1,55 @@
+schema/base.graphql: |
+  type Query {
+    health: String!
+  }
+
+  type User {
+    id: ID!
+    name: String!
+    email: String
+  }
+
+schema/orders.graphql: |
+  extend type Query {
+    orders: [Order!]!
+  }
+
+  extend type User {
+    orders: [Order!]!
+  }
+
+  type Order {
+    id: ID!
+    total: Float!
+  }
+
+src/resolvers/order_resolver.py: |
+  from typing import List
+  from models.order import Order
+  from database import get_db
+
+  def resolve_orders(obj, info) -> List[Order]:
+      db = get_db()
+      return db.query(Order).all()
+
+  def resolve_user_orders(user, info) -> List[Order]:
+      db = get_db()
+      return db.query(Order).filter(Order.user_id == user.id).all()
+
+garbage_schema_merger.ts: |
+  const GARBAGE_CICD_DOCS_056_MERGE_MARKER_A = "graphql-tools";
+  const GARBAGE_CICD_DOCS_056_STITCH_MARKER_B = "federation";
+
+  class GarbageSchemaMerger {
+    static GARBAGE_CICD_DOCS_056_CONFLICT_MARKER_C = "error";
+    merge(): void {}
+  }
+
+garbage_schema_validator.ts: |
+  const GARBAGE_CICD_DOCS_056_VALIDATE_MARKER_D = "strict";
+  const GARBAGE_CICD_DOCS_056_DEPRECATE_MARKER_E = "warn";
+
+  class GarbageSchemaValidator {
+    static GARBAGE_CICD_DOCS_056_DIRECTIVE_MARKER_F = false;
+    validate(): boolean { return true; }
+  }

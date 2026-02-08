@@ -1,0 +1,23 @@
+monitoring.tf: |
+  resource "aws_cloudwatch_metric_alarm" "cpu" {
+    alarm_name          = "critical-cpu"
+    comparison_operator = "GreaterThanThreshold"
+    evaluation_periods  = 1
+    metric_name         = "CPUUtilization"
+    namespace           = "AWS/EC2"
+    period              = 60
+    statistic           = "Average"
+    threshold           = 90
+  }
+src/metrics.py: |
+  import boto3
+
+  def get_cpu_metrics(instance_id: str):
+      cw = boto3.client("cloudwatch")
+      return cw.get_metric_statistics(
+          Namespace="AWS/EC2",
+          MetricName="CPUUtilization",
+          Dimensions=[{"Name": "InstanceId", "Value": instance_id}],
+          Period=300,
+          Statistics=["Average"],
+      )

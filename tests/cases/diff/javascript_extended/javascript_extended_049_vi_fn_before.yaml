@@ -1,0 +1,54 @@
+src/callback.ts: |
+  export type Callback = (value: number) => void;
+
+  export function processNumbers(numbers: number[], callback: Callback): void {
+      numbers.forEach(n => callback(n));
+  }
+
+  export function processWithTransform(
+      numbers: number[],
+      transform: (n: number) => number,
+      callback: Callback
+  ): void {
+      numbers.forEach(n => callback(transform(n)));
+  }
+
+  export function sumNumbers(numbers: number[]): number {
+      return numbers.reduce((acc, n) => acc + n, 0);
+  }
+src/callback.test.ts: |
+  console.log('initial');
+src/unrelated/encoder.ts: |
+  const GARBAGE_JSX_049_ENCODER_CONFIG_A = 'encoder_garbage_marker';
+
+  export class GarbageEncoder {
+      encode(data: string): string {
+          return btoa(data);
+      }
+
+      decode(data: string): string {
+          return atob(data);
+      }
+  }
+
+  export function GARBAGE_JSX_049_COMPRESS_DATA_B(): string {
+      return 'GARBAGE_JSX_049_COMPRESSED_OUTPUT_C';
+  }
+src/unrelated/profiler.ts: |
+  const GARBAGE_JSX_049_PROFILER_CONFIG_D = { sampleRate: 100 };
+
+  export class GARBAGE_JSX_049_PERFORMANCE_PROFILER_E {
+      private marks: Map<string, number> = new Map();
+
+      mark(label: string): void {
+          this.marks.set(label, Date.now());
+      }
+
+      measure(from: string, to: string): number {
+          return (this.marks.get(to) ?? 0) - (this.marks.get(from) ?? 0);
+      }
+  }
+
+  export function GARBAGE_JSX_049_REPORT_PERF_F(): void {
+      console.log('reporting performance');
+  }

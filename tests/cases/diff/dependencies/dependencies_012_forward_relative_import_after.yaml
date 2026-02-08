@@ -1,0 +1,11 @@
+pkg/__init__.py: ''
+pkg/utils.py: |
+  def helper():
+      return "help"
+pkg/subpkg/__init__.py: ''
+pkg/subpkg/module.py: |
+  from ..utils import helper
+
+  def action():
+      result = helper()
+      return result

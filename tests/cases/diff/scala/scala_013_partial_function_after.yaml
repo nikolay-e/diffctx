@@ -1,0 +1,23 @@
+Event.scala: |
+  sealed trait Event
+  case class UserCreated(name: String) extends Event
+  case class UserDeleted(id: String) extends Event
+  case class OrderPlaced(orderId: String, amount: Double) extends Event
+EventHandler.scala: |
+  class EventHandler {
+    val userHandler: PartialFunction[Event, String] = {
+      case UserCreated(name) => s"Created user: $name"
+      case UserDeleted(id) => s"Deleted user: $id"
+    }
+
+    val orderHandler: PartialFunction[Event, String] = {
+      case OrderPlaced(id, amount) => s"Order $id: $$$amount"
+    }
+
+    val combinedHandler: PartialFunction[Event, String] =
+      userHandler orElse orderHandler
+
+    def handle(event: Event): Option[String] = {
+      combinedHandler.lift(event)
+    }
+  }

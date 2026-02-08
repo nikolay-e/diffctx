@@ -1,0 +1,85 @@
+docs/api/users.md: |
+  # Users API
+
+  ## GET /api/users
+
+  Returns a list of users.
+
+  ### Parameters
+
+  | Name | Type | Description |
+  |------|------|-------------|
+  | limit | integer | Max results (default: 10) |
+  | offset | integer | Pagination offset |
+
+  ### Response
+
+  ```json
+  {
+    "data": [{"id": 1, "name": "John"}],
+    "total": 100,
+    "limit": 10,
+    "offset": 0
+  }
+  ```
+
+  ## POST /api/users
+
+  Create a new user.
+
+  ### Request Body
+
+  ```json
+  {"name": "John", "email": "john@example.com"}
+  ```
+
+  ### Response
+
+  ```json
+  {"id": 2, "name": "John", "email": "john@example.com"}
+  ```
+
+src/handlers/users.py: |
+  from flask import jsonify, request
+
+  def list_users():
+      limit = request.args.get('limit', 10, type=int)
+      offset = request.args.get('offset', 0, type=int)
+      users = [{"id": 1, "name": "John"}]
+      return jsonify({
+          "data": users,
+          "total": 100,
+          "limit": limit,
+          "offset": offset
+      })
+
+  def create_user():
+      data = request.get_json()
+      user = {"id": 2, **data}
+      return jsonify(user), 201
+
+src/routes.py: |
+  from flask import Blueprint
+  from handlers.users import list_users, create_user
+
+  api = Blueprint('api', __name__)
+  api.route('/users', methods=['GET'])(list_users)
+  api.route('/users', methods=['POST'])(create_user)
+
+garbage_api_docs_generator.ts: |
+  const GARBAGE_CICD_DOCS_046_GENERATOR_MARKER_A = "openapi";
+  const GARBAGE_CICD_DOCS_046_FORMAT_MARKER_B = "yaml";
+
+  class GarbageApiDocsGenerator {
+    static GARBAGE_CICD_DOCS_046_VERSION_MARKER_C = "3.0";
+    generate(): void {}
+  }
+
+garbage_api_schema_extractor.ts: |
+  const GARBAGE_CICD_DOCS_046_EXTRACTOR_MARKER_D = "pydantic";
+  const GARBAGE_CICD_DOCS_046_OUTPUT_MARKER_E = "json-schema";
+
+  class GarbageApiSchemaExtractor {
+    static GARBAGE_CICD_DOCS_046_RECURSIVE_MARKER_F = true;
+    extract(): void {}
+  }

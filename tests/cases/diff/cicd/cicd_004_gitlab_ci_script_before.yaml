@@ -1,0 +1,140 @@
+.gitlab-ci.yml: |
+  image: node:20-alpine
+
+  variables:
+    NODE_ENV: production
+    CACHE_KEY: $CI_COMMIT_REF_SLUG
+
+  cache:
+    key: ${CACHE_KEY}
+    paths:
+      - node_modules/
+      - .npm/
+
+  stages:
+    - build
+    - test
+
+  build:
+    stage: build
+    script:
+      - npm run build
+
+src/main.ts: |
+  import { Logger } from './utils/logger';
+  import { Config } from './config';
+  import { ApiServer } from './server';
+
+  const logger = new Logger('main');
+
+  export async function main(): Promise<void> {
+    logger.info('Starting application');
+
+    const config = Config.load();
+    const server = new ApiServer(config);
+
+    await server.start();
+    logger.info(`Server running on port ${config.port}`);
+
+    process.on('SIGTERM', async () => {
+      logger.info('Received SIGTERM, shutting down');
+      await server.stop();
+      process.exit(0);
+    });
+  }
+
+  main().catch((error) => {
+    logger.error('Failed to start application', error);
+    process.exit(1);
+  });
+
+src/server.ts: |
+  import express, { Express, Request, Response } from 'express';
+  import { Config } from './config';
+  import { Logger } from './utils/logger';
+
+  export class ApiServer {
+    private app: Express;
+    private logger: Logger;
+    private server: any;
+
+    constructor(private config: Config) {
+      this.app = express();
+      this.logger = new Logger('ApiServer');
+      this.setupMiddleware();
+      this.setupRoutes();
+    }
+
+    private setupMiddleware(): void {
+      this.app.use(express.json());
+      this.app.use((req, res, next) => {
+        this.logger.debug(`${req.method} ${req.path}`);
+        next();
+      });
+    }
+
+    private setupRoutes(): void {
+      this.app.get('/health', (req: Request, res: Response) => {
+        res.json({ status: 'ok' });
+      });
+
+      this.app.get('/api/version', (req: Request, res: Response) => {
+        res.json({ version: this.config.version });
+      });
+    }
+
+    async start(): Promise<void> {
+      return new Promise((resolve) => {
+        this.server = this.app.listen(this.config.port, () => {
+          resolve();
+        });
+      });
+    }
+
+    async stop(): Promise<void> {
+      return new Promise((resolve) => {
+        this.server?.close(() => resolve());
+      });
+    }
+  }
+
+src/config.ts: |
+  export interface Config {
+    port: number;
+    version: string;
+    logLevel: string;
+  }
+
+  export const Config = {
+    load(): Config {
+      return {
+        port: parseInt(process.env.PORT || '3000', 10),
+        version: process.env.APP_VERSION || '1.0.0',
+        logLevel: process.env.LOG_LEVEL || 'info',
+      };
+    },
+  };
+
+garbage_migrations.ts: |
+  GARBAGE_CICD_004_MIGRATION_MARKER_A = "migrate";
+  GARBAGE_CICD_004_SCHEMA_MARKER_B = "v2";
+
+  class GarbageMigrationRunner {
+    GARBAGE_CICD_004_PENDING_MARKER_C: string[] = [];
+
+    async migrate(): Promise<void> {
+      console.log("Running migrations...");
+    }
+  }
+
+garbage_seeder.ts: |
+  GARBAGE_CICD_004_SEED_MARKER_D = "seed";
+  GARBAGE_CICD_004_DATA_MARKER_E = true;
+
+  class GarbageDataSeeder {
+    GARBAGE_CICD_004_RECORDS_MARKER_F = 1000;
+
+    async seed(): Promise<void> {
+      console.log("Seeding data...");
+    }
+  }

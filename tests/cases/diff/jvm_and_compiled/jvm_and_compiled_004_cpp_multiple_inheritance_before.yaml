@@ -1,0 +1,56 @@
+interfaces.h: |
+  #pragma once
+
+  class Drawable {
+  public:
+      virtual ~Drawable() = default;
+      virtual void draw() = 0;
+  };
+
+  class Clickable {
+  public:
+      virtual ~Clickable() = default;
+      virtual void onClick() = 0;
+  };
+widget.cpp: |
+  #include <iostream>
+  int main() { return 0; }
+garbage_serializer.cpp: |
+  #include <string>
+  #include <sstream>
+  const char* GARBAGE_JVM_004_SERIAL_MARKER_A = "xml_serial";
+  const char* GARBAGE_JVM_004_DESERIAL_MARKER_B = "xml_deserial";
+
+  class GarbageXmlSerializer {
+      std::ostringstream buf_;
+  public:
+      void addTag(const std::string& name, const std::string& val) {
+          buf_ << "<" << name << ">" << val << "</" << name << ">";
+      }
+      std::string result() { return buf_.str(); }
+  };
+garbage_pool.cpp: |
+  #include <vector>
+  const char* GARBAGE_JVM_004_POOL_MARKER_C = "obj_pool";
+  const char* GARBAGE_JVM_004_RECYCLE_MARKER_D = "obj_recycle";
+
+  class GarbageObjectPool {
+      std::vector<void*> free_list_;
+  public:
+      void* acquire() { if (free_list_.empty()) return nullptr; auto p = free_list_.back(); free_list_.pop_back(); return p; }
+      void release(void* p) { free_list_.push_back(p); }
+  };
+garbage_theme.cpp: |
+  const char* GARBAGE_JVM_004_THEME_MARKER_A = "marker";
+  const char* GARBAGE_JVM_004_STYLE_MARKER_B = "marker";
+
+  class GarbageThemeManager {
+      void noop() {}
+  };
+garbage_layout.cpp: |
+  const char* GARBAGE_JVM_004_LAYOUT_MARKER_C = "marker";
+  const char* GARBAGE_JVM_004_FLEX_MARKER_D = "marker";
+
+  class GarbageLayoutEngine {
+      void noop() {}
+  };

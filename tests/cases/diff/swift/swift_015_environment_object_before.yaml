@@ -1,0 +1,24 @@
+AppState.swift: |
+  import Combine
+
+  class AppState: ObservableObject {
+      @Published var currentUser: String?
+      @Published var isLoggedIn = false
+
+      func login(username: String) {
+          currentUser = username
+          isLoggedIn = true
+      }
+
+      func logout() {
+          currentUser = nil
+          isLoggedIn = false
+      }
+  }
+  // garbage_marker_12345
+ProfileView.swift: |
+  // Initial
+  import SwiftUI
+  struct ProfileView: View {
+      var body: some View { Text("") }
+  }

@@ -1,0 +1,46 @@
+interfaces/repository.py: |
+  from typing import Protocol, TypeVar
+
+  T = TypeVar('T')
+
+  class Repository(Protocol[T]):
+      def find(self, id: int) -> T:
+          ...
+
+      def save(self, entity: T) -> None:
+          ...
+repos/user_repository.py: |
+  from interfaces.repository import Repository
+
+  class User:
+      def __init__(self, id: int, name: str):
+          self.id = id
+          self.name = name
+
+  class UserRepository:
+      def __init__(self):
+          self.users = {}
+
+      def find(self, id: int) -> User:
+          return self.users.get(id)
+
+      def save(self, entity: User) -> None:
+          self.users[entity.id] = entity
+repos/product_repository.py: |
+  from interfaces.repository import Repository
+
+  class Product:
+      def __init__(self, id: int, name: str, price: float):
+          self.id = id
+          self.name = name
+          self.price = price
+
+  class ProductRepository:
+      def __init__(self):
+          self.products = {}
+
+      def find(self, id: int) -> Product:
+          return self.products.get(id)
+
+      def save(self, entity: Product) -> None:
+          self.products[entity.id] = entity

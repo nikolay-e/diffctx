@@ -1,0 +1,67 @@
+package.json: |
+  {
+      "name": "monorepo",
+      "private": true,
+      "workspaces": ["packages/*"]
+  }
+
+packages/core/package.json: |
+  {
+      "name": "@myorg/core",
+      "version": "1.0.0",
+      "main": "dist/index.js"
+  }
+
+packages/core/src/index.ts: |
+  export function coreFunction(): string {
+      return "core";
+  }
+
+  export function coreHelper(input: string): string {
+      return input.toUpperCase();
+  }
+
+packages/web/package.json: |
+  {
+      "name": "@myorg/web",
+      "version": "1.0.0",
+      "dependencies": {
+          "@myorg/core": "workspace:*"
+      }
+  }
+
+packages/api/package.json: |
+  {
+      "name": "@myorg/api",
+      "version": "1.0.0",
+      "dependencies": {
+          "@myorg/core": "workspace:*"
+      }
+  }
+
+packages/api/src/index.ts: |
+  import { coreFunction, coreHelper } from '@myorg/core';
+
+  export function apiHandler(input: string) {
+      const base = coreFunction();
+      const processed = coreHelper(input);
+      return `${base}: ${processed}`;
+  }
+
+garbage_mono_scaffold.ts: |
+  const GARBAGE_COMP_011_TEMPLATE_GEN_A = "plop";
+  const GARBAGE_COMP_011_BOILERPLATE_B = "yeoman";
+
+  class GarbageMonoScaffold {
+    static GARBAGE_COMP_011_PACKAGE_INIT_C = true;
+    scaffold(): void {}
+  }
+
+garbage_workspace_lint.ts: |
+  const GARBAGE_COMP_011_DEP_CHECK_D = "syncpack";
+  const GARBAGE_COMP_011_VERSION_RANGE_E = "strict";
+
+  class GarbageWorkspaceLint {
+    static GARBAGE_COMP_011_PEER_AUDIT_F = false;
+    lint(): void {}
+  }

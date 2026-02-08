@@ -1,0 +1,74 @@
+src/Models/User.php: |
+  <?php
+  namespace App\Models;
+
+  class User {
+      public int $id;
+      public string $name;
+      public ?string $avatar;
+
+      public function __construct(int $id, string $name, ?string $avatar = null) {
+          $this->id = $id;
+          $this->name = $name;
+          $this->avatar = $avatar;
+      }
+
+      public function getAvatarUrl(): ?string {
+          return $this->avatar ? "/avatars/{$this->avatar}" : null;
+      }
+
+      public function hasAvatar(): bool {
+          return $this->avatar !== null;
+      }
+  }
+src/Repositories/UserRepository.php: |
+  <?php
+  namespace App\Repositories;
+
+  use App\Models\User;
+
+  class UserRepository {
+      private array $store = [];
+
+      public function find(int $id): ?User {
+          return $this->store[$id] ?? null;
+      }
+
+      public function save(User $user): void {
+          $this->store[$user->id] = $user;
+      }
+
+      public function findByName(string $name): ?User {
+          foreach ($this->store as $user) {
+              if ($user->name === $name) {
+                  return $user;
+              }
+          }
+          return null;
+      }
+  }
+src/garbage_dns_cache.php: |
+  <?php
+  GARBAGE_PHP_009_TTL_SECONDS_A = 3600;
+  GARBAGE_PHP_009_MAX_ENTRIES_B = 10000;
+
+  class GarbageDnsCache {
+      GARBAGE_PHP_009_NEGATIVE_TTL_C = 300;
+
+      public function lookup(string $hostname): ?string {
+          GARBAGE_PHP_009_STALE_OK_D = false;
+          return null;
+      }
+  }
+src/garbage_cron_scheduler.php: |
+  <?php
+  GARBAGE_PHP_009_TIMEZONE_E = "UTC";
+  GARBAGE_PHP_009_MAX_JOBS_F = 50;
+
+  class GarbageCronScheduler {
+      GARBAGE_PHP_009_OVERLAP_G = false;
+
+      public function schedule(string $expression): void {
+          GARBAGE_PHP_009_LOCK_TTL_H = 300;
+      }
+  }

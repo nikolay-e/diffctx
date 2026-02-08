@@ -1,0 +1,43 @@
+openapi.yaml: |
+  openapi: 3.0.0
+  info:
+    title: User API
+    version: 1.0.0
+  paths:
+    /users:
+      get:
+        summary: List users
+        responses:
+          '200':
+            description: List of users
+
+src/handlers/users.py: |
+  from flask import jsonify
+
+  def list_users():
+      return jsonify([{"id": 1, "name": "John"}])
+
+src/routes.py: |
+  from flask import Blueprint
+  from handlers.users import list_users
+
+  api = Blueprint('api', __name__)
+  api.route('/users')(list_users)
+
+garbage_openapi_parser.ts: |
+  const GARBAGE_CICD_DOCS_050_PARSER_MARKER_A = "swagger-parser";
+  const GARBAGE_CICD_DOCS_050_VALIDATE_MARKER_B = true;
+
+  class GarbageOpenapiParser {
+    static GARBAGE_CICD_DOCS_050_DEREFERENCE_MARKER_C = false;
+    parse(): void {}
+  }
+
+garbage_openapi_generator.ts: |
+  const GARBAGE_CICD_DOCS_050_GENERATOR_MARKER_D = "openapi-generator";
+  const GARBAGE_CICD_DOCS_050_LANG_MARKER_E = "typescript";
+
+  class GarbageOpenapiGenerator {
+    static GARBAGE_CICD_DOCS_050_TEMPLATE_MARKER_F = "axios";
+    generate(): void {}
+  }

@@ -1,0 +1,11 @@
+main.tf: |
+  resource "aws_lambda_function" "api" {
+    filename      = "lambda.zip"
+    function_name = "api-handler"
+    handler       = "src/api.handler"
+    runtime       = "nodejs18.x"
+  }
+src/api.ts: |
+  export const handler = async (event: any) => {
+    return { statusCode: 200, body: JSON.stringify({ ok: true }) };
+  };

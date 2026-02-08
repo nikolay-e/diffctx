@@ -1,0 +1,90 @@
+src/main/kotlin/com/example/users/service/UserService.kt: |
+  package com.example.users.service
+
+  import com.example.users.model.User
+  import com.example.users.repository.UserRepository
+
+  class UserService(private val repository: UserRepository) {
+      suspend fun getUser(id: Long): User? {
+          return repository.findById(id)
+      }
+
+      suspend fun getAllUsers(): List<User> {
+          return repository.findAll()
+      }
+
+      suspend fun createUser(name: String, email: String): User {
+          val user = User(id = 0, name = name, email = email)
+          return repository.save(user)
+      }
+  }
+src/main/kotlin/com/example/users/repository/UserRepository.kt: |
+  package com.example.users.repository
+
+  import com.example.users.model.User
+
+  interface UserRepository {
+      suspend fun findById(id: Long): User?
+      suspend fun findAll(): List<User>
+      suspend fun save(user: User): User
+      suspend fun deleteById(id: Long)
+  }
+src/main/kotlin/com/example/users/controller/UserController.kt: |
+  package com.example.users.controller
+
+  import com.example.users.model.User
+  import com.example.users.service.UserService
+  import kotlinx.coroutines.runBlocking
+
+  class UserController(private val service: UserService) {
+      fun getUser(id: Long): User? = runBlocking {
+          service.getUser(id)
+      }
+
+      fun getAllUsers(): List<User> = runBlocking {
+          service.getAllUsers()
+      }
+  }
+src/main/kotlin/com/example/users/unrelated/TokenGenerator.kt: |
+  package com.example.users.unrelated
+
+  import java.security.SecureRandom
+  import java.util.Base64
+
+  class TokenGenerator {
+      companion object {
+          const val GARBAGE_JAVA_024_TOKEN_A = "token_gen_marker"
+          private const val GARBAGE_JAVA_024_TOKEN_B = "token_internal_tag"
+      }
+
+      private val random = SecureRandom()
+
+      fun generateToken(length: Int = 32): String {
+          val bytes = ByteArray(length)
+          random.nextBytes(bytes)
+          return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes)
+      }
+
+      fun invalidateAll() {
+          println(GARBAGE_JAVA_024_TOKEN_A + GARBAGE_JAVA_024_TOKEN_B)
+      }
+  }
+src/main/kotlin/com/example/users/unrelated/EmailValidator.kt: |
+  package com.example.users.unrelated
+
+  class EmailValidator {
+      companion object {
+          const val GARBAGE_JAVA_024_EMAIL_C = "email_validator_marker"
+          private const val GARBAGE_JAVA_024_EMAIL_D = "email_internal_tag"
+          private val EMAIL_REGEX = Regex("^[A-Za-z0-9+_.-]+@[A-Za-z0-9.-]+$")
+      }
+
+      fun isValid(email: String): Boolean {
+          return EMAIL_REGEX.matches(email)
+      }
+
+      fun sanitize(email: String): String {
+          println(GARBAGE_JAVA_024_EMAIL_C + GARBAGE_JAVA_024_EMAIL_D)
+          return email.trim().lowercase()
+      }
+  }

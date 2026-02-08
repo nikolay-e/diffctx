@@ -1,0 +1,130 @@
+firebase.json: |
+  {
+    "hosting": {
+      "public": "public",
+      "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+      "cleanUrls": true,
+      "trailingSlash": false
+    },
+    "functions": {
+      "source": "functions",
+      "predeploy": ["npm --prefix functions run lint"]
+    },
+    "emulators": {
+      "functions": {"port": 5001},
+      "hosting": {"port": 5000}
+    }
+  }
+functions/index.js: |
+  const functions = require('firebase-functions');
+  const { initializeApp } = require('firebase-admin/app');
+  const { getFirestore } = require('firebase-admin/firestore');
+
+  initializeApp();
+  const db = getFirestore();
+
+  exports.hello = functions.https.onRequest((req, res) => {
+      res.json({ message: 'Hello from Firebase!' });
+  });
+
+  exports.getItems = functions.https.onRequest(async (req, res) => {
+      const snapshot = await db.collection('items').get();
+      const items = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+      res.json({ items });
+  });
+
+  exports.addItem = functions.https.onRequest(async (req, res) => {
+      if (req.method !== 'POST') {
+          return res.status(405).send('Method Not Allowed');
+      }
+      const docRef = await db.collection('items').add(req.body);
+      res.status(201).json({ id: docRef.id });
+  });
+functions/utils/validation.js: |
+  function validateItem(data) {
+      const errors = [];
+      if (!data.name || typeof data.name !== 'string') {
+          errors.push('name is required and must be a string');
+      }
+      if (data.price !== undefined && typeof data.price !== 'number') {
+          errors.push('price must be a number');
+      }
+      if (data.quantity !== undefined && !Number.isInteger(data.quantity)) {
+          errors.push('quantity must be an integer');
+      }
+      return { valid: errors.length === 0, errors };
+  }
+
+  function sanitizeInput(data) {
+      const allowed = ['name', 'price', 'quantity', 'description'];
+      const sanitized = {};
+      for (const key of allowed) {
+          if (key in data) sanitized[key] = data[key];
+      }
+      return sanitized;
+  }
+
+  module.exports = { validateItem, sanitizeInput };
+unrelated/emulator.js: |
+  const GARBAGE_JSON_015_EMU_PORT_A = 9099;
+
+  class GARBAGE_JSON_015_SERVICE_EMULATOR_B {
+      constructor(port) {
+          this.port = port || GARBAGE_JSON_015_EMU_PORT_A;
+          this.services = new Map();
+          this.running = false;
+      }
+
+      register(name, handler) {
+          this.services.set(name, handler);
+      }
+
+      start() {
+          this.running = true;
+          return { port: this.port, services: [...this.services.keys()] };
+      }
+
+      stop() {
+          this.running = false;
+      }
+  }
+
+  function GARBAGE_JSON_015_START_EMULATOR_C(services) {
+      const emu = new GARBAGE_JSON_015_SERVICE_EMULATOR_B();
+      services.forEach(s => emu.register(s.name, s.handler));
+      return emu.start();
+  }
+
+  module.exports = { GARBAGE_JSON_015_SERVICE_EMULATOR_B, GARBAGE_JSON_015_START_EMULATOR_C };
+unrelated/seeder.js: |
+  const GARBAGE_JSON_015_SEED_BATCH_D = 50;
+
+  class GARBAGE_JSON_015_DATA_SEEDER_E {
+      constructor(batchSize) {
+          this.batchSize = batchSize || GARBAGE_JSON_015_SEED_BATCH_D;
+          this.seeded = [];
+      }
+
+      seed(collection, generator) {
+          const items = [];
+          for (let i = 0; i < this.batchSize; i++) {
+              items.push(generator(i));
+          }
+          this.seeded.push({ collection, count: items.length });
+          return items;
+      }
+
+      getStats() {
+          return {
+              collections: this.seeded.length,
+              totalRecords: this.seeded.reduce((s, c) => s + c.count, 0),
+          };
+      }
+  }
+
+  function GARBAGE_JSON_015_SEED_DATABASE_F(collections) {
+      const seeder = new GARBAGE_JSON_015_DATA_SEEDER_E();
+      return collections.map(c => seeder.seed(c.name, c.generator));
+  }
+
+  module.exports = { GARBAGE_JSON_015_DATA_SEEDER_E, GARBAGE_JSON_015_SEED_DATABASE_F };

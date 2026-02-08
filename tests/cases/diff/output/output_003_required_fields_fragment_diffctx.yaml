@@ -1,0 +1,17 @@
+must_include_files:
+  - module.py
+must_include_content:
+  - |
+    def my_function():
+        return 100
+must_not_include:
+  - GARBAGE_OUT_003_PAYMENT_MARKER_A
+  - GARBAGE_OUT_003_STRIPE_MARKER_B
+  - GARBAGE_OUT_003_GATEWAY_CLASS_C
+  - GARBAGE_OUT_003_INVOICE_MARKER_D
+  - GARBAGE_OUT_003_TOTAL_MARKER_E
+  - GARBAGE_OUT_003_GENERATOR_CLASS_F
+  - PaymentGateway
+  - InvoiceGenerator
+  - garbage_payments.py
+  - garbage_invoicing.py

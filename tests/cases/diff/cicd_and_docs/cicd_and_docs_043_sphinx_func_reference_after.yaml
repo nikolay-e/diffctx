@@ -1,0 +1,72 @@
+docs/api.rst: |
+  API Reference
+  =============
+
+  Functions
+  ---------
+
+  .. autofunction:: mylib.process
+  .. autofunction:: mylib.transform
+  .. autofunction:: mylib.validate
+
+  See :func:`mylib.process` for data processing.
+  Use :func:`mylib.transform` to convert data formats.
+  Call :func:`mylib.validate` before processing.
+
+  Classes
+  -------
+
+  .. autoclass:: mylib.Processor
+     :members:
+
+src/mylib/__init__.py: |
+  from .core import process, transform, validate
+  from .processor import Processor
+
+  __all__ = ['process', 'transform', 'validate', 'Processor']
+
+src/mylib/core.py: |
+  def process(data):
+      return [x * 2 for x in data]
+
+  def transform(data, format='list'):
+      if format == 'dict':
+          return {i: v for i, v in enumerate(data)}
+      return list(data)
+
+  def validate(data):
+      if not isinstance(data, (list, tuple)):
+          raise TypeError('Data must be iterable')
+      return True
+
+src/mylib/processor.py: |
+  class Processor:
+      def __init__(self, config=None):
+          self.config = config or {}
+
+      def run(self, data):
+          from .core import validate, process
+          validate(data)
+          return process(data)
+
+conf.py: |
+  project = 'mylib'
+  extensions = ['sphinx.ext.autodoc']
+
+garbage_sphinx_builder.ts: |
+  const GARBAGE_CICD_DOCS_043_BUILDER_MARKER_A = "html";
+  const GARBAGE_CICD_DOCS_043_FORMAT_MARKER_B = "rst";
+
+  class GarbageSphinxBuilder {
+    static GARBAGE_CICD_DOCS_043_PARALLEL_MARKER_C = 4;
+    build(): void {}
+  }
+
+garbage_sphinx_indexer.ts: |
+  const GARBAGE_CICD_DOCS_043_INDEXER_MARKER_D = "genindex";
+  const GARBAGE_CICD_DOCS_043_SEARCH_MARKER_E = "whoosh";
+
+  class GarbageSphinxIndexer {
+    static GARBAGE_CICD_DOCS_043_STEMMER_MARKER_F = "english";
+    index(): void {}
+  }

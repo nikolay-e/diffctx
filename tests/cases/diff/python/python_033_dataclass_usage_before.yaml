@@ -1,0 +1,97 @@
+models.py: |
+  from dataclasses import dataclass, field
+  from typing import Optional, List
+  from datetime import datetime
+  from enum import Enum
+
+  class AccountStatus(Enum):
+      ACTIVE = "active"
+      INACTIVE = "inactive"
+      SUSPENDED = "suspended"
+
+  @dataclass
+  class Address:
+      street: str
+      city: str
+      state: str
+      postal_code: str
+      country: str = "USA"
+
+      def format_single_line(self) -> str:
+          return f"{self.street}, {self.city}, {self.state} {self.postal_code}"
+
+  @dataclass
+  class Preferences:
+      notifications_enabled: bool = True
+      newsletter_subscribed: bool = False
+      theme: str = "light"
+      language: str = "en"
+
+  @dataclass
+  class User:
+      name: str
+      age: int
+      email: str = ""
+      address: Optional[Address] = None
+      preferences: Preferences = field(default_factory=Preferences)
+      status: AccountStatus = AccountStatus.ACTIVE
+      created_at: datetime = field(default_factory=datetime.now)
+      roles: List[str] = field(default_factory=list)
+
+      def is_adult(self) -> bool:
+          return self.age >= 18
+
+      def has_role(self, role: str) -> bool:
+          return role in self.roles
+
+      def add_role(self, role: str) -> None:
+          if role not in self.roles:
+              self.roles.append(role)
+service.py: |
+  from models import User, Address, Preferences, AccountStatus
+
+  class UserRepository:
+      def __init__(self):
+          self._users = {}
+
+      def save(self, user: User) -> int:
+          return 1
+
+      def find_by_id(self, user_id: int):
+          return self._users.get(user_id)
+unrelated/payment_gateway.py: |
+  GARBAGE_PYTHON_033_001 = "payment gateway marker"
+  GARBAGE_PYTHON_033_002 = "payment processing constant"
+
+  class PaymentGateway:
+      GARBAGE_PYTHON_033_003 = "gateway class constant"
+
+      def __init__(self, api_key: str):
+          self.api_key = api_key
+
+      def charge(self, amount: float) -> dict:
+          return {"status": "completed"}
+unrelated/email_service.py: |
+  GARBAGE_PYTHON_033_004 = "email service marker"
+  GARBAGE_PYTHON_033_005 = "smtp configuration constant"
+
+  class EmailSender:
+      GARBAGE_PYTHON_033_006 = "sender class marker"
+
+      def __init__(self, smtp_host: str):
+          self.smtp_host = smtp_host
+
+      def send(self, to: str, subject: str, body: str) -> bool:
+          return True
+unrelated/file_storage.py: |
+  GARBAGE_PYTHON_033_007 = "file storage marker"
+  GARBAGE_PYTHON_033_008 = "storage bucket constant"
+
+  class FileStorage:
+      GARBAGE_PYTHON_033_009 = "storage class marker"
+
+      def __init__(self, base_path: str = "/tmp"):
+          self.base_path = base_path
+
+      def upload(self, filename: str, content: bytes) -> str:
+          return f"{self.base_path}/{filename}"

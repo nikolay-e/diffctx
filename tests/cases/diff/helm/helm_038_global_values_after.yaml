@@ -1,0 +1,11 @@
+values.yaml: |
+  global:
+    imageRegistry: registry.example.com
+    imagePullSecrets:
+      - name: registry-secret
+
+  image:
+    repository: myapp
+unrelated.txt: |
+  garbage_marker_12345
+  unused_marker_67890

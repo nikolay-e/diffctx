@@ -1,0 +1,55 @@
+Attributes/RouteAttribute.cs: |
+  namespace MyApp.Attributes;
+
+  [AttributeUsage(AttributeTargets.Method)]
+  public class RouteAttribute : Attribute
+  {
+      public string Path { get; }
+
+      public RouteAttribute(string path)
+      {
+          Path = path;
+      }
+  }
+Services/Router.cs: |
+  using System.Reflection;
+  using MyApp.Attributes;
+
+  namespace MyApp.Services;
+
+  public class Router
+  {
+      public Dictionary<string, MethodInfo> BuildRoutes(Type controllerType)
+      {
+          var routes = new Dictionary<string, MethodInfo>();
+
+          foreach (var method in controllerType.GetMethods())
+          {
+              var attr = method.GetCustomAttribute<RouteAttribute>();
+              if (attr != null)
+              {
+                  routes[attr.Path] = method;
+              }
+          }
+
+          return routes;
+      }
+  }
+Unrelated/BlobStorage.cs: |
+  namespace MyApp.Unrelated;
+
+  public class BlobStorage
+  {
+      private const string GARBAGE_CS_018_BLOB_STORAGE_A = "blob_storage_marker";
+
+      public void Upload(byte[] data) => _ = GARBAGE_CS_018_BLOB_STORAGE_A;
+  }
+Unrelated/CdnManager.cs: |
+  namespace MyApp.Unrelated;
+
+  public class CdnManager
+  {
+      public const string GARBAGE_CS_018_CDN_MANAGER_B = "cdn_manager_marker";
+
+      public string GetUrl(string path) => GARBAGE_CS_018_CDN_MANAGER_B + path;
+  }

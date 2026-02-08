@@ -1,0 +1,65 @@
+src/utils/formatting.py: |
+  from typing import Any, Optional
+  from datetime import datetime
+
+  def format_currency(amount: float, currency: str = "USD") -> str:
+      symbols = {"USD": "$", "EUR": "€", "GBP": "£"}
+      symbol = symbols.get(currency, currency)
+      return f"{symbol}{amount:,.2f}"
+
+  def format_date(dt: datetime, fmt: str = "%Y-%m-%d") -> str:
+      return dt.strftime(fmt)
+
+  def format_percentage(value: float, decimals: int = 2) -> str:
+      return f"{value * 100:.{decimals}f}%"
+
+src/services/report_generator.py: |
+  from utils.formatting import format_currency, format_date, format_percentage
+  from datetime import datetime
+  from typing import Dict, List, Any
+
+  class ReportGenerator:
+      def __init__(self, title: str, currency: str = "USD"):
+          self.title = title
+          self.currency = currency
+          self.created_at = datetime.now()
+
+      def generate_summary(self, data: Dict[str, Any]) -> str:
+          revenue = data.get("revenue", 0)
+          growth = data.get("growth", 0)
+          previous = data.get("previous_revenue", 0)
+
+          lines = [
+              f"Report: {self.title}",
+              f"Date: {format_date(self.created_at)}",
+              f"Revenue: {format_currency(revenue, self.currency)}",
+              f"Previous: {format_currency(previous, self.currency)}",
+              f"Growth: {format_percentage(growth)}",
+          ]
+          return "\n".join(lines)
+
+      def generate_table(self, rows: List[Dict]) -> str:
+          output = []
+          for row in rows:
+              output.append(f"{row['name']}: {format_currency(row['amount'], self.currency)}")
+          return "\n".join(output)
+
+garbage_validators.py: |
+  GARBAGE_ALGO_008_VALIDATE_MARKER_A = "validate"
+  GARBAGE_ALGO_008_SCHEMA_MARKER_B = True
+
+  class DataValidator:
+      GARBAGE_ALGO_008_RULES_MARKER_C = []
+
+      def validate(self, data: dict) -> bool:
+          return True
+
+garbage_parsers.py: |
+  GARBAGE_ALGO_008_PARSER_MARKER_D = "parser"
+  GARBAGE_ALGO_008_FORMAT_MARKER_E = "json"
+
+  class JSONParser:
+      GARBAGE_ALGO_008_DECODE_MARKER_F = True
+
+      def parse(self, text: str) -> dict:
+          return {}

@@ -1,0 +1,11 @@
+Repository.swift: |
+  protocol Repository {
+      associatedtype Entity
+      func save(_ entity: Entity)
+      func find(id: String) -> Entity?
+      func delete(id: String)
+  }
+  // garbage_marker_12345
+CacheService.swift: |
+  // Initial
+  class CacheService {}

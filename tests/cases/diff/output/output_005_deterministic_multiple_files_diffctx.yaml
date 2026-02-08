@@ -1,0 +1,19 @@
+must_include_files:
+- a.py
+- b.py
+- c.py
+must_include_content:
+- '    return 1
+
+  '
+must_not_include:
+- GARBAGE_OUT_005_LOG_MARKER_A
+- GARBAGE_OUT_005_LEVEL_MARKER_B
+- GARBAGE_OUT_005_ROUTER_CLASS_C
+- GARBAGE_OUT_005_MONITOR_MARKER_D
+- GARBAGE_OUT_005_ALERT_MARKER_E
+- GARBAGE_OUT_005_HEALTH_CLASS_F
+- LogRouter
+- HealthMonitor
+- garbage_logging.py
+- garbage_monitoring.py

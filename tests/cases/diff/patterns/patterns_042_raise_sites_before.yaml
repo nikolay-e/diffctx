@@ -1,0 +1,38 @@
+src/auth_errors.py: |
+  class AuthenticationError(Exception):
+      pass
+
+  class TokenExpiredError(AuthenticationError):
+      def __init__(self, token_id: str):
+          self.token_id = token_id
+          super().__init__(f"Token {token_id} has expired")
+
+  class InvalidCredentialsError(AuthenticationError):
+      pass
+src/auth_service.py: |
+  import time
+  from src.auth_errors import TokenExpiredError, InvalidCredentialsError
+
+  class AuthService:
+      def __init__(self):
+          self.tokens = {}
+          self.users = {"admin": "secret123"}
+
+      def login(self, username: str, password: str) -> str:
+          if username not in self.users or self.users[username] != password:
+              raise InvalidCredentialsError("Invalid username or password")
+          token_id = f"token_{username}_{time.time()}"
+          self.tokens[token_id] = {"user": username, "expires": time.time() + 3600}
+          return token_id
+
+      def verify_token(self, token_id: str) -> dict:
+          if token_id not in self.tokens:
+              raise TokenExpiredError(token_id)
+          return self.tokens[token_id]
+tests/test_auth.py: |
+  from src.auth_service import AuthService
+
+  def test_login_success():
+      service = AuthService()
+      token = service.login("admin", "secret123")
+      assert token.startswith("token_")

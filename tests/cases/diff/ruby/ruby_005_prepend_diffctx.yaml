@@ -1,0 +1,16 @@
+must_include_files:
+  - lib/handler.rb
+must_include_content:
+  - |
+    prepend Wrapper
+must_not_include:
+  - GARBAGE_RUBY_005_PROFILE_MODE_A
+  - GARBAGE_RUBY_005_STACK_DEPTH_B
+  - GARBAGE_RUBY_005_SAMPLE_INTERVAL_C
+  - GARBAGE_RUBY_005_AUDIT_LEVEL_D
+  - GARBAGE_RUBY_005_RETENTION_DAYS_E
+  - GARBAGE_RUBY_005_LOG_FORMAT_F
+  - GarbageProfilerAgent
+  - GarbageAuditLogger
+  - garbage_profiler.rb
+  - garbage_audit_log.rb

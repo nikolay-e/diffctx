@@ -1,0 +1,76 @@
+types.py: |
+  from typing import NewType, Optional, List, Dict, Any
+  from dataclasses import dataclass
+  from datetime import datetime
+
+  UserId = NewType('UserId', int)
+  OrderId = NewType('OrderId', int)
+  ProductId = NewType('ProductId', int)
+  Email = NewType('Email', str)
+  Money = NewType('Money', float)
+
+  @dataclass
+  class UserProfile:
+      user_id: UserId
+      email: Email
+      display_name: str
+      created_at: datetime
+
+      def is_valid_email(self) -> bool:
+          return "@" in str(self.email) and "." in str(self.email)
+
+  def create_user_id(raw_id: int) -> UserId:
+      if raw_id <= 0:
+          raise ValueError("User ID must be positive")
+      return UserId(raw_id)
+
+  def create_order_id(raw_id: int) -> OrderId:
+      if raw_id <= 0:
+          raise ValueError("Order ID must be positive")
+      return OrderId(raw_id)
+
+  def validate_email(email_str: str) -> Email:
+      if "@" not in email_str:
+          raise ValueError("Invalid email format")
+      return Email(email_str)
+
+  def format_money(amount: Money, currency: str = "USD") -> str:
+      return f"{currency} {float(amount):.2f}"
+user_service.py: |
+  from types import UserId, Email, UserProfile
+
+  class UserService:
+      def get_user(self, user_id: UserId) -> Optional[UserProfile]:
+          pass
+unrelated/notification_service.py: |
+  GARBAGE_PYTHON_036_001 = "notification service marker"
+  GARBAGE_PYTHON_036_002 = "notification queue constant"
+
+  class NotificationChannel:
+      GARBAGE_PYTHON_036_003 = "channel class marker"
+
+      def __init__(self, name: str):
+          self.name = name
+
+      def send(self, message: str) -> bool:
+          return True
+unrelated/audit_logger.py: |
+  GARBAGE_PYTHON_036_004 = "audit logger marker"
+  GARBAGE_PYTHON_036_005 = "audit retention constant"
+
+  class AuditEntry:
+      GARBAGE_PYTHON_036_006 = "entry class marker"
+
+      def __init__(self, action: str, user_id: int):
+          self.action = action
+          self.user_id = user_id
+unrelated/feature_flags.py: |
+  GARBAGE_PYTHON_036_007 = "feature flags marker"
+  GARBAGE_PYTHON_036_008 = "flag rollout constant"
+
+  class FeatureFlag:
+      GARBAGE_PYTHON_036_009 = "flag class marker"
+
+      def __init__(self, name: str, enabled: bool = False):
+          self.name = name
+          self.enabled = enabled

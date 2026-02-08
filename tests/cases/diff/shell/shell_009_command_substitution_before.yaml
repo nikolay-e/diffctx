@@ -1,0 +1,35 @@
+backup.sh: |
+  #!/bin/bash
+
+  current_date=$(date +%Y-%m-%d)
+  hostname=$(hostname)
+
+  backup_name="backup_${hostname}_${current_date}"
+  echo "Creating backup: $backup_name"
+unrelated/garbage_redis.sh: |
+  #!/bin/bash
+  # GARBAGE_SH_009_REDIS_CLIENT_A
+  GARBAGE_SH_009_REDIS_HOST_B="localhost:6379"
+
+  garbage_redis_ping_009() {
+      echo "PONG"
+  }
+
+  garbage_redis_set_009() {
+      local key=$1
+      local val=$2
+      echo "SET $key $val"
+  }
+unrelated/garbage_rabbitmq.sh: |
+  #!/bin/bash
+  # GARBAGE_SH_009_RABBITMQ_ADMIN_C
+  GARBAGE_SH_009_AMQP_URL_D="amqp://localhost"
+
+  garbage_list_queues_009() {
+      echo "Queues: tasks, events"
+  }
+
+  garbage_purge_queue_009() {
+      local queue=$1
+      echo "Purged: $queue"
+  }

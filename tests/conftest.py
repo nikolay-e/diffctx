@@ -639,13 +639,6 @@ GARBAGE_MARKERS = [
 
 
 @pytest.fixture
-def diff_test_runner(tmp_path):
-    from tests.utils import DiffTestRunner
-
-    return DiffTestRunner(tmp_path)
-
-
-@pytest.fixture
 def git_with_commits(git_repo):
     """Helper for creating git repos with commits.
 

@@ -1,0 +1,49 @@
+src/calculator.py: |
+  def add(a, b):
+      return a + b
+
+  def subtract(a, b):
+      return a - b
+
+  def multiply(a, b):
+      return a * b
+
+  def divide(a, b):
+      if b == 0:
+          raise ValueError("Cannot divide by zero")
+      return a / b
+
+tests/test_calculator.py: |
+  import pytest
+  from src.calculator import add, subtract, divide
+
+  def test_add_positive():
+      assert add(2, 3) == 5
+
+  def test_add_negative():
+      assert add(-1, -1) == -2
+
+  def test_subtract():
+      assert subtract(10, 4) == 6
+
+  def test_divide_by_zero():
+      with pytest.raises(ValueError):
+          divide(1, 0)
+
+garbage_benchmark_runner.py: |
+  GARBAGE_COMP_020_WARMUP_ROUNDS_A = "iterations"
+  GARBAGE_COMP_020_STATS_METHOD_B = "percentile"
+
+  class GarbageBenchmarkRunner:
+      GARBAGE_COMP_020_TIMER_PRECISION_C = True
+      def benchmark(self):
+          pass
+
+garbage_coverage_reporter.py: |
+  GARBAGE_COMP_020_BRANCH_COVERAGE_D = "instrumented"
+  GARBAGE_COMP_020_REPORT_FORMAT_E = "cobertura"
+
+  class GarbageCoverageReporter:
+      GARBAGE_COMP_020_MERGE_RESULTS_F = False
+      def report(self):
+          pass

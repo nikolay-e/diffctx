@@ -1,0 +1,48 @@
+cleanup.sh: |
+  #!/bin/bash
+
+  cleanup() {
+      echo "Cleaning up..."
+      rm -f /tmp/lockfile
+      rm -rf /tmp/workdir
+  }
+worker.sh: |
+  #!/bin/bash
+  source ./cleanup.sh
+
+  trap cleanup EXIT
+  trap 'echo "Interrupted"; cleanup; exit 1' INT TERM
+  trap 'echo "Error on line $LINENO"; cleanup; exit 1' ERR
+
+  mkdir -p /tmp/workdir
+  touch /tmp/lockfile
+
+  echo "Working..."
+  sleep 60
+  echo "Done"
+unrelated/garbage_iptables.sh: |
+  #!/bin/bash
+  # GARBAGE_SH_015_IPTABLES_RULES_A
+  GARBAGE_SH_015_DEFAULT_POLICY_B="DROP"
+
+  garbage_list_rules_015() {
+      echo "Chain INPUT (policy ACCEPT)"
+  }
+
+  garbage_flush_rules_015() {
+      echo "Flushing all rules"
+  }
+unrelated/garbage_selinux.sh: |
+  #!/bin/bash
+  # GARBAGE_SH_015_SELINUX_CONTEXT_C
+  GARBAGE_SH_015_ENFORCE_MODE_D="enforcing"
+
+  garbage_get_context_015() {
+      local path=$1
+      echo "Context for $path: system_u"
+  }
+
+  garbage_set_boolean_015() {
+      local name=$1
+      echo "Boolean $name: on"
+  }

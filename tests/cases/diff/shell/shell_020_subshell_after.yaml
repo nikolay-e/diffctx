@@ -1,0 +1,48 @@
+config.sh: |
+  #!/bin/bash
+  export BUILD_DIR="/tmp/build"
+build.sh: |
+  #!/bin/bash
+  source ./config.sh
+
+  (cd "$BUILD_DIR" && make clean && make)
+
+  result=$(
+      cd /tmp
+      echo "Working in: $(pwd)"
+      ls -la
+  )
+
+  (
+      export CUSTOM_VAR="value"
+      ./run-with-custom-env.sh
+  )
+
+  echo "Still in original directory: $(pwd)"
+unrelated/garbage_ufw.sh: |
+  #!/bin/bash
+  # GARBAGE_SH_020_UFW_RULES_A
+  GARBAGE_SH_020_DEFAULT_POLICY_B="deny"
+
+  garbage_allow_port_020() {
+      local port=$1
+      echo "Allowing port $port"
+  }
+
+  garbage_status_020() {
+      echo "UFW status: active"
+  }
+unrelated/garbage_fail2ban.sh: |
+  #!/bin/bash
+  # GARBAGE_SH_020_FAIL2BAN_JAIL_C
+  GARBAGE_SH_020_MAX_RETRY_D="5"
+
+  garbage_ban_ip_020() {
+      local ip=$1
+      echo "Banning $ip"
+  }
+
+  garbage_unban_ip_020() {
+      local ip=$1
+      echo "Unbanning $ip"
+  }

@@ -1,0 +1,26 @@
+Event.scala: 'sealed trait Event
+
+  case class UserCreated(name: String) extends Event
+
+  case class UserDeleted(id: String) extends Event
+
+  case class OrderPlaced(orderId: String, amount: Double) extends Event
+
+  '
+EventHandler.scala: '// Initial
+
+  class EventHandler {}
+
+  '
+GarbageLiftOps.scala: |
+  object GarbageLiftOps {
+    val GARBAGE_JVM_054_LIFT_MARKER_A = "marker"
+    val GARBAGE_JVM_054_COLLECT_MARKER_B = "marker"
+    def noop(): Unit = {}
+  }
+GarbageGuardHelper.scala: |
+  object GarbageGuardHelper {
+    val GARBAGE_JVM_054_GUARD_MARKER_C = "marker"
+    val GARBAGE_JVM_054_FILTER_MARKER_D = "marker"
+    def noop(): Unit = {}
+  }

@@ -1,0 +1,51 @@
+.github/workflows/ci.yml: |
+  name: CI
+  on: [push]
+  jobs:
+    build:
+      runs-on: ubuntu-latest
+      steps:
+        - uses: actions/checkout@v4
+        - run: npm run build
+    deploy:
+      runs-on: ubuntu-latest
+      needs: build
+      if: github.ref == 'refs/heads/main'
+      steps:
+        - uses: actions/checkout@v4
+        - run: ./deploy.sh
+
+scripts/deploy.sh: |
+  #!/bin/bash
+  set -e
+  echo "Deploying to production..."
+  aws s3 sync ./dist s3://prod-bucket/
+
+src/config/environments.ts: |
+  export type Environment = 'development' | 'staging' | 'production';
+
+  export function getEnvironment(): Environment {
+    return (process.env.NODE_ENV as Environment) || 'development';
+  }
+
+  export function isProduction(): boolean {
+    return getEnvironment() === 'production';
+  }
+
+garbage_branch.ts: |
+  const GARBAGE_CICD_DOCS_010_BRANCH_MARKER_A = "feature";
+  const GARBAGE_CICD_DOCS_010_PREFIX_MARKER_B = "refs/heads";
+
+  class GarbageBranchManager {
+    static GARBAGE_CICD_DOCS_010_PROTECTED_MARKER_C = true;
+    getBranch(): string { return ""; }
+  }
+
+garbage_merge.ts: |
+  const GARBAGE_CICD_DOCS_010_MERGE_MARKER_D = "squash";
+  const GARBAGE_CICD_DOCS_010_STRATEGY_MARKER_E = "recursive";
+
+  class GarbageMergeHandler {
+    static GARBAGE_CICD_DOCS_010_CONFLICT_MARKER_F = "abort";
+    merge(): void {}
+  }

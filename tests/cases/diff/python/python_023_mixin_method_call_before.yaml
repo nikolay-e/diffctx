@@ -1,0 +1,73 @@
+mixins.py: |
+  import logging
+  from typing import Optional, Any, Dict
+  from dataclasses import dataclass, field
+  from datetime import datetime
+  from enum import Enum
+
+  class LogLevel(Enum):
+      INFO = "info"
+      WARNING = "warning"
+      ERROR = "error"
+
+  @dataclass
+  class LogEntry:
+      timestamp: datetime
+      level: LogLevel
+      message: str
+      context: Dict[str, Any] = field(default_factory=dict)
+
+      def to_dict(self) -> dict:
+          return {
+              "timestamp": self.timestamp.isoformat(),
+              "level": self.level.value,
+              "message": self.message,
+              "context": self.context
+          }
+
+  class LoggingMixin:
+      _log_history: list[LogEntry] = []
+
+      @property
+      def logger(self) -> logging.Logger:
+          return logging.getLogger(self.__class__.__name__)
+
+      def log_action(self, action: str, **context) -> None:
+          entry = LogEntry(
+              timestamp=datetime.now(),
+              level=LogLevel.INFO,
+              message=f"Action: {action}",
+              context=context
+          )
+          self._log_history.append(entry)
+          self.logger.info(entry.message)
+
+      def log_error(self, error: str, **context) -> None:
+          entry = LogEntry(
+              timestamp=datetime.now(),
+              level=LogLevel.ERROR,
+              message=f"Error: {error}",
+              context=context
+          )
+          self._log_history.append(entry)
+          self.logger.error(entry.message)
+
+      def get_log_history(self) -> list[LogEntry]:
+          return self._log_history.copy()
+service.py: |
+  class UserService:
+      pass
+garbage_analytics.py: |
+  GARBAGE_PY_ANALYTICS_827364 = "analytics tracking garbage"
+  UNRELATED_ANALYTICS_MARKER_918273 = "unused segment config"
+
+  class GarbageAnalyticsTracker:
+      def garbage_track_event(self, event_name):
+          return f"Garbage event: {event_name}"
+garbage_ab_testing.py: |
+  GARBAGE_PY_ABTEST_918273 = "ab testing garbage"
+  UNRELATED_ABTEST_MARKER_827163 = "unused optimizely config"
+
+  class GarbageABTestManager:
+      def garbage_get_variant(self, user_id):
+          return "garbage_control"

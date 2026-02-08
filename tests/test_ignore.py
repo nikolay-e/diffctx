@@ -11,16 +11,14 @@ from .utils import get_all_files_in_tree, load_yaml
 def test_custom_ignore(temp_project, run_mapper):
     """Test custom ignore patterns."""
     ignore_file = temp_project / "custom.ignore"
-    ignore_file.write_text(
-        """
+    ignore_file.write_text("""
 # Ignore all Python files
 *.py
 # Ignore docs directory
 docs/
 # Ignore specific file
 .gitignore
-"""
-    )
+""")
     assert run_mapper([".", "-i", str(ignore_file), "-o", "directory_tree.yaml"])
     result = load_yaml(temp_project / "directory_tree.yaml")
     all_files = get_all_files_in_tree(result)

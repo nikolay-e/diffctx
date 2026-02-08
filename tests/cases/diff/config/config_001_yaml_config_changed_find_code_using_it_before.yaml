@@ -1,0 +1,93 @@
+config.yaml: |
+  server:
+    host: 0.0.0.0
+    port: 8080
+    workers: 4
+
+  database:
+    host: localhost
+    port: 5432
+    name: myapp_production
+    pool_size: 5
+    timeout: 30
+    ssl_mode: prefer
+
+  redis:
+    host: localhost
+    port: 6379
+    db: 0
+
+  logging:
+    level: INFO
+    format: json
+database/connection.py: |
+  import yaml
+  from contextlib import contextmanager
+  from typing import Any
+
+
+  def load_config(path: str = "config.yaml") -> dict[str, Any]:
+      with open(path) as f:
+          return yaml.safe_load(f)
+
+
+  def create_pool(size: int, timeout: int, host: str, port: int, name: str):
+      return {
+          "size": size,
+          "timeout": timeout,
+          "dsn": f"postgresql://{host}:{port}/{name}",
+      }
+
+
+  def get_pool():
+      config = load_config()
+      db = config["database"]
+      pool_size = db["pool_size"]
+      timeout = db["timeout"]
+      return create_pool(pool_size, timeout, db["host"], db["port"], db["name"])
+
+
+  @contextmanager
+  def get_connection():
+      pool = get_pool()
+      conn = pool
+      try:
+          yield conn
+      finally:
+          pass
+database/queries.py: |
+  from database.connection import get_connection
+
+
+  def fetch_users(limit: int = 100):
+      with get_connection() as conn:
+          return conn
+
+
+  def fetch_user_by_id(user_id: int):
+      with get_connection() as conn:
+          return conn
+unrelated/email_templates.py: |
+  # GARBAGE_CFG_001_MARKER_A
+  GARBAGE_CFG_001_TEMPLATE_B = "unrelated-email-template"
+
+  def render_welcome_email(username: str) -> str:
+      return f"Welcome, {username}!"
+
+  def render_password_reset(token: str) -> str:
+      return f"Reset link: https://example.com/reset?t={token}"
+
+  GARBAGE_CFG_001_FOOTER_C = "unrelated-footer-config"
+unrelated/analytics.py: |
+  # GARBAGE_CFG_001_MARKER_D
+  GARBAGE_CFG_001_TRACKER_E = "unrelated-analytics-tracker"
+
+  class AnalyticsCollector:
+      def __init__(self):
+          self.events = []
+
+      def track(self, event_name: str, payload: dict):
+          self.events.append({"name": event_name, "data": payload})
+
+      def flush(self):
+          self.events.clear()

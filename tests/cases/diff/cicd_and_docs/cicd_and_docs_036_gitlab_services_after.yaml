@@ -1,0 +1,58 @@
+.gitlab-ci.yml: |
+  stages:
+    - test
+
+  test:
+    stage: test
+    services:
+      - postgres:15
+      - redis:7
+    variables:
+      POSTGRES_DB: test
+      POSTGRES_USER: test
+      POSTGRES_PASSWORD: test
+    script:
+      - npm ci
+      - npm test
+
+tests/db.test.ts: |
+  import { Pool } from 'pg';
+
+  describe('database', () => {
+    it('connects to postgres', async () => {
+      const pool = new Pool();
+      const result = await pool.query('SELECT 1');
+      expect(result.rows).toHaveLength(1);
+    });
+  });
+
+package.json: |
+  {
+    "name": "gitlab-services-app",
+    "version": "1.0.0",
+    "scripts": {
+      "test": "jest"
+    },
+    "dependencies": {
+      "pg": "^8.11.0",
+      "redis": "^4.6.0"
+    }
+  }
+
+garbage_service_discovery.ts: |
+  const GARBAGE_CICD_DOCS_036_DISCOVERY_MARKER_A = "consul";
+  const GARBAGE_CICD_DOCS_036_REGISTRY_MARKER_B = "etcd";
+
+  class GarbageServiceDiscovery {
+    static GARBAGE_CICD_DOCS_036_HEALTH_MARKER_C = true;
+    discover(): void {}
+  }
+
+garbage_service_mesh.ts: |
+  const GARBAGE_CICD_DOCS_036_MESH_MARKER_D = "istio";
+  const GARBAGE_CICD_DOCS_036_PROXY_MARKER_E = "envoy";
+
+  class GarbageServiceMesh {
+    static GARBAGE_CICD_DOCS_036_MTLS_MARKER_F = false;
+    configure(): void {}
+  }

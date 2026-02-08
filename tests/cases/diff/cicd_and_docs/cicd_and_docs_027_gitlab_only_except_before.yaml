@@ -1,0 +1,39 @@
+.gitlab-ci.yml: |
+  release:
+    script:
+      - npm ci
+      - ./release.sh
+
+release.sh: |
+  #!/bin/bash
+  set -e
+  VERSION=$(git describe --tags --always)
+  echo "Releasing version: $VERSION"
+  npm publish
+
+package.json: |
+  {
+    "name": "gitlab-release-app",
+    "version": "1.0.0",
+    "scripts": {
+      "release": "./release.sh"
+    }
+  }
+
+garbage_filter.ts: |
+  const GARBAGE_CICD_DOCS_027_FILTER_MARKER_A = "include";
+  const GARBAGE_CICD_DOCS_027_EXCLUDE_MARKER_B = "test/*";
+
+  class GarbageFilterMatcher {
+    static GARBAGE_CICD_DOCS_027_GLOB_MARKER_C = true;
+    match(): boolean { return false; }
+  }
+
+garbage_ref.ts: |
+  const GARBAGE_CICD_DOCS_027_REF_MARKER_D = "tags";
+  const GARBAGE_CICD_DOCS_027_BRANCH_MARKER_E = "main";
+
+  class GarbageRefResolver {
+    static GARBAGE_CICD_DOCS_027_FORCE_MARKER_F = false;
+    resolve(): string { return ""; }
+  }

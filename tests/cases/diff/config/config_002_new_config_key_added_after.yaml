@@ -1,0 +1,90 @@
+config.yaml: |
+  app:
+    name: MyApp
+    version: 2.1.0
+    debug: false
+
+  authentication:
+    session_timeout: 3600
+    max_login_attempts: 5
+    lockout_duration: 900
+
+  payment:
+    provider: stripe
+    currency: USD
+    tax_rate: 0.08
+
+  feature_flags:
+    new_checkout: true
+    dark_mode: false
+checkout/views.py: |
+  import yaml
+
+
+  def load_app_config():
+      with open("config.yaml") as f:
+          return yaml.safe_load(f)
+
+
+  def checkout(cart_items: list[dict]) -> dict:
+      config = load_app_config()
+      tax_rate = config["payment"]["tax_rate"]
+      subtotal = sum(item["price"] * item["quantity"] for item in cart_items)
+      tax = subtotal * tax_rate
+      return {
+          "subtotal": subtotal,
+          "tax": round(tax, 2),
+          "total": round(subtotal + tax, 2),
+          "currency": config["payment"]["currency"],
+      }
+
+
+  def get_payment_provider() -> str:
+      config = load_app_config()
+      return config["payment"]["provider"]
+checkout/models.py: |
+  from dataclasses import dataclass, field
+  from typing import Optional
+
+
+  @dataclass
+  class CartItem:
+      product_id: str
+      name: str
+      price: float
+      quantity: int = 1
+
+
+  @dataclass
+  class Order:
+      items: list[CartItem] = field(default_factory=list)
+      discount_code: Optional[str] = None
+
+      @property
+      def item_count(self) -> int:
+          return sum(item.quantity for item in self.items)
+unrelated/notifications.py: |
+  # GARBAGE_CFG_002_MARKER_A
+  GARBAGE_CFG_002_NOTIFY_B = "unrelated-notification-config"
+
+  def send_sms(phone: str, message: str) -> bool:
+      return len(phone) > 0 and len(message) > 0
+
+  def send_push(device_token: str, title: str, body: str) -> bool:
+      return len(device_token) > 0
+
+  GARBAGE_CFG_002_CHANNEL_C = "unused-channel"
+unrelated/migrations.py: |
+  # GARBAGE_CFG_002_MARKER_D
+  GARBAGE_CFG_002_MIGRATION_E = "unrelated-migration-tracker"
+
+  class MigrationRunner:
+      def __init__(self):
+          self.applied = []
+
+      def run(self, migration_name: str):
+          self.applied.append(migration_name)
+
+      def rollback(self):
+          if self.applied:
+              self.applied.pop()

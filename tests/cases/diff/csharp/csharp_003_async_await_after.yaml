@@ -1,0 +1,70 @@
+Services/DataService.cs: |
+  using System;
+  using System.Net.Http;
+  using System.Threading.Tasks;
+
+  namespace MyApp.Services;
+
+  public class DataService
+  {
+      private readonly HttpClient _httpClient;
+
+      public DataService(HttpClient httpClient)
+      {
+          _httpClient = httpClient;
+      }
+
+      public async Task<string> FetchDataAsync(string url)
+      {
+          var response = await _httpClient.GetAsync(url);
+          response.EnsureSuccessStatusCode();
+          return await response.Content.ReadAsStringAsync();
+      }
+
+      public async Task<byte[]> FetchBinaryAsync(string url)
+      {
+          return await _httpClient.GetByteArrayAsync(url);
+      }
+  }
+Program.cs: |
+  using System;
+  using System.Net.Http;
+  using System.Threading.Tasks;
+  using MyApp.Services;
+
+  class Program
+  {
+      static async Task Main()
+      {
+          using var httpClient = new HttpClient();
+          var service = new DataService(httpClient);
+          var data = await service.FetchDataAsync("https://api.example.com/data");
+          Console.WriteLine($"Fetched {data.Length} characters");
+      }
+  }
+Unrelated/LogRotator.cs: |
+  using System;
+
+  namespace MyApp.Unrelated;
+
+  public class LogRotator
+  {
+      private const string GARBAGE_CS_003_LOG_ROTATOR_A = "log_rotation_marker";
+
+      public void Rotate()
+      {
+          Console.WriteLine(GARBAGE_CS_003_LOG_ROTATOR_A);
+      }
+  }
+Unrelated/AuditTrail.cs: |
+  namespace MyApp.Unrelated;
+
+  public class AuditTrail
+  {
+      public const string GARBAGE_CS_003_AUDIT_TRAIL_B = "audit_trail_marker";
+
+      public void Record(string action)
+      {
+          _ = GARBAGE_CS_003_AUDIT_TRAIL_B;
+      }
+  }

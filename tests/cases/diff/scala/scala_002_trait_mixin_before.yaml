@@ -1,0 +1,55 @@
+src/traits/Logging.scala: |
+  package traits
+
+  trait Logging {
+    protected def logPrefix: String = getClass.getSimpleName
+
+    def log(message: String): Unit =
+      println(s"[$logPrefix][LOG] $message")
+
+    def debug(message: String): Unit =
+      println(s"[$logPrefix][DEBUG] $message")
+
+    def error(message: String, cause: Throwable): Unit =
+      println(s"[$logPrefix][ERROR] $message: ${cause.getMessage}")
+  }
+src/traits/Metrics.scala: |
+  package traits
+
+  trait Metrics {
+    private var counters: Map[String, Long] = Map.empty
+
+    def recordMetric(name: String, value: Double): Unit = {
+      println(s"Metric: $name = $value")
+    }
+
+    def incrementCounter(name: String): Unit = {
+      counters = counters.updated(name, counters.getOrElse(name, 0L) + 1)
+    }
+
+    def getCounter(name: String): Long = counters.getOrElse(name, 0L)
+  }
+src/services/OrderService.scala: |
+  package services
+
+  class OrderService {
+    def processOrder(orderId: String): String = {
+      s"Processing order $orderId"
+    }
+  }
+unrelated/CacheWarmer.scala: |
+  package cache
+  // GARBAGE_SCALA_002_MARKER_A
+  class CacheWarmer {
+    val GARBAGE_SCALA_002_TTL = 3600
+    def warm(): Unit = println("GARBAGE_SCALA_002_MARKER_B warming cache")
+    def evict(key: String): Unit = println(s"GARBAGE_SCALA_002_MARKER_C evicting $key")
+  }
+unrelated/HealthCheck.scala: |
+  package health
+  // GARBAGE_SCALA_002_MARKER_D
+  object HealthCheck {
+    val GARBAGE_SCALA_002_ENDPOINT = "/health"
+    def check(): Boolean = { println("GARBAGE_SCALA_002_MARKER_E"); true }
+    def status(): String = "GARBAGE_SCALA_002_MARKER_F healthy"
+  }

@@ -1,0 +1,91 @@
+src/api.ts: |
+  export interface UserResponse {
+      id: string;
+      name: string;
+      email: string;
+      role: string;
+  }
+
+  export async function fetchUser(id: string): Promise<UserResponse> {
+      const response = await fetch(`/api/users/${id}`);
+      if (!response.ok) {
+          throw new Error(`User not found: ${id}`);
+      }
+      return response.json();
+  }
+
+  export async function fetchUsers(): Promise<UserResponse[]> {
+      const response = await fetch('/api/users');
+      return response.json();
+  }
+src/service.ts: |
+  import { fetchUser } from './api';
+
+  export async function getUserDisplayName(id: string): Promise<string> {
+      const user = await fetchUser(id);
+      return `${user.name} (${user.role})`;
+  }
+
+  export async function getUserEmail(id: string): Promise<string> {
+      const user = await fetchUser(id);
+      return user.email;
+  }
+src/service.test.ts: |
+  import { getUserDisplayName, getUserEmail } from './service';
+  import { fetchUser } from './api';
+
+  jest.mock('./api');
+
+  const mockedFetchUser = fetchUser as jest.MockedFunction<typeof fetchUser>;
+
+  describe('UserService', () => {
+      beforeEach(() => {
+          mockedFetchUser.mockReset();
+      });
+
+      it('should return display name with role', async () => {
+          mockedFetchUser.mockResolvedValue({
+              id: '1', name: 'Alice', email: 'alice@test.com', role: 'admin',
+          });
+          const name = await getUserDisplayName('1');
+          expect(name).toBe('Alice (admin)');
+      });
+
+      it('should return user email', async () => {
+          mockedFetchUser.mockResolvedValue({
+              id: '2', name: 'Bob', email: 'bob@test.com', role: 'user',
+          });
+          const email = await getUserEmail('2');
+          expect(email).toBe('bob@test.com');
+      });
+  });
+src/unrelated/storage.ts: |
+  const GARBAGE_JSX_004_STORAGE_ADAPTER_A = 'storage_garbage_marker';
+
+  export class GarbageStorageAdapter {
+      private data: Record<string, string> = {};
+
+      save(key: string, value: string): void {
+          this.data[key] = value;
+      }
+
+      load(key: string): string | undefined {
+          return this.data[key];
+      }
+  }
+
+  export function GARBAGE_JSX_004_SYNC_STORAGE_B(): void {
+      console.log('GARBAGE_JSX_004_SYNC_OUTPUT_C');
+  }
+src/unrelated/notifications.ts: |
+  const GARBAGE_JSX_004_NOTIFICATION_HUB_D = { provider: 'email', enabled: true };
+
+  export class GARBAGE_JSX_004_NOTIFIER_E {
+      send(message: string): void {
+          console.log(message);
+      }
+  }
+
+  export function GARBAGE_JSX_004_DISPATCH_NOTIFICATION_F(): void {
+      console.log('dispatching notification');
+  }

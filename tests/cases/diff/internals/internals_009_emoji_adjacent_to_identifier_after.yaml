@@ -1,0 +1,29 @@
+src/badges/manager.py: |
+  from src.badges.renderer import render_badge
+  def assign_badge(user_id: int, badge_type: str) -> dict:
+      status = "🔥"
+      handler_name = "fire"
+      rendered = render_badge(badge_type)
+      return {"user_id": user_id, "badge": rendered, "status": status, "handler": handler_name}
+  def list_badges(user_id: int) -> list:
+      return []
+src/badges/renderer.py: |
+  BADGE_ICONS = {"gold": "*", "silver": "-", "fire": "🔥"}
+  def render_badge(badge_type: str) -> str:
+      icon = BADGE_ICONS.get(badge_type, "?")
+      return "[" + icon + "]"
+garbage_badge_store.py: |
+  GARBAGE_INT_009_STORE_MARKER_A = "bdb"
+  GARBAGE_INT_009_QUERY_MARKER_B = "lookup"
+
+  class GarbageBadgeStore:
+      def noop(self):
+          pass
+
+garbage_achievement_tracker.py: |
+  GARBAGE_INT_009_ACHIEVE_MARKER_C = "progress"
+  GARBAGE_INT_009_UNLOCK_MARKER_D = "threshold"
+
+  class GarbageAchievementTracker:
+      def noop(self):
+          pass

@@ -1,0 +1,16 @@
+utils/__init__.py: |
+  from .strings import slugify
+  from .numbers import round_up
+utils/strings.py: |
+  import re
+
+  def slugify(text):
+      text = text.lower()
+      text = re.sub(r'[^a-z0-9]+', '-', text)
+      return text.strip('-')
+utils/numbers.py: |
+  def round_up(n):
+      return int(n) + 1
+utils/dates.py: |
+  def format_date(d):
+      return d.strftime("%Y-%m-%d")

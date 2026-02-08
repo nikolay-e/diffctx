@@ -1,0 +1,98 @@
+src/lib.rs: |
+  pub mod traits;
+  pub mod unrelated;
+src/traits.rs: |
+  use std::fmt::Debug;
+
+  pub trait Named {
+      fn name(&self) -> &str;
+
+      fn display_name(&self) -> String {
+          format!("Name: {}", self.name())
+      }
+  }
+
+  pub trait Identifiable {
+      type Id: Debug + Clone;
+
+      fn id(&self) -> Self::Id;
+  }
+
+  pub struct Entity {
+      name: String,
+      id: u64,
+  }
+
+  impl Named for Entity {
+      fn name(&self) -> &str {
+          &self.name
+      }
+  }
+
+  impl Identifiable for Entity {
+      type Id = u64;
+
+      fn id(&self) -> Self::Id {
+          self.id
+      }
+  }
+src/unrelated/mod.rs: |
+  pub mod parsing;
+  pub mod rendering;
+src/unrelated/parsing.rs: |
+  // GARBAGE_RUST_PARSING_001
+  use std::str::FromStr;
+
+  pub const GARBAGE_MAX_TOKENS_002: usize = 10000;
+  pub const GARBAGE_DELIMITER_003: char = ',';
+
+  pub struct GarbageParser004 {
+      input: String,
+      position: usize,
+  }
+
+  impl GarbageParser004 {
+      pub fn garbage_parse_int_005(&mut self) -> Result<i64, String> {
+          Err("GARBAGE_PARSE_INT_ERROR_006".to_string())
+      }
+
+      pub fn garbage_parse_float_007(&mut self) -> Result<f64, String> {
+          Err("GARBAGE_PARSE_FLOAT_ERROR_008".to_string())
+      }
+
+      pub fn garbage_skip_whitespace_009(&mut self) {
+          // GARBAGE_SKIP_IMPL_010
+      }
+
+      pub fn garbage_peek_011(&self) -> Option<char> {
+          None
+      }
+  }
+
+  pub trait GarbageParseable012 {
+      fn garbage_from_str_013(s: &str) -> Result<Self, String> where Self: Sized;
+  }
+src/unrelated/rendering.rs: |
+  // GARBAGE_RUST_RENDER_014
+  pub const GARBAGE_CANVAS_WIDTH_015: u32 = 800;
+  pub const GARBAGE_CANVAS_HEIGHT_016: u32 = 600;
+
+  pub struct GarbageRenderer017 {
+      width: u32,
+      height: u32,
+      buffer: Vec<u8>,
+  }
+
+  impl GarbageRenderer017 {
+      pub fn garbage_clear_018(&mut self) {
+          self.buffer.fill(0);
+      }
+
+      pub fn garbage_draw_rect_019(&mut self, x: u32, y: u32, w: u32, h: u32) {
+          // GARBAGE_DRAW_IMPL_020
+      }
+
+      pub fn garbage_render_021(&self) -> &[u8] {
+          &self.buffer
+      }
+  }

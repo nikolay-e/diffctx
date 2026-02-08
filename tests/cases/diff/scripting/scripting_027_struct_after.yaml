@@ -1,0 +1,30 @@
+types.rb: |
+  Point = Struct.new(:x, :y) do
+    def distance_from_origin
+      Math.sqrt(x**2 + y**2)
+    end
+  end
+
+  Rectangle = Struct.new(:width, :height) do
+    def area
+      width * height
+    end
+  end
+geometry.rb: |
+  require_relative 'types'
+
+  module Geometry
+    def self.create_point(x, y)
+      Point.new(x, y)
+    end
+
+    def self.create_rectangle(w, h)
+      Rectangle.new(w, h)
+    end
+  end
+
+  p = Geometry.create_point(3, 4)
+  puts p.distance_from_origin
+garbage.rb: |
+  GarbageStruct = "unused_99999"
+  unused_marker_12345 = "not used"

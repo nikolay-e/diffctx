@@ -1,0 +1,13 @@
+SearchService.swift: |
+  import Combine
+
+  class SearchService {
+      func search(query: String) -> AnyPublisher<[String], Never> {
+          Just(["Result 1", "Result 2"])
+              .eraseToAnyPublisher()
+      }
+  }
+  // unused_marker_67890
+SearchViewModel.swift: |
+  // Initial
+  class SearchViewModel {}

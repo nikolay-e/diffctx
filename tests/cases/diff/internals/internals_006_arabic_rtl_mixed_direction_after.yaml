@@ -1,0 +1,30 @@
+src/content/renderer.py: |
+  from src/content/sanitizer import sanitize_html
+  def render_page(title: str, body: str) -> str:
+      clean_body = sanitize_html(body)
+      return "<h1>" + title + "</h1><div>" + clean_body + "</div>"
+  def process_content(text: str) -> str:
+      text = "Hello مرحبا World"
+      result = render_page("Mixed", text)
+      return result
+src/content/sanitizer.py: |
+  ALLOWED_TAGS = ["b", "i", "p", "br"]
+  def sanitize_html(html: str) -> str:
+      return html
+  def escape_special_chars(text: str) -> str:
+      return text.replace("&", "&amp;").replace("<", "&lt;")
+garbage_content_indexer.py: |
+  GARBAGE_INT_006_INDEX_MARKER_A = "cidx"
+  GARBAGE_INT_006_SEARCH_MARKER_B = "fts"
+
+  class GarbageContentIndexer:
+      def noop(self):
+          pass
+
+garbage_render_cache.py: |
+  GARBAGE_INT_006_RENDER_MARKER_C = "html"
+  GARBAGE_INT_006_PURGE_MARKER_D = "inval"
+
+  class GarbageRenderCache:
+      def noop(self):
+          pass

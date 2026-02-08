@@ -1,0 +1,14 @@
+Handler.php: |
+  <?php
+  interface Handler {
+      public function handle(mixed $data): mixed;
+  }
+app.php: |
+  <?php
+  echo "Hello";
+garbage.php: |
+  <?php
+  interface GarbageAnon99999 {
+      public function unused(): void;
+  }
+  $unused_marker_12345 = "not used";

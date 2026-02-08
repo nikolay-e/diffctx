@@ -1,0 +1,92 @@
+models.py: |
+  from dataclasses import dataclass
+  from datetime import datetime
+
+  @dataclass
+  class Task:
+      title: str
+      description: str
+      completed: bool = False
+      created_at: datetime = None
+
+      def __post_init__(self):
+          if self.created_at is None:
+              self.created_at = datetime.now()
+
+      def mark_complete(self) -> None:
+          self.completed = True
+
+      def summary(self) -> str:
+          status = "done" if self.completed else "pending"
+          return f"[{status}] {self.title}"
+
+service.py: |
+  from models import Task
+
+  _tasks: list[Task] = []
+
+  def add_task(title: str, description: str) -> Task:
+      task = Task(title=title, description=description)
+      _tasks.append(task)
+      return task
+
+  def get_all_tasks() -> list[Task]:
+      return list(_tasks)
+
+  def get_pending_tasks() -> list[Task]:
+      return [t for t in _tasks if not t.completed]
+
+  def complete_task(index: int) -> bool:
+      if 0 <= index < len(_tasks):
+          _tasks[index].mark_complete()
+          return True
+      return False
+
+api.py: |
+  from service import add_task, get_all_tasks, get_pending_tasks
+
+  def handle_create(data: dict) -> dict:
+      task = add_task(data["title"], data.get("description", ""))
+      return {"status": "created", "task": task.summary()}
+
+  def handle_list() -> dict:
+      tasks = get_all_tasks()
+      return {"tasks": [t.summary() for t in tasks], "count": len(tasks)}
+
+  def handle_pending() -> dict:
+      pending = get_pending_tasks()
+      return {"pending": [t.summary() for t in pending], "count": len(pending)}
+
+garbage_export.py: |
+  GARBAGE_OPS_001_EXPORT_A = "export handler marker"
+  GARBAGE_OPS_001_CSV_B = "csv formatter marker"
+
+  class DataExporter:
+      GARBAGE_OPS_001_FORMAT_C = "format selector marker"
+
+      def __init__(self, output_dir: str = "/tmp/exports"):
+          self.output_dir = output_dir
+
+      def export_csv(self, data: list[dict], filename: str) -> str:
+          return f"{self.output_dir}/{filename}.csv"
+
+      def export_json(self, data: list[dict], filename: str) -> str:
+          GARBAGE_OPS_001_STREAM_D = "stream writer marker"
+          return f"{self.output_dir}/{filename}.json"
+
+garbage_importer.py: |
+  GARBAGE_OPS_001_IMPORT_E = "import handler marker"
+  GARBAGE_OPS_001_PARSE_F = "parser config marker"
+
+  class DataImporter:
+      GARBAGE_OPS_001_VALIDATE_G = True
+
+      def __init__(self, source_dir: str = "/tmp/imports"):
+          self.source_dir = source_dir
+
+      def import_csv(self, filename: str) -> list[dict]:
+          return []
+
+      def import_json(self, filename: str) -> list[dict]:
+          GARBAGE_OPS_001_TRANSFORM_H = "transform marker"
+          return []

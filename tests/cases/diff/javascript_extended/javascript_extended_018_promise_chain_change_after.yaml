@@ -1,0 +1,70 @@
+src/api.ts: |
+  export interface ApiResponse<T> {
+      data: T;
+      status: number;
+  }
+
+  export function fetchData(): Promise<{ data: string; metadata: { timestamp: number } }> {
+      return fetch('/api/data')
+          .then(res => {
+              if (!res.ok) {
+                  throw new Error(`HTTP ${res.status}`);
+              }
+              return res.json();
+          })
+          .then(data => ({
+              ...data,
+              metadata: { timestamp: Date.now() },
+          }));
+  }
+
+  export function fetchConfig(): Promise<Record<string, string>> {
+      return fetch('/api/config').then(res => res.json());
+  }
+
+  export function handleApiError(error: Error): never {
+      console.error('API Error:', error.message);
+      throw error;
+  }
+src/consumer.ts: |
+  import { fetchData, fetchConfig } from './api';
+
+  export async function loadDashboard() {
+      const data = await fetchData();
+      const config = await fetchConfig();
+      return { data: data.data, config };
+  }
+src/unrelated/websocket.ts: |
+  const GARBAGE_JSX_018_WS_HANDLER_A = 'websocket_garbage_marker';
+
+  export class GarbageWebSocketManager {
+      private connections: Map<string, unknown> = new Map();
+
+      connect(url: string): void {
+          this.connections.set(url, { connected: true });
+      }
+
+      disconnect(url: string): void {
+          this.connections.delete(url);
+      }
+  }
+
+  export function GARBAGE_JSX_018_BROADCAST_B(): void {
+      console.log('GARBAGE_JSX_018_BROADCAST_OUTPUT_C');
+  }
+src/unrelated/compress.ts: |
+  const GARBAGE_JSX_018_COMPRESS_CONFIG_D = { level: 6, algorithm: 'gzip' };
+
+  export class GARBAGE_JSX_018_COMPRESSOR_E {
+      compress(data: string): string {
+          return data;
+      }
+
+      decompress(data: string): string {
+          return data;
+      }
+  }
+
+  export function GARBAGE_JSX_018_STREAM_COMPRESS_F(): void {
+      console.log('streaming compression');
+  }

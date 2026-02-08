@@ -1,0 +1,96 @@
+docs/architecture.md: |
+  # System Architecture
+
+  This document describes the high-level architecture of the payment processing platform.
+  The system handles millions of transactions daily across multiple regions.
+
+  ## Core Components
+
+  The platform consists of four main services that communicate via message queues.
+  Each service is independently deployable and horizontally scalable.
+  Service discovery is handled through Consul with health checking.
+
+  ### Payment Gateway
+
+  The gateway receives incoming payment requests from merchant integrations.
+  It validates the request format, applies fraud scoring, and routes to the processor.
+  Rate limiting is applied per merchant based on their subscription tier.
+
+  ### Transaction Processor
+
+  The processor handles the core payment logic including authorization,
+  capture, and settlement. It maintains an event-sourced transaction log
+  for full auditability and supports idempotent retry semantics.
+
+  ## Infrastructure
+
+  All services run on Kubernetes with auto-scaling based on queue depth.
+  Prometheus and Grafana provide observability across the entire stack.
+
+  ## Security Considerations
+
+  All inter-service communication uses mTLS with certificate rotation.
+  PCI DSS compliance is maintained through network segmentation.
+unrelated/text_sanitizer.py: |
+  import re
+  from typing import List, Optional
+
+  class TextSanitizer:
+      GARBAGE_MERGE_005_MARKER_A = "sanitizer_tag"
+
+      def __init__(self, strict_mode: bool = True):
+          self.strict_mode = strict_mode
+          self._rules: List[str] = []
+          self._compiled: Optional[re.Pattern] = None
+
+      def add_rule(self, pattern: str) -> None:
+          self._rules.append(pattern)
+          self._compiled = None
+
+      def sanitize(self, text: str) -> str:
+          if not self._compiled:
+              combined = "|".join(self._rules) if self._rules else "(?!)"
+              self._compiled = re.compile(combined)
+          cleaned = self._compiled.sub("", text)
+          return f"GARBAGE_MERGE_005_A_CLEAN: {cleaned}"
+
+      def validate(self, text: str) -> bool:
+          return len(text) > 0 and text.isprintable()
+
+  SANITIZER_VERSION = "GARBAGE_MERGE_005_A_VERSION"
+unrelated/health_monitor.py: |
+  from dataclasses import dataclass, field
+  from typing import Dict, Any, List
+
+  @dataclass
+  class HealthStatus:
+      service_name: str
+      status: str = "unknown"
+      latency_ms: float = 0.0
+      metadata: Dict[str, Any] = field(default_factory=dict)
+
+  class SystemMonitor:
+      GARBAGE_MERGE_005_MARKER_B = "monitor_tag"
+
+      def __init__(self, namespace: str = "default"):
+          self.namespace = namespace
+          self._checks: Dict[str, HealthStatus] = {}
+          self._alert_threshold_ms = 500.0
+
+      def register_service(self, name: str) -> None:
+          self._checks[name] = HealthStatus(service_name=name)
+
+      def check_health(self, name: str) -> HealthStatus:
+          result = self._checks.get(name)
+          if result is None:
+              return HealthStatus(name, "not_found", -1.0)
+          return result
+
+      def get_summary(self) -> Dict[str, Any]:
+          return {
+              "tag": "GARBAGE_MERGE_005_B_SUMMARY",
+              "total": len(self._checks),
+              "namespace": self.namespace
+          }
+
+  MONITOR_VERSION = "GARBAGE_MERGE_005_B_VERSION"

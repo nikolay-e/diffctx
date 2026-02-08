@@ -1,0 +1,24 @@
+DynamicObject.php: |
+  <?php
+  class DynamicObject {
+      private array $data = [];
+
+      public function __get(string $name): mixed {
+          return $this->data[$name] ?? null;
+      }
+
+      public function __set(string $name, mixed $value): void {
+          $this->data[$name] = $value;
+      }
+
+      public function __isset(string $name): bool {
+          return isset($this->data[$name]);
+      }
+  }
+app.php: |
+  <?php
+  echo "Hello";
+garbage.php: |
+  <?php
+  $garbageMagic99999 = "never called";
+  $unused_marker_12345 = "not used";

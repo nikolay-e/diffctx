@@ -1,0 +1,102 @@
+scripts/graceful-shutdown.sh: |
+  #!/bin/bash
+  set -e
+
+  echo "Received shutdown signal, starting graceful shutdown..."
+
+  curl -X POST http://localhost:8080/admin/drain
+  sleep 5
+
+  echo "Waiting for active connections to complete..."
+  while [ $(curl -s http://localhost:8080/metrics | grep active_connections | awk '{print $2}') -gt 0 ]; do
+    sleep 1
+  done
+
+  echo "Graceful shutdown complete"
+k8s/apps/deployment.yaml: |
+  apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    name: api-server
+    namespace: production
+    labels:
+      app: api-server
+  spec:
+    replicas: 3
+    selector:
+      matchLabels:
+        app: api-server
+    template:
+      metadata:
+        labels:
+          app: api-server
+      spec:
+        terminationGracePeriodSeconds: 60
+        containers:
+        - name: api
+          image: api-server:v1.0.0
+          ports:
+          - containerPort: 8080
+          lifecycle:
+            postStart:
+              exec:
+                command:
+                - /bin/sh
+                - -c
+                - |
+                  echo "Container started at $(date)" >> /var/log/lifecycle.log
+                  curl -X POST http://localhost:8080/admin/register
+            preStop:
+              httpGet:
+                path: /admin/drain
+                port: 8080
+                scheme: HTTP
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+k8s/apps/service.yaml: |
+  apiVersion: v1
+  kind: Service
+  metadata:
+    name: api-server
+    namespace: production
+  spec:
+    selector:
+      app: api-server
+    ports:
+    - port: 80
+      targetPort: 8080
+k8s/unrelated/prometheus-adapter/deployment.yaml: |
+  # GARBAGE_K8S_419_PROM_ADAPTER
+  apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    name: GARBAGE_K8S_419_ADAPTER_NAME
+  spec:
+    replicas: 1
+    selector:
+      matchLabels:
+        app: GARBAGE_K8S_419_ADAPTER_LABEL
+    template:
+      spec:
+        containers:
+        - name: adapter
+          image: registry.k8s.io/prometheus-adapter/prometheus-adapter:GARBAGE_K8S_419_ADAPTER_VERSION
+k8s/unrelated/metrics-server/deployment.yaml: |
+  # GARBAGE_K8S_419_METRICS_SERVER
+  apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    name: GARBAGE_K8S_419_METRICS_NAME
+  spec:
+    template:
+      spec:
+        containers:
+        - name: metrics-server
+          image: registry.k8s.io/metrics-server/metrics-server:GARBAGE_K8S_419_METRICS_VERSION
+          args:
+          - --kubelet-preferred-address-types=GARBAGE_K8S_419_ADDRESS_TYPES

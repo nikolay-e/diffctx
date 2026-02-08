@@ -1,0 +1,21 @@
+module.py: |
+  def my_function():
+      return 100
+garbage_payments.py: |
+  GARBAGE_OUT_003_PAYMENT_MARKER_A = "payment"
+  GARBAGE_OUT_003_STRIPE_MARKER_B = True
+
+  class PaymentGateway:
+      GARBAGE_OUT_003_GATEWAY_CLASS_C = "gateway"
+
+      def charge(self, amount: float) -> bool:
+          return True
+garbage_invoicing.py: |
+  GARBAGE_OUT_003_INVOICE_MARKER_D = "invoice"
+  GARBAGE_OUT_003_TOTAL_MARKER_E = 99
+
+  class InvoiceGenerator:
+      GARBAGE_OUT_003_GENERATOR_CLASS_F = True
+
+      def generate(self, order_id: str) -> str:
+          return ""

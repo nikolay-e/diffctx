@@ -1,0 +1,78 @@
+src/main/java/com/example/AsyncService.java: |
+  package com.example;
+
+  import java.util.concurrent.CompletableFuture;
+  import java.util.concurrent.ExecutorService;
+  import java.util.concurrent.Executors;
+
+  public class AsyncService {
+      private final ExecutorService executor = Executors.newFixedThreadPool(4);
+
+      public CompletableFuture<String> fetchData() {
+          return CompletableFuture.supplyAsync(() -> {
+              simulateDelay();
+              return "data";
+          }, executor);
+      }
+
+      public CompletableFuture<String> processData(String input) {
+          return CompletableFuture.supplyAsync(() -> {
+              simulateDelay();
+              return input.toUpperCase();
+          }, executor);
+      }
+
+      public CompletableFuture<String> fetchAndProcess() {
+          return fetchData()
+              .thenCompose(this::processData)
+              .exceptionally(ex -> "error: " + ex.getMessage());
+      }
+
+      public CompletableFuture<String> fetchMultiple() {
+          CompletableFuture<String> f1 = fetchData();
+          CompletableFuture<String> f2 = fetchData();
+
+          return CompletableFuture.allOf(f1, f2)
+              .thenApply(v -> f1.join() + "," + f2.join());
+      }
+
+      private void simulateDelay() {
+          try {
+              Thread.sleep(100);
+          } catch (InterruptedException e) {
+              Thread.currentThread().interrupt();
+          }
+      }
+
+      public void shutdown() {
+          executor.shutdown();
+      }
+  }
+src/main/java/com/example/ApiClient.java: |
+  package com.example;
+
+  import java.util.concurrent.CompletableFuture;
+
+  public class ApiClient {
+      private final AsyncService asyncService;
+
+      public ApiClient(AsyncService asyncService) {
+          this.asyncService = asyncService;
+      }
+
+      public CompletableFuture<String> callApi() {
+          return asyncService.fetchAndProcess();
+      }
+  }
+GarbageThreadPool.java: |
+  public class GarbageThreadPool {
+      public static final String GARBAGE_JVM_027_POOL_MARKER_A = "marker";
+      public static final String GARBAGE_JVM_027_QUEUE_MARKER_B = "marker";
+      public void noop() {}
+  }
+GarbageScheduler.java: |
+  public class GarbageScheduler {
+      public static final String GARBAGE_JVM_027_SCHED_MARKER_C = "marker";
+      public static final String GARBAGE_JVM_027_TIMER_MARKER_D = "marker";
+      public void noop() {}
+  }

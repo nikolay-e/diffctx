@@ -1,0 +1,18 @@
+source.py: |
+  from high_weight import high_func
+  from low_weight import low_func
+
+  def source_func():
+      high_func()
+      high_func()
+      high_func()
+      high_func()
+      high_func()
+      low_func()
+      return "modified"
+high_weight.py: |
+  def high_func():
+      return "high"
+low_weight.py: |
+  def low_func():
+      return "low"

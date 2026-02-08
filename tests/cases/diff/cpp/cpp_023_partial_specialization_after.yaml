@@ -1,0 +1,312 @@
+include/traits/ptr_traits.hpp: |
+  #pragma once
+  #include <type_traits>
+  #include <memory>
+
+  namespace app::traits {
+
+  template<typename T>
+  struct PtrTraits {
+      using element_type = T;
+      using pointer_type = T*;
+      static constexpr bool is_pointer = false;
+      static constexpr bool is_smart_pointer = false;
+
+      static T* get(T& value) { return &value; }
+      static const T* get(const T& value) { return &value; }
+  };
+
+  template<typename T>
+  struct PtrTraits<T*> {
+      using element_type = T;
+      using pointer_type = T*;
+      static constexpr bool is_pointer = true;
+      static constexpr bool is_smart_pointer = false;
+
+      static T* get(T* ptr) { return ptr; }
+      static const T* get(const T* ptr) { return ptr; }
+  };
+
+  template<typename T>
+  struct PtrTraits<std::unique_ptr<T>> {
+      using element_type = T;
+      using pointer_type = T*;
+      static constexpr bool is_pointer = false;
+      static constexpr bool is_smart_pointer = true;
+
+      static T* get(std::unique_ptr<T>& ptr) { return ptr.get(); }
+      static const T* get(const std::unique_ptr<T>& ptr) { return ptr.get(); }
+  };
+
+  template<typename T>
+  struct PtrTraits<std::shared_ptr<T>> {
+      using element_type = T;
+      using pointer_type = T*;
+      static constexpr bool is_pointer = false;
+      static constexpr bool is_smart_pointer = true;
+
+      static T* get(std::shared_ptr<T>& ptr) { return ptr.get(); }
+      static const T* get(const std::shared_ptr<T>& ptr) { return ptr.get(); }
+  };
+
+  template<typename T, size_t N>
+  struct ArrayTraits {
+      using element_type = T;
+      static constexpr size_t size = N;
+      static constexpr bool is_array = true;
+
+      static T* data(T (&arr)[N]) { return arr; }
+      static const T* data(const T (&arr)[N]) { return arr; }
+  };
+
+  template<typename T>
+  struct RemoveConst {
+      using type = T;
+  };
+
+  template<typename T>
+  struct RemoveConst<const T> {
+      using type = T;
+  };
+
+  template<typename T>
+  struct RemoveRef {
+      using type = T;
+  };
+
+  template<typename T>
+  struct RemoveRef<T&> {
+      using type = T;
+  };
+
+  template<typename T>
+  struct RemoveRef<T&&> {
+      using type = T;
+  };
+
+  }
+include/unrelated/signal_handler.hpp: |
+  #pragma once
+  // GARBAGE_CPP_SIGNAL_264_001
+  #define GARBAGE_CPP_SIGNAL_MAX_264_002 32
+
+  namespace app::unrelated::signal {
+
+  // GARBAGE_CPP_SIGNAL_TYPE_264_003
+  enum class SignalType {
+      Interrupt,
+      Terminate,
+      Abort,
+      SegFault
+  };
+
+  // GARBAGE_CPP_SIGNAL_HANDLER_264_004
+  using SignalCallback = void(*)(SignalType);
+
+  // GARBAGE_CPP_SIGNAL_MANAGER_264_005
+  class SignalManager {
+  public:
+      // GARBAGE_CPP_SIGNAL_REGISTER_264_006
+      void registerHandler(SignalType type, SignalCallback callback) {
+          // GARBAGE_CPP_SIGNAL_REG_IMPL_264_007
+      }
+
+      // GARBAGE_CPP_SIGNAL_UNREGISTER_264_008
+      void unregisterHandler(SignalType type) {
+          // GARBAGE_CPP_SIGNAL_UNREG_IMPL_264_009
+      }
+
+      // GARBAGE_CPP_SIGNAL_RAISE_264_010
+      void raise(SignalType type) {
+          // GARBAGE_CPP_SIGNAL_RAISE_IMPL_264_011
+      }
+  };
+
+  }
+src/unrelated/memory_pool.cpp: |
+  // GARBAGE_CPP_MEMPOOL_264_012
+  #include <cstddef>
+
+  namespace app::unrelated::memory {
+
+  // GARBAGE_CPP_MEMPOOL_BLOCK_264_013
+  struct MemoryBlock {
+      void* ptr;
+      size_t size;
+      // GARBAGE_CPP_MEMPOOL_NEXT_264_014
+      MemoryBlock* next;
+  };
+
+  // GARBAGE_CPP_MEMPOOL_CLASS_264_015
+  class MemoryPool {
+  public:
+      // GARBAGE_CPP_MEMPOOL_ALLOC_264_016
+      void* allocate(size_t size) {
+          // GARBAGE_CPP_MEMPOOL_ALLOC_IMPL_264_017
+          return nullptr;
+      }
+
+      // GARBAGE_CPP_MEMPOOL_FREE_264_018
+      void deallocate(void* ptr) {
+          // GARBAGE_CPP_MEMPOOL_FREE_IMPL_264_019
+      }
+
+      // GARBAGE_CPP_MEMPOOL_RESET_264_020
+      void reset() {
+          // GARBAGE_CPP_MEMPOOL_RESET_IMPL_264_021
+      }
+  };
+
+  }
+src/checker.cpp: |
+  #include "traits/ptr_traits.hpp"
+  #include <iostream>
+  #include <string>
+  #include <vector>
+
+  namespace app::checker {
+
+  template<typename T>
+  void checkType() {
+      std::cout << "Type analysis:\n";
+      std::cout << "  is_pointer: " << traits::PtrTraits<T>::is_pointer << "\n";
+      std::cout << "  is_smart_pointer: " << traits::PtrTraits<T>::is_smart_pointer << "\n";
+
+      if constexpr (traits::PtrTraits<T>::is_pointer) {
+          std::cout << "  -> Raw pointer type detected\n";
+      } else if constexpr (traits::PtrTraits<T>::is_smart_pointer) {
+          std::cout << "  -> Smart pointer type detected\n";
+      } else {
+          std::cout << "  -> Value type detected\n";
+      }
+  }
+
+  template<typename T, size_t N>
+  void checkArray(T (&arr)[N]) {
+      using Traits = traits::ArrayTraits<T, N>;
+      std::cout << "Array analysis:\n";
+      std::cout << "  size: " << Traits::size << "\n";
+      std::cout << "  is_array: " << Traits::is_array << "\n";
+      std::cout << "  first element: " << Traits::data(arr)[0] << "\n";
+  }
+
+  class TypeInspector {
+  public:
+      template<typename T>
+      void inspectPointer(T ptr) {
+          auto* raw = traits::PtrTraits<T>::get(ptr);
+          if (raw) {
+              std::cout << "Pointer points to value at: " << static_cast<void*>(raw) << "\n";
+          } else {
+              std::cout << "Null pointer\n";
+          }
+      }
+
+      template<typename T>
+      void inspectValue(T& value) {
+          using ElementType = typename traits::PtrTraits<T>::element_type;
+          auto* ptr = traits::PtrTraits<T>::get(value);
+          std::cout << "Value address: " << static_cast<void*>(ptr) << "\n";
+      }
+
+      template<typename T>
+      std::string describeType() {
+          if constexpr (traits::PtrTraits<T>::is_pointer) {
+              return "raw pointer";
+          } else if constexpr (traits::PtrTraits<T>::is_smart_pointer) {
+              return "smart pointer";
+          } else {
+              return "value type";
+          }
+      }
+  };
+
+  class SmartPointerWrapper {
+  public:
+      template<typename T>
+      static auto wrapUnique(T* raw) {
+          return std::unique_ptr<T>(raw);
+      }
+
+      template<typename T>
+      static auto wrapShared(T* raw) {
+          return std::shared_ptr<T>(raw);
+      }
+
+      template<typename T>
+      static typename traits::PtrTraits<T>::element_type*
+      unwrap(T& smartPtr) {
+          return traits::PtrTraits<T>::get(smartPtr);
+      }
+  };
+
+  template<typename T>
+  class GenericContainer {
+      using CleanType = typename traits::RemoveConst<
+          typename traits::RemoveRef<T>::type
+      >::type;
+
+  public:
+      void store(T value) {
+          value_ = value;
+      }
+
+      CleanType& get() { return value_; }
+      const CleanType& get() const { return value_; }
+
+  private:
+      CleanType value_;
+  };
+
+  struct TestData {
+      int id;
+      std::string name;
+  };
+
+  }
+
+  int main() {
+      std::cout << "=== Checking int ===\n";
+      app::checker::checkType<int>();
+
+      std::cout << "\n=== Checking int* ===\n";
+      app::checker::checkType<int*>();
+
+      std::cout << "\n=== Checking unique_ptr<int> ===\n";
+      app::checker::checkType<std::unique_ptr<int>>();
+
+      std::cout << "\n=== Checking shared_ptr<int> ===\n";
+      app::checker::checkType<std::shared_ptr<int>>();
+
+      int arr[5] = {10, 20, 30, 40, 50};
+      std::cout << "\n=== Checking array ===\n";
+      app::checker::checkArray(arr);
+
+      app::checker::TypeInspector inspector;
+
+      int value = 42;
+      int* rawPtr = &value;
+      auto uniquePtr = std::make_unique<int>(100);
+      auto sharedPtr = std::make_shared<int>(200);
+
+      std::cout << "\n=== Inspecting pointers ===\n";
+      inspector.inspectPointer(rawPtr);
+      inspector.inspectPointer(uniquePtr);
+      inspector.inspectPointer(sharedPtr);
+
+      std::cout << "\n=== Type descriptions ===\n";
+      std::cout << "int*: " << inspector.describeType<int*>() << "\n";
+      std::cout << "unique_ptr: " << inspector.describeType<std::unique_ptr<int>>() << "\n";
+      std::cout << "int: " << inspector.describeType<int>() << "\n";
+
+      auto* data = new app::checker::TestData{1, "Test"};
+      auto wrapped = app::checker::SmartPointerWrapper::wrapUnique(data);
+      auto* unwrapped = app::checker::SmartPointerWrapper::unwrap(wrapped);
+      std::cout << "\nUnwrapped data id: " << unwrapped->id << "\n";
+
+      app::checker::GenericContainer<int> container;
+      container.store(42);
+      std::cout << "Container value: " << container.get() << "\n";
+
+      return 0;
+  }

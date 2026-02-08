@@ -1,0 +1,125 @@
+.prettierrc.json: |
+  {
+    "semi": true,
+    "singleQuote": false,
+    "tabWidth": 2,
+    "trailingComma": "es5",
+    "arrowParens": "always",
+    "endOfLine": "lf",
+    "bracketSpacing": true
+  }
+src/format.js: |
+  function formatCode(code) {
+      return code.trim();
+  }
+
+  function normalizeWhitespace(text) {
+      return text
+          .replace(/\t/g, '    ')
+          .replace(/[ ]+$/gm, '')
+          .replace(/\n{3,}/g, '\n\n');
+  }
+
+  function indentBlock(text, spaces) {
+      const prefix = ' '.repeat(spaces);
+      return text
+          .split('\n')
+          .map((line) => (line.length > 0 ? prefix + line : line))
+          .join('\n');
+  }
+
+  function wrapLines(text, maxWidth) {
+      const words = text.split(' ');
+      const lines = [];
+      let current = '';
+      for (const word of words) {
+          if (current.length + word.length + 1 > maxWidth && current.length > 0) {
+              lines.push(current);
+              current = word;
+          } else {
+              current = current.length > 0 ? current + ' ' + word : word;
+          }
+      }
+      if (current.length > 0) lines.push(current);
+      return lines.join('\n');
+  }
+
+  export { formatCode, normalizeWhitespace, indentBlock, wrapLines };
+src/config-loader.js: |
+  import { formatCode, normalizeWhitespace } from './format';
+
+  function loadConfig(rawText) {
+      const cleaned = normalizeWhitespace(rawText);
+      const formatted = formatCode(cleaned);
+      return JSON.parse(formatted);
+  }
+
+  function validateConfig(config) {
+      const required = ['name', 'version', 'entry'];
+      const missing = required.filter((key) => !(key in config));
+      if (missing.length > 0) {
+          throw new Error(`Missing config keys: ${missing.join(', ')}`);
+      }
+      return true;
+  }
+
+  export { loadConfig, validateConfig };
+unrelated/tokenizer.js: |
+  const GARBAGE_JSON_008_TOKEN_TYPES_A = ['keyword', 'identifier', 'literal'];
+
+  class GARBAGE_JSON_008_SOURCE_TOKENIZER_B {
+      constructor(types) {
+          this.types = types || GARBAGE_JSON_008_TOKEN_TYPES_A;
+          this.position = 0;
+      }
+
+      next(source) {
+          if (this.position >= source.length) return null;
+          const ch = source[this.position++];
+          return { type: 'char', value: ch, pos: this.position - 1 };
+      }
+
+      tokenizeAll(source) {
+          const tokens = [];
+          let token;
+          while ((token = this.next(source)) !== null) {
+              tokens.push(token);
+          }
+          return tokens;
+      }
+  }
+
+  function GARBAGE_JSON_008_TOKENIZE_SOURCE_C(code) {
+      const tokenizer = new GARBAGE_JSON_008_SOURCE_TOKENIZER_B();
+      return tokenizer.tokenizeAll(code);
+  }
+
+  module.exports = { GARBAGE_JSON_008_SOURCE_TOKENIZER_B, GARBAGE_JSON_008_TOKENIZE_SOURCE_C };
+unrelated/normalizer.js: |
+  const GARBAGE_JSON_008_NORM_OPTIONS_D = { lowercase: true, stripAccents: true };
+
+  class GARBAGE_JSON_008_TEXT_NORMALIZER_E {
+      constructor(options) {
+          this.options = { ...GARBAGE_JSON_008_NORM_OPTIONS_D, ...options };
+      }
+
+      normalize(text) {
+          let result = text;
+          if (this.options.lowercase) result = result.toLowerCase();
+          if (this.options.stripAccents) {
+              result = result.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+          }
+          return result;
+      }
+
+      normalizeAll(texts) {
+          return texts.map((t) => this.normalize(t));
+      }
+  }
+
+  function GARBAGE_JSON_008_NORMALIZE_TEXT_F(text) {
+      const normalizer = new GARBAGE_JSON_008_TEXT_NORMALIZER_E();
+      return normalizer.normalize(text);
+  }
+
+  module.exports = { GARBAGE_JSON_008_TEXT_NORMALIZER_E, GARBAGE_JSON_008_NORMALIZE_TEXT_F };

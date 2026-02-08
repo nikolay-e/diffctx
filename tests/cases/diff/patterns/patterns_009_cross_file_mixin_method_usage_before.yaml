@@ -1,0 +1,70 @@
+mixins/auditable.py: |
+  from datetime import datetime
+
+  class AuditableMixin:
+      def get_created_at(self):
+          return getattr(self, '_created_at', None)
+
+      def set_created_at(self, value: datetime):
+          self._created_at = value
+
+      def get_updated_at(self):
+          return getattr(self, '_updated_at', None)
+
+      def set_updated_at(self, value: datetime):
+          self._updated_at = value
+
+      def audit_info(self):
+          return {
+              'created_at': self.get_created_at(),
+              'updated_at': self.get_updated_at(),
+          }
+models/user.py: |
+  from mixins.auditable import AuditableMixin
+
+  class User(AuditableMixin):
+      def __init__(self, name: str, email: str):
+          self.name = name
+          self.email = email
+
+      def save(self):
+          from datetime import datetime
+          if not self.get_created_at():
+              self.set_created_at(datetime.now())
+          self.set_updated_at(datetime.now())
+          return self
+models/order.py: |
+  from mixins.auditable import AuditableMixin
+
+  class Order(AuditableMixin):
+      def __init__(self, user_id: int, total: float):
+          self.user_id = user_id
+          self.total = total
+
+      def save(self):
+          from datetime import datetime
+          if not self.get_created_at():
+              self.set_created_at(datetime.now())
+          self.set_updated_at(datetime.now())
+          return self
+
+      def get_summary(self):
+          return {
+              'user_id': self.user_id,
+              'total': self.total,
+              **self.audit_info()
+          }
+utils/garbage_migration_runner.py: |
+  # GARBAGE_PAT_009_MIGRATION_RUNNER_A
+  GARBAGE_PAT_009_MIGRATION_DIR_B = "./migrations"
+
+  class GarbageMigrationRunner:
+      def run_pending(self):
+          pass
+utils/garbage_seed_data.py: |
+  # GARBAGE_PAT_009_SEED_DATA_A
+  GARBAGE_PAT_009_SEED_COUNT_B = 50
+
+  class GarbageSeedData:
+      def populate(self):
+          pass

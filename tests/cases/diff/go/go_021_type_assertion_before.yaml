@@ -1,0 +1,184 @@
+internal/handler/interfaces.go: |
+  package handler
+
+  import (
+      "context"
+      "io"
+  )
+
+  type Reader interface {
+      Read(ctx context.Context) ([]byte, error)
+  }
+
+  type Writer interface {
+      Write(ctx context.Context, data []byte) error
+  }
+
+  type Closer interface {
+      Close() error
+  }
+
+  type ReadWriter interface {
+      Reader
+      Writer
+  }
+
+  type ReadWriteCloser interface {
+      Reader
+      Writer
+      Closer
+  }
+
+  type Flusher interface {
+      Flush() error
+  }
+
+  type StreamHandler interface {
+      ReadWriter
+      Flusher
+  }
+internal/handler/file_handler.go: |
+  package handler
+
+  import (
+      "context"
+      "os"
+      "sync"
+  )
+
+  type FileHandler struct {
+      path   string
+      file   *os.File
+      mu     sync.RWMutex
+      closed bool
+  }
+
+  func NewFileHandler(path string) (*FileHandler, error) {
+      f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0644)
+      if err != nil {
+          return nil, err
+      }
+      return &FileHandler{path: path, file: f}, nil
+  }
+
+  func (h *FileHandler) Read(ctx context.Context) ([]byte, error) {
+      h.mu.RLock()
+      defer h.mu.RUnlock()
+      if h.closed {
+          return nil, os.ErrClosed
+      }
+      return os.ReadFile(h.path)
+  }
+
+  func (h *FileHandler) Write(ctx context.Context, data []byte) error {
+      h.mu.Lock()
+      defer h.mu.Unlock()
+      if h.closed {
+          return os.ErrClosed
+      }
+      _, err := h.file.Write(data)
+      return err
+  }
+
+  func (h *FileHandler) Close() error {
+      h.mu.Lock()
+      defer h.mu.Unlock()
+      h.closed = true
+      return h.file.Close()
+  }
+
+  func (h *FileHandler) Flush() error {
+      h.mu.Lock()
+      defer h.mu.Unlock()
+      return h.file.Sync()
+  }
+internal/handler/processor.go: |
+  package handler
+
+  import "context"
+
+  type Processor struct {
+      handler Reader
+  }
+
+  func NewProcessor(r Reader) *Processor {
+      return &Processor{handler: r}
+  }
+
+  func (p *Processor) Process(ctx context.Context) error {
+      _, err := p.handler.Read(ctx)
+      return err
+  }
+internal/unrelated/cache/redis_client.go: |
+  package cache
+
+  import (
+      "context"
+      "time"
+  )
+
+  const GARBAGE_GO_REDIS_CLIENT_A1B2C3 = "redis_client_garbage_marker"
+
+  type GARBAGE_GO_TYPE_REDIS_D4E5F6 struct {
+      addr     string
+      password string
+      db       int
+  }
+
+  func GARBAGE_GO_FUNC_REDIS_G7H8I9() string {
+      return "GARBAGE_GO_REDIS_UNUSED_J0K1L2"
+  }
+
+  type RedisConfig struct {
+      Addr         string
+      Password     string
+      DB           int
+      MaxRetries   int
+      PoolSize     int
+      DialTimeout  time.Duration
+      ReadTimeout  time.Duration
+      WriteTimeout time.Duration
+  }
+
+  func GARBAGE_GO_FUNC_REDIS_CONNECT_M3N4O5(ctx context.Context) error {
+      println("GARBAGE_GO_REDIS_OUTPUT_P6Q7R8")
+      return nil
+  }
+internal/unrelated/queue/kafka_producer.go: |
+  package queue
+
+  const GARBAGE_GO_KAFKA_PRODUCER_S9T0U1 = "kafka_producer_garbage"
+
+  type GARBAGE_GO_TYPE_KAFKA_V2W3X4 struct {
+      brokers []string
+      topic   string
+  }
+
+  func GARBAGE_GO_FUNC_KAFKA_Y5Z6A7() {
+      println("GARBAGE_GO_KAFKA_OUTPUT_B8C9D0")
+  }
+
+  type KafkaMessage struct {
+      Key       []byte
+      Value     []byte
+      Topic     string
+      Partition int32
+      Offset    int64
+  }
+
+  func GARBAGE_GO_FUNC_KAFKA_SEND_E1F2G3(msg *KafkaMessage) error {
+      return nil
+  }
+internal/unrelated/metrics/prometheus.go: |
+  package metrics
+
+  const GARBAGE_GO_PROM_METRICS_H4I5J6 = "prometheus_garbage"
+
+  type GARBAGE_GO_TYPE_COUNTER_K7L8M9 struct {
+      name   string
+      labels map[string]string
+  }
+
+  func GARBAGE_GO_FUNC_PROM_N0O1P2() {
+      println("GARBAGE_GO_PROM_OUTPUT_Q3R4S5")
+  }

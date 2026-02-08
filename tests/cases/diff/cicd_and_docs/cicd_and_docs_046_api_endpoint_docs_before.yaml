@@ -1,0 +1,44 @@
+docs/api/users.md: |
+  # Users API
+
+  ## GET /api/users
+
+  Returns a list of users.
+
+  ### Response
+
+  ```json
+  [{"id": 1, "name": "John"}]
+  ```
+
+src/handlers/users.py: |
+  from flask import jsonify
+
+  def list_users():
+      users = [{"id": 1, "name": "John"}]
+      return jsonify(users)
+
+src/routes.py: |
+  from flask import Blueprint
+  from handlers.users import list_users
+
+  api = Blueprint('api', __name__)
+  api.route('/users', methods=['GET'])(list_users)
+
+garbage_api_docs_generator.ts: |
+  const GARBAGE_CICD_DOCS_046_GENERATOR_MARKER_A = "openapi";
+  const GARBAGE_CICD_DOCS_046_FORMAT_MARKER_B = "yaml";
+
+  class GarbageApiDocsGenerator {
+    static GARBAGE_CICD_DOCS_046_VERSION_MARKER_C = "3.0";
+    generate(): void {}
+  }
+
+garbage_api_schema_extractor.ts: |
+  const GARBAGE_CICD_DOCS_046_EXTRACTOR_MARKER_D = "pydantic";
+  const GARBAGE_CICD_DOCS_046_OUTPUT_MARKER_E = "json-schema";
+
+  class GarbageApiSchemaExtractor {
+    static GARBAGE_CICD_DOCS_046_RECURSIVE_MARKER_F = true;
+    extract(): void {}
+  }

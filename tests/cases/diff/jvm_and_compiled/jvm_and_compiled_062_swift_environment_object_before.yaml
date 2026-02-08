@@ -1,0 +1,35 @@
+AppState.swift: |
+  import Combine
+
+  class AppState: ObservableObject {
+      @Published var currentUser: String?
+      @Published var isLoggedIn = false
+
+      func login(username: String) {
+          currentUser = username
+          isLoggedIn = true
+      }
+
+      func logout() {
+          currentUser = nil
+          isLoggedIn = false
+      }
+  }
+ProfileView.swift: |
+  // Initial
+  import SwiftUI
+  struct ProfileView: View {
+      var body: some View { Text("") }
+  }
+GarbageBindingWrapper.swift: |
+  class GarbageBindingWrapper {
+      static let GARBAGE_JVM_062_BINDING_MARKER_A = "marker"
+      static let GARBAGE_JVM_062_WRAPPER_MARKER_B = "marker"
+      func noop() {}
+  }
+GarbageStateReducer.swift: |
+  class GarbageStateReducer {
+      static let GARBAGE_JVM_062_STORE_MARKER_C = "marker"
+      static let GARBAGE_JVM_062_REDUCER_MARKER_D = "marker"
+      func noop() {}
+  }

@@ -1,0 +1,14 @@
+main.tf: |
+  locals {
+    common_tags = {
+      Project     = "myapp"
+      Environment = var.environment
+      ManagedBy   = "terraform"
+    }
+  }
+
+  resource "aws_instance" "web" {
+    tags = merge(local.common_tags, {
+      Name = "web-server"
+    })
+  }

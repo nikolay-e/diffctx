@@ -1,0 +1,12 @@
+chain.py: |
+  def step_one(x):
+      return x + 1
+
+  def step_two(x):
+      return step_one(x) * 2
+
+  def step_three(x):
+      return step_two(x) + 10
+
+  def process(x):
+      return step_three(x)

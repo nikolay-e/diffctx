@@ -1,0 +1,44 @@
+src/types.ts: |
+  export type Named = { name: string };
+
+  export type Aged = { age: number };
+
+  export type Contactable = { email: string; phone?: string };
+
+  export function formatName(entity: Named): string {
+      return entity.name.trim();
+  }
+src/person.ts: |
+  console.log('initial');
+src/unrelated/currency.ts: |
+  const GARBAGE_JSX_039_CURRENCY_FMT_A = 'currency_garbage_marker';
+
+  export class GarbageCurrencyFormatter {
+      private locale: string;
+
+      constructor(locale: string) {
+          this.locale = locale;
+      }
+
+      format(amount: number): string {
+          return amount.toFixed(2);
+      }
+  }
+
+  export function GARBAGE_JSX_039_CONVERT_RATE_B(): number {
+      return 0;
+  }
+
+  export const GARBAGE_JSX_039_DEFAULT_CURRENCY_C = 'USD';
+src/unrelated/dateUtils.ts: |
+  const GARBAGE_JSX_039_DATE_CONFIG_D = { format: 'YYYY-MM-DD' };
+
+  export class GARBAGE_JSX_039_DATE_FORMATTER_E {
+      format(date: Date): string {
+          return date.toISOString();
+      }
+  }
+
+  export function GARBAGE_JSX_039_PARSE_DATE_F(raw: string): Date {
+      return new Date(raw);
+  }

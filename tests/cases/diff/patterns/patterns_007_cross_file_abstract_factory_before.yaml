@@ -1,0 +1,81 @@
+factories/base.py: |
+  from abc import ABC, abstractmethod
+
+  class Button(ABC):
+      @abstractmethod
+      def render(self) -> str:
+          pass
+
+  class Input(ABC):
+      @abstractmethod
+      def render(self) -> str:
+          pass
+
+  class UIFactory(ABC):
+      @abstractmethod
+      def create_button(self, label: str) -> Button:
+          pass
+
+      @abstractmethod
+      def create_input(self, placeholder: str) -> Input:
+          pass
+factories/material.py: |
+  from factories.base import UIFactory, Button, Input
+
+  class MaterialButton(Button):
+      def __init__(self, label: str):
+          self.label = label
+
+      def render(self) -> str:
+          return f'<button class="mdc-button">{self.label}</button>'
+
+  class MaterialInput(Input):
+      def __init__(self, placeholder: str):
+          self.placeholder = placeholder
+
+      def render(self) -> str:
+          return f'<input class="mdc-input" placeholder="{self.placeholder}">'
+
+  class MaterialUIFactory(UIFactory):
+      def create_button(self, label: str) -> Button:
+          return MaterialButton(label)
+
+      def create_input(self, placeholder: str) -> Input:
+          return MaterialInput(placeholder)
+factories/bootstrap.py: |
+  from factories.base import UIFactory, Button, Input
+
+  class BootstrapButton(Button):
+      def __init__(self, label: str):
+          self.label = label
+
+      def render(self) -> str:
+          return f'<button class="btn btn-primary">{self.label}</button>'
+
+  class BootstrapInput(Input):
+      def __init__(self, placeholder: str):
+          self.placeholder = placeholder
+
+      def render(self) -> str:
+          return f'<input class="form-control" placeholder="{self.placeholder}">'
+
+  class BootstrapUIFactory(UIFactory):
+      def create_button(self, label: str) -> Button:
+          return BootstrapButton(label)
+
+      def create_input(self, placeholder: str) -> Input:
+          return BootstrapInput(placeholder)
+utils/garbage_theme_loader.py: |
+  # GARBAGE_PAT_007_THEME_LOADER_A
+  GARBAGE_PAT_007_DEFAULT_THEME_B = "light"
+
+  class GarbageThemeLoader:
+      def load(self, name):
+          return {}
+utils/garbage_icon_pack.py: |
+  # GARBAGE_PAT_007_ICON_PACK_A
+  GARBAGE_PAT_007_ICON_SIZE_B = 24
+
+  class GarbageIconPack:
+      def get_icon(self, name):
+          return ""

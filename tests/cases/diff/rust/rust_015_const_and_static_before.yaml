@@ -1,0 +1,87 @@
+src/lib.rs: |
+  pub mod config;
+  pub mod unrelated;
+src/config.rs: |
+  pub const MAX_SIZE: usize = 100;
+
+  pub fn get_max_size() -> usize {
+      MAX_SIZE
+  }
+
+  pub struct Settings {
+      pub size: usize,
+  }
+
+  impl Settings {
+      pub fn new(size: usize) -> Self {
+          Self { size: size.min(MAX_SIZE) }
+      }
+  }
+
+  impl Default for Settings {
+      fn default() -> Self {
+          Self { size: MAX_SIZE }
+      }
+  }
+src/unrelated/mod.rs: |
+  pub mod benchmark;
+  pub mod profiler;
+src/unrelated/benchmark.rs: |
+  // GARBAGE_RUST_BENCH_001
+  use std::time::{Duration, Instant};
+
+  pub const GARBAGE_WARMUP_ITERATIONS_002: u32 = 100;
+  pub const GARBAGE_BENCH_ITERATIONS_003: u32 = 1000;
+
+  pub struct GarbageBenchmark004 {
+      name: String,
+      iterations: u32,
+  }
+
+  impl GarbageBenchmark004 {
+      pub fn garbage_run_005<F>(&self, f: F) -> Duration
+      where
+          F: Fn(),
+      {
+          let start = Instant::now();
+          for _ in 0..self.iterations {
+              f();
+          }
+          start.elapsed()
+      }
+
+      pub fn garbage_compare_006<F, G>(&self, f: F, g: G) -> (Duration, Duration)
+      where
+          F: Fn(),
+          G: Fn(),
+      {
+          (self.garbage_run_005(f), self.garbage_run_005(g))
+      }
+  }
+
+  pub trait GarbageBenchmarkable007 {
+      fn garbage_benchmark_008(&self) -> Duration;
+  }
+src/unrelated/profiler.rs: |
+  // GARBAGE_RUST_PROFILER_009
+  use std::collections::HashMap;
+
+  pub const GARBAGE_PROFILE_DEPTH_010: usize = 32;
+
+  pub struct GarbageProfiler011 {
+      traces: HashMap<String, Vec<u64>>,
+  }
+
+  impl GarbageProfiler011 {
+      pub fn garbage_start_012(&mut self, name: &str) {
+          // GARBAGE_PROFILE_START_013
+      }
+
+      pub fn garbage_stop_014(&mut self, name: &str) {
+          // GARBAGE_PROFILE_STOP_015
+      }
+
+      pub fn garbage_report_016(&self) -> String {
+          "GARBAGE_PROFILE_REPORT_017".to_string()
+      }
+  }

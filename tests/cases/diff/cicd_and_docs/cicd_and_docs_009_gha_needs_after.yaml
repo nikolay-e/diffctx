@@ -1,0 +1,60 @@
+.github/workflows/ci.yml: |
+  name: CI
+  on: [push, pull_request]
+  jobs:
+    build:
+      runs-on: ubuntu-latest
+      steps:
+        - uses: actions/checkout@v4
+        - run: npm run build
+    test:
+      runs-on: ubuntu-latest
+      steps:
+        - uses: actions/checkout@v4
+        - run: npm test
+    deploy:
+      runs-on: ubuntu-latest
+      needs: [build, test]
+      steps:
+        - uses: actions/checkout@v4
+        - run: ./deploy.sh
+
+package.json: |
+  {
+    "name": "pipeline-app",
+    "version": "1.0.0",
+    "scripts": {
+      "build": "webpack --mode production",
+      "test": "vitest run",
+      "deploy": "./scripts/deploy.sh"
+    }
+  }
+
+src/pipeline/stages.ts: |
+  export interface PipelineStage {
+    name: string;
+    dependsOn: string[];
+    run: () => Promise<void>;
+  }
+
+  export function createPipeline(stages: PipelineStage[]): void {
+    console.log('Creating pipeline with', stages.length, 'stages');
+  }
+
+garbage_orchestrator.ts: |
+  const GARBAGE_CICD_DOCS_009_ORCHESTRATOR_MARKER_A = "kubernetes";
+  const GARBAGE_CICD_DOCS_009_NAMESPACE_MARKER_B = "default";
+
+  class GarbageOrchestrator {
+    static GARBAGE_CICD_DOCS_009_REPLICAS_MARKER_C = 3;
+    deploy(): void {}
+  }
+
+garbage_scheduler.ts: |
+  const GARBAGE_CICD_DOCS_009_SCHEDULER_MARKER_D = "cron";
+  const GARBAGE_CICD_DOCS_009_INTERVAL_MARKER_E = "0 * * * *";
+
+  class GarbageSchedulerService {
+    static GARBAGE_CICD_DOCS_009_TIMEOUT_MARKER_F = 300;
+    schedule(): void {}
+  }

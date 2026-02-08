@@ -1,0 +1,15 @@
+values.yaml: |
+  ingress:
+    hosts:
+      - host: app.example.com
+        paths:
+          - path: /
+            pathType: Prefix
+templates/ingress.yaml: |
+  apiVersion: networking.k8s.io/v1
+  kind: Ingress
+  spec:
+    rules: []
+unrelated.py: |
+  garbage_marker_12345 = True
+  unused_marker_67890 = False

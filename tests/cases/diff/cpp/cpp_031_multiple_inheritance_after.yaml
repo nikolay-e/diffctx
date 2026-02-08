@@ -1,0 +1,317 @@
+include/interfaces/interfaces.hpp: |
+  #pragma once
+  #include <string>
+  #include <iostream>
+
+  namespace app::interfaces {
+
+  class Serializable {
+  public:
+      virtual ~Serializable() = default;
+      virtual std::string serialize() const = 0;
+      virtual void deserialize(const std::string& data) = 0;
+  };
+
+  class Printable {
+  public:
+      virtual ~Printable() = default;
+      virtual void print(std::ostream& os) const = 0;
+      virtual std::string toString() const = 0;
+  };
+
+  class Comparable {
+  public:
+      virtual ~Comparable() = default;
+      virtual int compare(const Comparable& other) const = 0;
+      virtual bool equals(const Comparable& other) const = 0;
+  };
+
+  class Cloneable {
+  public:
+      virtual ~Cloneable() = default;
+      virtual Cloneable* clone() const = 0;
+  };
+
+  class Hashable {
+  public:
+      virtual ~Hashable() = default;
+      virtual size_t hash() const = 0;
+  };
+
+  class Validatable {
+  public:
+      virtual ~Validatable() = default;
+      virtual bool isValid() const = 0;
+      virtual std::string validationError() const = 0;
+  };
+
+  }
+include/unrelated/database_driver.hpp: |
+  #pragma once
+  // GARBAGE_CPP_DB_272_001
+  #define GARBAGE_CPP_DB_TIMEOUT_272_002 30000
+
+  namespace app::unrelated::database {
+
+  // GARBAGE_CPP_DB_RESULT_272_003
+  struct QueryResult {
+      int rowCount;
+      int columnCount;
+      // GARBAGE_CPP_DB_DATA_272_004
+  };
+
+  // GARBAGE_CPP_DB_DRIVER_272_005
+  class DatabaseDriver {
+  public:
+      // GARBAGE_CPP_DB_CONNECT_272_006
+      bool connect(const char* connectionString) {
+          // GARBAGE_CPP_DB_CONN_IMPL_272_007
+          return false;
+      }
+
+      // GARBAGE_CPP_DB_QUERY_272_008
+      QueryResult executeQuery(const char* sql) {
+          // GARBAGE_CPP_DB_QUERY_IMPL_272_009
+          return QueryResult{};
+      }
+
+      // GARBAGE_CPP_DB_CLOSE_272_010
+      void close() {
+          // GARBAGE_CPP_DB_CLOSE_IMPL_272_011
+      }
+  };
+
+  }
+src/unrelated/image_processor.cpp: |
+  // GARBAGE_CPP_IMAGE_272_012
+  #include <cstdint>
+
+  namespace app::unrelated::image {
+
+  // GARBAGE_CPP_IMAGE_PIXEL_272_013
+  struct Pixel {
+      uint8_t r, g, b, a;
+      // GARBAGE_CPP_IMAGE_BLEND_272_014
+  };
+
+  // GARBAGE_CPP_IMAGE_PROCESSOR_272_015
+  class ImageProcessor {
+  public:
+      // GARBAGE_CPP_IMAGE_RESIZE_272_016
+      void resize(int newWidth, int newHeight) {
+          // GARBAGE_CPP_IMAGE_RESIZE_IMPL_272_017
+      }
+
+      // GARBAGE_CPP_IMAGE_FILTER_272_018
+      void applyFilter(const char* filterName) {
+          // GARBAGE_CPP_IMAGE_FILTER_IMPL_272_019
+      }
+
+      // GARBAGE_CPP_IMAGE_SAVE_272_020
+      bool save(const char* path) {
+          // GARBAGE_CPP_IMAGE_SAVE_IMPL_272_021
+          return false;
+      }
+  };
+
+  }
+src/models.cpp: |
+  #include "interfaces/interfaces.hpp"
+  #include <sstream>
+  #include <functional>
+  #include <memory>
+  #include <vector>
+
+  namespace app::models {
+
+  class Person : public interfaces::Serializable,
+                 public interfaces::Printable,
+                 public interfaces::Comparable,
+                 public interfaces::Cloneable {
+  public:
+      Person(const std::string& name, int age)
+          : name_(name), age_(age) {}
+
+      std::string serialize() const override {
+          std::ostringstream oss;
+          oss << "{\"name\":\"" << name_ << "\",\"age\":" << age_ << "}";
+          return oss.str();
+      }
+
+      void deserialize(const std::string& data) override {
+          std::cout << "Deserializing Person from: " << data << "\n";
+      }
+
+      void print(std::ostream& os) const override {
+          os << "Person(" << name_ << ", " << age_ << ")";
+      }
+
+      std::string toString() const override {
+          std::ostringstream oss;
+          print(oss);
+          return oss.str();
+      }
+
+      int compare(const interfaces::Comparable& other) const override {
+          auto* otherPerson = dynamic_cast<const Person*>(&other);
+          if (!otherPerson) return -1;
+          if (age_ < otherPerson->age_) return -1;
+          if (age_ > otherPerson->age_) return 1;
+          return name_.compare(otherPerson->name_);
+      }
+
+      bool equals(const interfaces::Comparable& other) const override {
+          return compare(other) == 0;
+      }
+
+      interfaces::Cloneable* clone() const override {
+          return new Person(*this);
+      }
+
+      const std::string& name() const { return name_; }
+      int age() const { return age_; }
+
+  private:
+      std::string name_;
+      int age_;
+  };
+
+  class Product : public interfaces::Serializable,
+                  public interfaces::Printable,
+                  public interfaces::Hashable,
+                  public interfaces::Validatable {
+  public:
+      Product(const std::string& sku, const std::string& name, double price)
+          : sku_(sku), name_(name), price_(price) {}
+
+      std::string serialize() const override {
+          std::ostringstream oss;
+          oss << "{\"sku\":\"" << sku_ << "\",\"name\":\"" << name_
+              << "\",\"price\":" << price_ << "}";
+          return oss.str();
+      }
+
+      void deserialize(const std::string& data) override {
+          std::cout << "Deserializing Product from: " << data << "\n";
+      }
+
+      void print(std::ostream& os) const override {
+          os << "Product[" << sku_ << "]: " << name_ << " ($" << price_ << ")";
+      }
+
+      std::string toString() const override {
+          std::ostringstream oss;
+          print(oss);
+          return oss.str();
+      }
+
+      size_t hash() const override {
+          return std::hash<std::string>{}(sku_) ^
+                 (std::hash<std::string>{}(name_) << 1) ^
+                 (std::hash<double>{}(price_) << 2);
+      }
+
+      bool isValid() const override {
+          return !sku_.empty() && !name_.empty() && price_ >= 0;
+      }
+
+      std::string validationError() const override {
+          if (sku_.empty()) return "SKU is required";
+          if (name_.empty()) return "Name is required";
+          if (price_ < 0) return "Price cannot be negative";
+          return "";
+      }
+
+      const std::string& sku() const { return sku_; }
+      const std::string& name() const { return name_; }
+      double price() const { return price_; }
+
+  private:
+      std::string sku_;
+      std::string name_;
+      double price_;
+  };
+
+  class Document : public interfaces::Serializable,
+                   public interfaces::Printable,
+                   public interfaces::Cloneable,
+                   public interfaces::Validatable {
+  public:
+      Document(const std::string& title, const std::string& content)
+          : title_(title), content_(content) {}
+
+      std::string serialize() const override {
+          return "{\"title\":\"" + title_ + "\",\"content\":\"" + content_ + "\"}";
+      }
+
+      void deserialize(const std::string& data) override {
+          std::cout << "Deserializing Document\n";
+      }
+
+      void print(std::ostream& os) const override {
+          os << "Document: " << title_ << "\n" << content_;
+      }
+
+      std::string toString() const override {
+          return "Document[" + title_ + "]";
+      }
+
+      interfaces::Cloneable* clone() const override {
+          return new Document(*this);
+      }
+
+      bool isValid() const override {
+          return !title_.empty();
+      }
+
+      std::string validationError() const override {
+          return title_.empty() ? "Title is required" : "";
+      }
+
+  private:
+      std::string title_;
+      std::string content_;
+  };
+
+  }
+
+  int main() {
+      std::cout << "=== Person ===\n";
+      app::models::Person alice("Alice", 30);
+      app::models::Person bob("Bob", 25);
+
+      std::cout << alice.toString() << "\n";
+      std::cout << "Serialized: " << alice.serialize() << "\n";
+      std::cout << "Compare Alice to Bob: " << alice.compare(bob) << "\n";
+
+      std::unique_ptr<app::interfaces::Cloneable> aliceClone(alice.clone());
+      auto* clonedPerson = dynamic_cast<app::models::Person*>(aliceClone.get());
+      if (clonedPerson) {
+          std::cout << "Cloned: " << clonedPerson->toString() << "\n";
+      }
+
+      std::cout << "\n=== Product ===\n";
+      app::models::Product laptop("SKU001", "Laptop Pro", 999.99);
+      app::models::Product invalidProduct("", "No SKU", -10);
+
+      std::cout << laptop.toString() << "\n";
+      std::cout << "Hash: " << laptop.hash() << "\n";
+      std::cout << "Valid: " << laptop.isValid() << "\n";
+
+      std::cout << "Invalid product valid: " << invalidProduct.isValid() << "\n";
+      std::cout << "Error: " << invalidProduct.validationError() << "\n";
+
+      std::cout << "\n=== Document ===\n";
+      app::models::Document doc("My Report", "This is the content of the report.");
+      std::cout << doc.toString() << "\n";
+      std::cout << "Serialized: " << doc.serialize() << "\n";
+      std::cout << "Valid: " << doc.isValid() << "\n";
+
+      std::vector<app::interfaces::Serializable*> items = {&alice, &laptop, &doc};
+      std::cout << "\n=== All Serialized ===\n";
+      for (auto* item : items) {
+          std::cout << item->serialize() << "\n";
+      }
+
+      return 0;
+  }

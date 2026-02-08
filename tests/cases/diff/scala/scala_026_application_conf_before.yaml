@@ -1,0 +1,13 @@
+src/main/resources/application.conf: |
+  app {
+    name = "myapp"
+    port = 8080
+  }
+src/main/scala/Config.scala: |
+  import com.typesafe.config.ConfigFactory
+
+  object Config {
+    private val config = ConfigFactory.load()
+    val appName: String = config.getString("app.name")
+    val port: Int = config.getInt("app.port")
+  }

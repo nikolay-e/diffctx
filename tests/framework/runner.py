@@ -62,17 +62,33 @@ class YamlTestRunner:
 
     def verify_assertions(self, context: dict, case: YamlTestCase) -> None:
         all_content = self._extract_all_content(context)
+        fragment_paths = self._extract_fragment_paths(context)
 
         for pattern in case.must_include:
-            assert pattern in all_content, f"Expected '{pattern}' to be in context, but it was not found"
+            assert pattern in all_content, (
+                f"[{case.name}] Expected '{pattern}' in context, but not found.\n" + f"Fragment paths: {fragment_paths}"
+            )
+
+        for file_path in case.must_include_files:
+            assert any(file_path in p for p in fragment_paths), (
+                f"[{case.name}] Expected file '{file_path}' in fragments, but not found.\n" + f"Fragment paths: {fragment_paths}"
+            )
+
+        for content_block in case.must_include_content:
+            normalized_block = content_block.rstrip("\n")
+            assert normalized_block in all_content, (
+                f"[{case.name}] Expected content block not found in context.\n"
+                f"Expected (first 200 chars):\n{normalized_block[:200]}\n"
+                f"Fragment paths: {fragment_paths}"
+            )
 
         for pattern in case.must_not_include:
-            assert pattern not in all_content, f"Expected '{pattern}' to NOT be in context, but it was found"
+            assert pattern not in all_content, f"[{case.name}] Expected '{pattern}' to NOT be in context, but it was found"
 
         if case.add_garbage_files and not case.skip_garbage_check:
             for marker in GARBAGE_MARKERS:
                 assert marker not in all_content, (
-                    f"Garbage marker '{marker}' found in context! "
+                    f"[{case.name}] Garbage marker '{marker}' found in context! "
                     f"Algorithm included unrelated code that should have been excluded."
                 )
 
@@ -84,3 +100,6 @@ class YamlTestRunner:
             if "path" in frag:
                 parts.append(frag["path"])
         return "\n".join(parts)
+
+    def _extract_fragment_paths(self, context: dict) -> list[str]:
+        return [frag["path"] for frag in context.get("fragments", []) if "path" in frag]

@@ -1,0 +1,59 @@
+compat.py: |
+  import sys
+
+  if sys.version_info >= (3, 11):
+      import tomllib
+  else:
+      import tomli as tomllib
+
+  if sys.version_info >= (3, 10):
+      from typing import TypeAlias
+  else:
+      from typing_extensions import TypeAlias
+
+  PathLike: TypeAlias = str
+
+  def get_python_version() -> str:
+      return f"{sys.version_info.major}.{sys.version_info.minor}"
+
+config.py: |
+  def load():
+      pass
+
+  def get_default_config() -> dict:
+      return {"debug": False, "timeout": 30}
+
+garbage_profiling.py: |
+  GARBAGE_PY_043_PROFILE_A = "profiling module marker"
+  GARBAGE_PY_043_TIMER_B = "timer instrumentation marker"
+
+  class Profiler:
+      GARBAGE_PY_043_PROFILER_C = "profiler instance marker"
+
+      def __init__(self):
+          self._timings = {}
+
+      def start(self, label: str) -> None:
+          self._timings[label] = 0.0
+
+      def stop(self, label: str) -> float:
+          GARBAGE_PY_043_STOP_D = "stop marker"
+          return self._timings.get(label, 0.0)
+
+garbage_circuit_breaker.py: |
+  GARBAGE_PY_043_CIRCUIT_E = "circuit breaker marker"
+  GARBAGE_PY_043_STATE_F = "state machine marker"
+
+  class CircuitBreaker:
+      GARBAGE_PY_043_BREAKER_G = True
+
+      def __init__(self, failure_threshold: int = 5):
+          self.failure_threshold = failure_threshold
+          self._failures = 0
+
+      def record_failure(self) -> None:
+          self._failures += 1
+
+      def is_open(self) -> bool:
+          GARBAGE_PY_043_OPEN_H = "open circuit marker"
+          return self._failures >= self.failure_threshold

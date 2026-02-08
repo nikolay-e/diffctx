@@ -1,0 +1,60 @@
+outer.py: |
+  def outer(data: list) -> dict:
+      total = sum(data)
+
+      def inner(values: list) -> float:
+          if not values:
+              return 0.0
+          return sum(values) / len(values)
+
+      def format_result(value: float) -> str:
+          return f"{value:.2f}"
+
+      return {"total": total}
+utils/math_ops.py: |
+  def clamp(value: float, min_val: float, max_val: float) -> float:
+      return max(min_val, min(value, max_val))
+
+  def normalize(data: list) -> list:
+      if not data:
+          return []
+      max_val = max(data)
+      if max_val == 0:
+          return data
+      return [x / max_val for x in data]
+garbage/aquarium_sim_GARBAGE_DEP_005_AQUARIUM_A.py: |
+  import random
+
+  def fish_population_GARBAGE_DEP_005_AQUARIUM_A(current: int, food: float) -> int:
+      growth = int(current * food * 0.1)
+      return current + growth
+
+  def water_quality_GARBAGE_DEP_005_AQUARIUM_A(ph: float, temp: float) -> str:
+      if 6.5 <= ph <= 7.5 and 24 <= temp <= 28:
+          return "optimal"
+      return "suboptimal"
+
+  class Aquarium_GARBAGE_DEP_005_AQUARIUM_A:
+      def __init__(self, volume_liters: int):
+          self.volume = volume_liters
+          self.fish = []
+
+      def add_fish(self, species: str, count: int) -> None:
+          self.fish.append({"species": species, "count": count})
+garbage/ticket_system_GARBAGE_DEP_005_TICKET_B.py: |
+  from datetime import datetime
+
+  def create_ticket_GARBAGE_DEP_005_TICKET_B(title: str, priority: int) -> dict:
+      return {"title": title, "priority": priority, "created": str(datetime.now())}
+
+  def escalate_ticket_GARBAGE_DEP_005_TICKET_B(ticket: dict) -> dict:
+      ticket["priority"] = min(ticket["priority"] + 1, 5)
+      return ticket
+
+  class TicketQueue_GARBAGE_DEP_005_TICKET_B:
+      def __init__(self):
+          self.tickets = []
+
+      def enqueue(self, ticket: dict) -> None:
+          self.tickets.append(ticket)
+          self.tickets.sort(key=lambda t: t["priority"], reverse=True)

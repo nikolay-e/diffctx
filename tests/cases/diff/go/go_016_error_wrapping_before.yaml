@@ -1,0 +1,83 @@
+internal/errors/sentinel.go: |
+  package errors
+
+  import "errors"
+
+  var (
+      ErrNotFound   = errors.New("not found")
+      ErrPermission = errors.New("permission denied")
+      ErrInvalid    = errors.New("invalid input")
+  )
+internal/repository/user_repository.go: |
+  package repository
+
+  import (
+      "context"
+      "database/sql"
+  )
+
+  type User struct {
+      ID    int64
+      Name  string
+      Email string
+  }
+
+  type UserRepository struct {
+      db *sql.DB
+  }
+
+  func NewUserRepository(db *sql.DB) *UserRepository {
+      return &UserRepository{db: db}
+  }
+
+  func (r *UserRepository) FindByID(ctx context.Context, id int64) (*User, error) {
+      row := r.db.QueryRowContext(ctx, "SELECT id, name, email FROM users WHERE id = ?", id)
+      var user User
+      if err := row.Scan(&user.ID, &user.Name, &user.Email); err != nil {
+          return nil, err
+      }
+      return &user, nil
+  }
+internal/service/user_service.go: |
+  package service
+
+  import (
+      "context"
+      "myproject/internal/repository"
+  )
+
+  type UserService struct {
+      repo *repository.UserRepository
+  }
+
+  func NewUserService(repo *repository.UserRepository) *UserService {
+      return &UserService{repo: repo}
+  }
+
+  func (s *UserService) GetUser(ctx context.Context, id int64) (*repository.User, error) {
+      return s.repo.FindByID(ctx, id)
+  }
+internal/unrelated/logging/formatter.go: |
+  package logging
+
+  const GARBAGE_GO_LOG_FORMATTER_001 = "logging_garbage"
+
+  type GARBAGE_GO_TYPE_FORMATTER_002 struct {
+      pattern string
+  }
+
+  func GARBAGE_GO_FUNC_FORMATTER_003() string {
+      return "GARBAGE_GO_FORMATTER_UNUSED_004"
+  }
+internal/unrelated/logging/writer.go: |
+  package logging
+
+  const GARBAGE_GO_LOG_WRITER_005 = "writer_garbage"
+
+  type GARBAGE_GO_TYPE_WRITER_006 struct {
+      output string
+  }
+
+  func GARBAGE_GO_FUNC_WRITER_007() {
+      println("GARBAGE_GO_WRITER_OUTPUT_008")
+  }

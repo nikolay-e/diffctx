@@ -1,0 +1,72 @@
+Person.cs: |
+  public class Person
+  {
+      public string Name { get; set; }
+      public int Age { get; set; }
+
+      public Person(string name, int age)
+      {
+          Name = name;
+          Age = age;
+      }
+  }
+IWorker.cs: |
+  public interface IWorker
+  {
+      void Work();
+      decimal GetSalary();
+  }
+Employee.cs: |
+  public class Employee : Person, IWorker
+  {
+      public string Department { get; set; }
+      public decimal Salary { get; set; }
+
+      public Employee(string name, int age, string department, decimal salary)
+          : base(name, age)
+      {
+          Department = department;
+          Salary = salary;
+      }
+
+      public void Work()
+      {
+          Console.WriteLine($"{Name} is working in {Department}");
+      }
+
+      public decimal GetSalary() => Salary;
+  }
+GarbageTemperatureConverter.cs: |
+  public static class GarbageTemperatureConverter
+  {
+      public const string GARBAGE_JVM_014_CELSIUS_MARKER_A = "to_celsius";
+      public const string GARBAGE_JVM_014_FAHRENHEIT_MARKER_B = "to_fahrenheit";
+
+      public static double ToFahrenheit(double c) => c * 9.0 / 5.0 + 32;
+      public static double ToCelsius(double f) => (f - 32) * 5.0 / 9.0;
+  }
+GarbagePaginator.cs: |
+  public class GarbagePaginator
+  {
+      public const string GARBAGE_JVM_014_PAGE_MARKER_C = "calc_page";
+      public const string GARBAGE_JVM_014_OFFSET_MARKER_D = "calc_offset";
+
+      private readonly int _pageSize;
+      public GarbagePaginator(int pageSize) { _pageSize = pageSize; }
+      public int TotalPages(int totalItems) => (totalItems + _pageSize - 1) / _pageSize;
+      public int Offset(int page) => (page - 1) * _pageSize;
+  }
+GarbageShapeRenderer.cs: |
+  public class GarbageShapeRenderer
+  {
+      public const string GARBAGE_JVM_014_SHAPE_MARKER_A = "marker";
+      public const string GARBAGE_JVM_014_AREA_MARKER_B = "marker";
+      public void Noop() {}
+  }
+GarbagePaintBrush.cs: |
+  public class GarbagePaintBrush
+  {
+      public const string GARBAGE_JVM_014_RENDER_MARKER_C = "marker";
+      public const string GARBAGE_JVM_014_PAINT_MARKER_D = "marker";
+      public void Noop() {}
+  }

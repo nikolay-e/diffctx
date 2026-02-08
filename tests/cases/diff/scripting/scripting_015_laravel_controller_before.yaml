@@ -1,0 +1,19 @@
+StoreUserRequest.php: |
+  <?php
+  namespace App\Http\Requests;
+
+  class StoreUserRequest {
+      public function validated(): array {
+          return [
+              'name' => 'John',
+              'email' => 'john@example.com'
+          ];
+      }
+  }
+UserController.php: |
+  <?php
+  class UserController {}
+garbage.php: |
+  <?php
+  $garbageRequest67890 = [];
+  $unused_marker_12345 = "not used";

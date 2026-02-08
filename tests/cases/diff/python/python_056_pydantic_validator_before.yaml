@@ -1,0 +1,75 @@
+schemas.py: |
+  from pydantic import BaseModel, validator
+  from typing import Optional
+  from datetime import date
+
+  class UserCreate(BaseModel):
+      name: str
+      email: str
+      password: str
+      birth_date: Optional[date] = None
+
+      @validator("email")
+      def email_must_be_valid(cls, v):
+          if "@" not in v:
+              raise ValueError("Invalid email address")
+          return v.lower().strip()
+
+      @validator("password")
+      def password_must_be_strong(cls, v):
+          if len(v) < 8:
+              raise ValueError("Password must be at least 8 characters")
+          if not any(c.isupper() for c in v):
+              raise ValueError("Password must contain uppercase letter")
+          return v
+
+  class UserUpdate(BaseModel):
+      name: Optional[str] = None
+      email: Optional[str] = None
+
+api.py: |
+  from typing import Any
+
+  def register(data: dict[str, Any]) -> dict[str, Any]:
+      return {"id": 1, **data}
+
+  def update_profile(user_id: int, data: dict[str, Any]) -> dict[str, Any]:
+      return {"id": user_id, **data}
+
+  def get_profile(user_id: int) -> dict[str, Any]:
+      return {"id": user_id, "name": "Test", "email": "test@example.com"}
+
+garbage_geo.py: |
+  GARBAGE_PY_056_GEO_A = "geolocation marker"
+  GARBAGE_PY_056_COORD_B = "coordinate system marker"
+
+  class GeoLocator:
+      GARBAGE_PY_056_PROJ_C = "projection marker"
+
+      def __init__(self, api_key: str = ""):
+          self.api_key = api_key
+          self._cache: dict[str, tuple[float, float]] = {}
+
+      def geocode(self, address: str) -> tuple[float, float]:
+          return (0.0, 0.0)
+
+      def reverse_geocode(self, lat: float, lon: float) -> str:
+          GARBAGE_PY_056_REVERSE_D = "reverse geocode marker"
+          return f"Address at ({lat}, {lon})"
+
+garbage_payment.py: |
+  GARBAGE_PY_056_PAY_E = "payment gateway marker"
+  GARBAGE_PY_056_STRIPE_F = "stripe integration marker"
+
+  class PaymentProcessor:
+      GARBAGE_PY_056_CHARGE_G = True
+
+      def __init__(self, api_key: str = ""):
+          self.api_key = api_key
+
+      def create_charge(self, amount: int, currency: str = "usd") -> dict:
+          return {"id": "ch_test", "amount": amount, "currency": currency}
+
+      def refund(self, charge_id: str) -> dict:
+          GARBAGE_PY_056_REFUND_H = "refund process marker"
+          return {"id": "re_test", "charge": charge_id}

@@ -1,0 +1,55 @@
+src/calculator.ts: |
+  export function add(a: number, b: number): number {
+      return a + b;
+  }
+
+  export function subtract(a: number, b: number): number {
+      return a - b;
+  }
+
+  export function multiply(a: number, b: number): number {
+      return a * b;
+  }
+
+  export function divide(a: number, b: number): number {
+      if (b === 0) {
+          throw new Error('Division by zero');
+      }
+      return a / b;
+  }
+
+  export function modulo(a: number, b: number): number {
+      return a % b;
+  }
+src/calculator.test.ts: |
+  console.log('initial');
+src/unrelated/analytics.ts: |
+  const GARBAGE_JSX_002_ANALYTICS_TRACKER_A = 'analytics_garbage_marker';
+
+  export class GarbageAnalyticsTracker {
+      private events: string[] = [];
+
+      trackEvent(name: string): void {
+          this.events.push(name);
+      }
+
+      getEvents(): string[] {
+          return [...this.events];
+      }
+  }
+
+  export function GARBAGE_JSX_002_FLUSH_EVENTS_B(): void {
+      console.log('GARBAGE_JSX_002_FLUSH_OUTPUT_C');
+  }
+src/unrelated/i18n.ts: |
+  const GARBAGE_JSX_002_I18N_CONFIG_D = { locale: 'en', fallback: 'en' };
+
+  export class GARBAGE_JSX_002_TRANSLATOR_E {
+      translate(key: string): string {
+          return key;
+      }
+  }
+
+  export function GARBAGE_JSX_002_LOAD_LOCALE_F(): void {
+      console.log('loading locale');
+  }

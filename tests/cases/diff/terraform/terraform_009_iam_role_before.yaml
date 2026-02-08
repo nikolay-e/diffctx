@@ -1,0 +1,28 @@
+iam.tf: |
+  # IAM resources placeholder
+outputs.tf: |
+  # Outputs placeholder
+deprecated/old_roles_GARBAGE_TF_iam449a.tf: |
+  # GARBAGE_TF_iam449a - Deprecated IAM roles
+  resource "aws_iam_role" "legacy_admin_GARBAGE_TF_iam449a" {
+    name = "legacy-admin-role-GARBAGE_TF_iam449a"
+    assume_role_policy = jsonencode({
+      Version = "2012-10-17"
+      Statement = [{
+        Effect    = "Allow"
+        Principal = { Service = "ec2.amazonaws.com" }
+        Action    = "sts:AssumeRole"
+      }]
+    })
+  }
+
+  resource "aws_iam_role_policy_attachment" "legacy_admin_GARBAGE_TF_iam449a" {
+    role       = aws_iam_role.legacy_admin_GARBAGE_TF_iam449a.name
+    policy_arn = "arn:aws:iam::aws:policy/AdministratorAccess"
+  }
+scripts/rotate_keys_GARBAGE_TF_iam449b.py: |
+  # GARBAGE_TF_iam449b - Old key rotation script
+  import boto3
+  def rotate_legacy_keys_GARBAGE_TF_iam449b():
+      iam = boto3.client('iam')
+      print("Rotating legacy keys GARBAGE_TF_iam449b")

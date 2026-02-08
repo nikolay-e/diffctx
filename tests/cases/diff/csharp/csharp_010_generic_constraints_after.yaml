@@ -1,0 +1,48 @@
+Services/Factory.cs: |
+  namespace MyApp.Services;
+
+  public class Factory
+  {
+      public static T Create<T>() where T : class, new()
+      {
+          return new T();
+      }
+
+      public static T CreateWithInit<T>(Action<T> initializer) where T : class, new()
+      {
+          var instance = new T();
+          initializer(instance);
+          return instance;
+      }
+  }
+Program.cs: |
+  using System;
+  using MyApp.Services;
+  using MyApp.Models;
+
+  class Program
+  {
+      static void Main()
+      {
+          var user = Factory.Create<User>();
+          var initializedUser = Factory.CreateWithInit<User>(u => u.Name = "John");
+      }
+  }
+Unrelated/EncryptionHelper.cs: |
+  namespace MyApp.Unrelated;
+
+  public class EncryptionHelper
+  {
+      private const string GARBAGE_CS_010_ENCRYPTION_A = "encryption_helper_marker";
+
+      public string Encrypt(string data) => GARBAGE_CS_010_ENCRYPTION_A + data;
+  }
+Unrelated/CompressionHelper.cs: |
+  namespace MyApp.Unrelated;
+
+  public class CompressionHelper
+  {
+      public const string GARBAGE_CS_010_COMPRESSION_B = "compression_helper_marker";
+
+      public byte[] Compress(byte[] data) => data;
+  }

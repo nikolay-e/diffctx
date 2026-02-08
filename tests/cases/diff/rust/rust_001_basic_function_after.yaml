@@ -1,0 +1,94 @@
+src/lib.rs: |
+  pub mod greeting;
+  pub mod unrelated;
+src/greeting.rs: |
+  use std::fmt::Display;
+
+  pub fn greet(name: &str) -> String {
+      format!("Hello, {}!", name)
+  }
+
+  pub fn greet_with_title<T: Display>(title: T, name: &str) -> String {
+      format!("Hello, {} {}!", title, name)
+  }
+
+  pub fn farewell(name: &str) -> String {
+      format!("Goodbye, {}!", name)
+  }
+
+  pub fn farewell_with_message(name: &str, message: &str) -> String {
+      format!("Goodbye, {}! {}", name, message)
+  }
+
+  pub struct Greeter {
+      prefix: String,
+  }
+
+  impl Greeter {
+      pub fn new(prefix: &str) -> Self {
+          Self {
+              prefix: prefix.to_string(),
+          }
+      }
+
+      pub fn greet(&self, name: &str) -> String {
+          format!("{} {}!", self.prefix, name)
+      }
+
+      pub fn farewell(&self, name: &str) -> String {
+          format!("Farewell from {}, {}!", self.prefix, name)
+      }
+  }
+
+  impl Default for Greeter {
+      fn default() -> Self {
+          Self::new("Hello")
+      }
+  }
+src/unrelated/mod.rs: |
+  pub mod telemetry;
+  pub mod metrics;
+src/unrelated/telemetry.rs: |
+  // GARBAGE_RUST_TELEMETRY_001
+  pub const GARBAGE_RUST_MARKER_TEL_002: &str = "telemetry_unrelated";
+
+  pub struct TelemetryClient {
+      endpoint: String,
+      enabled: bool,
+  }
+
+  impl TelemetryClient {
+      pub fn new(endpoint: &str) -> Self {
+          Self {
+              endpoint: endpoint.to_string(),
+              enabled: true,
+          }
+      }
+
+      pub fn send_event(&self, event: &str) {
+          if self.enabled {
+              println!("Sending to {}: {}", self.endpoint, event);
+          }
+      }
+
+      pub fn garbage_telemetry_method_003(&self) -> &str {
+          "GARBAGE_RUST_TEL_INTERNAL_004"
+      }
+  }
+src/unrelated/metrics.rs: |
+  // GARBAGE_RUST_METRICS_005
+  pub const GARBAGE_METRICS_CONST_006: u64 = 999999;
+
+  pub struct MetricsCollector {
+      buffer: Vec<f64>,
+  }
+
+  impl MetricsCollector {
+      pub fn garbage_metrics_new_007() -> Self {
+          Self { buffer: Vec::new() }
+      }
+
+      pub fn record(&mut self, value: f64) {
+          self.buffer.push(value);
+      }
+  }

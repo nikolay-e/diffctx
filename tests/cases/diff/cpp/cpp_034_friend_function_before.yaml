@@ -1,0 +1,159 @@
+include/math/complex.hpp: |
+  #pragma once
+  #include <cmath>
+  #include <ostream>
+  #include <istream>
+  #include <string>
+  #include <sstream>
+
+  namespace app::math {
+
+  class Complex {
+  public:
+      Complex(double real = 0.0, double imag = 0.0)
+          : real_(real), imag_(imag) {}
+
+      double real() const { return real_; }
+      double imag() const { return imag_; }
+
+      double magnitude() const {
+          return std::sqrt(real_ * real_ + imag_ * imag_);
+      }
+
+      double phase() const {
+          return std::atan2(imag_, real_);
+      }
+
+      Complex conjugate() const {
+          return Complex(real_, -imag_);
+      }
+
+      Complex& operator+=(const Complex& other) {
+          real_ += other.real_;
+          imag_ += other.imag_;
+          return *this;
+      }
+
+      Complex& operator-=(const Complex& other) {
+          real_ -= other.real_;
+          imag_ -= other.imag_;
+          return *this;
+      }
+
+      friend Complex operator+(const Complex& a, const Complex& b);
+      friend Complex operator-(const Complex& a, const Complex& b);
+      friend Complex operator*(const Complex& a, const Complex& b);
+      friend Complex operator/(const Complex& a, const Complex& b);
+      friend bool operator==(const Complex& a, const Complex& b);
+      friend bool operator!=(const Complex& a, const Complex& b);
+      friend std::ostream& operator<<(std::ostream& os, const Complex& c);
+      friend std::istream& operator>>(std::istream& is, Complex& c);
+      friend Complex conjugate(const Complex& c);
+      friend double dot(const Complex& a, const Complex& b);
+
+  private:
+      double real_;
+      double imag_;
+  };
+
+  class Matrix2x2 {
+  public:
+      Matrix2x2(double a = 1, double b = 0, double c = 0, double d = 1)
+          : a_(a), b_(b), c_(c), d_(d) {}
+
+      double determinant() const {
+          return a_ * d_ - b_ * c_;
+      }
+
+      friend Matrix2x2 operator*(const Matrix2x2& m1, const Matrix2x2& m2);
+      friend Matrix2x2 operator*(const Matrix2x2& m, double scalar);
+      friend Complex operator*(const Matrix2x2& m, const Complex& v);
+      friend bool operator==(const Matrix2x2& m1, const Matrix2x2& m2);
+      friend std::ostream& operator<<(std::ostream& os, const Matrix2x2& m);
+      friend Matrix2x2 transpose(const Matrix2x2& m);
+      friend Matrix2x2 inverse(const Matrix2x2& m);
+
+  private:
+      double a_, b_, c_, d_;
+  };
+
+  }
+include/unrelated/audio_buffer.hpp: |
+  #pragma once
+  // GARBAGE_CPP_AUDIO_277_001
+  #define GARBAGE_CPP_AUDIO_SAMPLE_RATE_277_002 44100
+
+  namespace app::unrelated::audio {
+
+  // GARBAGE_CPP_AUDIO_FORMAT_277_003
+  enum class AudioFormat {
+      PCM_S16, PCM_F32, PCM_S24
+  };
+
+  // GARBAGE_CPP_AUDIO_BUFFER_277_004
+  struct AudioBuffer {
+      float* samples;
+      size_t frameCount;
+      int channels;
+      // GARBAGE_CPP_AUDIO_META_277_005
+  };
+
+  // GARBAGE_CPP_AUDIO_PROCESSOR_277_006
+  class AudioProcessor {
+  public:
+      // GARBAGE_CPP_AUDIO_GAIN_277_007
+      void applyGain(AudioBuffer& buffer, float gain) {
+          // GARBAGE_CPP_AUDIO_GAIN_IMPL_277_008
+      }
+
+      // GARBAGE_CPP_AUDIO_NORMALIZE_277_009
+      void normalize(AudioBuffer& buffer) {
+          // GARBAGE_CPP_AUDIO_NORM_IMPL_277_010
+      }
+
+      // GARBAGE_CPP_AUDIO_MIX_277_011
+      void mix(AudioBuffer& dest, const AudioBuffer& src) {
+          // GARBAGE_CPP_AUDIO_MIX_IMPL_277_012
+      }
+  };
+
+  }
+src/unrelated/csv_parser.cpp: |
+  // GARBAGE_CPP_CSV_277_013
+  #include <string>
+  #include <vector>
+
+  namespace app::unrelated::data {
+
+  // GARBAGE_CPP_CSV_ROW_277_014
+  struct CSVRow {
+      std::vector<std::string> fields;
+      // GARBAGE_CPP_CSV_ROW_DATA_277_015
+  };
+
+  // GARBAGE_CPP_CSV_PARSER_277_016
+  class CSVParser {
+  public:
+      // GARBAGE_CPP_CSV_PARSE_277_017
+      std::vector<CSVRow> parse(const std::string& content) {
+          // GARBAGE_CPP_CSV_PARSE_IMPL_277_018
+          return {};
+      }
+
+      // GARBAGE_CPP_CSV_READ_277_019
+      std::vector<CSVRow> readFile(const std::string& path) {
+          // GARBAGE_CPP_CSV_READ_IMPL_277_020
+          return {};
+      }
+
+      // GARBAGE_CPP_CSV_WRITE_277_021
+      bool writeFile(const std::string& path, const std::vector<CSVRow>& rows) {
+          // GARBAGE_CPP_CSV_WRITE_IMPL_277_022
+          return false;
+      }
+  };
+
+  }
+src/math_impl.cpp: |
+  #include <iostream>
+  int main() { return 0; }

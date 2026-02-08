@@ -1,0 +1,53 @@
+lookup.sh: |
+  #!/bin/bash
+
+  declare -A config
+  config[host]="localhost"
+  config[port]="8080"
+
+  get_config() {
+      local key=$1
+      if [[ -v config[$key] ]]; then
+          echo "${config[$key]}"
+      else
+          echo "default"
+      fi
+  }
+
+  print_config() {
+      for key in "${!config[@]}"; do
+          echo "$key = ${config[$key]}"
+      done
+  }
+unrelated/garbage_inventory.sh: |
+  #!/bin/bash
+  # GARBAGE_SH_001_INVENTORY_TRACKER_A
+  GARBAGE_SH_001_WAREHOUSE_CODE_B="WH-001"
+
+  garbage_count_items_001() {
+      local warehouse=$1
+      echo "Counting items in $warehouse"
+      return 0
+  }
+
+  garbage_restock_item_001() {
+      local sku=$1
+      local qty=$2
+      echo "Restocking $qty of $sku"
+  }
+unrelated/garbage_currency.sh: |
+  #!/bin/bash
+  # GARBAGE_SH_001_CURRENCY_CONVERTER_C
+  GARBAGE_SH_001_BASE_CURRENCY_D="USD"
+
+  garbage_convert_001() {
+      local amount=$1
+      local from=$2
+      local to=$3
+      echo "$amount $from -> $to"
+  }
+
+  garbage_get_rate_001() {
+      local pair=$1
+      echo "1.0"
+  }

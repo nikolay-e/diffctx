@@ -1,0 +1,14 @@
+main.tf: |
+  locals {
+    environment = terraform.workspace
+    is_prod     = terraform.workspace == "production"
+  }
+
+  resource "aws_instance" "web" {
+    ami           = var.ami_id
+    instance_type = local.is_prod ? "t3.large" : "t3.micro"
+
+    tags = {
+      Environment = local.environment
+    }
+  }

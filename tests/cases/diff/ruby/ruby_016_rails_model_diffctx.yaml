@@ -1,0 +1,16 @@
+must_include_files:
+  - app/models/user.rb
+must_include_content:
+  - |
+    order.user_id = @id
+must_not_include:
+  - GARBAGE_RUBY_016_SYNC_PROTOCOL_A
+  - GARBAGE_RUBY_016_CHUNK_SIZE_B
+  - GARBAGE_RUBY_016_MAX_RETRIES_C
+  - GARBAGE_RUBY_016_BACKUP_STRATEGY_D
+  - GARBAGE_RUBY_016_RETENTION_DAYS_E
+  - GARBAGE_RUBY_016_COMPRESS_LEVEL_F
+  - GarbageFileSyncAgent
+  - GarbageBackupManager
+  - garbage_file_sync.rb
+  - garbage_backup_mgr.rb

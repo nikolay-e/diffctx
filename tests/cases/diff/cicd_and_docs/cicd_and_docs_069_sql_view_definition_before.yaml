@@ -1,0 +1,57 @@
+sql/views/user_orders_view.sql: |
+  CREATE OR REPLACE VIEW user_orders_summary AS
+  SELECT
+      u.id AS user_id,
+      u.name AS user_name,
+      COUNT(o.id) AS order_count,
+      SUM(o.total) AS total_spent
+  FROM users u
+  LEFT JOIN orders o ON u.id = o.user_id
+  GROUP BY u.id, u.name;
+
+src/reports/user_report.py: |
+  from typing import Dict, List, Optional
+  from dataclasses import dataclass
+  from decimal import Decimal
+
+  @dataclass
+  class UserOrdersSummary:
+      user_id: int
+      user_name: str
+      order_count: int
+      total_spent: Decimal
+
+  class UserReport:
+      def __init__(self, db):
+          self.db = db
+
+      def get_summary(self, user_id: int) -> Optional[UserOrdersSummary]:
+          result = self.db.query(
+              "SELECT * FROM user_orders_summary WHERE user_id = %s",
+              [user_id]
+          )
+          if result:
+              return UserOrdersSummary(**result[0])
+          return None
+
+      def get_all_summaries(self) -> List[UserOrdersSummary]:
+          results = self.db.query("SELECT * FROM user_orders_summary")
+          return [UserOrdersSummary(**r) for r in results]
+
+garbage_view_manager.ts: |
+  const GARBAGE_CICD_DOCS_069_VIEW_MARKER_A = "materialized";
+  const GARBAGE_CICD_DOCS_069_REFRESH_MARKER_B = "concurrent";
+
+  class GarbageViewManager {
+    static GARBAGE_CICD_DOCS_069_CACHE_MARKER_C = 3600;
+    manage(): void {}
+  }
+
+garbage_view_optimizer.ts: |
+  const GARBAGE_CICD_DOCS_069_OPTIMIZE_MARKER_D = "analyze";
+  const GARBAGE_CICD_DOCS_069_INDEX_MARKER_E = "btree";
+
+  class GarbageViewOptimizer {
+    static GARBAGE_CICD_DOCS_069_VACUUM_MARKER_F = false;
+    optimize(): void {}
+  }

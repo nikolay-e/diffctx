@@ -1,0 +1,68 @@
+src/interfaces.ts: |
+  export interface Repository<T> {
+      findById(id: string): Promise<T | null>;
+      save(entity: T): Promise<T>;
+  }
+
+  export interface Identifiable {
+      id: string;
+  }
+
+  export interface Timestamped {
+      createdAt: Date;
+      updatedAt: Date;
+  }
+src/user_repo.ts: |
+  import { Repository, Identifiable, Timestamped } from './interfaces';
+
+  interface User extends Identifiable, Timestamped {
+      name: string;
+      email: string;
+  }
+
+  export class UserRepository implements Repository<User> {
+      private users: User[] = [];
+
+      async findById(id: string): Promise<User | null> {
+          return this.users.find(u => u.id === id) ?? null;
+      }
+
+      async save(entity: User): Promise<User> {
+          this.users.push(entity);
+          return entity;
+      }
+  }
+src/unrelated/encryption.ts: |
+  const GARBAGE_JSX_008_ENCRYPT_CONFIG_A = 'encryption_garbage_marker';
+
+  export class GarbageEncryptionService {
+      encrypt(data: string): string {
+          return Buffer.from(data).toString('base64');
+      }
+
+      decrypt(data: string): string {
+          return Buffer.from(data, 'base64').toString();
+      }
+  }
+
+  export function GARBAGE_JSX_008_GENERATE_KEY_B(): string {
+      return 'GARBAGE_JSX_008_KEY_OUTPUT_C';
+  }
+src/unrelated/audit.ts: |
+  const GARBAGE_JSX_008_AUDIT_LOG_D = { retention: 90 };
+
+  export class GARBAGE_JSX_008_AUDIT_SERVICE_E {
+      private logs: string[] = [];
+
+      record(action: string): void {
+          this.logs.push(action);
+      }
+
+      getRecords(): string[] {
+          return [...this.logs];
+      }
+  }
+
+  export function GARBAGE_JSX_008_PURGE_AUDIT_F(): void {
+      console.log('purging audit logs');
+  }

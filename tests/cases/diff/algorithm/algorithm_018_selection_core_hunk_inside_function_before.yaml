@@ -1,0 +1,155 @@
+src/core/processor.py: |
+  from typing import Optional, List, Dict, Any, Callable
+  from dataclasses import dataclass, field
+  from datetime import datetime
+  from enum import Enum
+  import logging
+  import hashlib
+  import json
+
+  logger = logging.getLogger(__name__)
+
+  class ProcessingMode(Enum):
+      SYNC = "sync"
+      ASYNC = "async"
+      BATCH = "batch"
+
+  @dataclass
+  class ProcessingConfig:
+      mode: ProcessingMode = ProcessingMode.SYNC
+      batch_size: int = 100
+      timeout: float = 30.0
+      retries: int = 3
+
+  @dataclass
+  class ProcessingResult:
+      task_id: str
+      success: bool
+      data: Optional[Any] = None
+      error: Optional[str] = None
+      duration_ms: float = 0.0
+
+  class DataProcessor:
+      def __init__(self, config: Optional[ProcessingConfig] = None):
+          self.config = config or ProcessingConfig()
+          self._cache: Dict[str, Any] = {}
+          self._metrics: Dict[str, int] = {"processed": 0, "failed": 0}
+
+      def long_function(self, items: List[Dict[str, Any]]) -> List[ProcessingResult]:
+          results = []
+          line1 = self._validate_items(items)
+          line2 = self._prepare_batch(line1)
+          line3 = self._execute_processing(line2)
+          line4 = self._finalize_results(line3)
+          for item in line4:
+              result = self._process_single_item(item)
+              results.append(result)
+          return results
+
+      def _validate_items(self, items: List[Dict]) -> List[Dict]:
+          validated = []
+          for item in items:
+              if self._is_valid(item):
+                  validated.append(item)
+              else:
+                  logger.warning(f"Invalid item: {item}")
+          return validated
+
+      def _is_valid(self, item: Dict) -> bool:
+          return "id" in item and "data" in item
+
+      def _prepare_batch(self, items: List[Dict]) -> List[List[Dict]]:
+          batches = []
+          for i in range(0, len(items), self.config.batch_size):
+              batch = items[i:i + self.config.batch_size]
+              batches.append(batch)
+          return batches
+
+      def _execute_processing(self, batches: List[List[Dict]]) -> List[Dict]:
+          processed = []
+          for batch in batches:
+              for item in batch:
+                  transformed = self._transform_item(item)
+                  processed.append(transformed)
+          return processed
+
+      def _transform_item(self, item: Dict) -> Dict:
+          return {
+              "id": item.get("id"),
+              "processed": True,
+              "timestamp": datetime.now().isoformat(),
+              "hash": hashlib.md5(json.dumps(item).encode()).hexdigest(),
+          }
+
+      def _finalize_results(self, items: List[Dict]) -> List[Dict]:
+          return [item for item in items if item.get("processed")]
+
+      def _process_single_item(self, item: Dict) -> ProcessingResult:
+          try:
+              self._metrics["processed"] += 1
+              return ProcessingResult(
+                  task_id=item.get("id", "unknown"),
+                  success=True,
+                  data=item,
+              )
+          except Exception as e:
+              self._metrics["failed"] += 1
+              return ProcessingResult(
+                  task_id=item.get("id", "unknown"),
+                  success=False,
+                  error=str(e),
+              )
+
+      def get_metrics(self) -> Dict[str, int]:
+          return dict(self._metrics)
+src/unrelated/garbage_analytics.py: |
+  # GARBAGE_ALGO_ANALYTICS_SEL001
+  GARBAGE_ALGO_ANALYTICS_VERSION_SEL002 = "2.1.0"
+  GARBAGE_ALGO_ANALYTICS_ENABLED_SEL003 = True
+
+  class GarbageAnalyticsProcessor:
+      GARBAGE_ALGO_ANALYTICS_CACHE_SEL004 = {}
+      GARBAGE_ALGO_ANALYTICS_QUEUE_SEL005 = []
+
+      def __init__(self):
+          self.long_function_analytics = "GARBAGE_ALGO_LONG_FUNC_SEL006"
+          self._metrics = {"garbage": "GARBAGE_ALGO_METRICS_SEL007"}
+
+      def process_garbage_analytics(self, data):
+          return f"GARBAGE_ALGO_PROCESSED_SEL008_{data}"
+
+      def validate_garbage_analytics(self, items):
+          return f"GARBAGE_ALGO_VALIDATED_SEL009_{items}"
+
+      def transform_garbage_analytics(self, item):
+          return {"garbage": "GARBAGE_ALGO_TRANSFORMED_SEL010"}
+src/unrelated/garbage_telemetry.py: |
+  # GARBAGE_ALGO_TELEMETRY_SEL011
+  GARBAGE_ALGO_TELEMETRY_ENDPOINT_SEL012 = "https://garbage.example.com"
+
+  class GarbageTelemetryCollector:
+      GARBAGE_ALGO_TELEMETRY_BUFFER_SEL013 = []
+
+      def long_function_telemetry(self, events):
+          return f"GARBAGE_ALGO_TELEMETRY_SEL014_{events}"
+
+      def collect_garbage_metrics(self):
+          return {"garbage": "GARBAGE_ALGO_COLLECTED_SEL015"}
+
+      def flush_garbage_buffer(self):
+          return "GARBAGE_ALGO_FLUSHED_SEL016"
+src/unrelated/garbage_monitoring.py: |
+  # GARBAGE_ALGO_MONITORING_SEL017
+  GARBAGE_ALGO_MONITORING_INTERVAL_SEL018 = 60
+
+  class GarbageMonitoringService:
+      GARBAGE_ALGO_MONITORING_STATE_SEL019 = "idle"
+
+      def monitor_garbage_process(self, process_id):
+          return f"GARBAGE_ALGO_MONITORED_SEL020_{process_id}"
+
+      def long_function_monitor(self, items):
+          return f"GARBAGE_ALGO_MONITOR_LONG_SEL021_{items}"
+
+      def get_garbage_status(self):
+          return {"status": "GARBAGE_ALGO_STATUS_SEL022"}

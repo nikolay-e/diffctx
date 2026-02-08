@@ -1,0 +1,4 @@
+main.tf: |
+  resource "aws_instance" "web" {
+    subnet_id = "subnet-12345"
+  }

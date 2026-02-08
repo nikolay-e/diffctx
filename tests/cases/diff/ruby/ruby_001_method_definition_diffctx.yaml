@@ -1,0 +1,17 @@
+must_include_files:
+  - app.rb
+must_include_content:
+  - |
+    processor = Processor.new(logger: nil)
+    result = processor.process("hello")
+must_not_include:
+  - GARBAGE_RUBY_001_STATS_COLLECTOR_A
+  - GARBAGE_RUBY_001_REPORT_GENERATOR_B
+  - GARBAGE_RUBY_001_SAMPLE_RATE_C
+  - GARBAGE_RUBY_001_ALERT_CHANNEL_D
+  - GARBAGE_RUBY_001_DISPATCH_QUEUE_E
+  - GARBAGE_RUBY_001_MAX_RETRIES_F
+  - GarbageStatisticsEngine
+  - GarbageNotificationService
+  - garbage_statistics.rb
+  - garbage_notification.rb
