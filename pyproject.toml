@@ -80,7 +80,7 @@ authors = [
 description = "Export codebase structure and contents for AI/LLM context"
 readme = "README.md"
 requires-python = ">=3.10"
-license = { file = "LICENSE" }
+license = { text = "Apache-2.0" }
 keywords = ["code-analysis", "directory-tree", "yaml", "json", "llm", "ai", "codebase", "context", "chatgpt", "claude", "code-context", "export", "tree", "gpt-context", "llm-context", "code-to-prompt", "claude-context"]
 classifiers = [
     "Development Status :: 5 - Production/Stable",
@@ -91,7 +91,7 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
-    "License :: OSI Approved :: Apache Software License",
+
     "Operating System :: OS Independent",
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Topic :: Utilities",
@@ -101,7 +101,21 @@ dependencies = [
     "pathspec>=0.11,<2.0",
     "pyyaml>=6.0.2,<8.0",
     "tiktoken>=0.7,<1.0",
-    # Tree-sitter for code parsing (required for proper fragmentation)
+    "mistune>=3.0,<4.0",
+    "ruamel.yaml>=0.18,<1.0",
+    "lxml>=5.0,<7.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/nikolay-e/treemapper"
+Repository = "https://github.com/nikolay-e/treemapper"
+"Bug Tracker" = "https://github.com/nikolay-e/treemapper/issues"
+
+[project.scripts]
+treemapper = "treemapper.treemapper:main"
+
+[project.optional-dependencies]
+tree-sitter = [
     "tree-sitter>=0.21,<1.0",
     "tree-sitter-python>=0.21,<1.0",
     "tree-sitter-javascript>=0.21,<1.0",
@@ -113,23 +127,9 @@ dependencies = [
     "tree-sitter-cpp>=0.22,<1.0",
     "tree-sitter-ruby>=0.21,<1.0",
     "tree-sitter-c-sharp>=0.21,<1.0",
-    # Markdown parsing
-    "mistune>=3.0,<4.0",
-    # YAML with position tracking
-    "ruamel.yaml>=0.18,<1.0",
-    # HTML/XML parsing
-    "lxml>=5.0,<7.0",
 ]
-
-[project.urls]
-Homepage = "https://github.com/nikolay-e/treemapper"
-
-[project.scripts]
-treemapper = "treemapper.treemapper:main"
-
-[project.optional-dependencies]
 full = [
-    # Sentence boundary detection (optional, for better text splitting)
+    "treemapper[tree-sitter]",
     "pysbd>=0.3,<1.0",
 ]
 embeddings = [
@@ -141,7 +141,7 @@ nlp = [
     "spacy>=3.7,<4.0",
 ]
 dev = [
-    # Testing
+    "treemapper[tree-sitter]",
     "pytest>=7.0,<10.0",
     "pytest-cov>=3.0,<8.0",
     "pytest-xdist>=3.0,<4.0",

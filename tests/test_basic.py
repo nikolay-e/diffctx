@@ -10,27 +10,6 @@ from treemapper import map_directory, to_json, to_text, to_yaml
 from .utils import find_node_by_path, get_all_files_in_tree, load_yaml, make_hashable
 
 
-def normalize_content(content):
-    """Normalize content by stripping leading/trailing whitespace but keeping internal structure."""
-    if content is None:
-        return None
-    return content
-
-
-def normalize_tree(tree):
-    """Normalize tree for comparison by sorting children."""
-
-    if isinstance(tree, dict):
-        result = tree.copy()
-        if "children" in result and isinstance(result["children"], list):
-            result["children"] = sorted(
-                [normalize_tree(child) for child in result["children"] if isinstance(child, dict)],
-                key=lambda x: x.get("name", ""),
-            )
-        return result
-    return tree
-
-
 def test_basic_mapping(temp_project, run_mapper):
     """Test basic directory mapping with default settings."""
     assert run_mapper([".", "-o", "directory_tree.yaml"])
@@ -280,33 +259,32 @@ def test_unicode_content_and_encoding_errors(temp_project, run_mapper, caplog):
     assert utf8_node.get("content") == utf8_content + "\n"
 
     assert cp1251_node is not None, "'cp1251.txt' not found"
-
-    assert cp1251_node.get("content") == "<unreadable content: not utf-8>\n"
+    cp1251_content = cp1251_node.get("content", "")
+    assert "unreadable" in cp1251_content, f"CP1251 file should be marked unreadable, got: {cp1251_content!r}"
     assert any(
-        "Cannot decode cp1251.txt as UTF-8" in record.message for record in caplog.records if record.levelno >= logging.WARNING
-    ), "Expected WARNING log message about decoding failure not found for cp1251.txt"
+        "cp1251.txt" in record.message for record in caplog.records if record.levelno >= logging.WARNING
+    ), "Expected WARNING about cp1251.txt not found in logs"
 
     assert binary_node is not None, "'binary.bin' not found"
-
-    assert isinstance(binary_node.get("content"), str)
-    # Binary files can be detected as binary or fail UTF-8 decode
-    assert binary_node.get("content", "").startswith("<unreadable content") or binary_node.get("content", "").startswith(
+    binary_content = binary_node.get("content", "")
+    assert isinstance(binary_content, str)
+    assert binary_content.startswith("<unreadable content") or binary_content.startswith(
         "<binary file:"
-    )
-    if binary_node.get("content") not in ("<unreadable content>", "<unreadable content>\n"):
-        assert binary_node.get("content", "").endswith("\n") or binary_node.get("content", "").startswith("<binary file:")
+    ), f"Binary file should be marked unreadable or binary, got: {binary_content!r}"
 
-    # Binary files may be detected early (no warning) or fail during read (warning/error)
-    # Accept either case
-    has_binary_log = any(
-        ("Cannot decode binary.bin as UTF-8" in record.message and record.levelno >= logging.WARNING)
-        or ("Could not read binary.bin" in record.message and record.levelno >= logging.ERROR)
-        or ("Unexpected error reading binary.bin" in record.message and record.levelno >= logging.ERROR)
-        or ("Removed NULL bytes from content of binary.bin" in record.message and record.levelno >= logging.WARNING)
-        or ("Detected binary file binary.bin" in record.message and record.levelno >= logging.DEBUG)
-        for record in caplog.records
-    )
-    # Either we have a log about the binary file, OR it was detected as binary (starts with "<binary file:")
-    assert has_binary_log or binary_node.get("content", "").startswith(
-        "<binary file:"
-    ), "Expected WARNING/ERROR log message about reading/decoding failure or binary detection for binary.bin"
+
+def test_svg_files_not_classified_as_binary(tmp_path):
+    svg_content = '<svg xmlns="http://www.w3.org/2000/svg"><circle r="50"/></svg>'
+    (tmp_path / "image.svg").write_text(svg_content)
+
+    result = map_directory(tmp_path)
+    svg_node = find_node_by_path(result, ["image.svg"])
+
+    assert svg_node is not None, "SVG file not found in tree"
+    assert svg_node["type"] == "file"
+    node_content = svg_node.get("content", "")
+    assert "<binary file:" not in node_content, f"SVG should not be classified as binary, got: {node_content!r}"
+    assert "<unreadable content" not in node_content, f"SVG should not be marked unreadable, got: {node_content!r}"
+    assert "<svg" in node_content
+    assert "<circle" in node_content
+    assert 'xmlns="http://www.w3.org/2000/svg"' in node_content

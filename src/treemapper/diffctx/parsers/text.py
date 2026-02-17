@@ -35,7 +35,13 @@ def _combine_fragments(frags: list[Fragment]) -> Fragment:
     if len(frags) == 1:
         return frags[0]
 
-    combined = "\n".join(f.content.rstrip("\n") for f in frags) + "\n"
+    parts: list[str] = []
+    for i, f in enumerate(frags):
+        if i > 0:
+            gap = f.start_line - frags[i - 1].end_line - 1
+            parts.extend("" for _ in range(gap))
+        parts.append(f.content.rstrip("\n"))
+    combined = "\n".join(parts) + "\n"
     combined_idents = frozenset().union(*(f.identifiers for f in frags))
 
     return Fragment(
@@ -103,21 +109,34 @@ class PySBDTextStrategy:
         sentences = seg.segment(content)
 
         fragments: list[Fragment] = []
-        current_line = 1
         para_sentences: list[str] = []
         para_start = 1
 
+        search_offset = 0
         for sentence in sentences:
-            sentence_lines = sentence.count("\n")
+            pos = content.find(sentence, search_offset)
+            if pos < 0:
+                pos = search_offset
+            sentence_start_line = content[:pos].count("\n") + 1
+            search_offset = pos + len(sentence)
+            if sentence.endswith("\n"):
+                sentence_end_line = content[:search_offset].count("\n")
+            else:
+                sentence_end_line = content[:search_offset].count("\n") + 1
+            sentence_end_line = min(max(sentence_end_line, sentence_start_line), len(lines))
 
             if "\n\n" in sentence:
-                self._flush_paragraph(path, lines, para_sentences, para_start, current_line - 1, fragments)
-                para_sentences = []
-                para_start = current_line + sentence_lines
-            else:
                 para_sentences.append(sentence)
-
-            current_line += sentence_lines
+                nn_idx = sentence.index("\n\n")
+                flush_end_line = sentence_start_line + sentence[:nn_idx].count("\n")
+                flush_end_line = min(max(flush_end_line, para_start), len(lines))
+                self._flush_paragraph(path, lines, para_sentences, para_start, flush_end_line, fragments)
+                para_sentences = []
+                para_start = sentence_end_line + 1
+            else:
+                if not para_sentences:
+                    para_start = sentence_start_line
+                para_sentences.append(sentence)
 
         self._flush_paragraph(path, lines, para_sentences, para_start, len(lines), fragments)
 

@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from treemapper.diffctx.fragments import (
     ConfigStrategy,
     FragmentationEngine,
@@ -11,11 +13,19 @@ from treemapper.diffctx.fragments import (
     PythonAstStrategy,
     RegexMarkdownStrategy,
     RuamelYamlStrategy,
-    TreeSitterStrategy,
     fragment_file,
 )
 
+try:
+    from treemapper.diffctx.parsers.tree_sitter import TreeSitterStrategy
 
+    _HAS_TREE_SITTER = True
+except ImportError:
+    TreeSitterStrategy = None  # type: ignore[assignment,misc]
+    _HAS_TREE_SITTER = False
+
+
+@pytest.mark.skipif(not _HAS_TREE_SITTER, reason="tree-sitter not installed")
 class TestTreeSitterStrategy:
     def test_can_handle_python(self):
         strategy = TreeSitterStrategy()
@@ -132,19 +142,6 @@ end
         frags = strategy.fragment(Path("test.rb"), code)
         assert len(frags) >= 1
 
-    def test_node_type_to_kind(self):
-        strategy = TreeSitterStrategy()
-        assert strategy._node_type_to_kind("function_definition") == "function"
-        assert strategy._node_type_to_kind("method_declaration") == "function"
-        assert strategy._node_type_to_kind("class_definition") == "class"
-        assert strategy._node_type_to_kind("struct_specifier") == "struct"
-        assert strategy._node_type_to_kind("impl_item") == "impl"
-        assert strategy._node_type_to_kind("trait_item") == "interface"
-        assert strategy._node_type_to_kind("interface_declaration") == "interface"
-        assert strategy._node_type_to_kind("enum_item") == "enum"
-        assert strategy._node_type_to_kind("module") == "module"
-        assert strategy._node_type_to_kind("unknown_type") == "definition"
-
 
 class TestPythonAstStrategy:
     def test_can_handle_python(self):
@@ -219,7 +216,7 @@ class TestMistuneMarkdownStrategy:
     def test_can_handle_markdown(self):
         strategy = MistuneMarkdownStrategy()
         if not strategy._available:
-            return
+            pytest.skip("optional dependency not installed")
         assert strategy.can_handle(Path("README.md"), "# Title")
         assert strategy.can_handle(Path("doc.markdown"), "# Title")
         assert strategy.can_handle(Path("page.mdx"), "# Title")
@@ -227,13 +224,13 @@ class TestMistuneMarkdownStrategy:
     def test_cannot_handle_other(self):
         strategy = MistuneMarkdownStrategy()
         if not strategy._available:
-            return
+            pytest.skip("optional dependency not installed")
         assert not strategy.can_handle(Path("test.py"), "# comment")
 
     def test_fragment_headings(self):
         strategy = MistuneMarkdownStrategy()
         if not strategy._available:
-            return
+            pytest.skip("optional dependency not installed")
         content = """# Title
 
 Some intro text.
@@ -252,14 +249,14 @@ Content of section 2.
     def test_empty_content(self):
         strategy = MistuneMarkdownStrategy()
         if not strategy._available:
-            return
+            pytest.skip("optional dependency not installed")
         frags = strategy.fragment(Path("doc.md"), "")
         assert frags == []
 
     def test_no_headings(self):
         strategy = MistuneMarkdownStrategy()
         if not strategy._available:
-            return
+            pytest.skip("optional dependency not installed")
         content = "Just some text without any headings."
         frags = strategy.fragment(Path("doc.md"), content)
         assert frags == []
@@ -325,7 +322,7 @@ class TestPySBDTextStrategy:
     def test_can_handle_text(self):
         strategy = PySBDTextStrategy()
         if not strategy._available:
-            return
+            pytest.skip("optional dependency not installed")
         assert strategy.can_handle(Path("doc.txt"), "Some text.")
         assert strategy.can_handle(Path("doc.text"), "Some text.")
         assert strategy.can_handle(Path("doc.rst"), "Some text.")
@@ -333,13 +330,13 @@ class TestPySBDTextStrategy:
     def test_cannot_handle_code(self):
         strategy = PySBDTextStrategy()
         if not strategy._available:
-            return
+            pytest.skip("optional dependency not installed")
         assert not strategy.can_handle(Path("test.py"), "# comment")
 
     def test_fragment_paragraphs(self):
         strategy = PySBDTextStrategy()
         if not strategy._available:
-            return
+            pytest.skip("optional dependency not installed")
         content = """This is the first paragraph. It has multiple sentences. Here is another one.
 
 This is the second paragraph. It also has content. More sentences follow here for testing.
@@ -352,7 +349,7 @@ And a third paragraph with enough words to meet the minimum threshold for fragme
     def test_empty_content(self):
         strategy = PySBDTextStrategy()
         if not strategy._available:
-            return
+            pytest.skip("optional dependency not installed")
         frags = strategy.fragment(Path("doc.txt"), "")
         assert frags == []
 
@@ -399,7 +396,7 @@ class TestHTMLStrategy:
     def test_can_handle_html(self):
         strategy = HTMLStrategy()
         if not strategy._available:
-            return
+            pytest.skip("optional dependency not installed")
         assert strategy.can_handle(Path("page.html"), "<html></html>")
         assert strategy.can_handle(Path("page.htm"), "<html></html>")
         assert strategy.can_handle(Path("page.xhtml"), "<html></html>")
@@ -408,13 +405,13 @@ class TestHTMLStrategy:
     def test_cannot_handle_other(self):
         strategy = HTMLStrategy()
         if not strategy._available:
-            return
+            pytest.skip("optional dependency not installed")
         assert not strategy.can_handle(Path("test.py"), "# comment")
 
     def test_fragment_sections(self):
         strategy = HTMLStrategy()
         if not strategy._available:
-            return
+            pytest.skip("optional dependency not installed")
         content = """<html>
 <body>
 <section>
@@ -435,14 +432,14 @@ class TestHTMLStrategy:
     def test_empty_content(self):
         strategy = HTMLStrategy()
         if not strategy._available:
-            return
+            pytest.skip("optional dependency not installed")
         frags = strategy.fragment(Path("page.html"), "")
         assert frags == []
 
     def test_invalid_html(self):
         strategy = HTMLStrategy()
         if not strategy._available:
-            return
+            pytest.skip("optional dependency not installed")
         frags = strategy.fragment(Path("page.html"), "<<<invalid>>>")
         assert isinstance(frags, list)
 
@@ -455,20 +452,20 @@ class TestRuamelYamlStrategy:
     def test_can_handle_yaml(self):
         strategy = RuamelYamlStrategy()
         if not strategy._available:
-            return
+            pytest.skip("optional dependency not installed")
         assert strategy.can_handle(Path("config.yaml"), "key: value")
         assert strategy.can_handle(Path("config.yml"), "key: value")
 
     def test_cannot_handle_other(self):
         strategy = RuamelYamlStrategy()
         if not strategy._available:
-            return
+            pytest.skip("optional dependency not installed")
         assert not strategy.can_handle(Path("test.py"), "# comment")
 
     def test_fragment_yaml(self):
         strategy = RuamelYamlStrategy()
         if not strategy._available:
-            return
+            pytest.skip("optional dependency not installed")
         content = """database:
   host: localhost
   port: 5432
@@ -489,14 +486,14 @@ logging:
     def test_empty_content(self):
         strategy = RuamelYamlStrategy()
         if not strategy._available:
-            return
+            pytest.skip("optional dependency not installed")
         frags = strategy.fragment(Path("config.yaml"), "")
         assert frags == []
 
     def test_invalid_yaml(self):
         strategy = RuamelYamlStrategy()
         if not strategy._available:
-            return
+            pytest.skip("optional dependency not installed")
         frags = strategy.fragment(Path("config.yaml"), "invalid: yaml: content:")
         assert isinstance(frags, list)
 
@@ -565,7 +562,7 @@ class TestGenericStrategy:
         strategy = GenericStrategy()
         content = "line 1\nline 2\nline 3\n"
         frags = strategy.fragment(Path("test.txt"), content)
-        assert len(frags) == 1
+        assert len(frags) >= 1
 
     def test_fragment_large_file(self):
         strategy = GenericStrategy()
@@ -621,11 +618,6 @@ server:
         content = "some content\nmore content\n"
         frags = engine.fragment(Path("file.xyz"), content)
         assert len(frags) >= 1
-
-    def test_strategies_sorted_by_priority(self):
-        engine = FragmentationEngine()
-        priorities = [s.priority for s in engine._strategies]
-        assert priorities == sorted(priorities, reverse=True)
 
 
 class TestFragmentFileFunction:

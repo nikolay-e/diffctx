@@ -39,7 +39,8 @@ _NEW_EXPR_RE = re.compile(r"new\s+(\w+)\s*\(", re.MULTILINE)
 _OPTIONAL_CHAIN_RE = re.compile(r"\?\.\s*(\w+)", re.MULTILINE)
 
 _TYPE_ANNOTATION_RE = re.compile(r":\s*([A-Z]\w+)(?:<[^>]+>)?", re.MULTILINE)
-_GENERIC_TYPE_RE = re.compile(r"<\s*([A-Z]\w+)(?:\s*,\s*([A-Z]\w+))*\s*>", re.MULTILINE)
+_GENERIC_TYPE_RE = re.compile(r"<\s*([A-Z]\w+)(?:\s*,\s*[A-Z]\w+)*\s*>", re.MULTILINE)
+_GENERIC_TYPE_INNER_RE = re.compile(r"[A-Z]\w+")
 _EXTENDS_TYPE_RE = re.compile(r"extends\s+([A-Z]\w+)", re.MULTILINE)
 _IMPLEMENTS_TYPE_RE = re.compile(r"implements\s+([\w,\s]+)", re.MULTILINE)
 _TYPE_ALIAS_RE = re.compile(r"type\s+(\w+)(?:<[^>]+>)?\s*=", re.MULTILINE)
@@ -272,9 +273,11 @@ def _parse_names_from_str(names_str: str, skip_type_prefix: bool = False) -> set
     names: set[str] = set()
     for name in names_str.split(","):
         name = name.strip()
+        if skip_type_prefix and name.startswith("type "):
+            continue
         if " as " in name:
-            name = name.split(" as ")[0].strip()
-        if name and (not skip_type_prefix or not name.startswith("type ")):
+            name = name.split(" as ")[-1].strip()
+        if name:
             names.add(name)
     return names
 
@@ -284,7 +287,7 @@ def _parse_destructured_names(destructured: str) -> set[str]:
     for name in destructured.split(","):
         name = name.strip()
         if ":" in name:
-            name = name.split(":")[0].strip()
+            name = name.split(":")[-1].strip()
         if name:
             names.add(name)
     return names
@@ -333,6 +336,13 @@ def _extract_require_imports(code: str, sources: set[str], names: set[str]) -> N
             names.add(match.group(2))
 
 
+def _extract_reexport_sources(code: str, sources: set[str]) -> None:
+    for match in _REEXPORT_RE.finditer(code):
+        sources.add(match.group(2))
+    for match in _EXPORT_ALL_RE.finditer(code):
+        sources.add(match.group(1))
+
+
 def _extract_imports(code: str) -> tuple[frozenset[str], frozenset[str]]:
     import_sources: set[str] = set()
     imported_names: set[str] = set()
@@ -344,6 +354,7 @@ def _extract_imports(code: str) -> tuple[frozenset[str], frozenset[str]]:
     _extract_dynamic_imports(code, import_sources)
     _extract_type_imports(code, import_sources, imported_names)
     _extract_require_imports(code, import_sources, imported_names)
+    _extract_reexport_sources(code, import_sources)
 
     return frozenset(import_sources), frozenset(imported_names)
 
@@ -448,9 +459,10 @@ def _add_type_from_pattern(code: str, pattern: re.Pattern[str], refs: set[str], 
 
 def _add_generic_types(code: str, refs: set[str]) -> None:
     for match in _GENERIC_TYPE_RE.finditer(code):
-        for group in match.groups():
-            if group and group not in _UTILITY_TYPES:
-                refs.add(group)
+        for inner in _GENERIC_TYPE_INNER_RE.finditer(match.group(0)):
+            name = inner.group(0)
+            if name not in _UTILITY_TYPES:
+                refs.add(name)
 
 
 def _add_implements_types(code: str, refs: set[str]) -> None:

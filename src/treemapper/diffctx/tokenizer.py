@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import threading
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -15,6 +16,7 @@ _MAX_TEXT_LEN = 50_000
 
 _nlp: Language | None = None
 _nlp_available: bool | None = None
+_nlp_lock = threading.Lock()
 
 
 def _get_nlp() -> Language | None:
@@ -24,20 +26,25 @@ def _get_nlp() -> Language | None:
         return None
 
     if _nlp is None:
-        try:
-            import spacy
+        with _nlp_lock:
+            if _nlp is None:
+                try:
+                    import spacy
 
-            try:
-                _nlp = spacy.load("en_core_web_sm", disable=["ner", "parser"])
-            except OSError:
-                from spacy.cli.download import download
+                    try:
+                        _nlp = spacy.load("en_core_web_sm", disable=["ner", "parser"])
+                    except OSError:
+                        from spacy.cli.download import download
 
-                download("en_core_web_sm")
-                _nlp = spacy.load("en_core_web_sm", disable=["ner", "parser"])
-            _nlp_available = True
-        except ImportError:
-            _nlp_available = False
-            return None
+                        download("en_core_web_sm")
+                        _nlp = spacy.load("en_core_web_sm", disable=["ner", "parser"])
+                    _nlp_available = True
+                except ImportError:
+                    _nlp_available = False
+                    return None
+                except Exception:
+                    _nlp_available = False
+                    return None
 
     return _nlp
 

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from ..types import FragmentId
 from .base import EdgeBuilder, EdgeDict
 from .config import get_config_builders
 from .document import get_document_builders
@@ -13,6 +15,17 @@ from .structural import get_structural_builders
 
 if TYPE_CHECKING:
     from ..types import Fragment
+
+EdgeCategories = dict[tuple[FragmentId, FragmentId], str]
+
+_BUILDER_CATEGORIES: list[tuple[str, Callable[[], list[type[EdgeBuilder]]]]] = [
+    ("semantic", get_semantic_builders),
+    ("structural", get_structural_builders),
+    ("config", get_config_builders),
+    ("document", get_document_builders),
+    ("similarity", get_similarity_builders),
+    ("history", get_history_builders),
+]
 
 
 def get_all_builders() -> list[EdgeBuilder]:
@@ -27,12 +40,17 @@ def get_all_builders() -> list[EdgeBuilder]:
     return [cls() for cls in all_builder_classes]
 
 
-def collect_all_edges(fragments: list[Fragment], repo_root: Path | None = None) -> EdgeDict:
+def collect_all_edges(fragments: list[Fragment], repo_root: Path | None = None) -> tuple[EdgeDict, EdgeCategories]:
     all_edges: EdgeDict = {}
-    for builder in get_all_builders():
-        for (src, dst), weight in builder.build(fragments, repo_root).items():
-            all_edges[(src, dst)] = max(all_edges.get((src, dst), 0.0), weight)
-    return all_edges
+    edge_categories: EdgeCategories = {}
+    for category, get_builders in _BUILDER_CATEGORIES:
+        for cls in get_builders():
+            builder = cls()
+            for (src, dst), weight in builder.build(fragments, repo_root).items():
+                if weight > all_edges.get((src, dst), 0.0):
+                    all_edges[(src, dst)] = weight
+                    edge_categories[(src, dst)] = category
+    return all_edges, edge_categories
 
 
 def discover_all_related_files(
@@ -49,6 +67,7 @@ def discover_all_related_files(
 
 __all__ = [
     "EdgeBuilder",
+    "EdgeCategories",
     "EdgeDict",
     "collect_all_edges",
     "discover_all_related_files",

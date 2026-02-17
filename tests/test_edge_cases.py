@@ -1,5 +1,7 @@
 # tests/test_edge_cases.py
+import sys
 
+import pytest
 
 from .utils import get_all_files_in_tree, load_yaml
 
@@ -107,3 +109,73 @@ def test_filenames_with_special_yaml_chars(temp_project, run_mapper):
     # Check numeric filenames
     assert "123" in all_files
     assert "0.5" in all_files
+
+
+def test_filenames_with_spaces(temp_project, run_mapper):
+    (temp_project / "file with spaces.txt").write_text("spaced content")
+    subdir = temp_project / "dir with spaces"
+    subdir.mkdir()
+    (subdir / "nested file.txt").write_text("nested spaced")
+
+    output_path = temp_project / "spaces_output.yaml"
+    assert run_mapper([".", "-o", str(output_path)])
+
+    result = load_yaml(output_path)
+    all_files = get_all_files_in_tree(result)
+    assert "file with spaces.txt" in all_files
+    assert "dir with spaces" in all_files
+    assert "nested file.txt" in all_files
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Symlinks require elevated privileges on Windows",
+)
+def test_broken_symlink_does_not_crash(temp_project, run_mapper):
+    link = temp_project / "broken_link.txt"
+    link.symlink_to(temp_project / "nonexistent_target.txt")
+
+    output_path = temp_project / "broken_symlink_output.yaml"
+    assert run_mapper([".", "-o", str(output_path)])
+    result = load_yaml(output_path)
+    assert result["type"] == "directory"
+
+
+def test_output_file_excluded_from_tree(temp_project, run_mapper):
+    output_path = temp_project / "tree_output.yaml"
+    assert run_mapper([".", "-o", str(output_path)])
+
+    result = load_yaml(output_path)
+    all_files = get_all_files_in_tree(result)
+    assert "tree_output.yaml" not in all_files
+
+
+def test_deeply_nested_single_file(temp_project, run_mapper):
+    current = temp_project
+    depth = 30
+    for i in range(depth):
+        current = current / f"d{i}"
+        current.mkdir()
+    (current / "leaf.txt").write_text("deep content")
+
+    output_path = temp_project / "deep_output.yaml"
+    assert run_mapper([".", "-o", str(output_path)])
+
+    result = load_yaml(output_path)
+    all_files = get_all_files_in_tree(result)
+    assert "leaf.txt" in all_files
+
+
+def test_file_with_no_extension(temp_project, run_mapper):
+    (temp_project / "Makefile").write_text("all:\n\techo hello\n")
+    (temp_project / "Dockerfile").write_text("FROM alpine\n")
+    (temp_project / "LICENSE").write_text("MIT License")
+
+    output_path = temp_project / "noext_output.yaml"
+    assert run_mapper([".", "-o", str(output_path)])
+
+    result = load_yaml(output_path)
+    all_files = get_all_files_in_tree(result)
+    assert "Makefile" in all_files
+    assert "Dockerfile" in all_files
+    assert "LICENSE" in all_files

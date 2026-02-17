@@ -346,7 +346,13 @@ def create_snippet(lines: list[str], start_line: int, end_line: int) -> str | No
 
 
 def create_fragment_from_lines(
-    path: Path, lines: list[str], start_line: int, end_line: int, kind: str, profile: str = "code"
+    path: Path,
+    lines: list[str],
+    start_line: int,
+    end_line: int,
+    kind: str,
+    profile: str = "code",
+    symbol_name: str | None = None,
 ) -> Fragment | None:
     snippet = create_snippet(lines, start_line, end_line)
     if snippet is None:
@@ -356,4 +362,5 @@ def create_fragment_from_lines(
         kind=kind,
         content=snippet,
         identifiers=extract_identifiers(snippet, profile=profile),
+        symbol_name=symbol_name,
     )

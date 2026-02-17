@@ -17,7 +17,8 @@ _GITLAB_INCLUDE_RE = re.compile(
     r"^\s{0,20}-?\s{0,5}(?:local|project|remote|template):\s{0,5}['\"]?([^'\"#\n]{1,300})", re.MULTILINE
 )
 
-_JENKINS_SH_RE = re.compile(r"sh\s*(?:\(['\"]|['\"])(.+?)['\"]\)?", re.MULTILINE | re.DOTALL)
+_JENKINS_SH_DOUBLE_RE = re.compile(r'sh\s*\(?"([^"]*)"', re.MULTILINE)
+_JENKINS_SH_SINGLE_RE = re.compile(r"sh\s*\(?'([^']*)'", re.MULTILINE)
 _JENKINS_SCRIPT_RE = re.compile(r"script\s*\{([^}]+)\}", re.MULTILINE | re.DOTALL)
 
 _SCRIPT_CALL_TOOLS = frozenset(
@@ -174,9 +175,11 @@ def _extract_gitlab_refs(content: str) -> set[str]:
 def _extract_jenkins_refs(content: str) -> set[str]:
     refs: set[str] = set()
 
-    for match in _JENKINS_SH_RE.finditer(content):
-        sh_content = match.group(1)
-        refs.update(_extract_script_refs(sh_content))
+    for match in _JENKINS_SH_DOUBLE_RE.finditer(content):
+        refs.update(_extract_script_refs(match.group(1)))
+
+    for match in _JENKINS_SH_SINGLE_RE.finditer(content):
+        refs.update(_extract_script_refs(match.group(1)))
 
     for match in _JENKINS_SCRIPT_RE.finditer(content):
         refs.update(_extract_script_refs(match.group(1)))
@@ -328,7 +331,11 @@ class CICDEdgeBuilder(EdgeBuilder):
         ref_name = ref.split("/")[-1].lower()
         ref_base = ref_name.split(".")[0]
         for name, frag_ids in idx.by_name.items():
-            if name == ref_name or name.startswith(ref_base):
+            if name == ref_name or (
+                ref_base
+                and len(ref_base) >= 3
+                and (name == ref_base or name.startswith(ref_base + "_") or name.startswith(ref_base + "."))
+            ):
                 for fid in frag_ids:
                     if fid != ci_id:
                         self.add_edge(edges, ci_id, fid, self.script_weight)

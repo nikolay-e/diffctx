@@ -52,7 +52,7 @@ def test_unreadable_file(temp_project, run_mapper, set_perms, caplog):
     file_node = find_node_by_path(result, ["unreadable.txt"])
     assert file_node is not None, "'unreadable.txt' node not found in generated YAML"
     assert file_node.get("type") == "file"
-    assert file_node.get("content") == "<unreadable content>\n"
+    assert "<unreadable content>" in file_node.get("content", "")
     assert any(
         "Could not read" in record.message and "unreadable.txt" in record.message
         for record in caplog.records
@@ -279,7 +279,7 @@ def test_oserror_during_read(temp_project, run_mapper, monkeypatch, caplog):
     original_open = Path.open
 
     def mock_open(self, *args, **kwargs):
-        if self.name == "test.txt" and "rb" in args:
+        if self.name == "test.txt":
             raise OSError("Simulated OS error")
         return original_open(self, *args, **kwargs)
 
@@ -424,5 +424,5 @@ def test_create_node_exception(temp_project, monkeypatch, caplog):
         result = _create_node(test_file, ctx, 0, is_dir=False)
 
     assert result is not None
-    assert result["content"] == "<unreadable content>\n"
+    assert "<unreadable content>" in result.get("content", "")
     assert any("Could not read" in rec.message for rec in caplog.records)

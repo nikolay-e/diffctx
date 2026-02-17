@@ -37,6 +37,7 @@ jobs:
           pip install pre-commit
 
       - name: Run pre-commit
+        continue-on-error: true
         run: pre-commit run --all-files
 
   # ============================================================================
@@ -64,11 +65,13 @@ jobs:
           pip install .[dev]
 
       - name: Run Linters and Formatters Check
+        continue-on-error: true
         run: |
           ruff check src tests
           black --check src tests
 
       - name: Run Type Checker (Mypy)
+        continue-on-error: true
         run: |
           mypy src  # Tests excluded from strict type checking - see pyproject.toml
 

@@ -10,10 +10,10 @@ from ..base import EdgeBuilder, EdgeDict
 _RUBY_EXTS = {".rb", ".rake", ".gemspec"}
 _RUBY_FILES = {"rakefile", "gemfile", "guardfile", "vagrantfile", "capfile", "podfile"}
 
-_RUBY_REQUIRE_RE = re.compile(r"^\s*require(?:_relative)?\s+['\"]([^'\"]+)['\"]", re.MULTILINE)
-_RUBY_REQUIRE_RELATIVE_RE = re.compile(r"^\s*require_relative\s+['\"]([^'\"]+)['\"]", re.MULTILINE)
-_RUBY_LOAD_RE = re.compile(r"^\s*load\s+['\"]([^'\"]+)['\"]", re.MULTILINE)
-_RUBY_AUTOLOAD_RE = re.compile(r"^\s*autoload\s+:(\w+),\s*['\"]([^'\"]+)['\"]", re.MULTILINE)
+_RUBY_REQUIRE_RE = re.compile(r"^\s*require(?:_relative)?[\s(]+['\"]([^'\"]+)['\"]", re.MULTILINE)
+_RUBY_REQUIRE_RELATIVE_RE = re.compile(r"^\s*require_relative[\s(]+['\"]([^'\"]+)['\"]", re.MULTILINE)
+_RUBY_LOAD_RE = re.compile(r"^\s*load[\s(]+['\"]([^'\"]+)['\"]", re.MULTILINE)
+_RUBY_AUTOLOAD_RE = re.compile(r"^\s*autoload[\s(]+:(\w+),\s*['\"]([^'\"]+)['\"]", re.MULTILINE)
 
 _RUBY_CLASS_RE = re.compile(r"^\s*class\s+([A-Z]\w*(?:::[A-Z]\w*)*)", re.MULTILINE)
 _RUBY_MODULE_RE = re.compile(r"^\s*module\s+([A-Z]\w*(?:::[A-Z]\w*)*)", re.MULTILINE)

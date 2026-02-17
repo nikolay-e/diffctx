@@ -7,8 +7,8 @@ from pathlib import Path
 from ...types import Fragment, FragmentId
 from ..base import EdgeBuilder, EdgeDict
 
-_RUST_USE_RE = re.compile(r"^\s*use\s+(?:crate::)?([a-z_][a-z0-9_]*(?:::[a-z_][a-z0-9_]*)*)", re.MULTILINE)
-_RUST_MOD_RE = re.compile(r"^\s*(?:pub\s+)?mod\s+([a-z_][a-z0-9_]*)\s*[;{]", re.MULTILINE)
+_RUST_USE_RE = re.compile(r"^\s*use\s+(?:crate::)?([a-zA-Z_]\w*(?:::[a-zA-Z_]\w*)*)", re.MULTILINE)
+_RUST_MOD_RE = re.compile(r"^\s*(?:pub(?:\([^)]*\))?\s+)?mod\s+([a-z_][a-z0-9_]*)\s*[;{]", re.MULTILINE)
 _RUST_EXTERN_CRATE_RE = re.compile(r"^\s*extern\s+crate\s+([a-z_][a-z0-9_]*)", re.MULTILINE)
 
 _RUST_FN_RE = re.compile(r"^\s*(?:pub(?:\([^)]*\))?\s+)?(?:async\s+)?fn\s+([a-z_][a-z0-9_]*)", re.MULTILINE)

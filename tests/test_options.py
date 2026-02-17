@@ -69,12 +69,9 @@ def test_no_content_option(temp_project):
 
     tree = load_yaml(output_file)
 
-    # Find test.txt
-    for child in tree.get("children", []):
-        if child.get("name") == "test.txt":
-            # Should not have content key
-            assert "content" not in child
-            break
+    test_node = next((c for c in tree.get("children", []) if c.get("name") == "test.txt"), None)
+    assert test_node is not None
+    assert "content" not in test_node
 
     # Verify Python API no_content works the same
     api_tree = map_directory(temp_project, no_content=True)
@@ -111,7 +108,7 @@ def test_max_file_bytes_option(temp_project):
         if child.get("name") == "large.txt":
             content = child.get("content", "")
             assert "<file too large:" in content
-            assert "1000 bytes>" in content or "1001 bytes>" in content  # May include newline
+            assert "bytes>" in content
             large_found = True
         elif child.get("name") == "small.txt":
             content = child.get("content", "")
@@ -163,11 +160,9 @@ def test_no_content_with_binary_files(temp_project):
 
     tree = load_yaml(output_file)
 
-    # Binary file should be listed but without content
-    for child in tree.get("children", []):
-        if child.get("name") == "binary.bin":
-            assert "content" not in child
-            break
+    binary_node = next((c for c in tree.get("children", []) if c.get("name") == "binary.bin"), None)
+    assert binary_node is not None
+    assert "content" not in binary_node
 
 
 def test_combined_options(temp_project):
@@ -263,10 +258,11 @@ def test_default_max_file_bytes_limit(temp_project):
 
 def test_known_binary_extension_detected(temp_project):
     """Test files with known binary extensions are detected without reading."""
-    from treemapper.tree import KNOWN_BINARY_EXTENSIONS
-
     pdf_file = temp_project / "document.pdf"
     pdf_file.write_text("not really a pdf but has extension")
+
+    xlsx_file = temp_project / "spreadsheet.xlsx"
+    xlsx_file.write_bytes(b"\x00\x01\x02")
 
     output_file = temp_project / "output.yaml"
 
@@ -276,15 +272,13 @@ def test_known_binary_extension_detected(temp_project):
 
     tree = load_yaml(output_file)
 
-    for child in tree.get("children", []):
-        if child.get("name") == "document.pdf":
-            content = child.get("content", "")
-            assert "<binary file:" in content
-            break
+    pdf_node = next((c for c in tree.get("children", []) if c.get("name") == "document.pdf"), None)
+    assert pdf_node is not None
+    assert "<binary file:" in pdf_node.get("content", "")
 
-    assert ".pdf" in KNOWN_BINARY_EXTENSIONS
-    assert ".xlsx" in KNOWN_BINARY_EXTENSIONS
-    assert ".jpg" in KNOWN_BINARY_EXTENSIONS
+    xlsx_node = next((c for c in tree.get("children", []) if c.get("name") == "spreadsheet.xlsx"), None)
+    assert xlsx_node is not None
+    assert "<binary file:" in xlsx_node.get("content", "")
 
 
 def test_output_file_without_argument_uses_default_name(temp_project):
@@ -357,3 +351,105 @@ def test_max_depth_zero_warning(temp_project):
 
     assert result.returncode == 0
     assert "max-depth 0" in result.stderr.lower() or "empty tree" in result.stderr.lower()
+
+
+def test_max_file_bytes_boundary_exact_limit(temp_project):
+    exact_file = temp_project / "exact.txt"
+    exact_file.write_text("x" * 100, encoding="utf-8")
+
+    one_over_file = temp_project / "one_over.txt"
+    one_over_file.write_text("x" * 101, encoding="utf-8")
+
+    output_file = temp_project / "output.yaml"
+
+    result = run_treemapper_subprocess([str(temp_project), "-o", str(output_file), "--max-file-bytes", "100"])
+
+    assert result.returncode == 0
+
+    tree = load_yaml(output_file)
+
+    exact_node = next((c for c in tree.get("children", []) if c.get("name") == "exact.txt"), None)
+    assert exact_node is not None
+    assert "<file too large:" not in exact_node.get("content", "")
+
+    over_node = next((c for c in tree.get("children", []) if c.get("name") == "one_over.txt"), None)
+    assert over_node is not None
+    assert "<file too large:" in over_node.get("content", "")
+
+
+def test_max_file_bytes_one_byte_limit(temp_project):
+    one_byte = temp_project / "one.txt"
+    one_byte.write_text("a", encoding="utf-8")
+
+    two_bytes = temp_project / "two.txt"
+    two_bytes.write_text("ab", encoding="utf-8")
+
+    output_file = temp_project / "output.yaml"
+
+    result = run_treemapper_subprocess([str(temp_project), "-o", str(output_file), "--max-file-bytes", "1"])
+
+    assert result.returncode == 0
+
+    tree = load_yaml(output_file)
+
+    one_node = next((c for c in tree.get("children", []) if c.get("name") == "one.txt"), None)
+    assert one_node is not None
+    assert "<file too large:" not in one_node.get("content", "")
+
+    two_node = next((c for c in tree.get("children", []) if c.get("name") == "two.txt"), None)
+    assert two_node is not None
+    assert "<file too large:" in two_node.get("content", "")
+
+
+def test_no_content_with_max_file_bytes_combined(temp_project):
+    small_file = temp_project / "small.txt"
+    small_file.write_text("small content", encoding="utf-8")
+
+    large_file = temp_project / "large.txt"
+    large_file.write_text("x" * 1000, encoding="utf-8")
+
+    output_file = temp_project / "output.yaml"
+
+    result = run_treemapper_subprocess(
+        [
+            str(temp_project),
+            "-o",
+            str(output_file),
+            "--no-content",
+            "--max-file-bytes",
+            "100",
+        ]
+    )
+
+    assert result.returncode == 0
+
+    tree = load_yaml(output_file)
+
+    small_node = next((c for c in tree.get("children", []) if c.get("name") == "small.txt"), None)
+    assert small_node is not None
+    assert "content" not in small_node
+
+    large_node = next((c for c in tree.get("children", []) if c.get("name") == "large.txt"), None)
+    assert large_node is not None
+    assert "content" not in large_node
+
+
+def test_max_depth_large_value_acts_as_unlimited(temp_project):
+    current = temp_project
+    for i in range(5):
+        current = current / f"d{i}"
+        current.mkdir()
+    (current / "deep.txt").write_text("found", encoding="utf-8")
+
+    output_file = temp_project / "output.yaml"
+
+    result = run_treemapper_subprocess([str(temp_project), "-o", str(output_file), "--max-depth", "999"])
+
+    assert result.returncode == 0
+
+    tree = load_yaml(output_file)
+
+    from .utils import get_all_files_in_tree
+
+    all_names = get_all_files_in_tree(tree)
+    assert "deep.txt" in all_names

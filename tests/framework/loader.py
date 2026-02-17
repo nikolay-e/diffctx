@@ -29,7 +29,6 @@ def _parse_yaml_test(data: dict, source_file: Path | None = None) -> YamlTestCas
         must_include_content=must_include_content,
         must_not_include=must_not_include,
         commit_message=options.get("commit_message", data.get("commit_message", "Update files")),
-        overhead_ratio=options.get("overhead_ratio", data.get("overhead_ratio", 0.3)),
         min_budget=options.get("min_budget", data.get("min_budget")),
         add_garbage_files=options.get("add_garbage", data.get("add_garbage_files", True)),
         skip_garbage_check=options.get("skip_garbage_check", data.get("skip_garbage_check", False)),

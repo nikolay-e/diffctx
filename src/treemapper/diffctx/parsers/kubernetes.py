@@ -62,10 +62,11 @@ class KubernetesYamlStrategy:
         for i, start_idx in enumerate(doc_starts):
             if i + 1 < len(doc_starts):
                 end_idx = doc_starts[i + 1] - 1
-                while end_idx > start_idx and not lines[end_idx].strip():
-                    end_idx -= 1
             else:
                 end_idx = len(lines) - 1
+
+            while end_idx > start_idx and (not lines[end_idx].strip() or lines[end_idx].strip() == "---"):
+                end_idx -= 1
 
             if end_idx < start_idx:
                 continue

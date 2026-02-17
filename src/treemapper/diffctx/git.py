@@ -22,6 +22,7 @@ def run_git(repo_root: Path, args: list[str]) -> str:
             encoding="utf-8",
             errors="replace",
             check=True,
+            timeout=60,
         )
         return result.stdout
     except subprocess.CalledProcessError as e:
@@ -112,6 +113,11 @@ def split_diff_range(diff_range: str) -> tuple[str | None, str | None]:
     base = m.group(1).strip()
     head = m.group(3).strip()
     return (base or None, head or None)
+
+
+def get_untracked_files(repo_root: Path) -> list[Path]:
+    output = run_git(repo_root, ["ls-files", "--others", "--exclude-standard"])
+    return [repo_root / line.strip() for line in output.splitlines() if line.strip()]
 
 
 def show_file_at_revision(repo_root: Path, rev: str, rel_path: Path) -> str:

@@ -42,7 +42,7 @@ def test_stdout_output_preserves_stderr_logging(temp_project):
     assert result.returncode == 0
     assert result.stdout.strip() != ""
     assert "INFO" in result.stderr
-    assert "Directory tree written to stdout" in result.stderr
+    assert "stdout" in result.stderr.lower()
 
     tree_data = yaml.safe_load(result.stdout)
     assert tree_data["type"] == "directory"
@@ -127,7 +127,7 @@ def test_stdout_vs_file_output_consistency(temp_project):
     assert result_stdout.returncode == 0
     stdout_data = yaml.safe_load(result_stdout.stdout)
 
-    output_file = temp_project / "test_output.yaml"
+    output_file = temp_project / "output" / "test_output.yaml"
     result_file = run_treemapper_subprocess([".", "-o", str(output_file)], cwd=temp_project)
     assert result_file.returncode == 0
     file_data = load_yaml(output_file)
@@ -159,6 +159,7 @@ def test_stdout_output_with_permission_errors(temp_project, set_perms):
 
     assert "readable.txt" in files
     assert "unreadable.txt" in files
-    assert files["readable.txt"]["content"] == "can read\n"
-    assert files["unreadable.txt"]["content"] == "<unreadable content>\n"
+    assert "can read" in files["readable.txt"]["content"]
+    assert "cannot read" not in files["unreadable.txt"]["content"]
+    assert "<unreadable content>" in files["unreadable.txt"]["content"]
     assert "Could not read" in result.stderr

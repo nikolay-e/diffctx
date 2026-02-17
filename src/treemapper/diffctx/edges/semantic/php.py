@@ -174,7 +174,7 @@ class PHPEdgeBuilder(EdgeBuilder):
 
     def _add_use_edges(self, pf_id: FragmentId, uses: set[str], idx: _PHPIndex, edges: EdgeDict) -> None:
         for use in uses:
-            use_lower = use.lower().replace("\\", "\\\\")
+            use_lower = use.lower()
             for fid in idx.fqn_to_frags.get(use_lower, []):
                 if fid != pf_id:
                     self.add_edge(edges, pf_id, fid, self.use_weight)

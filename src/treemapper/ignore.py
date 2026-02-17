@@ -86,7 +86,8 @@ def _process_ignore_line(line: str, rel: str) -> str:
     neg = line.startswith("!")
     pat = line[1:] if neg else line
 
-    if pat.startswith("/") or "/" in pat:
+    pat_without_trailing_slash = pat.rstrip("/")
+    if pat_without_trailing_slash.startswith("/") or "/" in pat_without_trailing_slash:
         anchored_pat = pat.lstrip("/")
         full = f"/{rel}/{anchored_pat}" if rel else f"/{anchored_pat}"
     elif rel:

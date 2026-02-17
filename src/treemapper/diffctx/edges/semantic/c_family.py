@@ -267,8 +267,8 @@ class CFamilyEdgeBuilder(EdgeBuilder):
             if len(group) < 2:
                 continue
 
-            headers = [f for f in group if f.path.suffix.lower() in {".h", ".hpp", ".hh", ".hxx"}]
-            impls = [f for f in group if f.path.suffix.lower() in {".c", ".cpp", ".cc", ".cxx", ".m", ".mm"}]
+            headers = [f for f in group if f.path.suffix.lower() in {".h", ".hpp", ".hh", ".hxx", ".h++"}]
+            impls = [f for f in group if f.path.suffix.lower() in {".c", ".cpp", ".cc", ".cxx", ".c++", ".m", ".mm"}]
 
             for h in headers:
                 for impl in impls:

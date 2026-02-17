@@ -6,7 +6,7 @@ from tree_sitter import Language, Node, Parser
 
 from ..languages import TREE_SITTER_LANGUAGES
 from ..types import Fragment, FragmentId, extract_identifiers
-from .base import MIN_FRAGMENT_LINES, create_code_gap_fragments
+from .base import MIN_FRAGMENT_LINES, create_code_gap_fragments, create_snippet
 
 _TREE_SITTER_LANGS = TREE_SITTER_LANGUAGES
 
@@ -74,6 +74,8 @@ _NODE_TYPE_KEYWORDS = [
     (("property",), "property"),
     (("declaration", "using_declaration"), "declaration"),
 ]
+
+_CONTAINER_KINDS = frozenset({"class", "interface", "struct"})
 
 _MAX_RECURSION_DEPTH = 500
 
@@ -183,6 +185,31 @@ class TreeSitterStrategy:
                     )
                 return
 
+            sym_name = self._extract_symbol_name(node)
+
+            if kind in _CONTAINER_KINDS:
+                first_child_start = self._first_child_def_line(node, definition_types)
+                if first_child_start is not None and first_child_start > start:
+                    header_end = first_child_start - 1
+                    snippet = create_snippet(lines, start, header_end)
+                    if snippet:
+                        fragments.append(
+                            Fragment(
+                                id=FragmentId(path=path, start_line=start, end_line=header_end),
+                                kind=kind,
+                                content=snippet,
+                                identifiers=extract_identifiers(snippet, profile="code"),
+                                symbol_name=sym_name,
+                            )
+                        )
+                        covered.add((start, header_end))
+                    added_ends.add((kind, end))
+                    for child in node.children:
+                        self._extract_definitions(
+                            child, code_bytes, path, lines, definition_types, fragments, covered, added_ends, depth + 1
+                        )
+                    return
+
             if end - start + 1 >= MIN_FRAGMENT_LINES:
                 snippet = code_bytes[node.start_byte : node.end_byte].decode("utf-8", errors="replace")
                 if not snippet.endswith("\n"):
@@ -194,6 +221,7 @@ class TreeSitterStrategy:
                         kind=kind,
                         content=snippet,
                         identifiers=extract_identifiers(snippet, profile="code"),
+                        symbol_name=sym_name,
                     )
                 )
                 covered.add((start, end))
@@ -201,6 +229,17 @@ class TreeSitterStrategy:
 
         for child in node.children:
             self._extract_definitions(child, code_bytes, path, lines, definition_types, fragments, covered, added_ends, depth + 1)
+
+    def _first_child_def_line(self, node: Node, definition_types: set[str], depth: int = 0) -> int | None:
+        if depth > 3:
+            return None
+        for child in node.children:
+            if child.type in definition_types:
+                return int(child.start_point[0]) + 1
+            result = self._first_child_def_line(child, definition_types, depth + 1)
+            if result is not None:
+                return result
+        return None
 
     def _node_type_to_kind(self, node_type: str, node: Node | None = None) -> str:
         if node_type == "decorated_definition" and node is not None:
@@ -218,3 +257,24 @@ class TreeSitterStrategy:
             if child.type == "class_definition":
                 return "class"
         return "function"
+
+    @staticmethod
+    def _extract_symbol_name(node: Node) -> str | None:
+        if node.type == "decorated_definition":
+            for child in node.children:
+                if child.type in {"function_definition", "class_definition"}:
+                    node = child
+                    break
+
+        name_fields = ("name", "declarator")
+        for field_name in name_fields:
+            name_node = node.child_by_field_name(field_name)
+            if name_node is not None:
+                while name_node.type in ("pointer_declarator", "function_declarator"):
+                    inner = name_node.child_by_field_name("declarator")
+                    if inner is None:
+                        break
+                    name_node = inner
+                if name_node.type == "identifier" or name_node.named_child_count == 0:
+                    return name_node.text.decode("utf-8") if name_node.text else None
+        return None

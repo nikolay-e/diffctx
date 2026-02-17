@@ -6,7 +6,7 @@ from pathlib import Path
 
 from ...javascript_semantics import JsFragmentInfo, analyze_javascript_fragment
 from ...types import Fragment, FragmentId
-from ..base import EdgeBuilder, EdgeDict, add_ref_edges
+from ..base import EdgeBuilder, EdgeDict, add_semantic_edges
 
 _JS_EXTS = {".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".mts", ".cts"}
 
@@ -167,8 +167,16 @@ class JavaScriptEdgeBuilder(EdgeBuilder):
             info = info_cache[f.id]
             self_defs = set(frag_defines.get(f.id, frozenset()))
 
-            add_ref_edges(edges, f.id, set(info.calls), name_to_defs, _JS_CALL_WEIGHT)
-            add_ref_edges(edges, f.id, set(info.references), name_to_defs, _JS_SYMBOL_REF_WEIGHT, skip_self_defs=self_defs)
-            add_ref_edges(edges, f.id, set(info.type_refs), name_to_defs, _JS_TYPE_REF_WEIGHT, skip_self_defs=self_defs)
+            add_semantic_edges(
+                edges,
+                f.id,
+                info,
+                name_to_defs,
+                _JS_CALL_WEIGHT,
+                _JS_SYMBOL_REF_WEIGHT,
+                _JS_TYPE_REF_WEIGHT,
+                self.reverse_weight_factor,
+                self_defs,
+            )
 
         return edges

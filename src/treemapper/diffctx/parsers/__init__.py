@@ -12,7 +12,15 @@ from .kubernetes import KubernetesYamlStrategy
 from .markdown import MistuneMarkdownStrategy, RegexMarkdownStrategy
 from .python import PythonAstStrategy
 from .text import ParagraphStrategy, PySBDTextStrategy
-from .tree_sitter import TreeSitterStrategy
+
+
+def _make_tree_sitter_strategy() -> object | None:
+    try:
+        from .tree_sitter import TreeSitterStrategy
+
+        return TreeSitterStrategy()
+    except ImportError:
+        return None
 
 
 class FragmentationEngine:
@@ -22,7 +30,7 @@ class FragmentationEngine:
 
     def _initialize_strategies(self) -> None:
         strategies: list[object] = [
-            TreeSitterStrategy(),
+            _make_tree_sitter_strategy(),
             PythonAstStrategy(),
             MistuneMarkdownStrategy(),
             RegexMarkdownStrategy(),
@@ -82,7 +90,6 @@ __all__ = [
     "PythonAstStrategy",
     "RegexMarkdownStrategy",
     "RuamelYamlStrategy",
-    "TreeSitterStrategy",
     "enclosing_fragment",
     "fragment_file",
 ]

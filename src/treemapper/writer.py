@@ -15,7 +15,7 @@ from treemapper.diffctx.languages import (
     get_language_for_file,
 )
 
-YAML_PROBLEMATIC_CHARS = frozenset({"\x85", "\u2028", "\u2029"})
+YAML_PROBLEMATIC_CHARS = frozenset({"\r", "\x00", "\x85", "\u2028", "\u2029"})
 
 _YAML_STRING_ESCAPE_PATTERN = re.compile(r'[\\"\n\r\x00\x85\u2028\u2029]')
 _YAML_STRING_ESCAPE_MAP = {
@@ -78,9 +78,12 @@ def _write_yaml_content(file: TextIO, content: str, base_indent: str) -> None:
     elif _has_problematic_chars(content):
         file.write(f'{base_indent}content: "{_escape_yaml_content(content)}"\n')
     else:
-        file.write(f"{base_indent}content: |\n")
+        file.write(f"{base_indent}content: |2\n")
         for line in content.rstrip("\n").split("\n"):
-            file.write(f"{content_indent}{line}\n")
+            if line:
+                file.write(f"{content_indent}{line}\n")
+            else:
+                file.write("\n")
 
 
 def _write_yaml_node(file: TextIO, node: dict[str, Any], indent: str = "") -> None:
@@ -99,8 +102,8 @@ def _write_yaml_node(file: TextIO, node: dict[str, Any], indent: str = "") -> No
 
 def _write_yaml_fragment(file: TextIO, frag: dict[str, Any], indent: str = "") -> None:
     file.write(f'{indent}- path: "{_escape_yaml_string(frag.get("path", ""))}"\n')
-    file.write(f'{indent}  lines: "{frag.get("lines", "")}"\n')
-    file.write(f"{indent}  kind: {frag.get('kind', 'unknown')}\n")
+    file.write(f'{indent}  lines: "{_escape_yaml_string(frag.get("lines", ""))}"\n')
+    file.write(f'{indent}  kind: "{_escape_yaml_string(frag.get("kind", "unknown"))}"\n')
 
     if frag.get("symbol"):
         file.write(f'{indent}  symbol: "{_escape_yaml_string(frag["symbol"])}"\n')
@@ -115,6 +118,7 @@ def write_tree_yaml(file: TextIO, tree: dict[str, Any]) -> None:
     file.write(f"type: {tree['type']}\n")
 
     if tree.get("type") == "diff_context" and tree.get("fragments"):
+        file.write(f"fragment_count: {len(tree['fragments'])}\n")
         file.write("fragments:\n")
         for frag in tree["fragments"]:
             _write_yaml_fragment(file, frag, "  ")

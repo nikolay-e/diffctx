@@ -16,21 +16,31 @@ class FragmentId:
     start_line: int
     end_line: int
 
+    def __post_init__(self) -> None:
+        path_str = str(self.path)
+        object.__setattr__(self, "_path_str", path_str)
+        object.__setattr__(self, "_hash", hash((path_str, self.start_line, self.end_line)))
+
     def __str__(self) -> str:
-        return f"{self.path}:{self.start_line}-{self.end_line}"
+        return f"{self._path_str}:{self.start_line}-{self.end_line}"  # type: ignore[attr-defined]
 
     def __hash__(self) -> int:
-        return hash((str(self.path), self.start_line, self.end_line))
+        return self._hash  # type: ignore[attr-defined,no-any-return]
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, FragmentId):
             return NotImplemented
-        return str(self.path) == str(other.path) and self.start_line == other.start_line and self.end_line == other.end_line
+        return (
+            self._hash == other._hash  # type: ignore[attr-defined]
+            and self._path_str == other._path_str  # type: ignore[attr-defined]
+            and self.start_line == other.start_line
+            and self.end_line == other.end_line
+        )
 
     def __lt__(self, other: object) -> bool:
         if not isinstance(other, FragmentId):
             return NotImplemented
-        return (str(self.path), self.start_line, self.end_line) < (str(other.path), other.start_line, other.end_line)
+        return (self._path_str, self.start_line, self.end_line) < (other._path_str, other.start_line, other.end_line)  # type: ignore[attr-defined]
 
 
 @dataclass
@@ -40,6 +50,7 @@ class Fragment:
     content: str
     identifiers: frozenset[str] = field(default_factory=frozenset)
     token_count: int = 0
+    symbol_name: str | None = None
 
     @property
     def path(self) -> Path:

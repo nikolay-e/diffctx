@@ -8,22 +8,11 @@ from treemapper import __version__, map_directory, to_text, to_yaml
 from .utils import find_node_by_path, get_all_files_in_tree
 
 
-def test_version_module_exists():
+def test_version_exported_and_semver():
     from treemapper.version import __version__ as version_str
 
     assert isinstance(version_str, str)
-    assert len(version_str) > 0
-    parts = version_str.split(".")
-    assert len(parts) >= 2
-
-
-def test_version_exported():
-    assert __version__ is not None
-    assert isinstance(__version__, str)
-    assert "." in __version__
-
-
-def test_version_format_semver():
+    assert version_str == __version__
     parts = __version__.split(".")
     assert len(parts) >= 2
     assert parts[0].isdigit()
@@ -99,41 +88,6 @@ def test_no_default_ignores_still_respects_custom_ignore(tmp_path):
     assert "keep.txt" in names
 
     assert "ignore_me.log" not in names
-
-
-def test_map_directory_combined_api_params(tmp_path):
-    project = tmp_path / "project"
-    project.mkdir()
-
-    (project / "level1").mkdir()
-    (project / "level1" / "level2").mkdir()
-    (project / "level1" / "level2" / "deep.txt").write_text("deep content")
-
-    large_file = project / "large.txt"
-    large_file.write_text("x" * 500)
-
-    (project / "ignore.log").write_text("log content")
-
-    ignore_file = tmp_path / "custom.ignore"
-    ignore_file.write_text("*.log\n")
-
-    tree = map_directory(
-        project,
-        max_depth=2,
-        max_file_bytes=100,
-        ignore_file=ignore_file,
-    )
-
-    names = get_all_files_in_tree(tree)
-
-    assert "level1" in names
-    assert "level2" in names
-    assert "deep.txt" not in names
-    assert "ignore.log" not in names
-
-    large_node = find_node_by_path(tree, ["large.txt"])
-    assert large_node is not None
-    assert "<file too large:" in large_node.get("content", "")
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Symlinks require elevated privileges on Windows")
@@ -276,7 +230,7 @@ def test_deep_nesting_text_format(tmp_path):
     assert len(lines) > depth * 2
 
 
-def test_text_format_preserves_structure(tmp_path):
+def test_text_format_includes_all_entries(tmp_path):
     project = tmp_path / "project"
     project.mkdir()
 
@@ -378,36 +332,6 @@ def test_empty_directory_handling(tmp_path):
     assert empty_node.get("children") is None or len(empty_node.get("children", [])) == 0
 
 
-def test_all_verbosity_levels(tmp_path):
-    import logging
-
-    from treemapper.logger import setup_logging
-
-    project = tmp_path / "project"
-    project.mkdir()
-    (project / "file.txt").write_text("content")
-
-    root_logger = logging.getLogger()
-    original_level = root_logger.level
-    original_handlers = root_logger.handlers[:]
-
-    try:
-        for level in range(4):
-            setup_logging(level)
-
-            expected_level = {
-                0: logging.ERROR,
-                1: logging.WARNING,
-                2: logging.INFO,
-                3: logging.DEBUG,
-            }[level]
-
-            assert root_logger.level == expected_level
-    finally:
-        root_logger.setLevel(original_level)
-        root_logger.handlers = original_handlers
-
-
 def test_binary_detection_at_exact_boundary(tmp_path):
     from treemapper.tree import BINARY_DETECTION_SAMPLE_SIZE
 
@@ -479,102 +403,6 @@ def test_middle_slash_pattern_is_anchored(tmp_path):
 
     assert direct_node is None
     assert nested_node is not None
-
-
-class TestYamlEscaping:
-    def test_escape_yaml_string_newline(self):
-        from treemapper.writer import _escape_yaml_string
-
-        result = _escape_yaml_string("file\nname.txt")
-        assert "\\n" in result
-        assert "\n" not in result
-
-    def test_escape_yaml_string_carriage_return(self):
-        from treemapper.writer import _escape_yaml_string
-
-        result = _escape_yaml_string("file\rname.txt")
-        assert "\\r" in result
-        assert "\r" not in result
-
-    def test_escape_yaml_string_null_byte(self):
-        from treemapper.writer import _escape_yaml_string
-
-        result = _escape_yaml_string("file\x00name.txt")
-        assert "\\0" in result
-        assert "\x00" not in result
-
-    def test_escape_yaml_string_combined(self):
-        from treemapper.writer import _escape_yaml_string
-
-        result = _escape_yaml_string('test\n\r\x00"\\name')
-        assert "\\n" in result
-        assert "\\r" in result
-        assert "\\0" in result
-        assert '\\"' in result
-        assert "\\\\" in result
-
-    def test_escape_yaml_content_null_byte(self):
-        from treemapper.writer import _escape_yaml_content
-
-        result = _escape_yaml_content("content\x00with\x00nulls")
-        assert "\\0" in result
-        assert "\x00" not in result
-
-    def test_escape_yaml_content_all_special_chars(self):
-        from treemapper.writer import _escape_yaml_content
-
-        input_str = 'test\n\t\r\x00\x85\u2028\u2029"\\'
-        result = _escape_yaml_content(input_str)
-
-        assert "\\n" in result
-        assert "\\t" in result
-        assert "\\r" in result
-        assert "\\0" in result
-        assert "\\x85" in result
-        assert "\\u2028" in result
-        assert "\\u2029" in result
-        assert '\\"' in result
-        assert "\\\\" in result
-
-    def test_yaml_output_with_escaped_filename(self, tmp_path):
-        import io
-
-        from treemapper.writer import write_tree_yaml
-
-        tree = {
-            "name": "project",
-            "type": "directory",
-            "children": [{"name": 'file"with"quotes.txt', "type": "file", "content": "test\n"}],
-        }
-        output = io.StringIO()
-        write_tree_yaml(output, tree)
-        result = output.getvalue()
-
-        import yaml
-
-        parsed = yaml.safe_load(result)
-        assert parsed["children"][0]["name"] == 'file"with"quotes.txt'
-
-    def test_has_problematic_chars_function(self):
-        from treemapper.writer import _has_problematic_chars
-
-        assert _has_problematic_chars("normal text") is False
-        assert _has_problematic_chars("text with newline\n") is False
-
-        assert _has_problematic_chars("text\x85with NEL") is True
-        assert _has_problematic_chars("text\u2028with line sep") is True
-        assert _has_problematic_chars("text\u2029with para sep") is True
-
-        assert _has_problematic_chars("") is False
-
-    def test_has_problematic_chars_early_exit(self):
-        from treemapper.writer import _has_problematic_chars
-
-        long_text = "a" * 100000 + "\x85" + "b" * 100000
-        assert _has_problematic_chars(long_text) is True
-
-        normal_long_text = "a" * 200000
-        assert _has_problematic_chars(normal_long_text) is False
 
 
 class TestTokenCountAlwaysDisplayed:

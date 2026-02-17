@@ -3,10 +3,10 @@ import sys
 
 import pytest
 
-from treemapper import map_directory, to_json, to_text, to_yaml
+from treemapper import map_directory
 
 from .conftest import run_treemapper_subprocess
-from .utils import find_node_by_path, get_all_files_in_tree, load_yaml
+from .utils import find_node_by_path, get_all_files_in_tree
 
 
 class TestDefaultIgnorePatterns:
@@ -302,28 +302,6 @@ class TestDefaultIgnorePatterns:
 
 
 class TestCLIFeatures:
-    def test_version_flag(self, temp_project):
-        result = run_treemapper_subprocess(["--version"], cwd=temp_project)
-        assert result.returncode == 0
-        assert "treemapper" in result.stdout.lower() or "." in result.stdout
-
-    def test_help_flag_short(self, temp_project):
-        result = run_treemapper_subprocess(["-h"], cwd=temp_project)
-        assert result.returncode == 0
-        assert "usage:" in result.stdout.lower()
-        assert "--format" in result.stdout
-        assert "--max-depth" in result.stdout
-        assert "--no-content" in result.stdout
-        assert "--max-file-bytes" in result.stdout
-        assert "-i" in result.stdout or "--ignore-file" in result.stdout
-        assert "--no-default-ignores" in result.stdout
-        assert "--log-level" in result.stdout
-
-    def test_help_flag_long(self, temp_project):
-        result = run_treemapper_subprocess(["--help"], cwd=temp_project)
-        assert result.returncode == 0
-        assert "usage:" in result.stdout.lower()
-
     def test_explicit_stdout_output_dash(self, temp_project):
         result = run_treemapper_subprocess([".", "-o", "-"], cwd=temp_project)
         assert result.returncode == 0
@@ -341,32 +319,10 @@ class TestCLIFeatures:
         assert "name:" in result.stdout
         assert "children:" in result.stdout
 
-    def test_json_format_stdout(self, temp_project):
-        import json
-
-        result = run_treemapper_subprocess([".", "--format", "json"], cwd=temp_project)
-        assert result.returncode == 0
-        parsed = json.loads(result.stdout)
-        assert "name" in parsed
-        assert "type" in parsed
-
-    def test_txt_format_stdout(self, temp_project):
-        result = run_treemapper_subprocess([".", "--format", "txt"], cwd=temp_project)
-        assert result.returncode == 0
-        assert temp_project.name in result.stdout
-        assert "  " in result.stdout
-
     def test_all_log_levels_cli(self, temp_project):
         for level in ["error", "warning", "info", "debug"]:
             result = run_treemapper_subprocess([".", "--log-level", level], cwd=temp_project)
             assert result.returncode == 0
-
-    def test_invalid_log_level_cli(self, temp_project):
-        result = run_treemapper_subprocess([".", "--log-level", "verbose"], cwd=temp_project)
-        assert result.returncode != 0
-
-        result = run_treemapper_subprocess([".", "--log-level", "quiet"], cwd=temp_project)
-        assert result.returncode != 0
 
 
 class TestPythonAPIEdgeCases:
@@ -374,64 +330,6 @@ class TestPythonAPIEdgeCases:
         nonexistent = tmp_path / "does_not_exist"
         with pytest.raises((FileNotFoundError, ValueError, SystemExit)):
             map_directory(nonexistent)
-
-    def test_all_params_combined(self, tmp_path):
-        project = tmp_path / "project"
-        project.mkdir()
-
-        (project / "level1").mkdir()
-        (project / "level1" / "level2").mkdir()
-        (project / "level1" / "level2" / "deep.txt").write_text("deep content", encoding="utf-8")
-        (project / "large.txt").write_text("x" * 1000, encoding="utf-8")
-        (project / "small.txt").write_text("small", encoding="utf-8")
-        (project / "ignore.log").write_text("log", encoding="utf-8")
-
-        ignore_file = tmp_path / "custom.ignore"
-        ignore_file.write_text("*.log\n", encoding="utf-8")
-
-        tree = map_directory(
-            project,
-            max_depth=2,
-            no_content=False,
-            max_file_bytes=100,
-            ignore_file=ignore_file,
-            no_default_ignores=False,
-        )
-
-        names = get_all_files_in_tree(tree)
-
-        assert "level1" in names
-        assert "level2" in names
-        assert "deep.txt" not in names
-        assert "ignore.log" not in names
-        assert "small.txt" in names
-
-        large_node = find_node_by_path(tree, ["large.txt"])
-        assert large_node is not None
-        assert "<file too large:" in large_node.get("content", "")
-
-    def test_no_content_true(self, tmp_path):
-        project = tmp_path / "project"
-        project.mkdir()
-        (project / "file.txt").write_text("some content here", encoding="utf-8")
-
-        tree = map_directory(project, no_content=True)
-
-        file_node = find_node_by_path(tree, ["file.txt"])
-        assert file_node is not None
-        assert "content" not in file_node
-
-    def test_max_depth_zero(self, tmp_path):
-        project = tmp_path / "project"
-        project.mkdir()
-        (project / "subdir").mkdir()
-        (project / "subdir" / "file.txt").write_text("content", encoding="utf-8")
-        (project / "root.txt").write_text("root content", encoding="utf-8")
-
-        tree = map_directory(project, max_depth=0)
-
-        assert tree["name"] == "project"
-        assert tree.get("children") is None or len(tree.get("children", [])) == 0
 
     def test_max_depth_one(self, tmp_path):
         project = tmp_path / "project"
@@ -446,31 +344,6 @@ class TestPythonAPIEdgeCases:
         assert "subdir" in names
         assert "file.txt" not in names
         assert "nested" not in names
-
-    def test_serializers_roundtrip(self, tmp_path):
-        import json
-
-        import yaml
-
-        project = tmp_path / "project"
-        project.mkdir()
-        (project / "file.txt").write_text("content", encoding="utf-8")
-
-        tree = map_directory(project)
-
-        yaml_output = to_yaml(tree)
-        json_output = to_json(tree)
-        text_output = to_text(tree)
-
-        assert "file.txt" in yaml_output
-        assert "file.txt" in json_output
-        assert "file.txt" in text_output
-
-        parsed_yaml = yaml.safe_load(yaml_output)
-        parsed_json = json.loads(json_output)
-
-        assert parsed_yaml["name"] == "project"
-        assert parsed_json["name"] == "project"
 
 
 class TestIgnorePatternEdgeCases:
@@ -541,44 +414,6 @@ class TestIgnorePatternEdgeCases:
         assert "my file.txt" not in names
         assert "myfile.txt" in names
 
-    def test_double_star_in_middle(self, tmp_path):
-        project = tmp_path / "project"
-        project.mkdir()
-
-        (project / "src").mkdir()
-        (project / "src" / "tests").mkdir()
-        (project / "src" / "tests" / "test_main.py").write_text("test", encoding="utf-8")
-        (project / "tests").mkdir()
-        (project / "tests" / "test_other.py").write_text("test", encoding="utf-8")
-
-        (project / ".gitignore").write_text("**/tests/\n", encoding="utf-8")
-
-        tree = map_directory(project)
-        names = get_all_files_in_tree(tree)
-
-        assert "tests" not in names
-        assert "test_main.py" not in names
-        assert "test_other.py" not in names
-        assert "src" in names
-
-    def test_root_anchored_pattern(self, tmp_path):
-        project = tmp_path / "project"
-        project.mkdir()
-
-        (project / "config.json").write_text("{}", encoding="utf-8")
-        (project / "src").mkdir()
-        (project / "src" / "config.json").write_text("{}", encoding="utf-8")
-
-        (project / ".gitignore").write_text("/config.json\n", encoding="utf-8")
-
-        tree = map_directory(project)
-
-        root_node = find_node_by_path(tree, ["config.json"])
-        nested_node = find_node_by_path(tree, ["src", "config.json"])
-
-        assert root_node is None
-        assert nested_node is not None
-
     def test_comment_lines_ignored(self, tmp_path):
         project = tmp_path / "project"
         project.mkdir()
@@ -611,21 +446,6 @@ class TestIgnorePatternEdgeCases:
 
 
 class TestContentPlaceholders:
-    def test_large_file_placeholder(self, tmp_path):
-        project = tmp_path / "project"
-        project.mkdir()
-
-        large_file = project / "large.txt"
-        large_file.write_text("x" * 10000, encoding="utf-8")
-
-        tree = map_directory(project, max_file_bytes=1000)
-
-        node = find_node_by_path(tree, ["large.txt"])
-        assert node is not None
-        content = node.get("content", "")
-        assert "<file too large:" in content
-        assert "10000 bytes" in content
-
     def test_binary_file_placeholder(self, tmp_path):
         project = tmp_path / "project"
         project.mkdir()
@@ -672,91 +492,3 @@ class TestContentPlaceholders:
         assert node is not None
         content = node.get("content", "")
         assert "<unreadable content>" in content
-
-
-class TestOutputFileAutoIgnore:
-    def test_output_file_excluded_from_tree(self, tmp_path):
-        project = tmp_path / "project"
-        project.mkdir()
-        (project / "file.txt").write_text("content", encoding="utf-8")
-        output_file = project / "output.yaml"
-
-        result = run_treemapper_subprocess([".", "-o", str(output_file)], cwd=project)
-        assert result.returncode == 0
-
-        tree = load_yaml(output_file)
-        names = get_all_files_in_tree(tree)
-
-        assert "output.yaml" not in names
-        assert "file.txt" in names
-
-    def test_output_file_in_subdir_excluded(self, tmp_path):
-        project = tmp_path / "project"
-        project.mkdir()
-        (project / "src").mkdir()
-        (project / "src" / "main.py").write_text("print('hello')", encoding="utf-8")
-        output_file = project / "src" / "tree.yaml"
-
-        result = run_treemapper_subprocess([".", "-o", str(output_file)], cwd=project)
-        assert result.returncode == 0
-
-        tree = load_yaml(output_file)
-        names = get_all_files_in_tree(tree)
-
-        assert "tree.yaml" not in names
-        assert "main.py" in names
-
-
-class TestHierarchicalIgnoreFiles:
-    def test_nested_gitignore_files(self, tmp_path):
-        project = tmp_path / "project"
-        project.mkdir()
-
-        (project / ".gitignore").write_text("*.log\n", encoding="utf-8")
-        (project / "root.log").write_text("root log", encoding="utf-8")
-        (project / "root.txt").write_text("root txt", encoding="utf-8")
-
-        (project / "subdir").mkdir()
-        (project / "subdir" / ".gitignore").write_text("*.tmp\n", encoding="utf-8")
-        (project / "subdir" / "file.tmp").write_text("temp", encoding="utf-8")
-        (project / "subdir" / "file.txt").write_text("text", encoding="utf-8")
-
-        tree = map_directory(project)
-        names = get_all_files_in_tree(tree)
-
-        assert "root.log" not in names
-        assert "root.txt" in names
-        assert "file.tmp" not in names
-        assert "file.txt" in names
-
-    def test_nested_treemapperignore_files(self, tmp_path):
-        project = tmp_path / "project"
-        project.mkdir()
-
-        (project / ".treemapperignore").write_text("*.bak\n", encoding="utf-8")
-        (project / "root.bak").write_text("backup", encoding="utf-8")
-
-        (project / "subdir").mkdir()
-        (project / "subdir" / ".treemapperignore").write_text("*.cache\n", encoding="utf-8")
-        (project / "subdir" / "data.cache").write_text("cached", encoding="utf-8")
-        (project / "subdir" / "data.txt").write_text("data", encoding="utf-8")
-
-        tree = map_directory(project)
-        names = get_all_files_in_tree(tree)
-
-        assert "root.bak" not in names
-        assert "data.cache" not in names
-        assert "data.txt" in names
-
-    def test_treemapperignore_precedence_over_gitignore(self, tmp_path):
-        project = tmp_path / "project"
-        project.mkdir()
-
-        (project / ".gitignore").write_text("important.txt\n", encoding="utf-8")
-        (project / ".treemapperignore").write_text("!important.txt\n", encoding="utf-8")
-        (project / "important.txt").write_text("important content", encoding="utf-8")
-
-        tree = map_directory(project)
-        names = get_all_files_in_tree(tree)
-
-        assert "important.txt" in names

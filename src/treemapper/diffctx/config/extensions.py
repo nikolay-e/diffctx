@@ -16,27 +16,27 @@ JAVA_EXTENSIONS = frozenset({".java"})
 
 KOTLIN_EXTENSIONS = frozenset({".kt", ".kts"})
 
-SCALA_EXTENSIONS = frozenset({".scala"})
+SCALA_EXTENSIONS = frozenset({".scala", ".sc"})
 
 JVM_EXTENSIONS = JAVA_EXTENSIONS | KOTLIN_EXTENSIONS | SCALA_EXTENSIONS
 
 C_EXTENSIONS = frozenset({".c", ".h"})
 
-CPP_EXTENSIONS = frozenset({".cpp", ".hpp", ".cc", ".hh", ".cxx", ".hxx"})
+CPP_EXTENSIONS = frozenset({".cpp", ".hpp", ".cc", ".hh", ".cxx", ".hxx", ".c++", ".h++", ".ipp", ".tpp"})
 
 C_FAMILY_EXTENSIONS = C_EXTENSIONS | CPP_EXTENSIONS | frozenset({".m", ".mm"})
 
 CSHARP_EXTENSIONS = frozenset({".cs"})
 
-FSHARP_EXTENSIONS = frozenset({".fs", ".fsx"})
+FSHARP_EXTENSIONS = frozenset({".fs", ".fsi", ".fsx"})
 
 DOTNET_EXTENSIONS = CSHARP_EXTENSIONS | FSHARP_EXTENSIONS
 
 RUBY_EXTENSIONS = frozenset({".rb", ".rake", ".gemspec"})
 
-PHP_EXTENSIONS = frozenset({".php"})
+PHP_EXTENSIONS = frozenset({".php", ".phtml", ".php3", ".php4", ".php5", ".php7", ".phps"})
 
-SHELL_EXTENSIONS = frozenset({".sh", ".bash", ".zsh", ".ps1"})
+SHELL_EXTENSIONS = frozenset({".sh", ".bash", ".zsh", ".ksh", ".fish", ".ps1", ".psm1", ".psd1"})
 
 SWIFT_EXTENSIONS = frozenset({".swift"})
 

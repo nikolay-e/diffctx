@@ -6,7 +6,7 @@ import statistics
 from dataclasses import dataclass, field
 
 from .types import Fragment, FragmentId
-from .utility import UtilityState, apply_fragment, compute_density, marginal_gain, utility_value
+from .utility import InformationNeed, UtilityState, apply_fragment, compute_density, marginal_gain, utility_value
 
 _BASELINE_K = 5
 
@@ -43,7 +43,7 @@ def _log_and_return(result: SelectionResult, core_ids: set[FragmentId]) -> Selec
 def _select_core_fragments(
     core_fragments: list[Fragment],
     rel: dict[FragmentId, float],
-    concepts: frozenset[str],
+    needs: tuple[InformationNeed, ...],
     state: _SelectionState,
 ) -> None:
     sorted_core = sorted(core_fragments, key=lambda f: rel.get(f.id, 0.0), reverse=True)
@@ -55,7 +55,7 @@ def _select_core_fragments(
         state.selected.append(frag)
         state.selected_ids.add(frag.id)
         state.remaining_budget -= frag.token_count
-        apply_fragment(frag, rel.get(frag.id, 0.0), concepts, state.utility_state)
+        apply_fragment(frag, rel.get(frag.id, 0.0), needs, state.utility_state)
 
 
 @dataclass
@@ -71,14 +71,14 @@ class _HeapEntry:
 def _build_initial_heap(
     candidates: list[Fragment],
     rel: dict[FragmentId, float],
-    concepts: frozenset[str],
+    needs: tuple[InformationNeed, ...],
     state: UtilityState,
     id_to_frag: dict[FragmentId, Fragment],
 ) -> list[_HeapEntry]:
     heap: list[_HeapEntry] = []
     for frag in candidates:
         if frag.token_count > 0:
-            density = compute_density(frag, rel.get(frag.id, 0.0), concepts, state)
+            density = compute_density(frag, rel.get(frag.id, 0.0), needs, state)
             heapq.heappush(heap, _HeapEntry(-density, frag.id, 0))
             id_to_frag[frag.id] = frag
     return heap
@@ -91,7 +91,7 @@ def _find_best_candidate_heap(
     selected_ids: set[FragmentId],
     remaining_budget: int,
     rel: dict[FragmentId, float],
-    concepts: frozenset[str],
+    needs: tuple[InformationNeed, ...],
     state: UtilityState,
 ) -> tuple[Fragment | None, float, int]:
     while heap:
@@ -106,7 +106,7 @@ def _find_best_candidate_heap(
             continue
 
         if entry.version < current_version:
-            new_density = compute_density(frag, rel.get(frag.id, 0.0), concepts, state)
+            new_density = compute_density(frag, rel.get(frag.id, 0.0), needs, state)
             heapq.heappush(heap, _HeapEntry(-new_density, frag.id, current_version))
             continue
 
@@ -124,7 +124,7 @@ def _find_best_singleton(
     base_selected_ids: set[FragmentId],
     base_budget: int,
     rel: dict[FragmentId, float],
-    concepts: frozenset[str],
+    needs: tuple[InformationNeed, ...],
     base_state: UtilityState,
 ) -> tuple[Fragment | None, float]:
     best_singleton = None
@@ -134,7 +134,7 @@ def _find_best_singleton(
             continue
         if _overlaps_with_selected(f, base_selected_ids):
             continue
-        gain = marginal_gain(f, rel.get(f.id, 0.0), concepts, base_state)
+        gain = marginal_gain(f, rel.get(f.id, 0.0), needs, base_state)
         if gain > best_gain:
             best_gain = gain
             best_singleton = f
@@ -145,7 +145,7 @@ def lazy_greedy_select(
     fragments: list[Fragment],
     core_ids: set[FragmentId],
     rel: dict[FragmentId, float],
-    concepts: frozenset[str],
+    needs: tuple[InformationNeed, ...],
     budget_tokens: int,
     tau: float = 0.08,
 ) -> SelectionResult:
@@ -160,7 +160,7 @@ def lazy_greedy_select(
     non_core_fragments = [f for f in fragments if f.id not in core_ids]
 
     state = _SelectionState(remaining_budget=budget_tokens)
-    _select_core_fragments(core_fragments, rel, concepts, state)
+    _select_core_fragments(core_fragments, rel, needs, state)
 
     if state.remaining_budget <= 0:
         used = budget_tokens - state.remaining_budget
@@ -180,9 +180,9 @@ def lazy_greedy_select(
 
     candidates = [f for f in non_core_fragments if not _overlaps_with_selected(f, state.selected_ids)]
     id_to_frag: dict[FragmentId, Fragment] = {}
-    heap = _build_initial_heap(candidates, rel, concepts, state.utility_state, id_to_frag)
+    heap = _build_initial_heap(candidates, rel, needs, state.utility_state, id_to_frag)
 
-    selections_for_baseline, threshold = _run_greedy_loop_heap(heap, id_to_frag, state, rel, concepts, tau)
+    selections_for_baseline, threshold = _run_greedy_loop_heap(heap, id_to_frag, state, rel, needs, tau)
 
     greedy_utility = utility_value(state.utility_state)
     base_selected_ids = {f.id for f in base_selected}
@@ -193,7 +193,7 @@ def lazy_greedy_select(
         base_budget,
         base_selected,
         rel,
-        concepts,
+        needs,
         base_state,
         greedy_utility,
         budget_tokens,
@@ -212,7 +212,7 @@ def _run_greedy_loop_heap(
     id_to_frag: dict[FragmentId, Fragment],
     state: _SelectionState,
     rel: dict[FragmentId, float],
-    concepts: frozenset[str],
+    needs: tuple[InformationNeed, ...],
     tau: float,
 ) -> tuple[int, float]:
     baseline_densities: list[float] = []
@@ -228,7 +228,7 @@ def _run_greedy_loop_heap(
             state.selected_ids,
             state.remaining_budget,
             rel,
-            concepts,
+            needs,
             state.utility_state,
         )
 
@@ -240,14 +240,13 @@ def _run_greedy_loop_heap(
             selections_for_baseline += 1
             if selections_for_baseline == _BASELINE_K and baseline_densities:
                 threshold = tau * statistics.median(baseline_densities)
-
-        if selections_for_baseline >= _BASELINE_K and best_density < threshold:
+        elif best_density < threshold:
             break
 
         state.selected.append(best_frag)
         state.selected_ids.add(best_frag.id)
         state.remaining_budget -= best_frag.token_count
-        apply_fragment(best_frag, rel.get(best_frag.id, 0.0), concepts, state.utility_state)
+        apply_fragment(best_frag, rel.get(best_frag.id, 0.0), needs, state.utility_state)
 
     return selections_for_baseline, threshold
 
@@ -258,13 +257,13 @@ def _try_singleton_improvement(
     base_budget: int,
     base_selected: list[Fragment],
     rel: dict[FragmentId, float],
-    concepts: frozenset[str],
+    needs: tuple[InformationNeed, ...],
     base_state: UtilityState,
     greedy_utility: float,
     budget_tokens: int,
     core_ids: set[FragmentId],
 ) -> SelectionResult | None:
-    best_singleton, best_gain = _find_best_singleton(non_core, base_selected_ids, base_budget, rel, concepts, base_state)
+    best_singleton, best_gain = _find_best_singleton(non_core, base_selected_ids, base_budget, rel, needs, base_state)
 
     if best_singleton is None:
         return None

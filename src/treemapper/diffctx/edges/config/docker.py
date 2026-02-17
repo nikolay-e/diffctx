@@ -31,11 +31,19 @@ def _is_compose_file(path: Path) -> bool:
     return path.name.lower() in _COMPOSE_NAMES
 
 
+def _strip_dot_slash(s: str) -> str:
+    while s.startswith("./"):
+        s = s[2:]
+    return s
+
+
 def _normalize_path(base_dir: Path, rel_path: str) -> Path:
     rel_path = rel_path.strip().strip("'\"")
-    if rel_path.startswith("./"):
-        rel_path = rel_path[2:]
-    return base_dir / rel_path
+    rel_path = _strip_dot_slash(rel_path)
+    normalized = base_dir / rel_path
+    if ".." in normalized.parts:
+        return base_dir
+    return normalized
 
 
 def _collect_docker_refs(docker_files: list[Path]) -> set[str]:
@@ -57,14 +65,14 @@ def _collect_dockerfile_refs(content: str, refs: set[str]) -> None:
     for match in _DOCKERFILE_COPY_RE.finditer(content):
         src = match.group(1)
         if not src.startswith("--") and not src.startswith("$"):
-            refs.add(src.strip().strip("'\"").lstrip("./"))
+            refs.add(_strip_dot_slash(src.strip().strip("'\"")))
 
 
 def _collect_compose_refs(content: str, refs: set[str]) -> None:
     for match in _COMPOSE_BUILD_RE.finditer(content):
-        refs.add(match.group(1).strip().lstrip("./"))
+        refs.add(_strip_dot_slash(match.group(1).strip()))
     for match in _COMPOSE_VOLUME_RE.finditer(content):
-        refs.add(match.group(1).strip().lstrip("./"))
+        refs.add(_strip_dot_slash(match.group(1).strip()))
 
 
 class DockerEdgeBuilder(EdgeBuilder):
@@ -134,7 +142,9 @@ class DockerEdgeBuilder(EdgeBuilder):
 
         if "*" in src_path:
             return
-        suffix = src_path.lstrip("./")
+        suffix = _strip_dot_slash(src_path)
+        if not suffix or suffix == ".":
+            return
         for p, frag_ids in path_to_frags.items():
             if str(p).endswith(suffix):
                 for frag_id in frag_ids:

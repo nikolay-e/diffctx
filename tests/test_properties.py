@@ -33,12 +33,20 @@ def test_file_content_no_null_bytes(content):
         assert "\x00" not in result
 
 
-@given(st.binary(min_size=10, max_size=1000))
+@given(
+    st.binary(min_size=10, max_size=1000),
+    st.integers(min_value=0, max_value=999),
+)
 @settings(max_examples=50)
-def test_binary_detection_with_null_byte(data):
+def test_binary_detection_with_null_byte(data, null_offset):
+    from treemapper.tree import BINARY_DETECTION_SAMPLE_SIZE
+
+    max_insert = min(len(data), BINARY_DETECTION_SAMPLE_SIZE - 1)
+    insert_pos = null_offset % (max_insert + 1)
+    content = data[:insert_pos] + b"\x00" + data[insert_pos:]
     with tempfile.TemporaryDirectory() as tmp_dir:
         f = Path(tmp_dir) / "test.bin"
-        f.write_bytes(b"\x00" + data)
+        f.write_bytes(content)
         result = _read_file_content(f, max_file_bytes=None)
         assert "<binary file:" in result
 
@@ -76,6 +84,73 @@ def test_ignore_patterns_roundtrip(patterns):
 def test_yaml_roundtrip_preserves_structure(node):
     yaml_str = to_yaml(node)
     parsed = yaml.safe_load(yaml_str)
+    assert parsed["name"] == node["name"]
+    assert parsed["type"] == node["type"]
+
+
+filename_safe = st.text(
+    alphabet=st.sampled_from("abcdefghijklmnopqrstuvwxyz0123456789_-."),
+    min_size=1,
+    max_size=20,
+)
+
+yaml_safe_content = st.text(
+    alphabet=st.characters(
+        blacklist_categories=("Cs", "Cc"),
+        whitelist_characters="\t\n",
+    ),
+    min_size=1,
+    max_size=200,
+).map(lambda s: s if s.endswith("\n") else s + "\n")
+
+
+@given(
+    st.fixed_dictionaries(
+        {
+            "name": filename_chars_with_nel,
+            "type": st.just("directory"),
+            "children": st.lists(
+                st.fixed_dictionaries(
+                    {
+                        "name": filename_safe,
+                        "type": st.just("file"),
+                        "content": yaml_safe_content,
+                    }
+                ),
+                min_size=0,
+                max_size=5,
+            ),
+        }
+    )
+)
+@settings(max_examples=100)
+def test_yaml_roundtrip_nested_tree(tree):
+    yaml_str = to_yaml(tree)
+    parsed = yaml.safe_load(yaml_str)
+    assert parsed["name"] == tree["name"]
+    assert parsed["type"] == tree["type"]
+    assert len(parsed.get("children", [])) == len(tree["children"])
+    for original, roundtripped in zip(tree["children"], parsed.get("children", [])):
+        assert roundtripped["name"] == original["name"]
+        assert roundtripped["content"] == original["content"]
+
+
+@given(
+    st.fixed_dictionaries(
+        {
+            "name": filename_chars_with_nel,
+            "type": st.sampled_from(["file", "directory"]),
+        }
+    )
+)
+@settings(max_examples=100)
+def test_json_roundtrip_preserves_structure(node):
+    import json
+
+    from treemapper import to_json
+
+    json_str = to_json(node)
+    parsed = json.loads(json_str)
     assert parsed["name"] == node["name"]
     assert parsed["type"] == node["type"]
 

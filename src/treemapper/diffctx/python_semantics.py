@@ -50,7 +50,7 @@ def _collect_refs_and_calls(tree: ast.Module) -> tuple[set[str], set[str]]:
 
 def _extract_func_type_refs(node: ast.FunctionDef | ast.AsyncFunctionDef) -> set[str]:
     type_refs = _names_from_expr(node.returns)
-    for a in node.args.args + node.args.kwonlyargs:
+    for a in node.args.posonlyargs + node.args.args + node.args.kwonlyargs:
         type_refs |= _names_from_expr(a.annotation)
     if node.args.vararg is not None:
         type_refs |= _names_from_expr(node.args.vararg.annotation)

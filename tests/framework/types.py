@@ -5,7 +5,7 @@ from pathlib import Path
 
 import tiktoken
 
-_ENCODER = tiktoken.get_encoding("cl100k_base")
+_ENCODER = tiktoken.get_encoding("o200k_base")
 
 
 def _count_tokens(text: str) -> int:
@@ -22,7 +22,6 @@ class YamlTestCase:
     must_include_content: list[str] = field(default_factory=list)
     must_not_include: list[str] = field(default_factory=list)
     commit_message: str = "Update files"
-    overhead_ratio: float = 0.3
     min_budget: int | None = None
     add_garbage_files: bool = True
     skip_garbage_check: bool = False
@@ -35,12 +34,8 @@ class YamlTestCase:
         estimated_fragments = max(len(all_files), 2)
         budget = content_tokens + (estimated_fragments * fragment_overhead)
         budget = int(budget * 2.5)
-        return max(500, budget)
-
-    def all_files(self) -> dict[str, str]:
-        result = dict(self.initial_files)
-        result.update(self.changed_files)
-        return result
+        floor = self.min_budget if self.min_budget is not None else 500
+        return max(floor, budget)
 
     @property
     def id(self) -> str:

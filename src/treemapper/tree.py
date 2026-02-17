@@ -39,7 +39,6 @@ KNOWN_BINARY_EXTENSIONS = frozenset(
         ".bmp",
         ".ico",
         ".webp",
-        ".svg",
         ".tiff",
         ".tif",
         ".mp3",
@@ -196,12 +195,10 @@ def _format_size_placeholder(file_size: int) -> str:
 
 def _detect_binary_in_sample(file_path: Path, file_size: int) -> tuple[bytes | None, str | None]:
     with file_path.open("rb") as f:
-        sample = f.read(BINARY_DETECTION_SAMPLE_SIZE)
-        if b"\x00" in sample:
-            logging.debug("Detected binary file %s", file_path.name)
-            return None, _format_binary_placeholder(file_size)
-        rest = f.read()
-        raw_bytes = sample + rest if rest else sample
+        raw_bytes = f.read()
+    if b"\x00" in raw_bytes[:BINARY_DETECTION_SAMPLE_SIZE]:
+        logging.debug("Detected binary file %s", file_path.name)
+        return None, _format_binary_placeholder(file_size)
     return raw_bytes, None
 
 

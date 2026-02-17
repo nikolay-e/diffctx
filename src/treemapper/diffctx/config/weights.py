@@ -65,7 +65,9 @@ class LangWeights:
 LANG_WEIGHTS: dict[str, LangWeights] = {
     "python": LangWeights(0.55, 0.60, 0.50, 0.20, 0.35),
     "javascript": LangWeights(0.50, 0.55, 0.45, 0.25, 0.35),
+    "jsx": LangWeights(0.50, 0.55, 0.45, 0.25, 0.35),
     "typescript": LangWeights(0.70, 0.75, 0.65, 0.15, 0.25),
+    "tsx": LangWeights(0.70, 0.75, 0.65, 0.15, 0.25),
     "rust": LangWeights(0.90, 0.95, 0.85, 0.10, 0.15),
     "java": LangWeights(0.85, 0.90, 0.80, 0.10, 0.15),
     "kotlin": LangWeights(0.80, 0.85, 0.75, 0.12, 0.18),

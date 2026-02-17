@@ -59,10 +59,10 @@ class PythonAstStrategy:
         range_ = self._get_node_range(node)
         if not range_:
             return None
-        return create_fragment_from_lines(path, lines, range_[0], range_[1], "function")
+        return create_fragment_from_lines(path, lines, range_[0], range_[1], "function", symbol_name=node.name)
 
     def _create_class_fragment(self, path: Path, lines: list[str], node: ast.ClassDef) -> Fragment | None:
         range_ = self._get_node_range(node)
         if not range_:
             return None
-        return create_fragment_from_lines(path, lines, range_[0], range_[1], "class")
+        return create_fragment_from_lines(path, lines, range_[0], range_[1], "class", symbol_name=node.name)

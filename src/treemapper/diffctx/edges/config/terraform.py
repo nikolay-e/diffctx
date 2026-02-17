@@ -38,7 +38,9 @@ def _extract_locals(content: str) -> set[str]:
     for line in content.splitlines():
         if _TF_LOCALS_RE.match(line):
             in_locals = True
-            brace_count = 1
+            brace_count = line.count("{") - line.count("}")
+            if brace_count <= 0:
+                in_locals = False
             continue
 
         if in_locals:
@@ -264,4 +266,7 @@ class TerraformEdgeBuilder(EdgeBuilder):
             return None
 
     def _is_in_module_dir(self, resolved: Path, module_dir: Path) -> bool:
-        return resolved.parent == module_dir or str(resolved).startswith(str(module_dir))
+        try:
+            return resolved.is_relative_to(module_dir)
+        except (ValueError, TypeError):
+            return False

@@ -7,7 +7,7 @@ from pathlib import Path
 from ...types import Fragment, FragmentId
 from ..base import EdgeBuilder, EdgeDict
 
-_HELM_VALUES_RE = re.compile(r"\{\{\s*\.Values\.([a-zA-Z0-9_.]+)\s*\}\}")
+_HELM_VALUES_RE = re.compile(r"\{\{-?\s*\.Values\.([a-zA-Z0-9_.]+)")
 _HELM_INCLUDE_RE = re.compile(r'\{\{\s*(?:include|template)\s+"([^"]+)"')
 _HELM_DEFINE_RE = re.compile(r'\{\{-?\s*define\s+"([^"]+)"')
 _HELM_RELEASE_RE = re.compile(r"\{\{\s*\.Release\.(\w+)\s*\}\}")

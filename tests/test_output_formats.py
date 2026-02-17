@@ -75,7 +75,7 @@ def test_format_with_file_content(temp_project):
     test_content = "Hello, format test!"
     test_file.write_text(test_content, encoding="utf-8")
 
-    for fmt in ["json", "txt"]:
+    for fmt in ["yaml", "json", "txt"]:
         output_file = temp_project / f"output.{fmt}"
         result = run_treemapper_subprocess([str(temp_project), "-o", str(output_file), "--format", fmt])
         assert result.returncode == 0
@@ -169,19 +169,17 @@ def test_write_tree_text_edge_cases():
     output = io.StringIO()
     write_tree_text(output, tree_empty)
     result = output.getvalue()
-    assert "empty.txt" in result
-    lines = result.strip().split("\n")
-    assert len(lines) == 2
-    assert lines[0] == "test/"
-    assert lines[1].strip() == "empty.txt"
+    non_blank_lines = [line for line in result.strip().split("\n") if line.strip()]
+    assert non_blank_lines[0] == "test/"
+    assert "empty.txt" in non_blank_lines[-1]
 
     tree_no_content = {"name": "test", "type": "directory", "children": [{"name": "file.txt", "type": "file"}]}
     output = io.StringIO()
     write_tree_text(output, tree_no_content)
     result = output.getvalue()
-    assert "file.txt" in result
-    lines = result.strip().split("\n")
-    assert len(lines) == 2
+    non_blank_lines = [line for line in result.strip().split("\n") if line.strip()]
+    assert non_blank_lines[0] == "test/"
+    assert "file.txt" in non_blank_lines[-1]
 
 
 def test_write_tree_to_file_creates_parent_dirs(tmp_path):

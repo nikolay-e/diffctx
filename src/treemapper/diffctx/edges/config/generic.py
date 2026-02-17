@@ -9,6 +9,66 @@ from ..base import EdgeBuilder, EdgeDict
 
 _CONFIG_EXTENSIONS = {".yaml", ".yml", ".json", ".toml", ".ini", ".env"}
 
+_CONFIG_KEY_STOPWORDS = frozenset(
+    {
+        "action",
+        "actions",
+        "assert",
+        "author",
+        "before",
+        "branch",
+        "change",
+        "client",
+        "config",
+        "create",
+        "default",
+        "delete",
+        "deploy",
+        "description",
+        "enable",
+        "engine",
+        "engines",
+        "export",
+        "exports",
+        "format",
+        "health",
+        "ignore",
+        "import",
+        "inputs",
+        "keywords",
+        "module",
+        "modules",
+        "number",
+        "object",
+        "openapi",
+        "option",
+        "options",
+        "output",
+        "outputs",
+        "params",
+        "plugin",
+        "plugins",
+        "private",
+        "public",
+        "remove",
+        "render",
+        "report",
+        "require",
+        "result",
+        "return",
+        "script",
+        "scripts",
+        "server",
+        "source",
+        "status",
+        "string",
+        "target",
+        "update",
+        "verbose",
+        "version",
+    }
+)
+
 _CONFIG_KEY_RE = re.compile(r"^\s*([a-zA-Z_][a-zA-Z0-9_-]*)\s*:", re.MULTILINE)
 _JSON_KEY_RE = re.compile(r'"([a-zA-Z_][a-zA-Z0-9_-]*)"\s*:')
 _TOML_KEY_RE = re.compile(r"^\s*([a-zA-Z_][a-zA-Z0-9_-]*)\s*=", re.MULTILINE)
@@ -86,7 +146,7 @@ class ConfigToCodeEdgeBuilder(EdgeBuilder):
     def _build_key_patterns(self, keys: set[str]) -> dict[str, re.Pattern[str]]:
         patterns: dict[str, re.Pattern[str]] = {}
         for key in keys:
-            if len(key) >= 6:
+            if len(key) >= 6 and key not in _CONFIG_KEY_STOPWORDS:
                 patterns[key] = re.compile(rf"\b{re.escape(key)}\b", re.IGNORECASE)
         return patterns
 

@@ -57,7 +57,6 @@ def test_default_python_ignores(temp_project, run_mapper):
 
 
 def test_git_directory_ignored(temp_project, run_mapper):
-    """Test that .git directory is properly ignored."""
     # Create .git directory structure
     git_dir = temp_project / ".git"
     git_dir.mkdir(exist_ok=True)
@@ -88,18 +87,24 @@ def test_git_directory_ignored(temp_project, run_mapper):
     assert "README.md" in all_files
 
 
-def test_default_verbosity(temp_project, run_mapper, capfd):
-    """Test that default verbosity is ERROR level."""
-    # Create some test files
-    (temp_project / "file1.txt").write_text("content1")
-    (temp_project / "file2.txt").write_text("content2")
+def test_default_directory_ignores(temp_project, run_mapper):
+    for dir_name in ["node_modules", "venv", ".venv"]:
+        d = temp_project / dir_name
+        d.mkdir(exist_ok=True)
+        (d / "file.txt").touch()
 
-    # Clear any buffer
-    capfd.readouterr()
+    for cache_name in [".mypy_cache", ".ruff_cache"]:
+        d = temp_project / cache_name
+        d.mkdir(exist_ok=True)
+        (d / "data.json").touch()
 
-    # Run with default verbosity (ERROR)
+    (temp_project / "real_code.py").touch()
+
     assert run_mapper([".", "-o", "directory_tree.yaml"])
-    _out, err = capfd.readouterr()
+    result = load_yaml(temp_project / "directory_tree.yaml")
+    all_files = get_all_files_in_tree(result)
 
-    # At ERROR level, there should be no INFO messages
-    assert "INFO:" not in err
+    for ignored in ["node_modules", "venv", ".venv", ".mypy_cache", ".ruff_cache"]:
+        assert ignored not in all_files
+
+    assert "real_code.py" in all_files

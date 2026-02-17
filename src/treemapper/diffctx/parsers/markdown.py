@@ -61,13 +61,28 @@ class MistuneMarkdownStrategy:
 
     def _find_all_headings(self, lines: list[str]) -> list[tuple[int, int]]:
         headings: list[tuple[int, int]] = []
-        for i, line in enumerate(lines):
-            stripped = line.lstrip()
-            if not stripped.startswith("#"):
+        i = 0
+        while i < len(lines):
+            stripped = lines[i].lstrip()
+            if stripped.startswith("#"):
+                level = len(stripped) - len(stripped.lstrip("#"))
+                if level <= 6 and (len(stripped) == level or stripped[level] == " "):
+                    headings.append((i + 1, level))
+                i += 1
                 continue
-            level = len(stripped) - len(stripped.lstrip("#"))
-            if level <= 6 and (len(stripped) == level or stripped[level] == " "):
-                headings.append((i + 1, level))
+
+            if stripped and i + 1 < len(lines):
+                next_stripped = lines[i + 1].strip()
+                if next_stripped and all(c == "=" for c in next_stripped):
+                    headings.append((i + 1, 1))
+                    i += 2
+                    continue
+                if len(next_stripped) >= 2 and all(c == "-" for c in next_stripped):
+                    headings.append((i + 1, 2))
+                    i += 2
+                    continue
+
+            i += 1
         return headings
 
     def _find_section_end(self, lines: list[str], _start_line: int, level: int, remaining_headings: list[tuple[int, int]]) -> int:

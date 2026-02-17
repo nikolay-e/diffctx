@@ -42,7 +42,8 @@ class CochangeEdgeBuilder(EdgeBuilder):
             result = subprocess.run(
                 ["git", "-C", str(repo_root), "log", "--name-only", "--format=", f"-n{COCHANGE.commits_limit}"],
                 capture_output=True,
-                text=True,
+                encoding="utf-8",
+                errors="replace",
                 check=True,
                 timeout=COCHANGE.timeout_seconds,
             )

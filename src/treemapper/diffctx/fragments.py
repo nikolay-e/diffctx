@@ -13,7 +13,6 @@ from .parsers import (  # noqa: F401
     PythonAstStrategy,
     RegexMarkdownStrategy,
     RuamelYamlStrategy,
-    TreeSitterStrategy,
     enclosing_fragment,
     fragment_file,
 )

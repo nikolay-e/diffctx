@@ -35,7 +35,10 @@ def _clamp_lexical_weight(raw_sim: float, src_path: Path | None = None, dst_path
 
     if raw_sim < LEXICAL.min_similarity:
         return 0.0
-    normalized = (raw_sim - LEXICAL.min_similarity) / (1.0 - LEXICAL.min_similarity)
+    denom = 1.0 - LEXICAL.min_similarity
+    if denom <= 0:
+        return lex_max
+    normalized = (raw_sim - LEXICAL.min_similarity) / denom
     return lex_min + normalized * (lex_max - lex_min)
 
 

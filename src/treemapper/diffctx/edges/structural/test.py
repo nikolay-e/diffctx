@@ -70,14 +70,21 @@ def _has_direct_import(test_frag: Fragment, src_frag: Fragment, repo_root: Path 
 
 
 def _extract_target_name_from_test(test_name: str) -> str | None:
-    if test_name.startswith("test_"):
-        return test_name[5:]
-    if test_name.endswith("_test"):
-        return test_name[:-5]
-    if ".test" in test_name:
-        return test_name.split(".test")[0]
-    if ".spec" in test_name:
-        return test_name.split(".spec")[0]
+    lower = test_name.lower()
+    if lower.startswith("test_"):
+        return lower[5:]
+    if lower.endswith("_test"):
+        return lower[:-5]
+    if ".test" in lower:
+        return lower.split(".test")[0]
+    if ".spec" in lower:
+        return lower.split(".spec")[0]
+    if test_name.startswith("Test") and len(test_name) > 4 and test_name[4].isupper():
+        return test_name[4:].lower()
+    if test_name.endswith("Tests") and len(test_name) > 5 and test_name[-6].islower():
+        return test_name[:-5].lower()
+    if test_name.endswith("Test") and len(test_name) > 4 and test_name[-5].islower():
+        return test_name[:-4].lower()
     return None
 
 
@@ -85,6 +92,39 @@ class TestEdgeBuilder(EdgeBuilder):
     weight_direct = EDGE_WEIGHTS["test_direct"].forward
     weight_naming = EDGE_WEIGHTS["test_naming"].forward
     reverse_weight_factor = EDGE_WEIGHTS["test_reverse"].forward / EDGE_WEIGHTS["test_direct"].forward
+
+    def discover_related_files(
+        self,
+        changed_files: list[Path],
+        all_candidate_files: list[Path],
+        repo_root: Path | None = None,
+    ) -> list[Path]:
+        changed_set = set(changed_files)
+        discovered: list[Path] = []
+
+        candidate_by_stem: dict[str, list[Path]] = defaultdict(list)
+        for c in all_candidate_files:
+            if c not in changed_set:
+                candidate_by_stem[c.stem.lower()].append(c)
+
+        for changed in changed_files:
+            stem = changed.stem.lower()
+            suffix = changed.suffix.lower()
+
+            if _is_test_file(changed):
+                target = _extract_target_name_from_test(changed.stem)
+                if target:
+                    for cand in candidate_by_stem.get(target, []):
+                        if cand.suffix.lower() == suffix:
+                            discovered.append(cand)
+            else:
+                test_stems = [f"test_{stem}", f"{stem}_test"]
+                for ts in test_stems:
+                    for cand in candidate_by_stem.get(ts, []):
+                        if cand.suffix.lower() == suffix and _is_test_file(cand):
+                            discovered.append(cand)
+
+        return discovered
 
     def build(self, fragments: list[Fragment], repo_root: Path | None = None) -> EdgeDict:
         edges: EdgeDict = {}
@@ -99,7 +139,7 @@ class TestEdgeBuilder(EdgeBuilder):
                 by_base[f.path.stem.lower()].append(f)
 
         for test_frag in test_frags:
-            target_name = _extract_target_name_from_test(test_frag.path.stem.lower())
+            target_name = _extract_target_name_from_test(test_frag.path.stem)
             if not target_name:
                 continue
 

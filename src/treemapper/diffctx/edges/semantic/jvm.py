@@ -17,7 +17,7 @@ _JAVA_PACKAGE_RE = re.compile(r"^\s*package\s+([a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_
 _JAVA_CLASS_RE = re.compile(
     r"^\s*(?:public |private |protected )?(?:abstract |final )?(?:class|interface|enum|record)\s+([A-Z]\w*)", re.MULTILINE
 )
-_JAVA_EXTENDS_RE = re.compile(r"\bextends\s+([A-Z]\w*)")
+_JAVA_EXTENDS_RE = re.compile(r"\bextends\s+([A-Z]\w*(?:\s*,\s*[A-Z]\w*)*)")
 _JAVA_IMPLEMENTS_RE = re.compile(r"\bimplements\s+([A-Z]\w*(?:\s*,\s*[A-Z]\w*)*)")
 
 _KOTLIN_IMPORT_RE = re.compile(r"^\s*import\s+([a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)*(?:\.[A-Z]\w*)?)", re.MULTILINE)
@@ -26,14 +26,23 @@ _KOTLIN_CLASS_RE = re.compile(
     re.MULTILINE,
 )
 _KOTLIN_FUN_RE = re.compile(
-    r"^\s*(?:public |private |internal |protected )?(?:suspend )?fun\s+(?:<[^>]+> )?([a-z]\w*)", re.MULTILINE
+    r"^\s*(?:(?:public|private|internal|protected|abstract|open|final|override|inline|external|tailrec|operator|infix|suspend|expect|actual)\s+)*fun\s+(?:<[^>]+>\s+)?([a-z]\w*)",
+    re.MULTILINE,
 )
 
 _SCALA_IMPORT_RE = re.compile(r"^\s*import\s+([a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)*(?:\.[A-Z_]\w*)?)", re.MULTILINE)
-_SCALA_CLASS_RE = re.compile(r"^\s*(?:abstract\s+)?(?:sealed\s+)?(?:case\s+)?(?:class|trait|object)\s+([A-Z]\w*)", re.MULTILINE)
+_SCALA_CLASS_RE = re.compile(
+    r"^\s*(?:(?:abstract|sealed|final|case|implicit|private|protected)\s+)*(?:class|trait|object)\s+([A-Z]\w*)",
+    re.MULTILINE,
+)
 _SCALA_DEF_RE = re.compile(r"^\s*(?:private |protected )?def\s+([a-z]\w*)", re.MULTILINE)
 
 _TYPE_REF_RE = re.compile(r"(?<![a-z_])([A-Z]\w*)\b")
+_KOTLIN_INHERIT_RE = re.compile(
+    r"(?:class|interface|object)\s+\w+(?:<[^>]*>)?(?:\([^)]*\))?\s*:\s*([A-Z]\w*(?:\s*,\s*[A-Z]\w*)*)"
+)
+_SCALA_WITH_RE = re.compile(r"\bwith\s+([A-Z]\w*)")
+
 _ANNOTATION_RE = re.compile(r"@([A-Z]\w*)")
 
 
@@ -79,13 +88,27 @@ def _extract_classes(content: str, path: Path) -> set[str]:
     return classes
 
 
-def _extract_inheritance(content: str) -> set[str]:
+def _extract_inheritance(content: str, path: Path) -> set[str]:
     refs: set[str] = set()
-    for m in _JAVA_EXTENDS_RE.finditer(content):
-        refs.add(m.group(1))
-    for m in _JAVA_IMPLEMENTS_RE.finditer(content):
-        for cls in m.group(1).split(","):
-            refs.add(cls.strip())
+    if _is_kotlin(path):
+        for m in _KOTLIN_INHERIT_RE.finditer(content):
+            for cls in m.group(1).split(","):
+                cls = cls.strip()
+                if cls:
+                    refs.add(cls)
+    elif _is_scala(path):
+        for m in _JAVA_EXTENDS_RE.finditer(content):
+            for cls in m.group(1).split(","):
+                refs.add(cls.strip())
+        for m in _SCALA_WITH_RE.finditer(content):
+            refs.add(m.group(1))
+    else:
+        for m in _JAVA_EXTENDS_RE.finditer(content):
+            for cls in m.group(1).split(","):
+                refs.add(cls.strip())
+        for m in _JAVA_IMPLEMENTS_RE.finditer(content):
+            for cls in m.group(1).split(","):
+                refs.add(cls.strip())
     return refs
 
 
@@ -176,7 +199,7 @@ class JVMEdgeBuilder(EdgeBuilder):
         edges: EdgeDict,
     ) -> None:
         ref_weights = [
-            (_extract_inheritance(jf.content), self.inheritance_weight),
+            (_extract_inheritance(jf.content, jf.path), self.inheritance_weight),
             (_extract_type_refs(jf.content), self.type_weight),
             (_extract_annotations(jf.content), self.annotation_weight),
         ]

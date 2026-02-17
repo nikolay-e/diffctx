@@ -1,5 +1,6 @@
 # tests/test_markdown_format.py
 import io
+import re
 
 import pytest
 
@@ -110,10 +111,9 @@ class TestMarkdownOutput:
         write_tree_markdown(output, tree)
         result = output.getvalue()
 
-        lines = result.split("\n")
-        has_plain_fence = any(line.strip() == "```" for line in lines)
-        has_fence_start = "```\n" in result or "```\r\n" in result
-        assert has_plain_fence or has_fence_start
+        assert "some content" in result
+        assert "```" in result
+        assert not re.search(r"```\w+", result)
 
     def test_placeholder_content_italic(self):
         tree = {
@@ -158,7 +158,7 @@ class TestMarkdownOutput:
         result = output.getvalue()
 
         assert "## empty.txt" in result
-        assert "```" not in result.split("## empty.txt")[1].split("\n\n")[0]
+        assert "```" not in result
 
     def test_no_content_key(self):
         tree = {"name": "project", "type": "directory", "children": [{"name": "nokey.txt", "type": "file"}]}
@@ -445,6 +445,51 @@ class TestMarkdownEdgeCases:
         md = tree_to_string(tree, "md")
         assert "## empty_dir/" in md
         assert "_(empty directory)_" in md
+
+    def test_content_with_markdown_headings(self, project_builder):
+        project_builder.add_file("notes.md", "# Top Level\n## Second Level\nSome text\n")
+
+        tree = map_directory(project_builder.root)
+        md = tree_to_string(tree, "md")
+
+        assert "# Top Level" in md
+        assert "## Second Level" in md
+        assert "```markdown" in md
+
+    def test_whitespace_only_content(self):
+        tree = {
+            "name": "project",
+            "type": "directory",
+            "children": [{"name": "spaces.txt", "type": "file", "content": "   \n  \n"}],
+        }
+        output = io.StringIO()
+        write_tree_markdown(output, tree)
+        result = output.getvalue()
+
+        assert "spaces.txt" in result
+
+    def test_multiple_sibling_files(self):
+        tree = {
+            "name": "project",
+            "type": "directory",
+            "children": [
+                {"name": "alpha.py", "type": "file", "content": "a = 1\n"},
+                {"name": "beta.js", "type": "file", "content": "let b = 2;\n"},
+                {"name": "gamma.txt", "type": "file", "content": "text\n"},
+            ],
+        }
+        output = io.StringIO()
+        write_tree_markdown(output, tree)
+        result = output.getvalue()
+
+        assert "## alpha.py" in result
+        assert "## beta.js" in result
+        assert "## gamma.txt" in result
+        assert "```python" in result
+        assert "```javascript" in result
+        assert "a = 1" in result
+        assert "let b = 2;" in result
+        assert "text" in result
 
     def test_gitignore_has_language_hint(self, project_builder):
         project_builder.add_file(".gitignore", "*.pyc\n")

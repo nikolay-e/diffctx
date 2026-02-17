@@ -78,7 +78,8 @@ def _handle_output_file(output_content: str, args: ParsedArgs) -> None:
     except IsADirectoryError:
         print(f"Error: {args.output_file} is a directory", file=sys.stderr)
         sys.exit(1)
-    except OSError:
+    except OSError as e:
+        print(f"Error: cannot write {args.output_file}: {e}", file=sys.stderr)
         sys.exit(1)
 
 

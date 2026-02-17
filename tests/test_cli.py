@@ -1,5 +1,6 @@
 # tests/test_cli.py
 import pytest
+import yaml
 
 from .conftest import run_treemapper_subprocess
 
@@ -28,10 +29,13 @@ def test_cli_version_display(temp_project):
 
 
 def test_main_module_execution(temp_project):
-    output_file = temp_project / "output.yaml"
+    output_file = temp_project / "output" / "output.yaml"
     result = run_treemapper_subprocess([str(temp_project), "-o", str(output_file)])
     assert result.returncode == 0
     assert output_file.exists()
+    tree_data = yaml.safe_load(output_file.read_text(encoding="utf-8"))
+    assert tree_data["type"] == "directory"
+    assert tree_data["name"] == temp_project.name
 
 
 def test_output_file_saved_message(temp_project):
