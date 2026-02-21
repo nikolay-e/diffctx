@@ -34,7 +34,7 @@ def _validate_budget(budget: int | None) -> None:
 
 
 def _validate_alpha(alpha: float) -> None:
-    if not (0 < alpha < 1):
+    if alpha <= 0 or alpha >= 1:
         _exit_error(f"--alpha must be between 0 and 1 (exclusive), got {alpha}")
 
 
@@ -81,10 +81,20 @@ def _resolve_ignore_file(ignore_file_arg: str | None) -> Path | None:
     return ignore_file
 
 
+def _resolve_whitelist_file(whitelist_file_arg: str | None) -> Path | None:
+    if not whitelist_file_arg:
+        return None
+    whitelist_file = Path(whitelist_file_arg).resolve()
+    if not whitelist_file.is_file():
+        _exit_error(f"Whitelist file '{whitelist_file_arg}' does not exist.")
+    return whitelist_file
+
+
 @dataclass
 class ParsedArgs:
     root_dir: Path
     ignore_file: Path | None
+    whitelist_file: Path | None
     output_file: Path | None
     no_default_ignores: bool
     verbosity: int
@@ -132,6 +142,7 @@ def parse_args() -> ParsedArgs:
     parser.add_argument("-v", "--version", action="version", version=f"%(prog)s {__version__}")
     parser.add_argument("directory", nargs="?", default=".", help="The directory to analyze")
     parser.add_argument("-i", "--ignore-file", default=None, help="Path to custom ignore file")
+    parser.add_argument("-w", "--whitelist-file", default=None, help="Path to whitelist file (only matching files are included)")
     parser.add_argument(
         "-o",
         "--output-file",
@@ -211,6 +222,7 @@ def parse_args() -> ParsedArgs:
     output_format = "yaml" if args.format == "yml" else args.format
     output_file, force_stdout = _resolve_output_file(args.output_file, output_format)
     ignore_file = _resolve_ignore_file(args.ignore_file)
+    whitelist_file = _resolve_whitelist_file(args.whitelist_file)
 
     log_level_map = {"error": 0, "warning": 1, "info": 2, "debug": 3}
     verbosity = log_level_map[args.log_level]
@@ -218,6 +230,7 @@ def parse_args() -> ParsedArgs:
     return ParsedArgs(
         root_dir=root_dir,
         ignore_file=ignore_file,
+        whitelist_file=whitelist_file,
         output_file=output_file,
         no_default_ignores=args.no_default_ignores,
         verbosity=verbosity,

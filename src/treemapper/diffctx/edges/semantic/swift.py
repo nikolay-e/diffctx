@@ -4,6 +4,7 @@ import re
 from collections import defaultdict
 from pathlib import Path
 
+from ...config.weights import EDGE_WEIGHTS
 from ...types import Fragment, FragmentId
 from ..base import EdgeBuilder, EdgeDict
 
@@ -82,13 +83,13 @@ class _SwiftIndex:
 
 class SwiftEdgeBuilder(EdgeBuilder):
     weight = 0.75
-    import_weight = 0.70
-    conformance_weight = 0.70
-    extension_weight = 0.70
-    type_weight = 0.65
-    func_weight = 0.60
-    same_module_weight = 0.50
-    reverse_weight_factor = 0.4
+    import_weight = EDGE_WEIGHTS["swift_import"].forward
+    conformance_weight = EDGE_WEIGHTS["swift_conformance"].forward
+    extension_weight = EDGE_WEIGHTS["swift_extension"].forward
+    type_weight = EDGE_WEIGHTS["swift_type"].forward
+    func_weight = EDGE_WEIGHTS["swift_func"].forward
+    same_module_weight = EDGE_WEIGHTS["swift_same_module"].forward
+    reverse_weight_factor = EDGE_WEIGHTS["swift_import"].reverse_factor
 
     def discover_related_files(
         self,

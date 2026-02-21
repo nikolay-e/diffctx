@@ -72,9 +72,9 @@ def test_diff_yaml_structure(yaml_test_runner: YamlTestRunner, case: YamlTestCas
     assert isinstance(fragments, list), f"[{case.id}] 'fragments' is not a list"
 
     if "fragment_count" in context:
-        assert context["fragment_count"] == len(fragments), (
-            f"[{case.id}] fragment_count ({context['fragment_count']}) " f"!= len(fragments) ({len(fragments)})"
-        )
+        assert context["fragment_count"] == len(
+            fragments
+        ), f"[{case.id}] fragment_count ({context['fragment_count']}) != len(fragments) ({len(fragments)})"
 
     for i, frag in enumerate(fragments):
         assert "path" in frag, f"[{case.id}] Fragment {i} missing 'path'"

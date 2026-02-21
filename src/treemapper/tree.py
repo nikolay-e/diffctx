@@ -7,7 +7,7 @@ from typing import Any
 
 import pathspec
 
-from .ignore import should_ignore
+from .ignore import is_whitelisted, should_ignore
 
 BINARY_DETECTION_SAMPLE_SIZE = 8192
 MAX_SAFE_FILE_SIZE = 100 * 1024 * 1024  # 100 MB - prevent OOM when --max-file-bytes 0
@@ -108,6 +108,7 @@ class TreeBuildContext:
     max_depth: int | None = None
     no_content: bool = False
     max_file_bytes: int | None = None
+    whitelist_spec: pathspec.PathSpec | None = None
     _resolved_output_file: Path | None = None
 
     def __post_init__(self) -> None:
@@ -161,6 +162,9 @@ def _process_entry(entry: Path, ctx: TreeBuildContext, current_depth: int) -> di
     if should_ignore(path_to_check, ctx.combined_spec):
         return None
 
+    if not is_whitelisted(relative_path, ctx.whitelist_spec, is_dir=is_dir):
+        return None
+
     if entry.is_symlink() or not entry.exists():
         logging.debug("Skipping '%s': symlink or not exists", path_to_check)
         return None
@@ -176,6 +180,8 @@ def _create_node(entry: Path, ctx: TreeBuildContext, current_depth: int, is_dir:
             children = build_tree(entry, ctx, current_depth + 1)
             if children:
                 node["children"] = children
+            elif ctx.whitelist_spec is not None:
+                return None
         elif not ctx.no_content:
             node["content"] = _read_file_content(entry, ctx.max_file_bytes)
 

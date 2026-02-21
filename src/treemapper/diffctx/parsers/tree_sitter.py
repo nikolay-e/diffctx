@@ -168,65 +168,122 @@ class TreeSitterStrategy:
     ) -> None:
         if added_ends is None:
             added_ends = set()
-
         if depth > _MAX_RECURSION_DEPTH:
             return
 
+        if node.type in definition_types:
+            self._handle_definition_node(node, code_bytes, path, lines, definition_types, fragments, covered, added_ends, depth)
+        else:
+            self._recurse_children(node, code_bytes, path, lines, definition_types, fragments, covered, added_ends, depth)
+
+    def _handle_definition_node(
+        self,
+        node: Node,
+        code_bytes: bytes,
+        path: Path,
+        lines: list[str],
+        definition_types: set[str],
+        fragments: list[Fragment],
+        covered: set[tuple[int, int]],
+        added_ends: set[tuple[str, int]],
+        depth: int,
+    ) -> None:
         start = node.start_point[0] + 1
         end = node.end_point[0] + 1
+        kind = self._node_type_to_kind(node.type, node)
 
-        if node.type in definition_types:
-            kind = self._node_type_to_kind(node.type, node)
+        if (kind, end) in added_ends:
+            self._recurse_children(node, code_bytes, path, lines, definition_types, fragments, covered, added_ends, depth)
+            return
 
-            if (kind, end) in added_ends:
-                for child in node.children:
-                    self._extract_definitions(
-                        child, code_bytes, path, lines, definition_types, fragments, covered, added_ends, depth + 1
-                    )
-                return
+        sym_name = self._extract_symbol_name(node)
 
-            sym_name = self._extract_symbol_name(node)
+        if kind in _CONTAINER_KINDS and self._try_container_split(
+            node, code_bytes, path, lines, definition_types, fragments, covered, added_ends, depth, start, end, kind, sym_name
+        ):
+            return
 
-            if kind in _CONTAINER_KINDS:
-                first_child_start = self._first_child_def_line(node, definition_types)
-                if first_child_start is not None and first_child_start > start:
-                    header_end = first_child_start - 1
-                    snippet = create_snippet(lines, start, header_end)
-                    if snippet:
-                        fragments.append(
-                            Fragment(
-                                id=FragmentId(path=path, start_line=start, end_line=header_end),
-                                kind=kind,
-                                content=snippet,
-                                identifiers=extract_identifiers(snippet, profile="code"),
-                                symbol_name=sym_name,
-                            )
-                        )
-                        covered.add((start, header_end))
-                    added_ends.add((kind, end))
-                    for child in node.children:
-                        self._extract_definitions(
-                            child, code_bytes, path, lines, definition_types, fragments, covered, added_ends, depth + 1
-                        )
-                    return
+        self._add_leaf_definition(node, code_bytes, path, start, end, kind, sym_name, fragments, covered, added_ends)
+        self._recurse_children(node, code_bytes, path, lines, definition_types, fragments, covered, added_ends, depth)
 
-            if end - start + 1 >= MIN_FRAGMENT_LINES:
-                snippet = code_bytes[node.start_byte : node.end_byte].decode("utf-8", errors="replace")
-                if not snippet.endswith("\n"):
-                    snippet += "\n"
-
-                fragments.append(
-                    Fragment(
-                        id=FragmentId(path=path, start_line=start, end_line=end),
-                        kind=kind,
-                        content=snippet,
-                        identifiers=extract_identifiers(snippet, profile="code"),
-                        symbol_name=sym_name,
-                    )
+    def _try_container_split(
+        self,
+        node: Node,
+        code_bytes: bytes,
+        path: Path,
+        lines: list[str],
+        definition_types: set[str],
+        fragments: list[Fragment],
+        covered: set[tuple[int, int]],
+        added_ends: set[tuple[str, int]],
+        depth: int,
+        start: int,
+        end: int,
+        kind: str,
+        sym_name: str | None,
+    ) -> bool:
+        first_child_start = self._first_child_def_line(node, definition_types)
+        if first_child_start is None or first_child_start <= start:
+            return False
+        header_end = first_child_start - 1
+        snippet = create_snippet(lines, start, header_end)
+        if snippet:
+            fragments.append(
+                Fragment(
+                    id=FragmentId(path=path, start_line=start, end_line=header_end),
+                    kind=kind,
+                    content=snippet,
+                    identifiers=extract_identifiers(snippet, profile="code"),
+                    symbol_name=sym_name,
                 )
-                covered.add((start, end))
-                added_ends.add((kind, end))
+            )
+            covered.add((start, header_end))
+        added_ends.add((kind, end))
+        self._recurse_children(node, code_bytes, path, lines, definition_types, fragments, covered, added_ends, depth)
+        return True
 
+    @staticmethod
+    def _add_leaf_definition(
+        node: Node,
+        code_bytes: bytes,
+        path: Path,
+        start: int,
+        end: int,
+        kind: str,
+        sym_name: str | None,
+        fragments: list[Fragment],
+        covered: set[tuple[int, int]],
+        added_ends: set[tuple[str, int]],
+    ) -> None:
+        if end - start + 1 < MIN_FRAGMENT_LINES:
+            return
+        snippet = code_bytes[node.start_byte : node.end_byte].decode("utf-8", errors="replace")
+        if not snippet.endswith("\n"):
+            snippet += "\n"
+        fragments.append(
+            Fragment(
+                id=FragmentId(path=path, start_line=start, end_line=end),
+                kind=kind,
+                content=snippet,
+                identifiers=extract_identifiers(snippet, profile="code"),
+                symbol_name=sym_name,
+            )
+        )
+        covered.add((start, end))
+        added_ends.add((kind, end))
+
+    def _recurse_children(
+        self,
+        node: Node,
+        code_bytes: bytes,
+        path: Path,
+        lines: list[str],
+        definition_types: set[str],
+        fragments: list[Fragment],
+        covered: set[tuple[int, int]],
+        added_ends: set[tuple[str, int]],
+        depth: int,
+    ) -> None:
         for child in node.children:
             self._extract_definitions(child, code_bytes, path, lines, definition_types, fragments, covered, added_ends, depth + 1)
 
@@ -259,22 +316,31 @@ class TreeSitterStrategy:
         return "function"
 
     @staticmethod
-    def _extract_symbol_name(node: Node) -> str | None:
-        if node.type == "decorated_definition":
-            for child in node.children:
-                if child.type in {"function_definition", "class_definition"}:
-                    node = child
-                    break
+    def _unwrap_decorated(node: Node) -> Node:
+        if node.type != "decorated_definition":
+            return node
+        for child in node.children:
+            if child.type in {"function_definition", "class_definition"}:
+                return child
+        return node
 
-        name_fields = ("name", "declarator")
-        for field_name in name_fields:
+    @staticmethod
+    def _unwrap_declarator(name_node: Node) -> Node:
+        while name_node.type in ("pointer_declarator", "function_declarator"):
+            inner = name_node.child_by_field_name("declarator")
+            if inner is None:
+                break
+            name_node = inner
+        return name_node
+
+    @classmethod
+    def _extract_symbol_name(cls, node: Node) -> str | None:
+        node = cls._unwrap_decorated(node)
+        for field_name in ("name", "declarator"):
             name_node = node.child_by_field_name(field_name)
-            if name_node is not None:
-                while name_node.type in ("pointer_declarator", "function_declarator"):
-                    inner = name_node.child_by_field_name("declarator")
-                    if inner is None:
-                        break
-                    name_node = inner
-                if name_node.type == "identifier" or name_node.named_child_count == 0:
-                    return name_node.text.decode("utf-8") if name_node.text else None
+            if name_node is None:
+                continue
+            name_node = cls._unwrap_declarator(name_node)
+            if name_node.type == "identifier" or name_node.named_child_count == 0:
+                return name_node.text.decode("utf-8") if name_node.text else None
         return None

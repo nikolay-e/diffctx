@@ -16,7 +16,7 @@ def _assert_all_fragments_bracket_balanced(frags):
         if frag.kind in _CONTAINER_HEADER_KINDS:
             continue
         balance = _compute_bracket_balance(frag.content)
-        assert balance == 0, f"Unbalanced brackets (balance={balance}) in fragment {frag.id}: " f"{frag.content[:80]}"
+        assert balance == 0, f"Unbalanced brackets (balance={balance}) in fragment {frag.id}: {frag.content[:80]}"
 
 
 def _assert_fragments_span_file(frags, total_file_lines):
@@ -25,9 +25,9 @@ def _assert_fragments_span_file(frags, total_file_lines):
     min_start = min(f.id.start_line for f in frags)
     max_end = max(f.id.end_line for f in frags)
     assert min_start == 1, f"First fragment should start at line 1, starts at {min_start}"
-    assert max_end >= total_file_lines - 1, (
-        f"Last fragment should reach near end of file " f"(line {total_file_lines}), ends at {max_end}"
-    )
+    assert (
+        max_end >= total_file_lines - 1
+    ), f"Last fragment should reach near end of file (line {total_file_lines}), ends at {max_end}"
 
 
 class TestBracketBalancedFragments:
@@ -235,7 +235,7 @@ class TestTextBoundaries:
             content = frag.content.rstrip()
             if content:
                 last_char = content[-1]
-                assert last_char in '.!?"', f"Non-final fragment should end at sentence boundary: " f"...{content[-50:]}"
+                assert last_char in '.!?"', f"Non-final fragment should end at sentence boundary: ...{content[-50:]}"
 
 
 class TestEdgeCases:
@@ -342,9 +342,9 @@ class TestPySBDLineTracking:
         all_lines = content.splitlines()
         for frag in frags:
             assert 1 <= frag.start_line <= len(all_lines), f"start_line {frag.start_line} out of range [1, {len(all_lines)}]"
-            assert frag.start_line <= frag.end_line <= len(all_lines), (
-                f"end_line {frag.end_line} out of range " f"[{frag.start_line}, {len(all_lines)}]"
-            )
+            assert (
+                frag.start_line <= frag.end_line <= len(all_lines)
+            ), f"end_line {frag.end_line} out of range [{frag.start_line}, {len(all_lines)}]"
             expected = "\n".join(all_lines[frag.start_line - 1 : frag.end_line])
             if not expected.endswith("\n"):
                 expected += "\n"

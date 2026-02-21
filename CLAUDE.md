@@ -2,180 +2,40 @@
 
 <!-- Extends ../CLAUDE.md -->
 
-[![PyPI](https://img.shields.io/pypi/v/treemapper)](https://pypi.org/project/treemapper/)
-[![Downloads](https://img.shields.io/pypi/dm/treemapper)](https://pypi.org/project/treemapper/)
-[![License](https://img.shields.io/github/license/nikolay-e/treemapper)](https://github.com/nikolay-e/treemapper/blob/main/LICENSE)
+## Ultimate Goal
 
-**Export your codebase for AI/LLM context in one command.**
+**CRITICAL: This is the guiding star of the entire project.
+Every feature, every design decision, every line of code must
+serve this goal. It is an asymptotic ideal — not a finish line
+to cross, but a direction to relentlessly pursue.**
 
-```bash
-pip install treemapper                    # core (no native extensions)
-pip install 'treemapper[tree-sitter]'     # + AST parsing for 10 languages
-treemapper . -o context.yaml              # paste into ChatGPT/Claude
-```
+**Maximize the speed and depth of understanding textual
+information — for any reader, in any scenario.**
 
-## Why TreeMapper?
+Whether the consumer is an LLM processing a context window or a
+human reviewing a code change, TreeMapper's job is the same:
+extract the maximum signal from a codebase and present it in the
+clearest, most information-dense form possible. Every design
+decision optimizes for **comprehension-per-token** — the ratio
+of understanding gained to attention spent. This metric is the
+single lens through which all trade-offs are evaluated.
 
-Unlike `tree` or `find`, TreeMapper exports **structure + file
-contents** in a format optimized for LLM context windows:
+---
 
-```yaml
-name: myproject
-type: directory
-children:
-  - name: main.py
-    type: file
-    content: |
-      def hello():
-          print("Hello, World!")
-  - name: utils/
-    type: directory
-    children:
-      - name: helpers.py
-        type: file
-        content: |
-          def add(a, b):
-              return a + b
-```
+## Two Modes of Operation
 
-## Usage
+**Tree Mapping Mode** (`treemapper .`) — Filesystem-focused.
+Walks the directory tree respecting hierarchical ignore patterns,
+reads file contents with binary/encoding detection, and serializes
+to YAML/JSON/text/Markdown. Deterministic, side-effect-free.
 
-```bash
-treemapper                               # current dir, YAML to stdout
-treemapper .                          # YAML to stdout + token count
-treemapper . -o tree.yaml             # save to file
-treemapper . -o                       # save to tree.yaml (default)
-treemapper . -o -                     # explicit stdout output
-treemapper . -f json                  # JSON format
-treemapper . -f txt                   # plain text with indentation
-treemapper . -f md                    # Markdown with fenced code
-treemapper . -f yml                   # YAML (alias)
-treemapper . --no-content             # structure only
-treemapper . --max-depth 3            # limit depth (0=root, 1=children)
-treemapper . --max-file-bytes 10000   # skip files > 10KB (default: 10 MB)
-treemapper . --max-file-bytes 0       # no limit
-treemapper . -i custom.ignore         # custom ignore patterns
-treemapper . --no-default-ignores     # disable .gitignore + defaults
-treemapper . --log-level info         # log level (default: error)
-treemapper . -c                       # copy to clipboard
-treemapper . -c -o tree.yaml          # clipboard + save to file
-treemapper -v                         # show version
-```
+**Diff Context Mode** (`treemapper . --diff`) — Semantics-focused.
+Analyzes a git diff to intelligently select the minimal set of
+code fragments needed to understand a change. For the formal
+theoretical foundation, see the research paper:
+[Context-Selection for Git Diff][paper].
 
-## Diff Context Mode
-
-Smart context selection for git diffs — automatically finds the
-minimal set of code fragments needed to understand a change:
-
-```bash
-treemapper . --diff HEAD~1..HEAD      # recent changes
-treemapper . --diff main..feature     # feature branch
-treemapper . --diff HEAD~1 --budget 30000  # limit tokens
-treemapper . --diff HEAD~1 --full     # all changed code
-```
-
-Uses graph-based relevance propagation (Personalized PageRank)
-to select the most important context. Output size is controlled
-by algorithm convergence (τ-stopping) by default, or an explicit
-`--budget` token limit. Understands imports, type references,
-config dependencies, and co-change patterns across 15+
-programming languages.
-
-Output format:
-
-```yaml
-name: myproject
-type: diff_context
-fragment_count: 5
-fragments:
-  - path: src/main.py
-    lines: "10-25"
-    kind: function
-    symbol: process_data
-    content: |
-      def process_data(items):
-          ...
-```
-
-Options:
-
-| Flag       | Default       | Description                                    |
-|------------|---------------|------------------------------------------------|
-| `--budget` | none          | Token limit (convergence-based by default)     |
-| `--alpha`  | 0.60          | PPR damping factor                             |
-| `--tau`    | 0.08          | Stopping threshold                             |
-| `--full`   | false         | Include all changed code                       |
-
-## Token Counting
-
-Token count and size are always displayed on stderr:
-
-```text
-12,847 tokens (o200k_base), 52.3 KB
-```
-
-For large outputs (>1MB), approximate counts with `~` prefix:
-
-```text
-~125,000 tokens (o200k_base), 5.2 MB
-```
-
-Uses tiktoken with `o200k_base` encoding (GPT-4o tokenizer).
-
-## Clipboard Support
-
-Copy output directly to clipboard with `-c` or `--copy`:
-
-```bash
-treemapper . -c                       # copy (no stdout)
-treemapper . -c -o tree.yaml          # copy + save to file
-```
-
-**System Requirements:**
-
-- **macOS:** `pbcopy` (pre-installed)
-- **Windows:** `clip` (pre-installed)
-- **Linux (Wayland):** `wl-copy`
-- **Linux (X11):** `xclip` or `xsel`
-
-## Python API
-
-```python
-from treemapper import map_directory
-from treemapper import to_yaml, to_json, to_text, to_markdown
-
-tree = map_directory(
-    path,                    # directory path
-    max_depth=None,          # limit traversal depth
-    no_content=False,        # exclude file contents
-    max_file_bytes=None,     # skip large files
-    ignore_file=None,        # custom ignore file
-    no_default_ignores=False,# disable default ignores
-)
-
-yaml_str = to_yaml(tree)
-json_str = to_json(tree)
-text_str = to_text(tree)
-md_str = to_markdown(tree)
-```
-
-## Ignore Patterns
-
-Respects `.gitignore` and `.treemapperignore` automatically.
-Use `--no-default-ignores` to disable all ignore processing
-(`.gitignore`, `.treemapperignore`, and built-in defaults).
-
-- Hierarchical: nested ignore files at each directory level
-- Negation patterns: `!important.log` un-ignores a file
-- Anchored patterns: `/root_only.txt` matches only in root
-- Output file is always auto-ignored
-
-## Content Placeholders
-
-- `<file too large: N bytes>` — exceeds `--max-file-bytes`
-- `<binary file: N bytes>` — binary file detected
-- `<unreadable content: not utf-8>` — not valid UTF-8
-- `<unreadable content>` — permission denied or I/O error
+[paper]: https://nikolay-eremeev.com/blog/context-selection-git-diff/
 
 ## Development
 
@@ -202,234 +62,6 @@ distinctive markers. Tests verify the algorithm excludes this
 noise, catching regressions in relevance filtering. Each garbage
 file uses unique prefixed identifiers (e.g. `GARBAGE_*`) so leaks
 are unambiguously detectable.
-
----
-
-## Two Modes of Operation
-
-TreeMapper operates in two fundamentally different modes that
-share output formatting, token counting, and file reading
-infrastructure:
-
-**Tree Mapping Mode** (`treemapper .`) — Filesystem-focused.
-Walks the directory tree respecting hierarchical ignore patterns,
-reads file contents with binary/encoding detection, and serializes
-to YAML/JSON/text/Markdown. Deterministic, side-effect-free.
-
-**Diff Context Mode** (`treemapper . --diff`) — Semantics-focused.
-Analyzes a git diff to intelligently select the minimal set of
-code fragments needed to understand a change. This is the core
-intellectual property of the project — a graph-based relevance
-engine described in detail below. For the formal theoretical
-foundation, see the research paper:
-[Context-Selection for Git Diff][paper].
-
-[paper]: https://nikolay-eremeev.com/blog/context-selection-git-diff/
-
----
-
-## Diff Context: Architecture & Design
-
-### The Problem
-
-When reviewing a code change, the diff alone is rarely sufficient.
-A developer needs surrounding context: the function being called,
-the interface being implemented, the config driving deployment.
-But naively including "everything related" explodes the context
-window. The challenge is selecting the **minimal, sufficient
-context** within a token budget.
-
-### The Approach: Graph-Based Relevance Propagation
-
-The diffctx engine models a codebase as a **weighted directed
-graph** where nodes are semantic code fragments and edges represent
-dependencies between them. Changed code seeds the graph, relevance
-propagates through edges via Personalized PageRank, and a
-budget-aware greedy algorithm selects the best fragments.
-
-This approach was chosen over simpler alternatives (call-graph
-depth, grep-based expansion, file-level inclusion) because:
-
-- **Transitive importance decays naturally** — a function calling
-  a modified function is relevant; a function calling *that*
-  function is less so. PPR captures this without manual depth
-  limits.
-- **Heterogeneous relationships combine gracefully** — imports,
-  type references, config links, test patterns, and lexical
-  similarity all contribute edges with different weights. No
-  single signal captures all dependencies.
-- **Budget optimization is principled** — submodular utility
-  maximization with lazy greedy selection gives near-optimal
-  coverage per token spent.
-
-### Pipeline Stages
-
-The engine operates as a 7-stage pipeline:
-
-1. **Diff Parsing** — Extract changed file paths and exact line
-   ranges from git diff output.
-
-2. **Core Fragment Identification** — Break changed files into
-   semantic units (functions, classes, config blocks, doc sections)
-   using language-aware parsers, then identify which fragments
-   cover the actual changed lines.
-
-3. **Concept Extraction** — Extract identifiers from added/removed
-   diff lines. These "diff concepts" represent the vocabulary of
-   the change and drive relevance scoring.
-
-4. **Universe Expansion** — Discover related files beyond those
-   directly changed. Edge builders scan for imports, config
-   references, naming patterns. Rare identifiers (appearing in
-   ≤3 files) trigger targeted file discovery.
-
-5. **Graph Construction** — Build fragment-level dependency graph.
-   26 edge builders contribute weighted edges across 6 categories
-   (see below). Edges are aggregated via max — if any builder
-   thinks two fragments are related, the strongest signal wins.
-   Hub suppression downweights over-connected nodes (e.g. common
-   utilities) to prevent them from dominating the graph.
-
-6. **Relevance Scoring (PPR)** — Run Personalized PageRank seeded
-   from core (changed) fragments. The damping factor α=0.60
-   controls propagation depth: 60% chance of following an edge,
-   40% chance of teleporting back to changed code. Convergence
-   produces a relevance score per fragment.
-
-7. **Budget-Aware Selection** — A lazy greedy algorithm selects
-   fragments maximizing density (marginal utility per token). Core
-   fragments are selected first, then expansion candidates ordered
-   by a max-heap. A τ-based stopping threshold (relative to
-   baseline density median) prevents noise accumulation. When no
-   explicit `--budget` is set, τ-stopping alone controls output
-   size — the algorithm converges naturally without a hard token
-   cap.
-
-### Edge Taxonomy: Six Perspectives on Code Relationships
-
-The system intentionally models relationships from multiple
-independent perspectives. Each catches blind spots the others miss.
-
-**Semantic Edges** — Language-aware code dependencies.
-Import/export resolution, function calls, type references, symbol
-usage. 11 language-specific builders (Python, JavaScript/TypeScript,
-Go, Rust, Java/Kotlin/Scala, C/C++, C#/.NET, Ruby, PHP, Swift,
-Shell). Weights reflect type-system reliability: Rust symbol refs
-(0.95) are trusted more than Python calls (0.55) because static
-analysis is more reliable in strict type systems. All semantic
-edges are asymmetric — "A imports B" is a stronger signal than
-"B is imported by A" — modeled via reverse weight factors
-(0.4–0.7).
-
-**Configuration Edges** — Infrastructure-to-code dependencies that
-don't appear in source. Docker COPY/FROM to source files,
-Kubernetes manifests to application code, Terraform modules to
-infrastructure scripts, CI/CD workflows to tested code, Helm
-templates to services, build system configs to compiled sources,
-generic config keys to code referencing them. 7 specialized
-builders covering the DevOps ecosystem.
-
-**Structural Edges** — Filesystem and organizational proximity.
-Containment (parent-child directory nesting), test-code
-associations (naming heuristics like `test_foo.py` to `foo.py`),
-sibling files in the same directory. These are weak signals
-(0.05–0.60) that prevent blind spots in code without explicit
-imports.
-
-**Document Edges** — Non-code content relationships.
-Section-to-section flow within Markdown, anchor link references,
-cross-document citations. Enable following documentation
-dependencies when docs change alongside code.
-
-**Similarity Edges** — Content-based relationships via TF-IDF
-lexical matching. Finds code with similar vocabulary/structure
-even without explicit references. Weight bounds are
-language-specific: wider for dynamic languages (Python 0.20–0.35),
-narrower for typed (Rust 0.10–0.15) where semantic edges are more
-reliable.
-
-**History Edges** — Temporal co-change patterns from git log.
-Files repeatedly committed together have implicit coupling.
-Capped at 500 recent commits with noise filtering (ignoring large
-commits with >30 files).
-
-### Selection: Submodular Utility Maximization
-
-The greedy selector optimizes a submodular utility function under
-a token budget constraint:
-
-**Concept coverage** — Each diff concept (identifier from the
-change) has a "best coverage score" across selected fragments.
-Adding a fragment that covers new concepts yields high marginal
-gain; covering already-covered concepts yields diminishing returns
-(modeled via square-root scaling).
-
-**Relatedness bonus** — High-PPR fragments receive minimum
-guaranteed utility even without concept overlap, ensuring
-structurally related code is included.
-
-**Density ordering** — Candidates are ranked by utility-per-token
-(density), not raw utility. A 10-token fragment covering 2
-concepts beats a 500-token fragment covering 3. Lazy heap
-evaluation avoids recomputing stale density values until a
-candidate is popped.
-
-**τ-stopping** — After establishing a baseline from the first 5
-selected fragments, stop when density drops below
-τ × median(baseline). This relative threshold adapts to the
-codebase: dense code triggers earlier stopping, sparse code allows
-broader inclusion.
-
-### Fragment Granularity
-
-Files are decomposed into semantic fragments using a
-priority-ordered parser pipeline. Language-specific parsers
-(tree-sitter for 10 languages, Python AST, Mistune for Markdown)
-produce function/class/section-level fragments. Fallback parsers
-handle config files (key-value boundaries), text (sentence-aware
-splitting), and generic content (line-count limits). The
-granularity choice means PPR reasons at the right level — a
-changed line in a function selects that function as a unit, not
-the whole file.
-
-### Key Design Decisions
-
-**Why Personalized PageRank over call-graph BFS?** BFS requires
-arbitrary depth limits and treats all edges equally. PPR provides
-natural exponential decay, respects edge weights, and converges
-to a principled relevance distribution.
-
-**Why max-aggregation for edge combination?** Multiple edge types
-often agree on the same relationship. Taking the max avoids
-inflating weights through redundant signals while preserving the
-strongest evidence from any perspective.
-
-**Why submodular greedy over knapsack?** Submodular functions
-guarantee that greedy gives (1 - 1/e) ≈ 63% of optimal. With
-lazy evaluation and density ordering, the algorithm runs in
-near-linear time while achieving strong coverage.
-
-**Why asymmetric edge weights?** Code dependencies are
-directional. "A imports B" means A needs B for context; B doesn't
-necessarily need A. Reverse factors (0.4–0.7 of forward weight)
-enable bidirectional graph search while respecting this asymmetry.
-
-**Why hub suppression?** Common utility modules (logging, helpers,
-config) receive edges from everywhere. Without dampening, they
-dominate PPR scores and pull in unrelated code. Log-scaled
-in-degree suppression at the 95th percentile keeps them accessible
-without letting them dominate.
-
-### Tunable Parameters
-
-| Parameter  | Default       | Controls                                       |
-|------------|---------------|------------------------------------------------|
-| `--budget` | none          | Token limit (convergence-based by default)     |
-| `--alpha`  | 0.60          | PPR damping — broader propagation              |
-| `--tau`    | 0.08          | Stopping — stricter = less noise               |
-| `--full`   | false         | Bypass smart selection                         |
-
----
 
 ## Technology Choices
 

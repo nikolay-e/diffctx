@@ -4,6 +4,7 @@ import re
 from collections import defaultdict
 from pathlib import Path
 
+from ...config.weights import EDGE_WEIGHTS
 from ...types import Fragment, FragmentId
 from ..base import EdgeBuilder, EdgeDict
 
@@ -67,12 +68,12 @@ def _extract_references(content: str) -> tuple[set[str], set[str], set[tuple[str
 
 class RustEdgeBuilder(EdgeBuilder):
     weight = 0.75
-    mod_weight = 0.70
-    use_weight = 0.65
-    type_weight = 0.65
-    fn_weight = 0.60
-    same_crate_weight = 0.50
-    reverse_weight_factor = 0.4
+    mod_weight = EDGE_WEIGHTS["rust_mod"].forward
+    use_weight = EDGE_WEIGHTS["rust_use"].forward
+    type_weight = EDGE_WEIGHTS["rust_type"].forward
+    fn_weight = EDGE_WEIGHTS["rust_fn"].forward
+    same_crate_weight = EDGE_WEIGHTS["rust_same_crate"].forward
+    reverse_weight_factor = EDGE_WEIGHTS["rust_mod"].reverse_factor
 
     def build(self, fragments: list[Fragment], repo_root: Path | None = None) -> EdgeDict:
         rust_frags = [f for f in fragments if _is_rust_file(f.path)]

@@ -8,7 +8,7 @@ from typing import Any
 
 import pathspec
 
-from ..ignore import get_ignore_specs, should_ignore
+from ..ignore import get_ignore_specs, get_whitelist_spec, is_whitelisted, should_ignore
 from ..tokens import count_tokens
 from .config import LIMITS
 from .config.extensions import CODE_EXTENSIONS, CONFIG_EXTENSIONS, DOC_EXTENSIONS
@@ -164,6 +164,21 @@ def _select_full_mode(
     return selected
 
 
+_SAME_FILE_FLOOR = 0.10
+
+
+def _apply_same_file_floor(
+    rel: dict[FragmentId, float],
+    core_ids: set[FragmentId],
+    fragments: list[Fragment],
+) -> None:
+    core_paths = {fid.path for fid in core_ids}
+    for frag in fragments:
+        if frag.id not in core_ids and frag.path in core_paths:
+            if rel.get(frag.id, 0.0) < _SAME_FILE_FLOOR:
+                rel[frag.id] = _SAME_FILE_FLOOR
+
+
 def _select_with_ppr(
     all_fragments: list[Fragment],
     core_ids: set[FragmentId],
@@ -176,6 +191,7 @@ def _select_with_ppr(
 ) -> tuple[list[Fragment], Any]:
     graph = build_graph(all_fragments, repo_root=repo_root)
     rel_scores = personalized_pagerank(graph, core_ids, alpha=alpha, seed_weights=seed_weights)
+    _apply_same_file_floor(rel_scores, core_ids, all_fragments)
 
     needs = needs_from_diff(all_fragments, core_ids, graph, diff_text)
 
@@ -204,6 +220,7 @@ def build_diff_context(
     ignore_file: Path | None = None,
     no_default_ignores: bool = False,
     full: bool = False,
+    whitelist_file: Path | None = None,
 ) -> dict[str, Any]:
     _validate_inputs(root_dir, alpha, tau, budget_tokens)
     root_dir = root_dir.resolve()
@@ -213,6 +230,7 @@ def build_diff_context(
     base_rev, head_rev = split_diff_range(diff_range)
     is_working_tree_diff = base_rev is None and head_rev is None
     combined_spec = get_ignore_specs(root_dir, ignore_file, no_default_ignores, None)
+    wl_spec = get_whitelist_spec(whitelist_file, root_dir)
 
     untracked: list[Path] = []
     if is_working_tree_diff:
@@ -231,6 +249,7 @@ def build_diff_context(
     changed_files = [_normalize_path(p, root_dir) for p in changed_files]
     changed_files.extend(untracked)
     changed_files = _filter_ignored(changed_files, root_dir, combined_spec)
+    changed_files = _filter_whitelist(changed_files, root_dir, wl_spec)
 
     preferred_revs = _build_preferred_revs(base_rev, head_rev)
 
@@ -238,6 +257,7 @@ def build_diff_context(
     all_fragments = _process_files_for_fragments(changed_files, root_dir, preferred_revs, seen_frag_ids)
 
     all_candidate_files = _collect_candidate_files(root_dir, set(changed_files), combined_spec)
+    all_candidate_files = _filter_whitelist(all_candidate_files, root_dir, wl_spec)
 
     edge_discovered = discover_all_related_files(changed_files, all_candidate_files, root_dir)
     edge_discovered = [_normalize_path(p, root_dir) for p in edge_discovered]
@@ -286,14 +306,41 @@ def build_diff_context(
 def _validate_inputs(root_dir: Path, alpha: float, tau: float, budget_tokens: int | None) -> None:
     if not is_git_repo(root_dir):
         raise GitError(f"'{root_dir}' is not a git repository")
-    if not (0.0 < alpha < 1.0):
+    if alpha <= 0.0 or alpha >= 1.0:
         raise ValueError(f"alpha must be in (0, 1), got {alpha}")
     if tau < 0.0:
         raise ValueError(f"tau must be >= 0, got {tau}")
-    if tau == 0.0:
-        logging.warning("tau=0 disables adaptive stopping; budget will be fully consumed")
+    if tau < 1e-15:
+        logging.warning("tau≈0 disables adaptive stopping; budget will be fully consumed")
     if budget_tokens is not None and budget_tokens <= 0:
         raise ValueError(f"budget_tokens must be > 0, got {budget_tokens}")
+
+
+def _find_dangling_semantic_names(
+    selected: list[Fragment],
+    graph: Graph,
+    frag_by_id: dict[FragmentId, Fragment],
+    selected_ids: set[FragmentId],
+) -> set[str]:
+    dangling: set[str] = set()
+    for frag in selected:
+        for nbr_id in graph.neighbors(frag.id):
+            if nbr_id in selected_ids:
+                continue
+            if graph.edge_categories.get((frag.id, nbr_id), "") != "semantic":
+                continue
+            nbr_frag = frag_by_id.get(nbr_id)
+            if nbr_frag and nbr_frag.symbol_name:
+                dangling.add(nbr_frag.symbol_name.lower())
+    return dangling
+
+
+def _pick_best_fragment(candidates: list[Fragment], selected_ids: set[FragmentId]) -> Fragment | None:
+    if any(c.id in selected_ids for c in candidates):
+        return None
+    sig_candidates = [f for f in candidates if "_signature" in f.kind]
+    full_candidates = [f for f in candidates if "_signature" not in f.kind]
+    return next(iter(sig_candidates or full_candidates), None)
 
 
 def _coherence_post_pass(
@@ -311,32 +358,15 @@ def _coherence_post_pass(
             name_to_frags.setdefault(f.symbol_name.lower(), []).append(f)
 
     frag_by_id: dict[FragmentId, Fragment] = {f.id: f for f in all_fragments}
-
-    dangling_names: set[str] = set()
-    for frag in result.selected:
-        for nbr_id in graph.neighbors(frag.id):
-            if nbr_id in selected_ids:
-                continue
-            cat = graph.edge_categories.get((frag.id, nbr_id), "")
-            if cat == "semantic":
-                nbr_frag = frag_by_id.get(nbr_id)
-                if nbr_frag and nbr_frag.symbol_name:
-                    dangling_names.add(nbr_frag.symbol_name.lower())
+    dangling_names = _find_dangling_semantic_names(result.selected, graph, frag_by_id, selected_ids)
 
     added: list[Fragment] = []
     for name in dangling_names:
-        candidates = name_to_frags.get(name, [])
-        for c in candidates:
-            if c.id in selected_ids:
-                break
-        else:
-            sig_candidates = [f for f in candidates if "_signature" in f.kind]
-            full_candidates = [f for f in candidates if "_signature" not in f.kind]
-            pick = sig_candidates[0] if sig_candidates else (full_candidates[0] if full_candidates else None)
-            if pick and pick.token_count <= remaining and pick.id not in selected_ids:
-                added.append(pick)
-                selected_ids.add(pick.id)
-                remaining -= pick.token_count
+        pick = _pick_best_fragment(name_to_frags.get(name, []), selected_ids)
+        if pick and pick.token_count <= remaining and pick.id not in selected_ids:
+            added.append(pick)
+            selected_ids.add(pick.id)
+            remaining -= pick.token_count
 
     if not added:
         return result
@@ -568,6 +598,24 @@ def _collect_expansion_files(
                     return list(expansion_files)
 
     return list(expansion_files)
+
+
+def _filter_whitelist(
+    files: list[Path],
+    root_dir: Path,
+    wl_spec: pathspec.PathSpec | None,
+) -> list[Path]:
+    if wl_spec is None:
+        return files
+    result: list[Path] = []
+    for file_path in files:
+        try:
+            rel_path = file_path.relative_to(root_dir).as_posix()
+            if is_whitelisted(rel_path, wl_spec):
+                result.append(file_path)
+        except ValueError:
+            pass
+    return result
 
 
 def _filter_ignored(

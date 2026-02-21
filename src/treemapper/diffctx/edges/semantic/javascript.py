@@ -4,15 +4,16 @@ import re
 from collections import defaultdict
 from pathlib import Path
 
+from ...config.weights import LANG_WEIGHTS
 from ...javascript_semantics import JsFragmentInfo, analyze_javascript_fragment
 from ...types import Fragment, FragmentId
 from ..base import EdgeBuilder, EdgeDict, add_semantic_edges
 
 _JS_EXTS = {".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".mts", ".cts"}
+_TS_EXTS = {".ts", ".tsx", ".mts", ".cts"}
 
-_JS_CALL_WEIGHT = 0.70
-_JS_SYMBOL_REF_WEIGHT = 0.75
-_JS_TYPE_REF_WEIGHT = 0.65
+_JS_WEIGHTS = LANG_WEIGHTS["javascript"]
+_TS_WEIGHTS = LANG_WEIGHTS["typescript"]
 
 _JS_IMPORT_STATIC_RE = re.compile(r"""import\s{1,10}[^'"]{0,500}['"]([^'"]{1,500})['"]""")
 _JS_REQUIRE_RE = re.compile(r"""require\s{0,10}\(\s{0,10}['"]([^'"]{1,500})['"]\s{0,10}\)""")
@@ -166,15 +167,16 @@ class JavaScriptEdgeBuilder(EdgeBuilder):
         for f in js_frags:
             info = info_cache[f.id]
             self_defs = set(frag_defines.get(f.id, frozenset()))
+            w = _TS_WEIGHTS if f.path.suffix.lower() in _TS_EXTS else _JS_WEIGHTS
 
             add_semantic_edges(
                 edges,
                 f.id,
                 info,
                 name_to_defs,
-                _JS_CALL_WEIGHT,
-                _JS_SYMBOL_REF_WEIGHT,
-                _JS_TYPE_REF_WEIGHT,
+                w.call,
+                w.symbol_ref,
+                w.type_ref,
                 self.reverse_weight_factor,
                 self_defs,
             )

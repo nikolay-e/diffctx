@@ -75,7 +75,7 @@ def _write_yaml_content(file: TextIO, content: str, base_indent: str) -> None:
     content_indent = base_indent + "  "
     if not content:
         file.write(f'{base_indent}content: ""\n')
-    elif _has_problematic_chars(content):
+    elif _has_problematic_chars(content) or not content.strip():
         file.write(f'{base_indent}content: "{_escape_yaml_content(content)}"\n')
     else:
         file.write(f"{base_indent}content: |2\n")

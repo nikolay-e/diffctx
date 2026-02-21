@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from .diffctx import build_diff_context
-from .ignore import get_ignore_specs
+from .ignore import get_ignore_specs, get_whitelist_spec
 from .tree import TreeBuildContext, build_tree
 from .version import __version__
 from .writer import write_tree_json, write_tree_markdown, write_tree_text, write_tree_yaml
@@ -31,12 +31,14 @@ def map_directory(
     max_file_bytes: int | None = None,
     ignore_file: str | Path | None = None,
     no_default_ignores: bool = False,
+    whitelist_file: str | Path | None = None,
 ) -> dict[str, Any]:
     root_dir = Path(path).resolve()
     if not root_dir.is_dir():
         raise ValueError(f"'{path}' is not a directory")
 
     ignore_path = Path(ignore_file).resolve() if ignore_file else None
+    whitelist_path = Path(whitelist_file).resolve() if whitelist_file else None
 
     ctx = TreeBuildContext(
         base_dir=root_dir,
@@ -45,6 +47,7 @@ def map_directory(
         max_depth=max_depth,
         no_content=no_content,
         max_file_bytes=max_file_bytes,
+        whitelist_spec=get_whitelist_spec(whitelist_path, root_dir),
     )
 
     return {

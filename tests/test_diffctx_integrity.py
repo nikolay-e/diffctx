@@ -674,9 +674,9 @@ class TestCICDSeparatorAwareMatching:
         assert any(
             "test.py" == Path(p).name for p in all_paths
         ), "test.py should be in context — exact match for CI/CD script reference"
-        assert "TESTING_UTILS_MARKER_XYZZY" not in all_content, (
-            "testing_utils.py should NOT be in context — " "'test' prefix without separator must not match"
-        )
+        assert (
+            "TESTING_UTILS_MARKER_XYZZY" not in all_content
+        ), "testing_utils.py should NOT be in context — 'test' prefix without separator must not match"
         assert "APP_MARKER_QWERTY" not in all_content, "app.py should NOT be in context — completely unrelated file"
 
 

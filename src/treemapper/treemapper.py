@@ -28,6 +28,7 @@ def _build_diff_tree(args: ParsedArgs) -> dict[str, Any]:
             ignore_file=args.ignore_file,
             no_default_ignores=args.no_default_ignores,
             full=args.full_diff,
+            whitelist_file=args.whitelist_file,
         )
     except GitError as e:
         print(f"Error: {e}", file=sys.stderr)
@@ -35,7 +36,7 @@ def _build_diff_tree(args: ParsedArgs) -> dict[str, Any]:
 
 
 def _build_standard_tree(args: ParsedArgs) -> dict[str, Any]:
-    from .ignore import get_ignore_specs
+    from .ignore import get_ignore_specs, get_whitelist_spec
     from .tree import TreeBuildContext, build_tree
 
     ctx = TreeBuildContext(
@@ -45,6 +46,7 @@ def _build_standard_tree(args: ParsedArgs) -> dict[str, Any]:
         max_depth=args.max_depth,
         no_content=args.no_content,
         max_file_bytes=args.max_file_bytes,
+        whitelist_spec=get_whitelist_spec(args.whitelist_file, args.root_dir),
     )
     return {
         "name": args.root_dir.name,

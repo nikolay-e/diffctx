@@ -4,6 +4,7 @@ import re
 from collections import defaultdict
 from pathlib import Path
 
+from ...config.weights import EDGE_WEIGHTS
 from ...types import Fragment, FragmentId
 from ..base import EdgeBuilder, EdgeDict
 
@@ -26,7 +27,7 @@ _KOTLIN_CLASS_RE = re.compile(
     re.MULTILINE,
 )
 _KOTLIN_FUN_RE = re.compile(
-    r"^\s*(?:(?:public|private|internal|protected|abstract|open|final|override|inline|external|tailrec|operator|infix|suspend|expect|actual)\s+)*fun\s+(?:<[^>]+>\s+)?([a-z]\w*)",
+    r"^\s*(?:\w+\s+)*fun\s+(?:<[^>]+>\s+)?([a-z]\w*)",
     re.MULTILINE,
 )
 
@@ -38,9 +39,7 @@ _SCALA_CLASS_RE = re.compile(
 _SCALA_DEF_RE = re.compile(r"^\s*(?:private |protected )?def\s+([a-z]\w*)", re.MULTILINE)
 
 _TYPE_REF_RE = re.compile(r"(?<![a-z_])([A-Z]\w*)\b")
-_KOTLIN_INHERIT_RE = re.compile(
-    r"(?:class|interface|object)\s+\w+(?:<[^>]*>)?(?:\([^)]*\))?\s*:\s*([A-Z]\w*(?:\s*,\s*[A-Z]\w*)*)"
-)
+_KOTLIN_DECL_RE = re.compile(r"(?:class|interface|object)\s+\w+")
 _SCALA_WITH_RE = re.compile(r"\bwith\s+([A-Z]\w*)")
 
 _ANNOTATION_RE = re.compile(r"@([A-Z]\w*)")
@@ -88,27 +87,56 @@ def _extract_classes(content: str, path: Path) -> set[str]:
     return classes
 
 
-def _extract_inheritance(content: str, path: Path) -> set[str]:
+def _split_class_list(regex: re.Pattern[str], content: str) -> set[str]:
     refs: set[str] = set()
+    for m in regex.finditer(content):
+        for cls in m.group(1).split(","):
+            stripped = cls.strip()
+            if stripped:
+                refs.add(stripped)
+    return refs
+
+
+def _find_kotlin_colon(text: str) -> int | None:
+    depth = 0
+    for i, ch in enumerate(text):
+        if ch in "<(":
+            depth += 1
+        elif ch in ">)":
+            depth = max(0, depth - 1)
+        elif ch == ":" and depth == 0:
+            return i
+        elif ch in "{\n":
+            return None
+    return None
+
+
+def _extract_kotlin_supertypes(content: str) -> set[str]:
+    refs: set[str] = set()
+    for m in _KOTLIN_DECL_RE.finditer(content):
+        rest = content[m.end() :]
+        colon_pos = _find_kotlin_colon(rest)
+        if colon_pos is None:
+            continue
+        after = rest[colon_pos + 1 :]
+        for i, ch in enumerate(after):
+            if ch in "{\n":
+                after = after[:i]
+                break
+        for tm in _TYPE_REF_RE.finditer(after):
+            refs.add(tm.group(1))
+    return refs
+
+
+def _extract_inheritance(content: str, path: Path) -> set[str]:
     if _is_kotlin(path):
-        for m in _KOTLIN_INHERIT_RE.finditer(content):
-            for cls in m.group(1).split(","):
-                cls = cls.strip()
-                if cls:
-                    refs.add(cls)
-    elif _is_scala(path):
-        for m in _JAVA_EXTENDS_RE.finditer(content):
-            for cls in m.group(1).split(","):
-                refs.add(cls.strip())
-        for m in _SCALA_WITH_RE.finditer(content):
-            refs.add(m.group(1))
-    else:
-        for m in _JAVA_EXTENDS_RE.finditer(content):
-            for cls in m.group(1).split(","):
-                refs.add(cls.strip())
-        for m in _JAVA_IMPLEMENTS_RE.finditer(content):
-            for cls in m.group(1).split(","):
-                refs.add(cls.strip())
+        return _extract_kotlin_supertypes(content)
+    if _is_scala(path):
+        refs = _split_class_list(_JAVA_EXTENDS_RE, content)
+        refs.update(m.group(1) for m in _SCALA_WITH_RE.finditer(content))
+        return refs
+    refs = _split_class_list(_JAVA_EXTENDS_RE, content)
+    refs.update(_split_class_list(_JAVA_IMPLEMENTS_RE, content))
     return refs
 
 
@@ -122,12 +150,12 @@ def _extract_annotations(content: str) -> set[str]:
 
 class JVMEdgeBuilder(EdgeBuilder):
     weight = 0.70
-    import_weight = 0.75
-    inheritance_weight = 0.80
-    type_weight = 0.60
-    same_package_weight = 0.55
-    annotation_weight = 0.50
-    reverse_weight_factor = 0.4
+    import_weight = EDGE_WEIGHTS["jvm_import"].forward
+    inheritance_weight = EDGE_WEIGHTS["jvm_inheritance"].forward
+    type_weight = EDGE_WEIGHTS["jvm_type"].forward
+    same_package_weight = EDGE_WEIGHTS["jvm_same_package"].forward
+    annotation_weight = EDGE_WEIGHTS["jvm_annotation"].forward
+    reverse_weight_factor = EDGE_WEIGHTS["jvm_import"].reverse_factor
 
     def build(self, fragments: list[Fragment], repo_root: Path | None = None) -> EdgeDict:
         jvm_frags = [f for f in fragments if _is_jvm_file(f.path)]

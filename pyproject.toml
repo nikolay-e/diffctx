@@ -80,7 +80,7 @@ authors = [
 description = "Export codebase structure and contents for AI/LLM context"
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "Apache-2.0" }
+license = "Apache-2.0"
 keywords = ["code-analysis", "directory-tree", "yaml", "json", "llm", "ai", "codebase", "context", "chatgpt", "claude", "code-context", "export", "tree", "gpt-context", "llm-context", "code-to-prompt", "claude-context"]
 classifiers = [
     "Development Status :: 5 - Production/Stable",
@@ -109,7 +109,8 @@ dependencies = [
 [project.urls]
 Homepage = "https://github.com/nikolay-e/treemapper"
 Repository = "https://github.com/nikolay-e/treemapper"
-"Bug Tracker" = "https://github.com/nikolay-e/treemapper/issues"
+Issues = "https://github.com/nikolay-e/treemapper/issues"
+Changelog = "https://github.com/nikolay-e/treemapper/releases"
 
 [project.scripts]
 treemapper = "treemapper.treemapper:main"
@@ -151,7 +152,7 @@ dev = [
     # Quality checks
     "ruff>=0.4,<1.0",
     "black>=23.0.0,<27.0",
-    "isort>=5.12,<8.0",
+    "isort>=5.12,<9.0",
     "mypy>=1.0,<2.0",
     "radon>=6.0,<7.0",
     "import-linter>=2.0,<3.0",
@@ -169,6 +170,9 @@ dev = [
 
 [tool.setuptools.dynamic]
 version = { attr = "treemapper.version.__version__" }
+
+[tool.setuptools.package-data]
+treemapper = ["py.typed"]
 
 [tool.setuptools]
 package-dir = { "" = "src" }

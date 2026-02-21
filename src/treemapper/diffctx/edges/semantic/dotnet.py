@@ -4,6 +4,7 @@ import re
 from collections import defaultdict
 from pathlib import Path
 
+from ...config.weights import EDGE_WEIGHTS
 from ...types import Fragment, FragmentId
 from ..base import EdgeBuilder, EdgeDict
 
@@ -95,13 +96,13 @@ def _extract_attributes(content: str) -> set[str]:
 
 class DotNetEdgeBuilder(EdgeBuilder):
     weight = 0.70
-    using_weight = 0.75
-    inheritance_weight = 0.80
-    type_weight = 0.60
-    same_namespace_weight = 0.55
-    attribute_weight = 0.50
-    partial_class_weight = 0.85
-    reverse_weight_factor = 0.4
+    using_weight = EDGE_WEIGHTS["dotnet_using"].forward
+    inheritance_weight = EDGE_WEIGHTS["dotnet_inheritance"].forward
+    type_weight = EDGE_WEIGHTS["dotnet_type"].forward
+    same_namespace_weight = EDGE_WEIGHTS["dotnet_same_namespace"].forward
+    attribute_weight = EDGE_WEIGHTS["dotnet_attribute"].forward
+    partial_class_weight = EDGE_WEIGHTS["dotnet_partial"].forward
+    reverse_weight_factor = EDGE_WEIGHTS["dotnet_using"].reverse_factor
 
     def build(self, fragments: list[Fragment], repo_root: Path | None = None) -> EdgeDict:
         dotnet_frags = [f for f in fragments if _is_dotnet_file(f.path)]

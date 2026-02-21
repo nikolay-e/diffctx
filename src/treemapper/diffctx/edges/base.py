@@ -22,6 +22,20 @@ _STRIP_EXTENSIONS = CODE_EXTENSIONS | frozenset(
 _INDEX_FILE_STEMS = frozenset({"__init__", "index", "mod"})
 
 
+def _strip_source_prefix(parts: list[str]) -> list[str]:
+    for i, part in enumerate(parts):
+        if part in ("src", "lib", "packages"):
+            return parts[i + 1 :]
+    return parts
+
+
+def _strip_file_extension(stem: str) -> str:
+    for ext in sorted(_STRIP_EXTENSIONS, key=len, reverse=True):
+        if stem.endswith(ext):
+            return stem[: -len(ext)]
+    return stem
+
+
 def path_to_module(path: Path, repo_root: Path | None = None) -> str:
     if repo_root and path.is_absolute():
         try:
@@ -29,19 +43,10 @@ def path_to_module(path: Path, repo_root: Path | None = None) -> str:
         except ValueError:
             pass
 
-    parts = list(path.parts)
-
-    for i, part in enumerate(parts):
-        if part in ("src", "lib", "packages"):
-            parts = parts[i + 1 :]
-            break
+    parts = _strip_source_prefix(list(path.parts))
 
     if parts:
-        stem = parts[-1]
-        for ext in sorted(_STRIP_EXTENSIONS, key=len, reverse=True):
-            if stem.endswith(ext):
-                parts[-1] = stem[: -len(ext)]
-                break
+        parts[-1] = _strip_file_extension(parts[-1])
         if parts and parts[-1] in _INDEX_FILE_STEMS:
             parts = parts[:-1]
 
@@ -98,7 +103,9 @@ def _matches_any_ref(candidate_name: str, candidate_rel: str, refs: set[str]) ->
             return True
         ref_lower = ref.lower()
         if len(ref_lower) >= _MIN_REF_LENGTH_FOR_PATH_MATCH and ref_lower in candidate_rel:
-            return True
+            idx = candidate_rel.index(ref_lower)
+            if idx == 0 or candidate_rel[idx - 1] in "/\\":
+                return True
     return False
 
 

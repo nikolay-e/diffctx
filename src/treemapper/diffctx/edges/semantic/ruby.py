@@ -4,6 +4,7 @@ import re
 from collections import defaultdict
 from pathlib import Path
 
+from ...config.weights import EDGE_WEIGHTS
 from ...types import Fragment, FragmentId
 from ..base import EdgeBuilder, EdgeDict
 
@@ -100,11 +101,11 @@ class _RubyIndex:
 
 class RubyEdgeBuilder(EdgeBuilder):
     weight = 0.70
-    require_weight = 0.75
-    include_weight = 0.70
-    const_weight = 0.60
-    same_dir_weight = 0.50
-    reverse_weight_factor = 0.4
+    require_weight = EDGE_WEIGHTS["ruby_require"].forward
+    include_weight = EDGE_WEIGHTS["ruby_include"].forward
+    const_weight = EDGE_WEIGHTS["ruby_const"].forward
+    same_dir_weight = EDGE_WEIGHTS["ruby_same_dir"].forward
+    reverse_weight_factor = EDGE_WEIGHTS["ruby_require"].reverse_factor
 
     def build(self, fragments: list[Fragment], repo_root: Path | None = None) -> EdgeDict:
         ruby_frags = [f for f in fragments if _is_ruby_file(f.path)]

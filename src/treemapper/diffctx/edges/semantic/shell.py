@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+from ...config.weights import EDGE_WEIGHTS
 from ...types import Fragment, FragmentId
 from ..base import EdgeBuilder, EdgeDict, FragmentIndex, discover_files_by_refs
 
@@ -95,9 +96,9 @@ def _collect_shell_refs(shell_files: list[Path]) -> set[str]:
 
 class ShellEdgeBuilder(EdgeBuilder):
     weight = 0.55
-    source_weight = 0.65
-    script_weight = 0.55
-    reverse_weight_factor = 0.35
+    source_weight = EDGE_WEIGHTS["shell_source"].forward
+    script_weight = EDGE_WEIGHTS["shell_script"].forward
+    reverse_weight_factor = EDGE_WEIGHTS["shell_source"].reverse_factor
 
     def discover_related_files(
         self,

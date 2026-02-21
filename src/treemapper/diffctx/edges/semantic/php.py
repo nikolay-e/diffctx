@@ -4,6 +4,7 @@ import re
 from collections import defaultdict
 from pathlib import Path
 
+from ...config.weights import EDGE_WEIGHTS
 from ...types import Fragment, FragmentId
 from ..base import EdgeBuilder, EdgeDict
 
@@ -102,12 +103,12 @@ class _PHPIndex:
 
 class PHPEdgeBuilder(EdgeBuilder):
     weight = 0.70
-    use_weight = 0.75
-    require_weight = 0.70
-    inheritance_weight = 0.80
-    type_weight = 0.60
-    same_namespace_weight = 0.55
-    reverse_weight_factor = 0.4
+    use_weight = EDGE_WEIGHTS["php_use"].forward
+    require_weight = EDGE_WEIGHTS["php_require"].forward
+    inheritance_weight = EDGE_WEIGHTS["php_inheritance"].forward
+    type_weight = EDGE_WEIGHTS["php_type"].forward
+    same_namespace_weight = EDGE_WEIGHTS["php_same_namespace"].forward
+    reverse_weight_factor = EDGE_WEIGHTS["php_use"].reverse_factor
 
     def build(self, fragments: list[Fragment], repo_root: Path | None = None) -> EdgeDict:
         php_frags = [f for f in fragments if _is_php_file(f.path)]

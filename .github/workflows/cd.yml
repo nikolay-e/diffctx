@@ -51,8 +51,9 @@ jobs:
           fi
 
       - name: Validate version format (PEP 440)
+        env:
+          VERSION: ${{ github.event.inputs.version }}
         run: |
-          VERSION="${{ github.event.inputs.version }}"
           # PEP 440: X.Y.Z with optional pre-release (a1, b1, rc1) or dev/post suffix
           if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+((a|b|rc)[0-9]+)?(\.dev[0-9]+)?(\.post[0-9]+)?$ ]]; then
             echo "Error: Invalid version format '$VERSION'."
@@ -98,13 +99,15 @@ jobs:
 
       - name: Commit version bump (locally only, no push yet)
         id: commit_version
+        env:
+          VERSION: ${{ github.event.inputs.version }}
         run: |
           git config user.name "github-actions[bot]"
           # 41898282 is GitHub's bot user ID for github-actions[bot]
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add src/treemapper/version.py
           if ! git diff --staged --quiet; then
-            git commit -m "Release version ${{ github.event.inputs.version }}"
+            git commit -m "Release version ${VERSION}"
           else
             echo "No changes to commit."
           fi
@@ -113,8 +116,10 @@ jobs:
           echo "commit_sha=$COMMIT_SHA" >> "$GITHUB_OUTPUT"
 
       - name: Check tag doesn't already exist
+        env:
+          VERSION: ${{ github.event.inputs.version }}
         run: |
-          TAG="v${{ github.event.inputs.version }}"
+          TAG="v${VERSION}"
           git fetch --tags origin 2>/dev/null || true
           if git rev-parse "$TAG" >/dev/null 2>&1; then
             echo "Error: Tag $TAG already exists locally"
@@ -127,9 +132,11 @@ jobs:
           echo "Tag $TAG does not exist, proceeding..."
 
       - name: Create local tag (no push yet)
+        env:
+          VERSION: ${{ github.event.inputs.version }}
         run: |
-          git tag -a "v${{ github.event.inputs.version }}" -m "Release version ${{ github.event.inputs.version }}"
-          echo "Tag created locally: v${{ github.event.inputs.version }}"
+          git tag -a "v${VERSION}" -m "Release version ${VERSION}"
+          echo "Tag created locally: v${VERSION}"
 
       - name: Upload git bundle for other jobs
         run: |
@@ -144,9 +151,11 @@ jobs:
 
       - name: Set outputs
         id: set_outputs
+        env:
+          VERSION: ${{ github.event.inputs.version }}
         run: |
-          echo "version=${{ github.event.inputs.version }}" >> "$GITHUB_OUTPUT"
-          echo "tag_name=v${{ github.event.inputs.version }}" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "tag_name=v${VERSION}" >> "$GITHUB_OUTPUT"
 
   build-assets:
     name: Build Assets
@@ -323,6 +332,7 @@ jobs:
         uses: pypa/gh-action-pypi-publish@ed0c53931b1dc9bd32cbe73a98c7f6766f8a527e  # release/v1
         with:
           packages-dir: ./repo/dist/
+          print-hash: true
 
   finalize-release:
     name: Push Release and Create GitHub Release

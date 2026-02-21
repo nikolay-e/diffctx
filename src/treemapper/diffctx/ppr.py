@@ -16,6 +16,58 @@ def _transpose_graph(graph: Graph) -> Graph:
     return transposed
 
 
+def _init_seed_residuals(
+    seeds: set[FragmentId],
+    graph_nodes: set[FragmentId],
+    seed_weights: dict[FragmentId, float] | None,
+) -> dict[FragmentId, float]:
+    valid_seeds = seeds & graph_nodes
+    if not valid_seeds:
+        return {}
+
+    if seed_weights:
+        total_sw = sum(seed_weights.get(s, 1.0) for s in valid_seeds)
+        if total_sw <= 0:
+            return {s: 0.0 for s in valid_seeds}
+        return {s: seed_weights.get(s, 1.0) / total_sw for s in valid_seeds}
+
+    weight = 1.0 / len(valid_seeds)
+    return {s: weight for s in valid_seeds}
+
+
+def _propagate_residual(
+    u: FragmentId,
+    residual: dict[FragmentId, float],
+    estimate: dict[FragmentId, float],
+    graph: Graph,
+    alpha: float,
+    restart: float,
+    push_threshold: float,
+    queue: deque[FragmentId],
+    visited: set[FragmentId],
+) -> None:
+    r_u = residual.get(u, 0.0)
+    if r_u < push_threshold:
+        return
+
+    estimate[u] = estimate.get(u, 0.0) + restart * r_u
+    residual[u] = 0.0
+
+    nbrs = graph.neighbors(u)
+    total_weight = sum(nbrs.values()) if nbrs else 0.0
+    if total_weight <= 0:
+        return
+
+    push_mass = alpha * r_u
+    for v, w in nbrs.items():
+        delta = push_mass * (w / total_weight)
+        old_r = residual.get(v, 0.0)
+        residual[v] = old_r + delta
+        if v not in visited and old_r + delta >= push_threshold:
+            queue.append(v)
+            visited.add(v)
+
+
 def _personalized_pagerank_sparse(
     graph: Graph,
     seeds: set[FragmentId],
@@ -30,49 +82,19 @@ def _personalized_pagerank_sparse(
     restart = 1.0 - alpha
     push_threshold = tol / n
 
-    residual: dict[FragmentId, float] = {}
+    residual = _init_seed_residuals(seeds, graph.nodes, seed_weights)
     estimate: dict[FragmentId, float] = {}
-
-    if seed_weights:
-        total_sw = sum(seed_weights.get(s, 1.0) for s in seeds if s in graph.nodes)
-        for s in seeds:
-            if s in graph.nodes:
-                residual[s] = seed_weights.get(s, 1.0) / total_sw if total_sw > 0 else 0.0
-    else:
-        seed_weight = 1.0 / len(seeds) if seeds else 0.0
-        for s in seeds:
-            if s in graph.nodes:
-                residual[s] = seed_weight
 
     queue: deque[FragmentId] = deque(residual.keys())
     visited: set[FragmentId] = set(queue)
-    max_pushes = n * 50
 
     pushes = 0
+    max_pushes = n * 50
     while queue and pushes < max_pushes:
         u = queue.popleft()
         visited.discard(u)
-
-        r_u = residual.get(u, 0.0)
-        if r_u < push_threshold:
-            continue
-
-        estimate[u] = estimate.get(u, 0.0) + restart * r_u
-        residual[u] = 0.0
+        _propagate_residual(u, residual, estimate, graph, alpha, restart, push_threshold, queue, visited)
         pushes += 1
-
-        nbrs = graph.neighbors(u)
-        total_weight = sum(nbrs.values()) if nbrs else 0.0
-
-        if total_weight > 0:
-            push_mass = alpha * r_u
-            for v, w in nbrs.items():
-                delta = push_mass * (w / total_weight)
-                old_r = residual.get(v, 0.0)
-                residual[v] = old_r + delta
-                if v not in visited and old_r + delta >= push_threshold:
-                    queue.append(v)
-                    visited.add(v)
 
     return estimate
 

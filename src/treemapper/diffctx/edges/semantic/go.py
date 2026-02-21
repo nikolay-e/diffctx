@@ -4,6 +4,7 @@ import re
 from collections import defaultdict
 from pathlib import Path
 
+from ...config.weights import EDGE_WEIGHTS
 from ...types import Fragment, FragmentId
 from ..base import EdgeBuilder, EdgeDict
 
@@ -58,11 +59,11 @@ def _get_package_name(path: Path) -> str:
 
 class GoEdgeBuilder(EdgeBuilder):
     weight = 0.75
-    import_weight = 0.70
-    type_weight = 0.65
-    func_weight = 0.60
-    same_package_weight = 0.55
-    reverse_weight_factor = 0.4
+    import_weight = EDGE_WEIGHTS["go_import"].forward
+    type_weight = EDGE_WEIGHTS["go_type"].forward
+    func_weight = EDGE_WEIGHTS["go_func"].forward
+    same_package_weight = EDGE_WEIGHTS["go_same_package"].forward
+    reverse_weight_factor = EDGE_WEIGHTS["go_import"].reverse_factor
 
     def build(self, fragments: list[Fragment], repo_root: Path | None = None) -> EdgeDict:
         go_frags = [f for f in fragments if _is_go_file(f.path)]

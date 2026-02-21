@@ -4,6 +4,7 @@ import re
 from collections import defaultdict
 from pathlib import Path
 
+from ...config.weights import EDGE_WEIGHTS
 from ...types import Fragment, FragmentId
 from ..base import EdgeBuilder, EdgeDict
 
@@ -104,10 +105,10 @@ class _CIndex:
 
 class CFamilyEdgeBuilder(EdgeBuilder):
     weight = 0.70
-    include_weight = 0.65
-    call_weight = 0.55
-    type_weight = 0.50
-    reverse_weight_factor = 0.40
+    include_weight = EDGE_WEIGHTS["c_include"].forward
+    call_weight = EDGE_WEIGHTS["c_call"].forward
+    type_weight = EDGE_WEIGHTS["c_type"].forward
+    reverse_weight_factor = EDGE_WEIGHTS["c_include"].reverse_factor
 
     def discover_related_files(
         self,

@@ -63,27 +63,41 @@ class MistuneMarkdownStrategy:
         headings: list[tuple[int, int]] = []
         i = 0
         while i < len(lines):
-            stripped = lines[i].lstrip()
-            if stripped.startswith("#"):
-                level = len(stripped) - len(stripped.lstrip("#"))
-                if level <= 6 and (len(stripped) == level or stripped[level] == " "):
-                    headings.append((i + 1, level))
+            result = self._try_atx_heading(lines[i])
+            if result is not None:
+                headings.append((i + 1, result))
                 i += 1
                 continue
 
-            if stripped and i + 1 < len(lines):
-                next_stripped = lines[i + 1].strip()
-                if next_stripped and all(c == "=" for c in next_stripped):
-                    headings.append((i + 1, 1))
-                    i += 2
-                    continue
-                if len(next_stripped) >= 2 and all(c == "-" for c in next_stripped):
-                    headings.append((i + 1, 2))
-                    i += 2
-                    continue
+            setext = self._try_setext_heading(lines, i)
+            if setext is not None:
+                headings.append((i + 1, setext))
+                i += 2
+                continue
 
             i += 1
         return headings
+
+    @staticmethod
+    def _try_atx_heading(line: str) -> int | None:
+        stripped = line.lstrip()
+        if not stripped.startswith("#"):
+            return None
+        level = len(stripped) - len(stripped.lstrip("#"))
+        if level <= 6 and (len(stripped) == level or stripped[level] == " "):
+            return level
+        return None
+
+    @staticmethod
+    def _try_setext_heading(lines: list[str], i: int) -> int | None:
+        if not lines[i].lstrip() or i + 1 >= len(lines):
+            return None
+        next_stripped = lines[i + 1].strip()
+        if next_stripped and all(c == "=" for c in next_stripped):
+            return 1
+        if len(next_stripped) >= 2 and all(c == "-" for c in next_stripped):
+            return 2
+        return None
 
     def _find_section_end(self, lines: list[str], _start_line: int, level: int, remaining_headings: list[tuple[int, int]]) -> int:
         for next_line, next_level in remaining_headings:

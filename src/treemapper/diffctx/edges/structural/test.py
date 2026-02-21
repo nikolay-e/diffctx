@@ -100,31 +100,33 @@ class TestEdgeBuilder(EdgeBuilder):
         repo_root: Path | None = None,
     ) -> list[Path]:
         changed_set = set(changed_files)
-        discovered: list[Path] = []
-
         candidate_by_stem: dict[str, list[Path]] = defaultdict(list)
         for c in all_candidate_files:
             if c not in changed_set:
                 candidate_by_stem[c.stem.lower()].append(c)
 
+        discovered: list[Path] = []
         for changed in changed_files:
-            stem = changed.stem.lower()
             suffix = changed.suffix.lower()
-
             if _is_test_file(changed):
-                target = _extract_target_name_from_test(changed.stem)
-                if target:
-                    for cand in candidate_by_stem.get(target, []):
-                        if cand.suffix.lower() == suffix:
-                            discovered.append(cand)
+                discovered.extend(self._find_source_for_test(changed, suffix, candidate_by_stem))
             else:
-                test_stems = [f"test_{stem}", f"{stem}_test"]
-                for ts in test_stems:
-                    for cand in candidate_by_stem.get(ts, []):
-                        if cand.suffix.lower() == suffix and _is_test_file(cand):
-                            discovered.append(cand)
-
+                discovered.extend(self._find_tests_for_source(changed.stem.lower(), suffix, candidate_by_stem))
         return discovered
+
+    @staticmethod
+    def _find_source_for_test(changed: Path, suffix: str, candidate_by_stem: dict[str, list[Path]]) -> list[Path]:
+        target = _extract_target_name_from_test(changed.stem)
+        if not target:
+            return []
+        return [c for c in candidate_by_stem.get(target, []) if c.suffix.lower() == suffix]
+
+    @staticmethod
+    def _find_tests_for_source(stem: str, suffix: str, candidate_by_stem: dict[str, list[Path]]) -> list[Path]:
+        results: list[Path] = []
+        for ts in (f"test_{stem}", f"{stem}_test"):
+            results.extend(c for c in candidate_by_stem.get(ts, []) if c.suffix.lower() == suffix and _is_test_file(c))
+        return results
 
     def build(self, fragments: list[Fragment], repo_root: Path | None = None) -> EdgeDict:
         edges: EdgeDict = {}

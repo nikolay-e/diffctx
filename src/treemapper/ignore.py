@@ -272,3 +272,28 @@ def should_ignore(relative_path_str: str, combined_spec: pathspec.PathSpec) -> b
     if logging.getLogger().isEnabledFor(logging.DEBUG):
         logging.debug("Checking ignore for '%s': %s", relative_path_str, is_ignored)
     return is_ignored
+
+
+DEFAULT_WHITELIST_FILENAME = ".treemapperwhitelist"
+
+
+def get_whitelist_spec(whitelist_file: Path | None, root_dir: Path | None = None) -> pathspec.PathSpec | None:
+    effective_file = whitelist_file
+    if not effective_file and root_dir:
+        default = root_dir / DEFAULT_WHITELIST_FILENAME
+        if default.is_file():
+            effective_file = default
+    if not effective_file:
+        return None
+    patterns = read_ignore_file(effective_file)
+    if not patterns:
+        return None
+    return pathspec.PathSpec.from_lines("gitignore", patterns)
+
+
+def is_whitelisted(relative_path_str: str, whitelist_spec: pathspec.PathSpec | None, is_dir: bool = False) -> bool:
+    if whitelist_spec is None:
+        return True
+    if is_dir:
+        return True
+    return whitelist_spec.match_file(relative_path_str)
