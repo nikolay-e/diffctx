@@ -1,0 +1,136 @@
+src/stats.py: |
+  from typing import List
+
+  def pearson_correlation(x: List[float], y: List[float]) -> float:
+      n = len(x)
+      if n < 2:
+          return 0.0
+      mean_x = sum(x) / n
+      mean_y = sum(y) / n
+      cov = sum((xi - mean_x) * (yi - mean_y) for xi, yi in zip(x, y))
+      std_x = (sum((xi - mean_x) ** 2 for xi in x)) ** 0.5
+      std_y = (sum((yi - mean_y) ** 2 for yi in y)) ** 0.5
+      if std_x == 0 or std_y == 0:
+          return 0.0
+      return cov / (std_x * std_y)
+
+  def moving_average(values: List[float], window: int = 7) -> List[float]:
+      if len(values) < window:
+          return values[:]
+      result = []
+      for i in range(len(values) - window + 1):
+          result.append(sum(values[i:i + window]) / window)
+      return result
+
+src/date_utils.py: |
+  from datetime import datetime, timedelta
+  from typing import List, Tuple
+
+  def date_range(start: datetime, end: datetime) -> List[datetime]:
+      dates = []
+      current = start
+      while current <= end:
+          dates.append(current)
+          current += timedelta(days=1)
+      return dates
+
+  def week_boundaries(date: datetime) -> Tuple[datetime, datetime]:
+      start = date - timedelta(days=date.weekday())
+      end = start + timedelta(days=6)
+      return start, end
+
+  def format_iso(date: datetime) -> str:
+      return date.strftime("%Y-%m-%d")
+
+src/analyzer.py: |
+  from typing import List, Dict
+  from src.stats import pearson_correlation, moving_average
+  from src.date_utils import date_range, week_boundaries, format_iso
+  from datetime import datetime
+
+  class TrendAnalyzer:
+      def __init__(self, smoothing_window: int = 7):
+          self.smoothing_window = smoothing_window
+
+      def analyze_correlation(
+          self, series_a: List[float], series_b: List[float]
+      ) -> Dict[str, float]:
+          raw_corr = pearson_correlation(series_a, series_b)
+          smoothed_a = moving_average(series_a, self.smoothing_window)
+          smoothed_b = moving_average(series_b, self.smoothing_window)
+          smoothed_corr = pearson_correlation(smoothed_a, smoothed_b)
+          return {
+              "raw_correlation": raw_corr,
+              "smoothed_correlation": smoothed_corr,
+          }
+
+      def weekly_summary(
+          self, values: List[float], start_date: datetime
+      ) -> List[Dict]:
+          weeks = []
+          i = 0
+          current = start_date
+          while i < len(values):
+              week_start, week_end = week_boundaries(current)
+              chunk = values[i:i + 7]
+              weeks.append({
+                  "week_start": format_iso(week_start),
+                  "week_end": format_iso(week_end),
+                  "mean": sum(chunk) / len(chunk) if chunk else 0,
+                  "count": len(chunk),
+              })
+              i += 7
+              current = week_end
+          return weeks
+
+src/service.py: |
+  from src.stats import pearson_correlation
+  from src.analyzer import TrendAnalyzer
+
+  class MetricsService:
+      def __init__(self, repository):
+          self.repository = repository
+          self.analyzer = TrendAnalyzer()
+
+      def get_correlation(self, metric_a: str, metric_b: str) -> float:
+          data_a = self.repository.fetch(metric_a)
+          data_b = self.repository.fetch(metric_b)
+          return pearson_correlation(data_a, data_b)
+
+      def get_trend_analysis(self, metric_a: str, metric_b: str) -> dict:
+          data_a = self.repository.fetch(metric_a)
+          data_b = self.repository.fetch(metric_b)
+          return self.analyzer.analyze_correlation(data_a, data_b)
+
+      def list_metrics(self) -> list:
+          return self.repository.list_all()
+
+garbage_export.py: |
+  GARBAGE_DEP042_EXPORT_MARKER_A = "export module"
+  GARBAGE_DEP042_FORMAT_MARKER_B = True
+
+  class DataExporter:
+      GARBAGE_DEP042_EXPORTER_MARKER_C = "exporter"
+
+      def export_csv(self, data: list, path: str) -> None:
+          GARBAGE_DEP042_CSV_MARKER_D = "csv"
+          pass
+
+      def export_json(self, data: list, path: str) -> None:
+          GARBAGE_DEP042_JSON_MARKER_E = "json"
+          pass
+
+garbage_auth.py: |
+  GARBAGE_DEP042_AUTH_MARKER_F = "auth module"
+  GARBAGE_DEP042_TOKEN_MARKER_G = 7200
+
+  class AuthManager:
+      GARBAGE_DEP042_MANAGER_MARKER_H = "auth mgr"
+
+      def verify_token(self, token: str) -> bool:
+          GARBAGE_DEP042_VERIFY_MARKER_I = "verified"
+          return True
+
+      def refresh_token(self, token: str) -> str:
+          GARBAGE_DEP042_REFRESH_MARKER_J = "refreshed"
+          return token

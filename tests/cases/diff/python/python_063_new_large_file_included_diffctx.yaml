@@ -1,0 +1,19 @@
+must_include_files:
+- src/analytics/advanced.py
+must_include_content:
+- class AdvancedInsights
+- def detect_trend(self, values
+- def find_outliers(self, values
+must_not_include:
+- GARBAGE_PY063_BILLING_MARKER_A
+- GARBAGE_PY063_INVOICE_MARKER_B
+- GARBAGE_PY063_GENERATOR_MARKER_C
+- GARBAGE_PY063_TEMPLATE_MARKER_D
+- GARBAGE_PY063_SEND_MARKER_E
+- GARBAGE_PY063_CACHE_MARKER_F
+- GARBAGE_PY063_REDIS_MARKER_G
+- GARBAGE_PY063_MANAGER_MARKER_H
+- GARBAGE_PY063_GET_MARKER_I
+- GARBAGE_PY063_SET_MARKER_J
+- garbage_billing.py
+- garbage_cache.py

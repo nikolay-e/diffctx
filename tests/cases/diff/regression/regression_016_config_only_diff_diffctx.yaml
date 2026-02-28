@@ -1,0 +1,13 @@
+must_include_files:
+- pyproject.toml
+- .pre-commit-config.yaml
+must_include_content:
+- 'version = "1.1.0"'
+- "ruff-pre-commit"
+must_not_include:
+- GARBAGE_REG016_ENGINE_MARKER
+- GARBAGE_REG016_ENGINE_RESULT
+- GARBAGE_REG016_PIPELINE_MARKER
+- GARBAGE_REG016_PIPELINE_RESULT
+- GARBAGE_REG016_HANDLER_MARKER
+- GARBAGE_REG016_HANDLER_RESULT

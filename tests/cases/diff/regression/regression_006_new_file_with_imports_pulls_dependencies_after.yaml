@@ -1,0 +1,225 @@
+src/data/loader.py: |
+  from pathlib import Path
+  from typing import Any
+
+
+  def load_dataset(source_path: str, encoding: str = "utf-8") -> list[dict[str, Any]]:
+      path = Path(source_path)
+      if not path.exists():
+          raise FileNotFoundError(f"Dataset not found: {source_path}")
+      rows = []
+      with path.open("r", encoding=encoding) as fh:
+          headers = fh.readline().strip().split(",")
+          for line in fh:
+              values = line.strip().split(",")
+              rows.append(dict(zip(headers, values)))
+      return rows
+
+
+  def validate_schema(dataset: list[dict], required_columns: list[str]) -> bool:
+      if not dataset:
+          return False
+      actual_columns = set(dataset[0].keys())
+      missing = set(required_columns) - actual_columns
+      if missing:
+          raise ValueError(f"Missing columns: {missing}")
+      return True
+
+
+  def parse_csv_row(raw_line: str, delimiter: str = ",") -> list[str]:
+      parts = []
+      current = []
+      in_quotes = False
+      for char in raw_line:
+          if char == '"':
+              in_quotes = not in_quotes
+          elif char == delimiter and not in_quotes:
+              parts.append("".join(current).strip())
+              current = []
+          else:
+              current.append(char)
+      parts.append("".join(current).strip())
+      return parts
+
+src/data/transform.py: |
+  from typing import Any
+
+
+  def normalize_values(records: list[dict[str, Any]], column: str) -> list[dict[str, Any]]:
+      raw_values = [float(r[column]) for r in records if column in r]
+      if not raw_values:
+          return records
+      min_val = min(raw_values)
+      max_val = max(raw_values)
+      spread = max_val - min_val
+      if spread == 0:
+          return records
+      result = []
+      for record in records:
+          updated = dict(record)
+          if column in updated:
+              updated[column] = (float(updated[column]) - min_val) / spread
+          result.append(updated)
+      return result
+
+
+  def apply_filters(
+      records: list[dict[str, Any]],
+      filters: dict[str, Any],
+  ) -> list[dict[str, Any]]:
+      filtered = []
+      for record in records:
+          matches = True
+          for key, expected in filters.items():
+              if record.get(key) != expected:
+                  matches = False
+                  break
+          if matches:
+              filtered.append(record)
+      return filtered
+
+
+  def pivot_data(
+      records: list[dict[str, Any]],
+      group_by: str,
+      value_column: str,
+  ) -> dict[str, list[Any]]:
+      groups: dict[str, list[Any]] = {}
+      for record in records:
+          group_key = str(record.get(group_by, "unknown"))
+          if group_key not in groups:
+              groups[group_key] = []
+          groups[group_key].append(record.get(value_column))
+      return groups
+
+src/config/settings.py: |
+  REPORT_FORMAT = "pdf"
+  MAX_ROWS = 10000
+  DEFAULT_ENCODING = "utf-8"
+
+  SUPPORTED_FORMATS = ("pdf", "csv", "xlsx", "html")
+  DATE_FORMAT = "%Y-%m-%d"
+  DECIMAL_PRECISION = 4
+
+src/reporting/generator.py: |
+  from typing import Any
+
+  from src.data.loader import load_dataset, validate_schema
+  from src.data.transform import normalize_values, apply_filters
+  from src.config.settings import REPORT_FORMAT, MAX_ROWS
+
+
+  class ReportGenerator:
+      def __init__(self, source_path: str, output_format: str = REPORT_FORMAT):
+          self.source_path = source_path
+          self.output_format = output_format
+          self.max_rows = MAX_ROWS
+          self._dataset: list[dict[str, Any]] = []
+
+      def load_and_validate(self, required_columns: list[str]) -> None:
+          self._dataset = load_dataset(self.source_path)
+          validate_schema(self._dataset, required_columns)
+          if len(self._dataset) > self.max_rows:
+              self._dataset = self._dataset[: self.max_rows]
+
+      def generate_summary(
+          self,
+          group_column: str,
+          value_column: str,
+          filters: dict[str, Any] | None = None,
+      ) -> dict[str, Any]:
+          working_set = self._dataset
+          if filters:
+              working_set = apply_filters(working_set, filters)
+          normalized = normalize_values(working_set, value_column)
+          groups: dict[str, list[float]] = {}
+          for record in normalized:
+              key = str(record.get(group_column, "other"))
+              if key not in groups:
+                  groups[key] = []
+              groups[key].append(float(record.get(value_column, 0)))
+          summary = {}
+          for key, values in groups.items():
+              summary[key] = {
+                  "count": len(values),
+                  "total": round(sum(values), 4),
+                  "average": round(sum(values) / len(values), 4) if values else 0,
+              }
+          return {"format": self.output_format, "groups": summary}
+
+      def export_rows(self, columns: list[str]) -> list[dict[str, Any]]:
+          exported = []
+          for record in self._dataset:
+              row = {col: record.get(col) for col in columns if col in record}
+              exported.append(row)
+          return exported
+
+      def row_count(self) -> int:
+          return len(self._dataset)
+
+src/auth/middleware.py: |
+  from typing import Any
+
+  GARBAGE_REG006_AUTH_SESSION_TIMEOUT = 3600
+  GARBAGE_REG006_AUTH_MAX_RETRIES = 5
+
+
+  class AuthMiddleware:
+      def __init__(self, secret_key: str):
+          self.secret_key = secret_key
+          self.GARBAGE_REG006_AUTH_CACHE_ENABLED = True
+
+      def authenticate_request(self, request: dict[str, Any]) -> bool:
+          token = request.get("authorization", "")
+          if not token.startswith("Bearer "):
+              return False
+          GARBAGE_REG006_AUTH_TOKEN_PREFIX = "Bearer "
+          payload = token[len("Bearer "):]
+          return self._verify_token(payload)
+
+      def _verify_token(self, token: str) -> bool:
+          GARBAGE_REG006_AUTH_VERIFY_FLAG = True
+          if len(token) < 16:
+              return False
+          return token.startswith(self.secret_key[:8])
+
+      def refresh_session(self, session_id: str) -> dict[str, Any]:
+          GARBAGE_REG006_AUTH_REFRESH_MARKER = session_id
+          return {
+              "session_id": session_id,
+              "renewed": True,
+              "timeout": GARBAGE_REG006_AUTH_SESSION_TIMEOUT,
+          }
+
+src/cache/redis_client.py: |
+  from typing import Any
+
+  GARBAGE_REG006_CACHE_DEFAULT_TTL = 300
+  GARBAGE_REG006_CACHE_MAX_CONNECTIONS = 10
+
+
+  class RedisClient:
+      def __init__(self, host: str = "localhost", port: int = 6379):
+          self.host = host
+          self.port = port
+          self.GARBAGE_REG006_CACHE_CONNECTED = False
+
+      def connect(self) -> None:
+          GARBAGE_REG006_CACHE_CONNECT_MARKER = True
+          self.GARBAGE_REG006_CACHE_CONNECTED = True
+
+      def get(self, key: str) -> Any:
+          GARBAGE_REG006_CACHE_GET_MARKER = key
+          return None
+
+      def set(self, key: str, value: Any, ttl: int = 300) -> bool:
+          GARBAGE_REG006_CACHE_SET_MARKER = f"{key}:{value}"
+          return True
+
+      def delete(self, key: str) -> bool:
+          GARBAGE_REG006_CACHE_DELETE_MARKER = key
+          return True
+
+      def flush_all(self) -> None:
+          GARBAGE_REG006_CACHE_FLUSH_MARKER = "flushed"
+          self.GARBAGE_REG006_CACHE_CONNECTED = False

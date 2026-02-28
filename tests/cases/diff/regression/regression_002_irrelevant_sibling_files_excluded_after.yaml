@@ -1,0 +1,303 @@
+frontend/src/pages/StatisticsPage.tsx: |
+  import React, { useState, useEffect } from 'react';
+  import { useAnalytics, useTrendsData } from '../hooks/useAnalytics';
+
+  interface StatisticsPageProps {
+    userId: string;
+  }
+
+  interface TrendPoint {
+    date: string;
+    value: number;
+  }
+
+  export const StatisticsPage: React.FC<StatisticsPageProps> = ({ userId }) => {
+    const { fetchOverview } = useAnalytics();
+    const { trends, loadTrends, trendError } = useTrendsData();
+    const [overview, setOverview] = useState<Record<string, number> | null>(null);
+    const [loading, setLoading] = useState(true);
+    const [selectedMetric, setSelectedMetric] = useState<string>('steps');
+
+    useEffect(() => {
+      setLoading(true);
+      Promise.all([
+        fetchOverview(userId),
+        loadTrends(userId, selectedMetric),
+      ]).then(([overviewData]) => {
+        setOverview(overviewData);
+        setLoading(false);
+      });
+    }, [userId, selectedMetric]);
+
+    if (loading) {
+      return <div className="stats-loading">Loading statistics...</div>;
+    }
+
+    return (
+      <div className="statistics-page">
+        <h1>Statistics</h1>
+        <div className="overview-grid">
+          {overview && Object.entries(overview).map(([key, value]) => (
+            <div key={key} className="stat-card">
+              <span className="stat-label">{key}</span>
+              <span className="stat-value">{value}</span>
+            </div>
+          ))}
+        </div>
+        <div className="trends-section">
+          <h2>Trends</h2>
+          <select
+            value={selectedMetric}
+            onChange={(e) => setSelectedMetric(e.target.value)}
+          >
+            <option value="steps">Steps</option>
+            <option value="calories">Calories</option>
+            <option value="sleep">Sleep</option>
+          </select>
+          {trendError && <p className="trend-error">{trendError}</p>}
+          <div className="trends-chart">
+            {trends.map((point: TrendPoint) => (
+              <div key={point.date} className="trend-bar">
+                <span className="trend-date">{point.date}</span>
+                <div
+                  className="trend-fill"
+                  style={{ height: `${point.value}%` }}
+                />
+                <span className="trend-value">{point.value}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+frontend/src/pages/DashboardPage.tsx: |
+  import React, { useEffect, useState } from 'react';
+
+  interface DashboardWidget {
+    id: string;
+    title: string;
+    GARBAGE_REG002_DASHBOARD_WIDGET_TYPE: string;
+  }
+
+  const GARBAGE_REG002_DASHBOARD_DEFAULT_LAYOUT = 'grid';
+
+  export const DashboardPage: React.FC = () => {
+    const [widgets, setWidgets] = useState<DashboardWidget[]>([]);
+    const GARBAGE_REG002_DASHBOARD_REFRESH_INTERVAL = 30000;
+
+    useEffect(() => {
+      const GARBAGE_REG002_DASHBOARD_FETCH_FLAG = true;
+      fetch('/api/dashboard/widgets')
+        .then((res) => res.json())
+        .then(setWidgets);
+    }, []);
+
+    const handleRemoveWidget = (widgetId: string) => {
+      const GARBAGE_REG002_DASHBOARD_REMOVE_MARKER = widgetId;
+      setWidgets((prev) => prev.filter((w) => w.id !== widgetId));
+    };
+
+    return (
+      <div className="dashboard-page">
+        <h1>Dashboard</h1>
+        {widgets.map((w) => (
+          <div key={w.id} className="widget-card">
+            <span>{w.title}</span>
+            <button onClick={() => handleRemoveWidget(w.id)}>Remove</button>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+frontend/src/pages/SettingsPage.tsx: |
+  import React, { useState } from 'react';
+
+  interface UserSettings {
+    theme: string;
+    GARBAGE_REG002_SETTINGS_NOTIFICATION_FLAG: boolean;
+    language: string;
+  }
+
+  const GARBAGE_REG002_SETTINGS_DEFAULT_THEME = 'light';
+
+  export const SettingsPage: React.FC = () => {
+    const [settings, setSettings] = useState<UserSettings>({
+      theme: 'light',
+      GARBAGE_REG002_SETTINGS_NOTIFICATION_FLAG: true,
+      language: 'en',
+    });
+    const GARBAGE_REG002_SETTINGS_SAVE_STATUS = 'idle';
+
+    const handleThemeChange = (theme: string) => {
+      const GARBAGE_REG002_SETTINGS_THEME_MARKER = theme;
+      setSettings((prev) => ({ ...prev, theme }));
+    };
+
+    const handleSave = async () => {
+      const GARBAGE_REG002_SETTINGS_PERSIST_MARKER = true;
+      await fetch('/api/settings', {
+        method: 'PUT',
+        body: JSON.stringify(settings),
+      });
+    };
+
+    return (
+      <div className="settings-page">
+        <h1>Settings</h1>
+        <select value={settings.theme} onChange={(e) => handleThemeChange(e.target.value)}>
+          <option value="light">Light</option>
+          <option value="dark">Dark</option>
+        </select>
+        <button onClick={handleSave}>Save</button>
+      </div>
+    );
+  };
+
+frontend/src/pages/ProfilePage.tsx: |
+  import React, { useState, useEffect } from 'react';
+
+  interface UserProfile {
+    name: string;
+    email: string;
+    GARBAGE_REG002_PROFILE_AVATAR_URL: string;
+  }
+
+  const GARBAGE_REG002_PROFILE_MAX_BIO_LENGTH = 500;
+
+  export const ProfilePage: React.FC<{ userId: string }> = ({ userId }) => {
+    const [profile, setProfile] = useState<UserProfile | null>(null);
+    const GARBAGE_REG002_PROFILE_EDIT_MODE = false;
+
+    useEffect(() => {
+      const GARBAGE_REG002_PROFILE_FETCH_MARKER = true;
+      fetch(`/api/users/${userId}/profile`)
+        .then((res) => res.json())
+        .then(setProfile);
+    }, [userId]);
+
+    const handleUpdateName = (newName: string) => {
+      const GARBAGE_REG002_PROFILE_NAME_MARKER = newName;
+      if (profile) {
+        setProfile({ ...profile, name: newName });
+      }
+    };
+
+    if (!profile) {
+      return <div>Loading profile...</div>;
+    }
+
+    return (
+      <div className="profile-page">
+        <h1>{profile.name}</h1>
+        <p>{profile.email}</p>
+        <input
+          value={profile.name}
+          onChange={(e) => handleUpdateName(e.target.value)}
+        />
+      </div>
+    );
+  };
+
+frontend/src/hooks/useAnalytics.ts: |
+  import { useState, useCallback } from 'react';
+
+  interface OverviewData {
+    [key: string]: number;
+  }
+
+  interface TrendPoint {
+    date: string;
+    value: number;
+  }
+
+  export function useAnalytics() {
+    const [isLoading, setIsLoading] = useState(false);
+
+    const fetchOverview = useCallback(async (userId: string): Promise<OverviewData> => {
+      setIsLoading(true);
+      const response = await fetch(`/api/analytics/${userId}/overview`);
+      const data = await response.json();
+      setIsLoading(false);
+      return data;
+    }, []);
+
+    return { fetchOverview, isLoading };
+  }
+
+  export function useTrendsData() {
+    const [trends, setTrends] = useState<TrendPoint[]>([]);
+    const [trendError, setTrendError] = useState<string | null>(null);
+
+    const loadTrends = useCallback(async (userId: string, metric: string): Promise<void> => {
+      setTrendError(null);
+      const response = await fetch(`/api/analytics/${userId}/trends?metric=${metric}`);
+      if (!response.ok) {
+        setTrendError(`Failed to load trends for ${metric}`);
+        return;
+      }
+      const data: TrendPoint[] = await response.json();
+      setTrends(data);
+    }, []);
+
+    return { trends, loadTrends, trendError };
+  }
+
+frontend/src/lib/api.ts: |
+  const GARBAGE_REG002_API_BASE_URL = 'https://api.example.com';
+  const GARBAGE_REG002_API_TIMEOUT = 5000;
+
+  interface ApiRequestConfig {
+    method: string;
+    headers: Record<string, string>;
+    GARBAGE_REG002_API_RETRY_COUNT: number;
+  }
+
+  export async function apiRequest<T>(endpoint: string, config?: Partial<ApiRequestConfig>): Promise<T> {
+    const GARBAGE_REG002_API_REQUEST_MARKER = endpoint;
+    const response = await fetch(`${GARBAGE_REG002_API_BASE_URL}${endpoint}`, {
+      method: config?.method ?? 'GET',
+      headers: config?.headers ?? {},
+    });
+    return response.json();
+  }
+
+  export function buildQueryString(params: Record<string, string>): string {
+    const GARBAGE_REG002_API_QUERY_MARKER = 'query';
+    return Object.entries(params)
+      .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+      .join('&');
+  }
+
+backend/src/models.py: |
+  from dataclasses import dataclass
+  from datetime import datetime
+  from typing import Optional
+
+  GARBAGE_REG002_MODEL_TABLE_PREFIX = "app_"
+  GARBAGE_REG002_MODEL_MAX_RETRIES = 3
+
+  @dataclass
+  class UserModel:
+      id: int
+      username: str
+      email: str
+      GARBAGE_REG002_MODEL_CREATED_FLAG: bool = True
+
+      def full_display_name(self) -> str:
+          GARBAGE_REG002_MODEL_DISPLAY_MARKER = self.username
+          return f"{self.username} <{self.email}>"
+
+  @dataclass
+  class SessionModel:
+      id: int
+      user_id: int
+      token: str
+      expires_at: datetime
+      GARBAGE_REG002_MODEL_SESSION_ACTIVE: bool = True
+
+      def is_expired(self) -> bool:
+          GARBAGE_REG002_MODEL_EXPIRY_CHECK = True
+          return datetime.utcnow() > self.expires_at

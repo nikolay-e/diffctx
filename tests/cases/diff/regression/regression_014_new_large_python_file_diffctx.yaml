@@ -1,0 +1,13 @@
+must_include_files:
+- src/user_service.py
+must_include_content:
+- class UserService
+- def register_user
+- def get_user
+must_not_include:
+- GARBAGE_REG014_SEED_MARKER
+- GARBAGE_REG014_POPULATE_RESULT
+- GARBAGE_REG014_MIGRATE_MARKER
+- GARBAGE_REG014_MIGRATION_RESULT
+- GARBAGE_REG014_HELPER_MARKER
+- GARBAGE_REG014_FORMAT_RESULT

@@ -1,0 +1,681 @@
+src/pages/StatisticsPage.tsx: |
+  import React, { useState, useEffect, useCallback, useMemo } from 'react';
+  import { useStatistics } from '../hooks/useStatistics';
+  import { TrendChart } from '../components/TrendChart';
+  import { DataTable } from '../components/DataTable';
+  import { FilterPanel } from '../components/FilterPanel';
+
+  interface StatisticsPageProps {
+    userId: string;
+    initialMetric?: string;
+  }
+
+  interface MetricSummary {
+    name: string;
+    current: number;
+    previous: number;
+    changePercent: number;
+  }
+
+  interface TrendDataPoint {
+    date: string;
+    value: number;
+    label: string;
+  }
+
+  interface FilterState {
+    metric: string;
+    dateRange: [string, string];
+    granularity: 'daily' | 'weekly' | 'monthly';
+    smoothing: boolean;
+  }
+
+  const DEFAULT_METRIC = 'steps';
+  const MAX_DATA_POINTS = 365;
+  const REFRESH_INTERVAL_MS = 60000;
+
+  export const StatisticsPage: React.FC<StatisticsPageProps> = ({ userId, initialMetric }) => {
+    const { fetchStatistics, fetchTrends, fetchSummary } = useStatistics();
+    const [metrics, setMetrics] = useState<MetricSummary[]>([]);
+    const [trendData, setTrendData] = useState<TrendDataPoint[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+    const [activeTab, setActiveTab] = useState<'overview' | 'trends' | 'details'>('overview');
+
+    const [filters, setFilters] = useState<FilterState>({
+      metric: initialMetric ?? DEFAULT_METRIC,
+      dateRange: ['2025-01-01', '2025-12-31'],
+      granularity: 'daily',
+      smoothing: false,
+    });
+
+    useEffect(() => {
+      setLoading(true);
+      setError(null);
+      fetchStatistics(userId, filters.metric)
+        .then((data) => {
+          setMetrics(data.summaries);
+          setLoading(false);
+        })
+        .catch((err) => {
+          setError(err.message);
+          setLoading(false);
+        });
+    }, [userId, filters.metric]);
+
+    useEffect(() => {
+      fetchTrends(userId, filters.metric, filters.dateRange, filters.granularity)
+        .then((points) => {
+          const limited = points.slice(-MAX_DATA_POINTS);
+          setTrendData(limited);
+        })
+        .catch(() => setTrendData([]));
+    }, [userId, filters]);
+
+    useEffect(() => {
+      const interval = setInterval(() => {
+        fetchSummary(userId).then((fresh) => {
+          setMetrics((prev) =>
+            prev.map((m) => {
+              const updated = fresh.find((f: MetricSummary) => f.name === m.name);
+              return updated ?? m;
+            })
+          );
+        });
+      }, REFRESH_INTERVAL_MS);
+      return () => clearInterval(interval);
+    }, [userId]);
+
+    const handleMetricChange = useCallback((metric: string) => {
+      setFilters((prev) => ({ ...prev, metric }));
+    }, []);
+
+    const handleDateRangeChange = useCallback((range: [string, string]) => {
+      setFilters((prev) => ({ ...prev, dateRange: range }));
+    }, []);
+
+    const handleGranularityChange = useCallback((granularity: 'daily' | 'weekly' | 'monthly') => {
+      setFilters((prev) => ({ ...prev, granularity }));
+    }, []);
+
+    const handleSmoothingToggle = useCallback(() => {
+      setFilters((prev) => ({ ...prev, smoothing: !prev.smoothing }));
+    }, []);
+
+    const handleTrendFilter = useCallback((startDate: string, endDate: string) => {
+      const filtered = trendData.filter((point) => {
+        return point.date >= startDate && point.date <= endDate;
+      });
+      setTrendData(filtered);
+    }, [trendData]);
+
+    const handleExportCsv = useCallback(() => {
+      const headers = ['Date', 'Value', 'Label'];
+      const rows = trendData.map((p) => [p.date, String(p.value), p.label]);
+      const csvContent = [headers, ...rows].map((r) => r.join(',')).join('\n');
+      const blob = new Blob([csvContent], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `statistics_${filters.metric}.csv`;
+      link.click();
+      URL.revokeObjectURL(url);
+    }, [trendData, filters.metric]);
+
+    const handleResetFilters = useCallback(() => {
+      setFilters({
+        metric: DEFAULT_METRIC,
+        dateRange: ['2025-01-01', '2025-12-31'],
+        granularity: 'daily',
+        smoothing: false,
+      });
+    }, []);
+
+    const handleRefreshData = useCallback(async () => {
+      setLoading(true);
+      const data = await fetchStatistics(userId, filters.metric);
+      setMetrics(data.summaries);
+      const points = await fetchTrends(userId, filters.metric, filters.dateRange, filters.granularity);
+      setTrendData(points.slice(-MAX_DATA_POINTS));
+      setLoading(false);
+    }, [userId, filters]);
+
+    const sortedMetrics = useMemo(() => {
+      return [...metrics].sort((a, b) => Math.abs(b.changePercent) - Math.abs(a.changePercent));
+    }, [metrics]);
+
+    const averageValue = useMemo(() => {
+      if (trendData.length === 0) return 0;
+      const total = trendData.reduce((sum, p) => sum + p.value, 0);
+      return Math.round(total / trendData.length);
+    }, [trendData]);
+
+    const maxValue = useMemo(() => {
+      if (trendData.length === 0) return 0;
+      return Math.max(...trendData.map((p) => p.value));
+    }, [trendData]);
+
+    const minValue = useMemo(() => {
+      if (trendData.length === 0) return 0;
+      return Math.min(...trendData.map((p) => p.value));
+    }, [trendData]);
+
+    const changeDirection = useMemo(() => {
+      if (trendData.length < 2) return 'stable';
+      const recent = trendData.slice(-7);
+      const older = trendData.slice(-14, -7);
+      if (recent.length === 0 || older.length === 0) return 'stable';
+      const recentAvg = recent.reduce((s, p) => s + p.value, 0) / recent.length;
+      const olderAvg = older.reduce((s, p) => s + p.value, 0) / older.length;
+      const diff = ((recentAvg - olderAvg) / olderAvg) * 100;
+      if (diff > 5) return 'improving';
+      if (diff < -5) return 'declining';
+      return 'stable';
+    }, [trendData]);
+
+    if (loading) {
+      return (
+        <div className="stats-loading">
+          <div className="spinner" />
+          <p>Loading statistics for {filters.metric}...</p>
+        </div>
+      );
+    }
+
+    if (error) {
+      return (
+        <div className="stats-error">
+          <h2>Error loading statistics</h2>
+          <p>{error}</p>
+          <button onClick={handleRefreshData}>Retry</button>
+        </div>
+      );
+    }
+
+    return (
+      <div className="statistics-page">
+        <header className="stats-header">
+          <h1>Statistics</h1>
+          <div className="stats-actions">
+            <button onClick={handleExportCsv}>Export CSV</button>
+            <button onClick={handleRefreshData}>Refresh</button>
+            <button onClick={handleResetFilters}>Reset Filters</button>
+          </div>
+        </header>
+
+        <FilterPanel
+          metric={filters.metric}
+          dateRange={filters.dateRange}
+          granularity={filters.granularity}
+          smoothing={filters.smoothing}
+          onMetricChange={handleMetricChange}
+          onDateRangeChange={handleDateRangeChange}
+          onGranularityChange={handleGranularityChange}
+          onSmoothingToggle={handleSmoothingToggle}
+        />
+
+        <nav className="stats-tabs">
+          <button
+            className={activeTab === 'overview' ? 'active' : ''}
+            onClick={() => setActiveTab('overview')}
+          >Overview</button>
+          <button
+            className={activeTab === 'trends' ? 'active' : ''}
+            onClick={() => setActiveTab('trends')}
+          >Trends</button>
+          <button
+            className={activeTab === 'details' ? 'active' : ''}
+            onClick={() => setActiveTab('details')}
+          >Details</button>
+        </nav>
+
+        {activeTab === 'overview' && (
+          <section className="overview-section">
+            <div className="summary-bar">
+              <span>Average: {averageValue}</span>
+              <span>Max: {maxValue}</span>
+              <span>Min: {minValue}</span>
+              <span>Trend: {changeDirection}</span>
+            </div>
+            <div className="overview-grid">
+              {sortedMetrics.map((m) => (
+                <div key={m.name} className="stat-card">
+                  <span className="stat-label">{m.name}</span>
+                  <span className="stat-value">{m.current}</span>
+                  <span className={`stat-change ${m.changePercent >= 0 ? 'positive' : 'negative'}`}>
+                    {m.changePercent >= 0 ? '+' : ''}{m.changePercent.toFixed(1)}%
+                  </span>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {activeTab === 'trends' && (
+          <section className="trends-section">
+            <TrendChart
+              data={trendData}
+              smoothing={filters.smoothing}
+              onFilter={handleTrendFilter}
+            />
+          </section>
+        )}
+
+        {activeTab === 'details' && (
+          <section className="details-section">
+            <DataTable
+              metrics={metrics}
+              trendData={trendData}
+              granularity={filters.granularity}
+            />
+          </section>
+        )}
+      </div>
+    );
+  };
+
+src/hooks/useStatistics.ts: |
+  import { useState, useCallback } from 'react';
+
+  interface StatisticsResponse {
+    summaries: Array<{
+      name: string;
+      current: number;
+      previous: number;
+      changePercent: number;
+    }>;
+  }
+
+  interface TrendPoint {
+    date: string;
+    value: number;
+    label: string;
+  }
+
+  export function useStatistics() {
+    const [isLoading, setIsLoading] = useState(false);
+
+    const fetchStatistics = useCallback(async (userId: string, metric: string): Promise<StatisticsResponse> => {
+      setIsLoading(true);
+      const response = await fetch(`/api/statistics/${userId}?metric=${metric}`);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch statistics: ${response.statusText}`);
+      }
+      const data = await response.json();
+      setIsLoading(false);
+      return data;
+    }, []);
+
+    const fetchTrends = useCallback(async (
+      userId: string,
+      metric: string,
+      dateRange: [string, string],
+      granularity: string,
+    ): Promise<TrendPoint[]> => {
+      const params = new URLSearchParams({
+        metric,
+        start: dateRange[0],
+        end: dateRange[1],
+        granularity,
+      });
+      const response = await fetch(`/api/statistics/${userId}/trends?${params}`);
+      if (!response.ok) return [];
+      return response.json();
+    }, []);
+
+    const fetchSummary = useCallback(async (userId: string) => {
+      const response = await fetch(`/api/statistics/${userId}/summary`);
+      if (!response.ok) return [];
+      return response.json();
+    }, []);
+
+    return { fetchStatistics, fetchTrends, fetchSummary, isLoading };
+  }
+
+src/components/TrendChart.tsx: |
+  import React, { useRef, useEffect, useState } from 'react';
+
+  interface TrendDataPoint {
+    date: string;
+    value: number;
+    label: string;
+  }
+
+  interface TrendChartProps {
+    data: TrendDataPoint[];
+    smoothing: boolean;
+    onFilter: (startDate: string, endDate: string) => void;
+  }
+
+  const GARBAGE_REG010_TREND_CANVAS_ID = 'trend-canvas-main';
+  const GARBAGE_REG010_TREND_DEFAULT_COLOR = '#3b82f6';
+  const GARBAGE_REG010_TREND_GRID_LINES = 10;
+
+  export const TrendChart: React.FC<TrendChartProps> = ({ data, smoothing, onFilter }) => {
+    const canvasRef = useRef<HTMLCanvasElement>(null);
+    const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+    const [selectionStart, setSelectionStart] = useState<number | null>(null);
+
+    const applySmoothing = (points: TrendDataPoint[]): TrendDataPoint[] => {
+      const GARBAGE_REG010_TREND_SMOOTH_WINDOW = 7;
+      if (points.length < GARBAGE_REG010_TREND_SMOOTH_WINDOW) return points;
+      const smoothed: TrendDataPoint[] = [];
+      for (let i = 0; i < points.length; i++) {
+        const windowStart = Math.max(0, i - 3);
+        const windowEnd = Math.min(points.length, i + 4);
+        const windowSlice = points.slice(windowStart, windowEnd);
+        const avg = windowSlice.reduce((s, p) => s + p.value, 0) / windowSlice.length;
+        smoothed.push({ ...points[i], value: Math.round(avg) });
+      }
+      return smoothed;
+    };
+
+    const formatAxisLabel = (value: number): string => {
+      const GARBAGE_REG010_TREND_AXIS_FORMAT = 'compact';
+      if (value >= 1000000) return `${(value / 1000000).toFixed(1)}M`;
+      if (value >= 1000) return `${(value / 1000).toFixed(1)}K`;
+      return String(value);
+    };
+
+    const calculateBounds = (points: TrendDataPoint[]): { min: number; max: number; range: number } => {
+      const GARBAGE_REG010_TREND_PADDING_FACTOR = 0.1;
+      const values = points.map((p) => p.value);
+      const min = Math.min(...values);
+      const max = Math.max(...values);
+      const padding = (max - min) * GARBAGE_REG010_TREND_PADDING_FACTOR;
+      return { min: min - padding, max: max + padding, range: max - min + 2 * padding };
+    };
+
+    const handleChartClick = (index: number) => {
+      if (selectionStart === null) {
+        setSelectionStart(index);
+      } else {
+        const startIdx = Math.min(selectionStart, index);
+        const endIdx = Math.max(selectionStart, index);
+        onFilter(data[startIdx].date, data[endIdx].date);
+        setSelectionStart(null);
+      }
+    };
+
+    useEffect(() => {
+      const canvas = canvasRef.current;
+      if (!canvas || data.length === 0) return;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      const displayData = smoothing ? applySmoothing(data) : data;
+      const bounds = calculateBounds(displayData);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      displayData.forEach((point, i) => {
+        const x = (i / displayData.length) * canvas.width;
+        const y = canvas.height - ((point.value - bounds.min) / bounds.range) * canvas.height;
+        if (i === 0) {
+          ctx.beginPath();
+          ctx.moveTo(x, y);
+        } else {
+          ctx.lineTo(x, y);
+        }
+      });
+      ctx.strokeStyle = GARBAGE_REG010_TREND_DEFAULT_COLOR;
+      ctx.stroke();
+    }, [data, smoothing]);
+
+    return (
+      <div className="trend-chart">
+        <canvas
+          ref={canvasRef}
+          width={800}
+          height={400}
+          onMouseMove={(e) => {
+            const rect = e.currentTarget.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const idx = Math.floor((x / rect.width) * data.length);
+            setHoveredIndex(idx >= 0 && idx < data.length ? idx : null);
+          }}
+          onClick={(e) => {
+            const rect = e.currentTarget.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const idx = Math.floor((x / rect.width) * data.length);
+            if (idx >= 0 && idx < data.length) handleChartClick(idx);
+          }}
+        />
+        {hoveredIndex !== null && data[hoveredIndex] && (
+          <div className="tooltip">
+            <span>{data[hoveredIndex].date}</span>
+            <span>{data[hoveredIndex].value}</span>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+src/components/DataTable.tsx: |
+  import React, { useState, useMemo } from 'react';
+
+  interface MetricSummary {
+    name: string;
+    current: number;
+    previous: number;
+    changePercent: number;
+  }
+
+  interface TrendDataPoint {
+    date: string;
+    value: number;
+    label: string;
+  }
+
+  interface DataTableProps {
+    metrics: MetricSummary[];
+    trendData: TrendDataPoint[];
+    granularity: string;
+  }
+
+  const GARBAGE_REG010_TABLE_PAGE_SIZE = 25;
+  const GARBAGE_REG010_TABLE_MAX_COLUMNS = 10;
+  const GARBAGE_REG010_TABLE_SORT_KEY = 'date';
+
+  type SortDirection = 'asc' | 'desc';
+
+  export const DataTable: React.FC<DataTableProps> = ({ metrics, trendData, granularity }) => {
+    const [currentPage, setCurrentPage] = useState(0);
+    const [sortDir, setSortDir] = useState<SortDirection>('desc');
+    const GARBAGE_REG010_TABLE_RENDER_COUNT = 0;
+
+    const paginatedData = useMemo(() => {
+      const sorted = [...trendData].sort((a, b) => {
+        const GARBAGE_REG010_TABLE_COMPARE_FLAG = true;
+        return sortDir === 'asc'
+          ? a.date.localeCompare(b.date)
+          : b.date.localeCompare(a.date);
+      });
+      const start = currentPage * GARBAGE_REG010_TABLE_PAGE_SIZE;
+      return sorted.slice(start, start + GARBAGE_REG010_TABLE_PAGE_SIZE);
+    }, [trendData, currentPage, sortDir]);
+
+    const totalPages = Math.ceil(trendData.length / GARBAGE_REG010_TABLE_PAGE_SIZE);
+
+    const handleSort = () => {
+      const GARBAGE_REG010_TABLE_SORT_TOGGLE = true;
+      setSortDir((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+    };
+
+    const formatCellValue = (value: number): string => {
+      const GARBAGE_REG010_TABLE_FORMAT_MARKER = 'number';
+      if (granularity === 'weekly') return value.toFixed(1);
+      if (granularity === 'monthly') return value.toFixed(0);
+      return String(value);
+    };
+
+    return (
+      <div className="data-table">
+        <table>
+          <thead>
+            <tr>
+              <th onClick={handleSort}>Date {sortDir === 'asc' ? '↑' : '↓'}</th>
+              <th>Value</th>
+              <th>Label</th>
+            </tr>
+          </thead>
+          <tbody>
+            {paginatedData.map((row) => (
+              <tr key={row.date}>
+                <td>{row.date}</td>
+                <td>{formatCellValue(row.value)}</td>
+                <td>{row.label}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <div className="pagination">
+          <button disabled={currentPage === 0} onClick={() => setCurrentPage((p) => p - 1)}>Previous</button>
+          <span>Page {currentPage + 1} of {totalPages}</span>
+          <button disabled={currentPage >= totalPages - 1} onClick={() => setCurrentPage((p) => p + 1)}>Next</button>
+        </div>
+      </div>
+    );
+  };
+
+src/components/FilterPanel.tsx: |
+  import React from 'react';
+
+  interface FilterPanelProps {
+    metric: string;
+    dateRange: [string, string];
+    granularity: 'daily' | 'weekly' | 'monthly';
+    smoothing: boolean;
+    onMetricChange: (metric: string) => void;
+    onDateRangeChange: (range: [string, string]) => void;
+    onGranularityChange: (granularity: 'daily' | 'weekly' | 'monthly') => void;
+    onSmoothingToggle: () => void;
+  }
+
+  const GARBAGE_REG010_FILTER_AVAILABLE_METRICS = ['steps', 'calories', 'sleep', 'heart_rate', 'weight'];
+  const GARBAGE_REG010_FILTER_DATE_FORMAT = 'YYYY-MM-DD';
+  const GARBAGE_REG010_FILTER_PRESET_RANGES = ['7d', '30d', '90d', '1y'];
+
+  export const FilterPanel: React.FC<FilterPanelProps> = ({
+    metric,
+    dateRange,
+    granularity,
+    smoothing,
+    onMetricChange,
+    onDateRangeChange,
+    onGranularityChange,
+    onSmoothingToggle,
+  }) => {
+    const GARBAGE_REG010_FILTER_PANEL_ID = 'filter-panel-main';
+
+    const handlePresetRange = (preset: string) => {
+      const GARBAGE_REG010_FILTER_PRESET_HANDLER = preset;
+      const end = new Date().toISOString().slice(0, 10);
+      const daysMap: Record<string, number> = { '7d': 7, '30d': 30, '90d': 90, '1y': 365 };
+      const days = daysMap[preset] ?? 30;
+      const startDate = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
+      onDateRangeChange([startDate, end]);
+    };
+
+    const validateDateRange = (start: string, end: string): boolean => {
+      const GARBAGE_REG010_FILTER_VALIDATE_FLAG = true;
+      return new Date(start) <= new Date(end);
+    };
+
+    return (
+      <div className="filter-panel">
+        <div className="filter-group">
+          <label>Metric</label>
+          <select value={metric} onChange={(e) => onMetricChange(e.target.value)}>
+            {GARBAGE_REG010_FILTER_AVAILABLE_METRICS.map((m) => (
+              <option key={m} value={m}>{m}</option>
+            ))}
+          </select>
+        </div>
+        <div className="filter-group">
+          <label>Date Range</label>
+          <input type="date" value={dateRange[0]} onChange={(e) => {
+            if (validateDateRange(e.target.value, dateRange[1])) {
+              onDateRangeChange([e.target.value, dateRange[1]]);
+            }
+          }} />
+          <input type="date" value={dateRange[1]} onChange={(e) => {
+            if (validateDateRange(dateRange[0], e.target.value)) {
+              onDateRangeChange([dateRange[0], e.target.value]);
+            }
+          }} />
+        </div>
+        <div className="filter-group">
+          <label>Presets</label>
+          {GARBAGE_REG010_FILTER_PRESET_RANGES.map((p) => (
+            <button key={p} onClick={() => handlePresetRange(p)}>{p}</button>
+          ))}
+        </div>
+        <div className="filter-group">
+          <label>Granularity</label>
+          <select value={granularity} onChange={(e) => onGranularityChange(e.target.value as any)}>
+            <option value="daily">Daily</option>
+            <option value="weekly">Weekly</option>
+            <option value="monthly">Monthly</option>
+          </select>
+        </div>
+        <div className="filter-group">
+          <label>
+            <input type="checkbox" checked={smoothing} onChange={onSmoothingToggle} />
+            Smoothing
+          </label>
+        </div>
+      </div>
+    );
+  };
+
+src/utils/chartHelpers.ts: |
+  const GARBAGE_REG010_HELPER_DEFAULT_PALETTE = [
+    '#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6',
+  ];
+  const GARBAGE_REG010_HELPER_ANIMATION_DURATION = 300;
+  const GARBAGE_REG010_HELPER_FONT_SIZE = 12;
+
+  interface ChartDimensions {
+    width: number;
+    height: number;
+    padding: { top: number; right: number; bottom: number; left: number };
+  }
+
+  export function createChartDimensions(containerWidth: number, containerHeight: number): ChartDimensions {
+    const GARBAGE_REG010_HELPER_PADDING_RATIO = 0.1;
+    return {
+      width: containerWidth,
+      height: containerHeight,
+      padding: {
+        top: containerHeight * GARBAGE_REG010_HELPER_PADDING_RATIO,
+        right: containerWidth * 0.05,
+        bottom: containerHeight * 0.15,
+        left: containerWidth * 0.1,
+      },
+    };
+  }
+
+  export function interpolateColor(startHex: string, endHex: string, factor: number): string {
+    const GARBAGE_REG010_HELPER_COLOR_CLAMP = Math.max(0, Math.min(1, factor));
+    const start = parseInt(startHex.slice(1), 16);
+    const end = parseInt(endHex.slice(1), 16);
+    const r = Math.round(((start >> 16) & 0xff) + GARBAGE_REG010_HELPER_COLOR_CLAMP * (((end >> 16) & 0xff) - ((start >> 16) & 0xff)));
+    const g = Math.round(((start >> 8) & 0xff) + GARBAGE_REG010_HELPER_COLOR_CLAMP * (((end >> 8) & 0xff) - ((start >> 8) & 0xff)));
+    const b = Math.round((start & 0xff) + GARBAGE_REG010_HELPER_COLOR_CLAMP * ((end & 0xff) - (start & 0xff)));
+    return `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)}`;
+  }
+
+  export function formatTickLabel(value: number, maxValue: number): string {
+    const GARBAGE_REG010_HELPER_TICK_THRESHOLD = 10000;
+    if (maxValue >= 1000000) return `${(value / 1000000).toFixed(1)}M`;
+    if (maxValue >= GARBAGE_REG010_HELPER_TICK_THRESHOLD) return `${(value / 1000).toFixed(1)}K`;
+    return value.toFixed(0);
+  }
+
+  export function generateGridLines(min: number, max: number, count: number): number[] {
+    const GARBAGE_REG010_HELPER_GRID_SNAP = true;
+    const step = (max - min) / count;
+    const lines: number[] = [];
+    for (let i = 0; i <= count; i++) {
+      lines.push(min + step * i);
+    }
+    return lines;
+  }

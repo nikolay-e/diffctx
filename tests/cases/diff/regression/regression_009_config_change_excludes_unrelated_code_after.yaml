@@ -1,0 +1,317 @@
+pyproject.toml: |
+  [project]
+  name = "treemapper"
+  version = "1.3.0"
+  description = "Directory structure to YAML converter for LLM analysis"
+  requires-python = ">=3.11"
+  license = {text = "Apache-2.0"}
+  authors = [
+      {name = "Nikolay Eremeev", email = "dev@nikolay-eremeev.com"},
+  ]
+  dependencies = [
+      "pyyaml>=6.0",
+      "pathspec>=0.11",
+      "tiktoken>=0.5",
+      "click>=8.1",
+      "httpx>=0.25",
+  ]
+
+  [project.optional-dependencies]
+  dev = [
+      "pytest>=7.4",
+      "pytest-cov>=4.1",
+      "black>=23.0",
+      "ruff>=0.1",
+      "mypy>=1.5",
+      "pre-commit>=3.4",
+  ]
+  tree-sitter = [
+      "tree-sitter>=0.21",
+      "tree-sitter-python>=0.21",
+      "tree-sitter-javascript>=0.21",
+  ]
+
+  [project.scripts]
+  treemapper = "treemapper.cli:main"
+
+  [tool.pytest.ini_options]
+  testpaths = ["tests"]
+  addopts = "-v --tb=short"
+
+  [tool.black]
+  line-length = 99
+  target-version = ["py311"]
+
+  [tool.ruff]
+  line-length = 99
+  target-version = "py311"
+
+  [tool.mypy]
+  python_version = "3.11"
+  strict = true
+
+  [build-system]
+  requires = ["setuptools>=68.0", "wheel"]
+  build-backend = "setuptools.backends._legacy:_Backend"
+
+src/treemapper/cli.py: |
+  import sys
+  from pathlib import Path
+  from typing import Optional
+
+  import click
+
+
+  GARBAGE_REG009_CLI_VERSION = "1.2.0"
+  GARBAGE_REG009_CLI_BANNER = "TreeMapper CLI"
+
+
+  @click.command()
+  @click.argument("path", type=click.Path(exists=True))
+  @click.option("--format", "output_format", default="yaml", type=click.Choice(["yaml", "json", "text"]))
+  @click.option("--max-depth", default=None, type=int)
+  @click.option("--budget", default=None, type=int)
+  def main(path: str, output_format: str, max_depth: Optional[int], budget: Optional[int]):
+      GARBAGE_REG009_CLI_ENTRY = "cli_entry_point"
+      root = Path(path).resolve()
+      if not root.is_dir():
+          click.echo(f"Error: {path} is not a directory", err=True)
+          sys.exit(1)
+      result = process_directory(root, output_format, max_depth, budget)
+      click.echo(result)
+
+
+  def process_directory(root: Path, fmt: str, depth: Optional[int], budget: Optional[int]) -> str:
+      GARBAGE_REG009_CLI_PROCESS = "processing_directory"
+      entries = list(root.iterdir())
+      filtered = [e for e in entries if not e.name.startswith(".")]
+      return f"Processed {len(filtered)} entries in {fmt} format"
+
+
+  def validate_output_path(output: Optional[str]) -> Optional[Path]:
+      GARBAGE_REG009_CLI_VALIDATE = "validate_output"
+      if output is None:
+          return None
+      path = Path(output)
+      path.parent.mkdir(parents=True, exist_ok=True)
+      return path
+
+
+  def parse_ignore_patterns(root: Path) -> list:
+      GARBAGE_REG009_CLI_IGNORE = "parsing_ignore_patterns"
+      ignore_file = root / ".treemapperignore"
+      if not ignore_file.exists():
+          return []
+      return [line.strip() for line in ignore_file.read_text().splitlines() if line.strip() and not line.startswith("#")]
+
+src/treemapper/graph.py: |
+  from typing import Dict, List, Set, Tuple, Optional
+  from dataclasses import dataclass, field
+
+
+  GARBAGE_REG009_GRAPH_MODULE = "dependency_graph"
+  GARBAGE_REG009_GRAPH_VERSION = "0.3.1"
+
+
+  @dataclass
+  class Node:
+      path: str
+      symbols: List[str] = field(default_factory=list)
+      imports: List[str] = field(default_factory=list)
+      GARBAGE_REG009_GRAPH_NODE_TAG: str = "node_marker"
+
+
+  @dataclass
+  class Edge:
+      source: str
+      target: str
+      weight: float = 1.0
+      edge_type: str = "import"
+      GARBAGE_REG009_GRAPH_EDGE_TAG: str = "edge_marker"
+
+
+  class DependencyGraph:
+      GARBAGE_REG009_GRAPH_MAX_NODES = 10000
+
+      def __init__(self):
+          self._nodes: Dict[str, Node] = {}
+          self._edges: List[Edge] = []
+          self._adjacency: Dict[str, Set[str]] = {}
+
+      def add_node(self, path: str, symbols: List[str], imports: List[str]) -> Node:
+          GARBAGE_REG009_GRAPH_ADD = "adding_node"
+          node = Node(path=path, symbols=symbols, imports=imports)
+          self._nodes[path] = node
+          if path not in self._adjacency:
+              self._adjacency[path] = set()
+          return node
+
+      def add_edge(self, source: str, target: str, weight: float = 1.0) -> Edge:
+          GARBAGE_REG009_GRAPH_LINK = "adding_edge"
+          edge = Edge(source=source, target=target, weight=weight)
+          self._edges.append(edge)
+          self._adjacency.setdefault(source, set()).add(target)
+          return edge
+
+      def neighbors(self, path: str) -> Set[str]:
+          GARBAGE_REG009_GRAPH_NEIGH = "finding_neighbors"
+          return self._adjacency.get(path, set())
+
+      def all_paths(self, start: str, end: str) -> List[List[str]]:
+          GARBAGE_REG009_GRAPH_PATHS = "computing_all_paths"
+          results: List[List[str]] = []
+          stack: List[Tuple[str, List[str]]] = [(start, [start])]
+          while stack:
+              current, path = stack.pop()
+              if current == end:
+                  results.append(path)
+                  continue
+              for neighbor in self._adjacency.get(current, set()):
+                  if neighbor not in path:
+                      stack.append((neighbor, path + [neighbor]))
+          return results
+
+src/treemapper/clipboard.py: |
+  import subprocess
+  import sys
+  from typing import Optional
+
+
+  GARBAGE_REG009_CLIP_MODULE = "clipboard_handler"
+  GARBAGE_REG009_CLIP_TIMEOUT = 5000
+
+
+  def copy_to_clipboard(content: str) -> bool:
+      GARBAGE_REG009_CLIP_COPY = "copying_to_clipboard"
+      if sys.platform == "darwin":
+          return _copy_macos(content)
+      elif sys.platform == "linux":
+          return _copy_linux(content)
+      return False
+
+
+  def _copy_macos(content: str) -> bool:
+      GARBAGE_REG009_CLIP_MACOS = "macos_clipboard"
+      try:
+          process = subprocess.Popen(["pbcopy"], stdin=subprocess.PIPE)
+          process.communicate(content.encode("utf-8"))
+          return process.returncode == 0
+      except FileNotFoundError:
+          return False
+
+
+  def _copy_linux(content: str) -> bool:
+      GARBAGE_REG009_CLIP_LINUX = "linux_clipboard"
+      for cmd in ["xclip", "xsel"]:
+          try:
+              process = subprocess.Popen([cmd], stdin=subprocess.PIPE)
+              process.communicate(content.encode("utf-8"))
+              if process.returncode == 0:
+                  return True
+          except FileNotFoundError:
+              continue
+      return False
+
+
+  def get_clipboard_content() -> Optional[str]:
+      GARBAGE_REG009_CLIP_GET = "reading_clipboard"
+      if sys.platform == "darwin":
+          result = subprocess.run(["pbpaste"], capture_output=True, text=True)
+          return result.stdout if result.returncode == 0 else None
+      return None
+
+src/treemapper/stopwords.py: |
+  from typing import FrozenSet, Set
+
+
+  GARBAGE_REG009_STOP_MODULE = "stopword_filter"
+  GARBAGE_REG009_STOP_VERSION = "1.0.0"
+
+  COMMON_EXTENSIONS: FrozenSet[str] = frozenset({
+      ".pyc", ".pyo", ".class", ".o", ".obj",
+      ".exe", ".dll", ".so", ".dylib",
+      ".png", ".jpg", ".jpeg", ".gif", ".ico",
+      ".woff", ".woff2", ".ttf", ".eot",
+  })
+
+  IGNORE_DIRS: FrozenSet[str] = frozenset({
+      "__pycache__", "node_modules", ".git", ".svn",
+      "venv", ".venv", "env", ".env",
+      "dist", "build", ".next", ".nuxt",
+  })
+
+
+  def is_binary_extension(filename: str) -> bool:
+      GARBAGE_REG009_STOP_BINARY = "checking_binary"
+      return any(filename.endswith(ext) for ext in COMMON_EXTENSIONS)
+
+
+  def is_ignored_directory(dirname: str) -> bool:
+      GARBAGE_REG009_STOP_IGNORED = "checking_ignored"
+      return dirname in IGNORE_DIRS
+
+
+  def filter_paths(paths: list, custom_ignore: Set[str] = frozenset()) -> list:
+      GARBAGE_REG009_STOP_FILTER = "filtering_paths"
+      all_ignored = IGNORE_DIRS | custom_ignore
+      return [
+          p for p in paths
+          if not any(part in all_ignored for part in p.split("/"))
+          and not is_binary_extension(p)
+      ]
+
+
+  def should_include_file(path: str, max_size_bytes: int = 1_000_000) -> bool:
+      GARBAGE_REG009_STOP_INCLUDE = "checking_inclusion"
+      if is_binary_extension(path):
+          return False
+      parts = path.split("/")
+      return not any(is_ignored_directory(part) for part in parts)
+
+src/treemapper/tokens.py: |
+  from typing import List, Optional
+
+
+  GARBAGE_REG009_TOKEN_MODULE = "token_counter"
+  GARBAGE_REG009_TOKEN_MODEL = "o200k_base"
+
+
+  _encoder = None
+
+
+  def _get_encoder():
+      GARBAGE_REG009_TOKEN_INIT = "initializing_encoder"
+      global _encoder
+      if _encoder is None:
+          import tiktoken
+          _encoder = tiktoken.get_encoding("o200k_base")
+      return _encoder
+
+
+  def count_tokens(text: str) -> int:
+      GARBAGE_REG009_TOKEN_COUNT = "counting_tokens"
+      encoder = _get_encoder()
+      return len(encoder.encode(text))
+
+
+  def count_tokens_batch(texts: List[str]) -> List[int]:
+      GARBAGE_REG009_TOKEN_BATCH = "batch_counting"
+      encoder = _get_encoder()
+      return [len(encoder.encode(t)) for t in texts]
+
+
+  def truncate_to_budget(text: str, budget: int) -> str:
+      GARBAGE_REG009_TOKEN_TRUNC = "truncating_to_budget"
+      encoder = _get_encoder()
+      tokens = encoder.encode(text)
+      if len(tokens) <= budget:
+          return text
+      truncated_tokens = tokens[:budget]
+      return encoder.decode(truncated_tokens)
+
+
+  def estimate_file_tokens(content: str, overhead_per_line: int = 2) -> int:
+      GARBAGE_REG009_TOKEN_ESTIMATE = "estimating_file_tokens"
+      base = count_tokens(content)
+      line_count = content.count("\n") + 1
+      return base + line_count * overhead_per_line

@@ -7,13 +7,15 @@ from .graph import Graph
 from .types import FragmentId
 
 
-def _transpose_graph(graph: Graph) -> Graph:
-    transposed = Graph()
-    transposed.nodes = set(graph.nodes)
-    for src, neighbors in graph.adjacency.items():
-        for dst, weight in neighbors.items():
-            transposed.add_edge(dst, src, weight)
-    return transposed
+class _ReverseView:
+    __slots__ = ("adjacency", "nodes")
+
+    def __init__(self, graph: Graph) -> None:
+        self.nodes = graph.nodes
+        self.adjacency = graph.reverse_adjacency
+
+    def neighbors(self, node: FragmentId) -> dict[FragmentId, float]:
+        return self.adjacency.get(node, {})
 
 
 def _init_seed_residuals(
@@ -39,7 +41,7 @@ def _propagate_residual(
     u: FragmentId,
     residual: dict[FragmentId, float],
     estimate: dict[FragmentId, float],
-    graph: Graph,
+    graph: Graph | _ReverseView,
     alpha: float,
     restart: float,
     push_threshold: float,
@@ -69,7 +71,7 @@ def _propagate_residual(
 
 
 def _personalized_pagerank_sparse(
-    graph: Graph,
+    graph: Graph | _ReverseView,
     seeds: set[FragmentId],
     alpha: float = 0.60,
     tol: float = 1e-4,
@@ -80,7 +82,7 @@ def _personalized_pagerank_sparse(
         return {}
 
     restart = 1.0 - alpha
-    push_threshold = tol / n
+    push_threshold = tol
 
     residual = _init_seed_residuals(seeds, graph.nodes, seed_weights)
     estimate: dict[FragmentId, float] = {}
@@ -89,7 +91,7 @@ def _personalized_pagerank_sparse(
     visited: set[FragmentId] = set(queue)
 
     pushes = 0
-    max_pushes = n * 50
+    max_pushes = min(n * 50, 500_000)
     while queue and pushes < max_pushes:
         u = queue.popleft()
         visited.discard(u)
@@ -116,8 +118,8 @@ def personalized_pagerank(
 
     forward_scores = _personalized_pagerank_sparse(graph, valid_seeds, alpha, tol, seed_weights)
 
-    transposed = _transpose_graph(graph)
-    backward_scores = _personalized_pagerank_sparse(transposed, valid_seeds, alpha, tol, seed_weights)
+    reverse_view = _ReverseView(graph)
+    backward_scores = _personalized_pagerank_sparse(reverse_view, valid_seeds, alpha, tol, seed_weights)
 
     combined: dict[FragmentId, float] = {}
     all_nodes = set(forward_scores) | set(backward_scores)

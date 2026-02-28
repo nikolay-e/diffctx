@@ -109,6 +109,7 @@ def _is_code_file(path: Path) -> bool:
 class ConfigToCodeEdgeBuilder(EdgeBuilder):
     weight = 0.45
     reverse_weight_factor = 0.70
+    category = "config_generic"
 
     def discover_related_files(
         self,

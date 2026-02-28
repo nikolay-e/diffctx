@@ -1,0 +1,53 @@
+infra/main.tf: |
+  provider "aws" {
+    region = "us-east-1"
+  }
+
+  resource "aws_s3_bucket" "data_bucket" {
+    bucket = "myapp-data-bucket"
+    acl    = "private"
+  }
+
+  resource "aws_iam_role" "lambda_role" {
+    name = "lambda-execution-role"
+    assume_role_policy = jsonencode({
+      Version = "2012-10-17"
+      Statement = [{
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = { Service = "lambda.amazonaws.com" }
+      }]
+    })
+  }
+
+infra/variables.tf: |
+  variable "environment" {
+    type    = string
+    default = "staging"
+  }
+
+  variable "region" {
+    type    = string
+    default = "us-east-1"
+  }
+
+scripts/GARBAGE_REG017_deploy.py: |
+  GARBAGE_REG017_DEPLOY_MARKER = "deploy_garbage"
+  def GARBAGE_REG017_deploy_to_staging():
+      return "GARBAGE_REG017_DEPLOY_RESULT"
+
+scripts/GARBAGE_REG017_cleanup.py: |
+  GARBAGE_REG017_CLEANUP_MARKER = "cleanup_garbage"
+  def GARBAGE_REG017_run_cleanup():
+      return "GARBAGE_REG017_CLEANUP_RESULT"
+
+src/GARBAGE_REG017_worker.py: |
+  class GARBAGE_REG017_BackgroundWorker:
+      GARBAGE_REG017_WORKER_MARKER = "worker_garbage"
+      def GARBAGE_REG017_process_job(self):
+          return "GARBAGE_REG017_WORKER_RESULT"
+
+src/GARBAGE_REG017_scheduler.py: |
+  GARBAGE_REG017_SCHEDULER_MARKER = "scheduler_garbage"
+  def GARBAGE_REG017_schedule_task():
+      return "GARBAGE_REG017_SCHEDULER_RESULT"

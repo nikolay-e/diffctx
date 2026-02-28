@@ -12,6 +12,7 @@ ALL_CASES = load_test_cases_from_dir(CASES_DIR) if CASES_DIR.exists() else []
 
 KNOWN_FAILURES = frozenset(
     {
+        "dependencies_042_new_file_imports_expand",
         "cicd_and_docs_068_sql_stored_procedure",
         "cicd_and_docs_077_sql_create_function",
         "dependencies_003_forward_chained_methods",

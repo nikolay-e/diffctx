@@ -1,0 +1,117 @@
+src/service.py: |
+  from src.stats import pearson_correlation
+
+  class MetricsService:
+      def __init__(self, repository):
+          self.repository = repository
+
+      def get_correlation(self, metric_a: str, metric_b: str) -> float:
+          data_a = self.repository.fetch(metric_a)
+          data_b = self.repository.fetch(metric_b)
+          return pearson_correlation(data_a, data_b)
+
+      def list_metrics(self) -> list:
+          return self.repository.list_all()
+
+src/stats.py: |
+  from typing import List
+
+  def pearson_correlation(x: List[float], y: List[float]) -> float:
+      n = len(x)
+      if n < 2:
+          return 0.0
+      mean_x = sum(x) / n
+      mean_y = sum(y) / n
+      cov = sum((xi - mean_x) * (yi - mean_y) for xi, yi in zip(x, y))
+      std_x = (sum((xi - mean_x) ** 2 for xi in x)) ** 0.5
+      std_y = (sum((yi - mean_y) ** 2 for yi in y)) ** 0.5
+      if std_x == 0 or std_y == 0:
+          return 0.0
+      return cov / (std_x * std_y)
+
+  def moving_average(values: List[float], window: int = 7) -> List[float]:
+      if len(values) < window:
+          return values[:]
+      result = []
+      for i in range(len(values) - window + 1):
+          result.append(sum(values[i:i + window]) / window)
+      return result
+
+  def calculate_std(values: List[float]) -> float:
+      if len(values) < 2:
+          return 0.0
+      mean = sum(values) / len(values)
+      variance = sum((v - mean) ** 2 for v in values) / (len(values) - 1)
+      return variance ** 0.5
+
+src/date_utils.py: |
+  from datetime import datetime, timedelta
+  from typing import List, Tuple
+
+  def date_range(start: datetime, end: datetime) -> List[datetime]:
+      dates = []
+      current = start
+      while current <= end:
+          dates.append(current)
+          current += timedelta(days=1)
+      return dates
+
+  def week_boundaries(date: datetime) -> Tuple[datetime, datetime]:
+      start = date - timedelta(days=date.weekday())
+      end = start + timedelta(days=6)
+      return start, end
+
+  def format_iso(date: datetime) -> str:
+      return date.strftime("%Y-%m-%d")
+
+frontend/src/components/CaloriesChart.tsx: |
+  import React from 'react';
+  interface CaloriesChartProps {
+    data: number[];
+    GARBAGE_REG001_CALORIES_MARKER: string;
+  }
+  export const CaloriesChart: React.FC<CaloriesChartProps> = ({ data }) => {
+    const GARBAGE_REG001_CHART_RENDER = "calories";
+    return <div className="calories-chart">{data.map(d => <span>{d}</span>)}</div>;
+  };
+
+frontend/src/components/SleepChart.tsx: |
+  import React from 'react';
+  interface SleepChartProps {
+    hours: number[];
+    GARBAGE_REG001_SLEEP_MARKER: string;
+  }
+  export const SleepChart: React.FC<SleepChartProps> = ({ hours }) => {
+    const GARBAGE_REG001_SLEEP_RENDER = "sleep";
+    return <div className="sleep-chart">{hours.map(h => <span>{h}</span>)}</div>;
+  };
+
+frontend/src/components/LoginPage.tsx: |
+  import React, { useState } from 'react';
+  export const LoginPage: React.FC = () => {
+    const [email, setEmail] = useState('');
+    const [password, setPassword] = useState('');
+    const GARBAGE_REG001_LOGIN_MARKER = "login";
+    const handleSubmit = () => {
+      const GARBAGE_REG001_SUBMIT_MARKER = "submit";
+      console.log(email, password);
+    };
+    return (
+      <form onSubmit={handleSubmit}>
+        <input value={email} onChange={e => setEmail(e.target.value)} />
+        <input type="password" value={password} onChange={e => setPassword(e.target.value)} />
+      </form>
+    );
+  };
+
+frontend/src/components/DashboardLayout.tsx: |
+  import React from 'react';
+  export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+    const GARBAGE_REG001_LAYOUT_MARKER = "layout";
+    return (
+      <div className="dashboard">
+        <nav className="sidebar">Menu</nav>
+        <main>{children}</main>
+      </div>
+    );
+  };

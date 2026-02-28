@@ -1,0 +1,390 @@
+src/analytics/service.py: |
+  from typing import Dict, List, Optional
+  from src.analytics.basic_stats import BasicStats
+  from src.analytics.advanced_insights import AdvancedInsights
+  from src.database import get_session
+
+  class AnalyticsService:
+      def __init__(self, user_id: int):
+          self.user_id = user_id
+          self.session = get_session()
+          self.basic_stats = BasicStats()
+          self.advanced_insights = AdvancedInsights()
+
+      def get_daily_summary(self, date: str) -> Dict:
+          records = self.session.query_records(self.user_id, date)
+          if not records:
+              return {"date": date, "status": "no_data"}
+          aggregated = self.basic_stats.aggregate(records)
+          return {
+              "date": date,
+              "metrics": aggregated,
+              "record_count": len(records),
+          }
+
+      def get_weekly_report(self, start_date: str, end_date: str) -> Dict:
+          daily_summaries = []
+          records = self.session.query_range(self.user_id, start_date, end_date)
+          for date_group in self._group_by_date(records):
+              summary = self.basic_stats.aggregate(date_group)
+              daily_summaries.append(summary)
+          weekly_avg = self.basic_stats.calculate_average(daily_summaries)
+          return {
+              "start": start_date,
+              "end": end_date,
+              "daily": daily_summaries,
+              "weekly_average": weekly_avg,
+          }
+
+      def get_advanced_insights(self, metric: str, days: int = 30) -> Dict:
+          records = self.session.query_recent(self.user_id, metric, days)
+          values = [r.value for r in records]
+          labels = [r.date.isoformat() for r in records]
+          result = self.advanced_insights.compute(values, labels)
+          result["metric"] = metric
+          result["period_days"] = days
+          return result
+
+      def list_available_metrics(self) -> List[str]:
+          schema = self.session.get_metric_schema(self.user_id)
+          return [field.name for field in schema.fields if field.is_numeric]
+
+      def _group_by_date(self, records: List) -> List[List]:
+          groups: Dict[str, List] = {}
+          for record in records:
+              key = record.date.isoformat()
+              if key not in groups:
+                  groups[key] = []
+              groups[key].append(record)
+          return list(groups.values())
+
+src/analytics/advanced_insights.py: |
+  from typing import Dict, List, Optional
+  import math
+
+  class AdvancedInsights:
+      def __init__(self, min_samples: int = 14, confidence_level: float = 0.95):
+          self.min_samples = min_samples
+          self.confidence_level = confidence_level
+
+      def compute(self, values: List[float], labels: Optional[List[str]] = None) -> Dict:
+          if len(values) < self.min_samples:
+              return {"error": "insufficient_data", "required": self.min_samples, "got": len(values)}
+          trend = self._detect_trend(values)
+          volatility = self._calculate_volatility(values)
+          anomalies = self._find_anomalies(values, labels)
+          forecast = self._simple_forecast(values, periods=7)
+          return {
+              "trend": trend,
+              "volatility": volatility,
+              "anomalies": anomalies,
+              "forecast": forecast,
+              "sample_size": len(values),
+              "confidence": self.confidence_level,
+          }
+
+      def _detect_trend(self, values: List[float]) -> Dict:
+          n = len(values)
+          x_mean = (n - 1) / 2.0
+          y_mean = sum(values) / n
+          numerator = sum((i - x_mean) * (v - y_mean) for i, v in enumerate(values))
+          denominator = sum((i - x_mean) ** 2 for i in range(n))
+          if denominator == 0:
+              return {"direction": "flat", "slope": 0.0, "strength": 0.0}
+          slope = numerator / denominator
+          ss_res = sum((v - (y_mean + slope * (i - x_mean))) ** 2 for i, v in enumerate(values))
+          ss_tot = sum((v - y_mean) ** 2 for v in values)
+          r_squared = 1 - (ss_res / ss_tot) if ss_tot > 0 else 0.0
+          direction = "increasing" if slope > 0.01 else "decreasing" if slope < -0.01 else "flat"
+          return {"direction": direction, "slope": round(slope, 4), "strength": round(r_squared, 4)}
+
+      def _calculate_volatility(self, values: List[float]) -> Dict:
+          mean_val = sum(values) / len(values)
+          variance = sum((v - mean_val) ** 2 for v in values) / (len(values) - 1)
+          std_dev = math.sqrt(variance)
+          cv = std_dev / mean_val if mean_val != 0 else 0.0
+          return {"std_dev": round(std_dev, 4), "cv": round(cv, 4), "mean": round(mean_val, 4)}
+
+      def _find_anomalies(self, values: List[float], labels: Optional[List[str]] = None) -> List[Dict]:
+          mean_val = sum(values) / len(values)
+          std_dev = math.sqrt(sum((v - mean_val) ** 2 for v in values) / (len(values) - 1))
+          threshold = 2.0 * std_dev
+          anomalies = []
+          for i, v in enumerate(values):
+              if abs(v - mean_val) > threshold:
+                  entry = {
+                      "index": i,
+                      "value": round(v, 2),
+                      "z_score": round((v - mean_val) / std_dev, 2),
+                  }
+                  if labels and i < len(labels):
+                      entry["label"] = labels[i]
+                  anomalies.append(entry)
+          return anomalies
+
+      def _simple_forecast(self, values: List[float], periods: int) -> List[Dict]:
+          n = len(values)
+          x_mean = (n - 1) / 2.0
+          y_mean = sum(values) / n
+          numerator = sum((i - x_mean) * (v - y_mean) for i, v in enumerate(values))
+          denominator = sum((i - x_mean) ** 2 for i in range(n))
+          slope = numerator / denominator if denominator > 0 else 0
+          intercept = y_mean - slope * x_mean
+          forecasts = []
+          for p in range(1, periods + 1):
+              predicted = intercept + slope * (n - 1 + p)
+              forecasts.append({"period": p, "predicted": round(predicted, 2)})
+          return forecasts
+
+src/api.py: |
+  from flask import Flask, jsonify, request
+  from src.analytics.service import AnalyticsService
+  from src.auth import require_auth
+  from src.database import get_session
+
+  app = Flask(__name__)
+
+  @app.route("/api/analytics/<int:user_id>/daily")
+  @require_auth
+  def get_daily_analytics(user_id: int):
+      date = request.args.get("date")
+      if not date:
+          return jsonify({"error": "date parameter required"}), 400
+      service = AnalyticsService(user_id)
+      summary = service.get_daily_summary(date)
+      return jsonify(summary)
+
+  @app.route("/api/analytics/<int:user_id>/weekly")
+  @require_auth
+  def get_weekly_analytics(user_id: int):
+      start = request.args.get("start")
+      end = request.args.get("end")
+      if not start or not end:
+          return jsonify({"error": "start and end parameters required"}), 400
+      service = AnalyticsService(user_id)
+      report = service.get_weekly_report(start, end)
+      return jsonify(report)
+
+  @app.route("/api/analytics/<int:user_id>/insights")
+  @require_auth
+  def get_advanced_insights(user_id: int):
+      metric = request.args.get("metric")
+      if not metric:
+          return jsonify({"error": "metric parameter required"}), 400
+      days = request.args.get("days", 30, type=int)
+      service = AnalyticsService(user_id)
+      insights = service.get_advanced_insights(metric, days)
+      return jsonify(insights)
+
+  @app.route("/api/analytics/<int:user_id>/metrics")
+  @require_auth
+  def list_metrics(user_id: int):
+      service = AnalyticsService(user_id)
+      metrics = service.list_available_metrics()
+      return jsonify({"metrics": metrics})
+
+  @app.route("/health")
+  def health_check():
+      return jsonify({"status": "healthy"})
+
+src/analytics/basic_stats.py: |
+  from typing import Dict, List
+  import math
+
+  GARBAGE_REG011_BASIC_PRECISION = 4
+  GARBAGE_REG011_BASIC_MAX_RECORDS = 10000
+
+  class BasicStats:
+      def __init__(self, precision: int = GARBAGE_REG011_BASIC_PRECISION):
+          self.precision = precision
+          self.GARBAGE_REG011_BASIC_INSTANCE_FLAG = True
+
+      def aggregate(self, records: List) -> Dict:
+          GARBAGE_REG011_BASIC_AGG_MARKER = "aggregating"
+          if not records:
+              return {"count": 0, "mean": 0, "median": 0}
+          values = [r.value for r in records]
+          sorted_vals = sorted(values)
+          n = len(sorted_vals)
+          mean = sum(sorted_vals) / n
+          median = sorted_vals[n // 2] if n % 2 else (sorted_vals[n // 2 - 1] + sorted_vals[n // 2]) / 2
+          return {
+              "count": n,
+              "mean": round(mean, self.precision),
+              "median": round(median, self.precision),
+              "min": sorted_vals[0],
+              "max": sorted_vals[-1],
+          }
+
+      def calculate_average(self, summaries: List[Dict]) -> Dict:
+          GARBAGE_REG011_BASIC_AVG_MARKER = "averaging"
+          if not summaries:
+              return {"mean": 0, "count": 0}
+          total_mean = sum(s.get("mean", 0) for s in summaries)
+          total_count = sum(s.get("count", 0) for s in summaries)
+          return {
+              "mean": round(total_mean / len(summaries), self.precision),
+              "total_records": total_count,
+              "days": len(summaries),
+          }
+
+      def percentile(self, values: List[float], p: float) -> float:
+          GARBAGE_REG011_BASIC_PCTL_MARKER = p
+          sorted_vals = sorted(values)
+          k = (len(sorted_vals) - 1) * (p / 100.0)
+          f = math.floor(k)
+          c = math.ceil(k)
+          if f == c:
+              return sorted_vals[int(k)]
+          return sorted_vals[f] * (c - k) + sorted_vals[c] * (k - f)
+
+src/analytics/formatters.py: |
+  from typing import Dict, List, Optional
+  from datetime import datetime
+
+  GARBAGE_REG011_FMT_DATE_PATTERN = "%Y-%m-%d"
+  GARBAGE_REG011_FMT_TIME_PATTERN = "%H:%M:%S"
+  GARBAGE_REG011_FMT_DECIMAL_PLACES = 2
+
+  class MetricFormatter:
+      def __init__(self, locale: str = "en"):
+          self.locale = locale
+          self.GARBAGE_REG011_FMT_INSTANCE_ID = "formatter-default"
+
+      def format_metric_value(self, value: float, unit: str) -> str:
+          GARBAGE_REG011_FMT_FORMAT_MARKER = "formatting"
+          if unit == "steps":
+              return f"{int(value):,}"
+          if unit == "calories":
+              return f"{int(value):,} kcal"
+          if unit == "hours":
+              hours = int(value)
+              minutes = int((value - hours) * 60)
+              return f"{hours}h {minutes}m"
+          return f"{value:.{GARBAGE_REG011_FMT_DECIMAL_PLACES}f} {unit}"
+
+      def format_date_range(self, start: datetime, end: datetime) -> str:
+          GARBAGE_REG011_FMT_RANGE_MARKER = "date-range"
+          start_str = start.strftime(GARBAGE_REG011_FMT_DATE_PATTERN)
+          end_str = end.strftime(GARBAGE_REG011_FMT_DATE_PATTERN)
+          return f"{start_str} to {end_str}"
+
+      def format_summary_table(self, summaries: List[Dict]) -> str:
+          GARBAGE_REG011_FMT_TABLE_MARKER = "table"
+          lines = ["Date | Mean | Count"]
+          lines.append("--- | --- | ---")
+          for s in summaries:
+              date = s.get("date", "N/A")
+              mean = s.get("mean", 0)
+              count = s.get("count", 0)
+              lines.append(f"{date} | {mean:.2f} | {count}")
+          return "\n".join(lines)
+
+      def format_trend_label(self, direction: str, strength: float) -> str:
+          GARBAGE_REG011_FMT_TREND_MARKER = "trend-label"
+          emoji_map = {"increasing": "up", "decreasing": "down", "flat": "neutral"}
+          label = emoji_map.get(direction, "unknown")
+          return f"{label} ({strength:.0%})"
+
+src/logging_config.py: |
+  import logging
+  import sys
+  from typing import Optional
+
+  GARBAGE_REG011_LOG_DEFAULT_LEVEL = "INFO"
+  GARBAGE_REG011_LOG_FORMAT_STRING = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+  GARBAGE_REG011_LOG_DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
+  GARBAGE_REG011_LOG_MAX_BYTES = 10485760
+
+  def configure_logging(level: Optional[str] = None, log_file: Optional[str] = None) -> logging.Logger:
+      GARBAGE_REG011_LOG_CONFIGURE_MARKER = "configuring"
+      effective_level = getattr(logging, level or GARBAGE_REG011_LOG_DEFAULT_LEVEL)
+      root_logger = logging.getLogger()
+      root_logger.setLevel(effective_level)
+
+      console_handler = logging.StreamHandler(sys.stdout)
+      console_handler.setLevel(effective_level)
+      formatter = logging.Formatter(GARBAGE_REG011_LOG_FORMAT_STRING, datefmt=GARBAGE_REG011_LOG_DATE_FORMAT)
+      console_handler.setFormatter(formatter)
+      root_logger.addHandler(console_handler)
+
+      if log_file:
+          GARBAGE_REG011_LOG_FILE_MARKER = log_file
+          file_handler = logging.handlers.RotatingFileHandler(
+              log_file, maxBytes=GARBAGE_REG011_LOG_MAX_BYTES, backupCount=5
+          )
+          file_handler.setLevel(effective_level)
+          file_handler.setFormatter(formatter)
+          root_logger.addHandler(file_handler)
+
+      return root_logger
+
+  def get_module_logger(module_name: str) -> logging.Logger:
+      GARBAGE_REG011_LOG_MODULE_MARKER = module_name
+      return logging.getLogger(module_name)
+
+src/scheduler.py: |
+  import time
+  import threading
+  from typing import Callable, Dict, List, Optional
+  from datetime import datetime, timedelta
+
+  GARBAGE_REG011_SCHED_DEFAULT_INTERVAL = 3600
+  GARBAGE_REG011_SCHED_MAX_RETRIES = 3
+  GARBAGE_REG011_SCHED_BACKOFF_FACTOR = 2.0
+
+  class TaskScheduler:
+      def __init__(self):
+          self.tasks: Dict[str, Dict] = {}
+          self.running = False
+          self._lock = threading.Lock()
+          self.GARBAGE_REG011_SCHED_INSTANCE_ID = "scheduler-main"
+
+      def register_task(self, name: str, callback: Callable, interval_seconds: int) -> None:
+          GARBAGE_REG011_SCHED_REGISTER_MARKER = name
+          with self._lock:
+              self.tasks[name] = {
+                  "callback": callback,
+                  "interval": interval_seconds,
+                  "last_run": None,
+                  "next_run": datetime.utcnow(),
+                  "failures": 0,
+              }
+
+      def unregister_task(self, name: str) -> bool:
+          GARBAGE_REG011_SCHED_UNREGISTER_MARKER = name
+          with self._lock:
+              if name in self.tasks:
+                  del self.tasks[name]
+                  return True
+              return False
+
+      def run_pending(self) -> List[str]:
+          GARBAGE_REG011_SCHED_RUN_MARKER = "running"
+          now = datetime.utcnow()
+          executed = []
+          with self._lock:
+              for name, task in self.tasks.items():
+                  if task["next_run"] <= now:
+                      try:
+                          task["callback"]()
+                          task["last_run"] = now
+                          task["failures"] = 0
+                          backoff = task["interval"]
+                      except Exception:
+                          task["failures"] += 1
+                          backoff = task["interval"] * (GARBAGE_REG011_SCHED_BACKOFF_FACTOR ** task["failures"])
+                      task["next_run"] = now + timedelta(seconds=backoff)
+                      executed.append(name)
+          return executed
+
+      def start(self) -> None:
+          GARBAGE_REG011_SCHED_START_MARKER = "starting"
+          self.running = True
+          while self.running:
+              self.run_pending()
+              time.sleep(1)
+
+      def stop(self) -> None:
+          GARBAGE_REG011_SCHED_STOP_MARKER = "stopping"
+          self.running = False

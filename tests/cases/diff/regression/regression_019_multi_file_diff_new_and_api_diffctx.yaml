@@ -1,0 +1,14 @@
+must_include_files:
+- src/api/pagination.py
+- src/api/routes.py
+- src/api/auth.py
+must_include_content:
+- def paginate
+- def create_user
+- def validate_token
+must_not_include:
+- GARBAGE_REG019_TEST_MARKER
+- GARBAGE_REG019_FIXTURE_RESULT
+- GARBAGE_REG019_SPEC_MARKER
+- GARBAGE_REG019_COMMON_MARKER
+- GARBAGE_REG019_COMMON_RESULT

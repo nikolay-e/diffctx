@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -40,16 +41,27 @@ def get_all_builders() -> list[EdgeBuilder]:
     return [cls() for cls in all_builder_classes]
 
 
-def collect_all_edges(fragments: list[Fragment], repo_root: Path | None = None) -> tuple[EdgeDict, EdgeCategories]:
+_EXPENSIVE_CATEGORIES = frozenset({"similarity", "history"})
+
+
+def collect_all_edges(
+    fragments: list[Fragment],
+    repo_root: Path | None = None,
+    skip_expensive: bool = False,
+) -> tuple[EdgeDict, EdgeCategories]:
     all_edges: EdgeDict = {}
     edge_categories: EdgeCategories = {}
     for category, get_builders in _BUILDER_CATEGORIES:
+        if skip_expensive and category in _EXPENSIVE_CATEGORIES:
+            logging.debug("diffctx: skipping %s edge builders (skip_expensive=True)", category)
+            continue
         for cls in get_builders():
             builder = cls()
+            cat = builder.category or category
             for (src, dst), weight in builder.build(fragments, repo_root).items():
                 if weight > all_edges.get((src, dst), 0.0):
                     all_edges[(src, dst)] = weight
-                    edge_categories[(src, dst)] = category
+                    edge_categories[(src, dst)] = cat
     return all_edges, edge_categories
 
 

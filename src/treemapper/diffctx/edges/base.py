@@ -174,6 +174,7 @@ def add_semantic_edges(
 class EdgeBuilder(ABC):
     weight: float = 0.5
     reverse_weight_factor: float = 0.7
+    category: str | None = None
 
     @abstractmethod
     def build(self, fragments: list[Fragment], repo_root: Path | None = None) -> EdgeDict:

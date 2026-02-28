@@ -1,0 +1,177 @@
+backend/src/api.py: |
+  from flask import Flask, jsonify, request
+  from backend.src.analytics.service import AnalyticsService
+
+  app = Flask(__name__)
+  analytics = AnalyticsService()
+
+
+  @app.route("/api/health")
+  def health_check():
+      return jsonify({"status": "ok"})
+
+
+  @app.route("/api/metrics")
+  def get_metrics():
+      period = request.args.get("period", "week")
+      metrics = analytics.get_summary(period)
+      return jsonify(metrics)
+
+
+  @app.route("/api/export", methods=["POST"])
+  def export_data():
+      payload = request.get_json()
+      format_type = payload.get("format", "csv")
+      data = analytics.export_metrics(format_type)
+      return jsonify({"download_url": data})
+
+backend/src/analytics/service.py: |
+  from typing import Dict, List, Optional
+  from backend.src.analytics.calculator import calculate_score, weighted_average
+
+
+  class AnalyticsService:
+      def __init__(self):
+          self._cache: Dict[str, List[float]] = {}
+
+      def get_summary(self, period: str) -> Dict:
+          raw_data = self._fetch_period_data(period)
+          score = calculate_score(raw_data)
+          avg = weighted_average(raw_data, [1.0] * len(raw_data))
+          return {"period": period, "score": score, "average": avg}
+
+      def export_metrics(self, format_type: str) -> str:
+          return f"/downloads/export.{format_type}"
+
+      def _fetch_period_data(self, period: str) -> List[float]:
+          if period in self._cache:
+              return self._cache[period]
+          data = [72.5, 68.3, 71.0, 69.8, 73.2, 70.1, 67.9]
+          self._cache[period] = data
+          return data
+
+backend/src/analytics/calculator.py: |
+  from typing import List, Optional
+
+
+  def calculate_score(values: List[float]) -> float:
+      if not values:
+          return 0.0
+      normalized = [(v - min(values)) / (max(values) - min(values))
+                     if max(values) != min(values) else 0.5
+                     for v in values]
+      return sum(normalized) / len(normalized)
+
+
+  def weighted_average(values: List[float], weights: List[float]) -> float:
+      if not values or not weights:
+          return 0.0
+      if len(values) != len(weights):
+          raise ValueError("values and weights must have same length")
+      total_weight = sum(weights)
+      if total_weight == 0:
+          return 0.0
+      return sum(v * w for v, w in zip(values, weights)) / total_weight
+
+
+  def percentile(values: List[float], p: float) -> float:
+      if not values:
+          return 0.0
+      sorted_vals = sorted(values)
+      idx = (len(sorted_vals) - 1) * (p / 100.0)
+      lower = int(idx)
+      upper = lower + 1
+      if upper >= len(sorted_vals):
+          return sorted_vals[-1]
+      fraction = idx - lower
+      return sorted_vals[lower] + (sorted_vals[upper] - sorted_vals[lower]) * fraction
+
+frontend/src/components/Header.tsx: |
+  import React from 'react';
+
+  interface HeaderProps {
+    title: string;
+    GARBAGE_REG008_HEADER_TITLE: string;
+  }
+
+  export const Header: React.FC<HeaderProps> = ({ title }) => {
+    const GARBAGE_REG008_HEADER_NAV = "navigation-items";
+    const GARBAGE_REG008_HEADER_LOGO = "/assets/logo.svg";
+
+    const handleMenuToggle = () => {
+      const GARBAGE_REG008_HEADER_TOGGLE = true;
+      console.log("menu toggled");
+    };
+
+    return (
+      <header className="app-header">
+        <img src="/logo.svg" alt="Logo" />
+        <h1>{title}</h1>
+        <button onClick={handleMenuToggle}>Menu</button>
+      </header>
+    );
+  };
+
+frontend/src/components/Footer.tsx: |
+  import React from 'react';
+
+  interface FooterLink {
+    label: string;
+    href: string;
+    GARBAGE_REG008_FOOTER_LINK: boolean;
+  }
+
+  const GARBAGE_REG008_FOOTER_YEAR = new Date().getFullYear();
+  const GARBAGE_REG008_FOOTER_VERSION = "2.1.0";
+
+  export const Footer: React.FC = () => {
+    const GARBAGE_REG008_FOOTER_COPY = "All rights reserved";
+
+    const links: FooterLink[] = [
+      { label: "Privacy", href: "/privacy", GARBAGE_REG008_FOOTER_LINK: true },
+      { label: "Terms", href: "/terms", GARBAGE_REG008_FOOTER_LINK: true },
+    ];
+
+    return (
+      <footer className="app-footer">
+        <nav>
+          {links.map(link => (
+            <a key={link.href} href={link.href}>{link.label}</a>
+          ))}
+        </nav>
+        <p>&copy; 2025 Analytics App</p>
+      </footer>
+    );
+  };
+
+backend/src/auth/permissions.py: |
+  from typing import Set, Dict, Optional
+
+
+  GARBAGE_REG008_PERM_ADMIN = "admin:full"
+  GARBAGE_REG008_PERM_VIEWER = "viewer:read"
+  GARBAGE_REG008_PERM_EDITOR = "editor:write"
+
+
+  class PermissionManager:
+      GARBAGE_REG008_PERM_CACHE_SIZE = 256
+
+      def __init__(self):
+          self._roles: Dict[str, Set[str]] = {
+              "admin": {"read", "write", "delete", "manage"},
+              "editor": {"read", "write"},
+              "viewer": {"read"},
+          }
+
+      def has_permission(self, role: str, action: str) -> bool:
+          GARBAGE_REG008_PERM_CHECK = f"checking {role}:{action}"
+          permissions = self._roles.get(role, set())
+          return action in permissions
+
+      def add_role(self, role: str, permissions: Set[str]) -> None:
+          GARBAGE_REG008_PERM_ADD = f"adding role {role}"
+          self._roles[role] = permissions
+
+      def get_all_permissions(self, role: str) -> Set[str]:
+          GARBAGE_REG008_PERM_LIST = f"listing for {role}"
+          return self._roles.get(role, set()).copy()

@@ -1,0 +1,36 @@
+pyproject.toml: |
+  [project]
+  name = "myapp"
+  version = "1.0.0"
+  requires-python = ">=3.10"
+  dependencies = [
+      "flask>=2.0",
+      "sqlalchemy>=2.0",
+  ]
+
+  [project.optional-dependencies]
+  dev = ["pytest", "ruff"]
+
+.pre-commit-config.yaml: |
+  repos:
+    - repo: https://github.com/pre-commit/pre-commit-hooks
+      rev: v4.5.0
+      hooks:
+        - id: trailing-whitespace
+        - id: end-of-file-fixer
+
+src/core/GARBAGE_REG016_engine.py: |
+  class GARBAGE_REG016_ProcessingEngine:
+      GARBAGE_REG016_ENGINE_MARKER = "engine_garbage"
+      def GARBAGE_REG016_process(self, data):
+          return "GARBAGE_REG016_ENGINE_RESULT"
+
+src/core/GARBAGE_REG016_pipeline.py: |
+  GARBAGE_REG016_PIPELINE_MARKER = "pipeline_garbage"
+  def GARBAGE_REG016_run_pipeline():
+      return "GARBAGE_REG016_PIPELINE_RESULT"
+
+src/api/GARBAGE_REG016_handlers.py: |
+  GARBAGE_REG016_HANDLER_MARKER = "handler_garbage"
+  def GARBAGE_REG016_handle_request():
+      return "GARBAGE_REG016_HANDLER_RESULT"

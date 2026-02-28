@@ -7,6 +7,12 @@ default_language_version:
 fail_fast: false
 
 repos:
+  - repo: https://github.com/nikolay-e/pre-commit-hooks
+    rev: v2.1.0
+    hooks:
+      - id: shift-commit-time
+        stages: [post-commit]
+
   # ============================================================================
   # BASIC FILE QUALITY CHECKS (baseline hygiene)
   # ============================================================================

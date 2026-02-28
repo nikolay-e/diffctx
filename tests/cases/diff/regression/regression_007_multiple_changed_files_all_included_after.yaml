@@ -1,0 +1,358 @@
+src/api/routes.py: |
+  from typing import Any
+
+  from src.api.schemas import UserResponse, ProjectResponse, CreateProjectRequest
+  from src.db.queries import get_user_by_id, create_project, list_projects_for_user
+  from src.utils.validators import validate_email
+
+
+  def register_routes(app: Any) -> None:
+      @app.get("/users/{user_id}")
+      def get_user(user_id: int) -> UserResponse:
+          user = get_user_by_id(user_id)
+          if user is None:
+              raise ValueError(f"User {user_id} not found")
+          return UserResponse(id=user["id"], name=user["name"], email=user["email"])
+
+      @app.post("/users")
+      def create_user(name: str, email: str) -> UserResponse:
+          if not validate_email(email):
+              raise ValueError("Invalid email address")
+          return UserResponse(id=0, name=name, email=email)
+
+      @app.post("/projects")
+      def create_new_project(request: CreateProjectRequest) -> ProjectResponse:
+          if not request.name or len(request.name) > 128:
+              raise ValueError("Project name must be 1-128 characters")
+          project = create_project(
+              owner_id=request.owner_id,
+              name=request.name,
+              description=request.description,
+          )
+          return ProjectResponse(
+              id=project["id"],
+              name=project["name"],
+              owner_id=project["owner_id"],
+              created_at=project["created_at"],
+          )
+
+      @app.get("/users/{user_id}/projects")
+      def get_user_projects(user_id: int, limit: int = 20) -> list[ProjectResponse]:
+          rows = list_projects_for_user(user_id, limit=limit)
+          return [
+              ProjectResponse(
+                  id=r["id"],
+                  name=r["name"],
+                  owner_id=r["owner_id"],
+                  created_at=r["created_at"],
+              )
+              for r in rows
+          ]
+
+src/api/schemas.py: |
+  from dataclasses import dataclass
+
+
+  @dataclass
+  class UserResponse:
+      id: int
+      name: str
+      email: str
+
+      def to_dict(self) -> dict:
+          return {"id": self.id, "name": self.name, "email": self.email}
+
+
+  @dataclass
+  class ErrorResponse:
+      code: int
+      message: str
+
+      def to_dict(self) -> dict:
+          return {"code": self.code, "message": self.message}
+
+
+  @dataclass
+  class CreateProjectRequest:
+      owner_id: int
+      name: str
+      description: str = ""
+
+      def validate(self) -> bool:
+          return bool(self.name) and self.owner_id > 0
+
+
+  @dataclass
+  class ProjectResponse:
+      id: int
+      name: str
+      owner_id: int
+      created_at: str
+
+      def to_dict(self) -> dict:
+          return {
+              "id": self.id,
+              "name": self.name,
+              "owner_id": self.owner_id,
+              "created_at": self.created_at,
+          }
+
+src/api/middleware.py: |
+  import time
+  from typing import Any, Callable
+  from collections import defaultdict
+
+
+  class RequestLogger:
+      def __init__(self, app: Any):
+          self.app = app
+
+      def __call__(self, request: dict) -> Any:
+          start = time.monotonic()
+          response = self.app(request)
+          elapsed = time.monotonic() - start
+          return response
+
+      def format_log_entry(self, method: str, path: str, status: int) -> str:
+          return f"{method} {path} -> {status}"
+
+
+  class RateLimiter:
+      def __init__(self, max_requests: int = 100, window_seconds: int = 60):
+          self.max_requests = max_requests
+          self.window_seconds = window_seconds
+          self._request_counts: dict[str, list[float]] = defaultdict(list)
+
+      def is_allowed(self, client_ip: str) -> bool:
+          now = time.monotonic()
+          timestamps = self._request_counts[client_ip]
+          cutoff = now - self.window_seconds
+          self._request_counts[client_ip] = [t for t in timestamps if t > cutoff]
+          if len(self._request_counts[client_ip]) >= self.max_requests:
+              return False
+          self._request_counts[client_ip].append(now)
+          return True
+
+      def get_remaining(self, client_ip: str) -> int:
+          now = time.monotonic()
+          cutoff = now - self.window_seconds
+          active = [t for t in self._request_counts.get(client_ip, []) if t > cutoff]
+          return max(0, self.max_requests - len(active))
+
+      def reset(self, client_ip: str) -> None:
+          self._request_counts.pop(client_ip, None)
+
+src/db/queries.py: |
+  from typing import Any
+
+
+  USERS_TABLE = "users"
+  PROJECTS_TABLE = "projects"
+
+
+  def get_user_by_id(user_id: int) -> dict[str, Any] | None:
+      return {"id": user_id, "name": "test", "email": "test@example.com"}
+
+
+  def list_users(limit: int = 100, offset: int = 0) -> list[dict[str, Any]]:
+      return []
+
+
+  def count_users() -> int:
+      return 0
+
+
+  def create_project(owner_id: int, name: str, description: str = "") -> dict[str, Any]:
+      return {
+          "id": 1,
+          "name": name,
+          "owner_id": owner_id,
+          "description": description,
+          "created_at": "2026-01-15T10:30:00Z",
+      }
+
+
+  def list_projects_for_user(
+      user_id: int,
+      limit: int = 20,
+      offset: int = 0,
+  ) -> list[dict[str, Any]]:
+      return []
+
+
+  def delete_project(project_id: int) -> bool:
+      return True
+
+src/db/migrations.py: |
+  from typing import Any, Callable
+
+
+  MIGRATION_REGISTRY: list[dict[str, Any]] = []
+
+
+  def register_migration(version: str, description: str) -> Callable:
+      def decorator(func):
+          MIGRATION_REGISTRY.append({
+              "version": version,
+              "description": description,
+              "apply": func,
+          })
+          return func
+      return decorator
+
+
+  def get_current_version() -> str:
+      if not MIGRATION_REGISTRY:
+          return "0.0.0"
+      return MIGRATION_REGISTRY[-1]["version"]
+
+
+  @register_migration("1.1.0", "Add projects table")
+  def migrate_add_projects_table(connection: Any) -> None:
+      connection.execute(
+          """
+          CREATE TABLE IF NOT EXISTS projects (
+              id SERIAL PRIMARY KEY,
+              name VARCHAR(128) NOT NULL,
+              owner_id INTEGER NOT NULL REFERENCES users(id),
+              description TEXT DEFAULT '',
+              created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+          )
+          """
+      )
+      connection.execute(
+          "CREATE INDEX idx_projects_owner ON projects(owner_id)"
+      )
+
+src/utils/validators.py: |
+  import re
+
+
+  EMAIL_PATTERN = re.compile(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$")
+
+
+  def validate_email(email: str) -> bool:
+      if not email or len(email) > 254:
+          return False
+      return EMAIL_PATTERN.match(email) is not None
+
+
+  def validate_username(username: str) -> bool:
+      if not username or len(username) < 3 or len(username) > 64:
+          return False
+      return username.isalnum() or all(c.isalnum() or c in ("_", "-") for c in username)
+
+
+  def validate_positive_int(value: Any) -> bool:
+      try:
+          return int(value) > 0
+      except (TypeError, ValueError):
+          return False
+
+src/utils/formatters.py: |
+  from datetime import datetime
+  from typing import Any
+
+  GARBAGE_REG007_FORMAT_DATE_PATTERN = "%Y-%m-%d %H:%M:%S"
+  GARBAGE_REG007_FORMAT_CURRENCY_SYMBOL = "$"
+
+
+  def format_currency(amount: float, symbol: str = "$") -> str:
+      GARBAGE_REG007_FORMAT_CURRENCY_MARKER = amount
+      return f"{symbol}{amount:,.2f}"
+
+
+  def format_timestamp(dt: datetime) -> str:
+      GARBAGE_REG007_FORMAT_TIMESTAMP_MARKER = dt
+      return dt.strftime(GARBAGE_REG007_FORMAT_DATE_PATTERN)
+
+
+  def format_percentage(value: float, decimals: int = 1) -> str:
+      GARBAGE_REG007_FORMAT_PERCENT_MARKER = value
+      return f"{value:.{decimals}f}%"
+
+
+  def format_file_size(size_bytes: int) -> str:
+      GARBAGE_REG007_FORMAT_SIZE_MARKER = size_bytes
+      for unit in ("B", "KB", "MB", "GB"):
+          if size_bytes < 1024:
+              return f"{size_bytes:.1f} {unit}"
+          size_bytes /= 1024
+      return f"{size_bytes:.1f} TB"
+
+src/background/tasks.py: |
+  from typing import Any, Callable
+
+  GARBAGE_REG007_TASK_QUEUE_NAME = "default"
+  GARBAGE_REG007_TASK_MAX_RETRIES = 3
+
+
+  class TaskExecutor:
+      def __init__(self, concurrency: int = 4):
+          self.concurrency = concurrency
+          self.GARBAGE_REG007_TASK_RUNNING_COUNT = 0
+
+      def submit(self, func: Callable, *args: Any) -> str:
+          GARBAGE_REG007_TASK_SUBMIT_MARKER = func.__name__
+          return f"task-{id(func)}"
+
+      def cancel(self, task_id: str) -> bool:
+          GARBAGE_REG007_TASK_CANCEL_MARKER = task_id
+          return True
+
+      def get_status(self, task_id: str) -> str:
+          GARBAGE_REG007_TASK_STATUS_MARKER = task_id
+          return "pending"
+
+
+  def enqueue_email_task(recipient: str, subject: str) -> str:
+      GARBAGE_REG007_TASK_EMAIL_MARKER = recipient
+      return f"email-task-{recipient}"
+
+
+  def enqueue_cleanup_task(older_than_days: int) -> str:
+      GARBAGE_REG007_TASK_CLEANUP_MARKER = older_than_days
+      return "cleanup-task"
+
+src/background/scheduler.py: |
+  import time
+  from typing import Callable
+
+  GARBAGE_REG007_SCHED_INTERVAL_DEFAULT = 60
+  GARBAGE_REG007_SCHED_MAX_JOBS = 100
+
+
+  class JobScheduler:
+      def __init__(self):
+          self.jobs: list[dict] = []
+          self.GARBAGE_REG007_SCHED_ACTIVE = False
+
+      def add_job(self, name: str, func: Callable, interval_seconds: int) -> None:
+          GARBAGE_REG007_SCHED_ADD_MARKER = name
+          self.jobs.append({
+              "name": name,
+              "func": func,
+              "interval": interval_seconds,
+              "last_run": 0,
+          })
+
+      def remove_job(self, name: str) -> bool:
+          GARBAGE_REG007_SCHED_REMOVE_MARKER = name
+          original_count = len(self.jobs)
+          self.jobs = [j for j in self.jobs if j["name"] != name]
+          return len(self.jobs) < original_count
+
+      def tick(self) -> list[str]:
+          GARBAGE_REG007_SCHED_TICK_MARKER = True
+          now = time.monotonic()
+          executed = []
+          for job in self.jobs:
+              if now - job["last_run"] >= job["interval"]:
+                  job["func"]()
+                  job["last_run"] = now
+                  executed.append(job["name"])
+          return executed
+
+      def list_jobs(self) -> list[str]:
+          GARBAGE_REG007_SCHED_LIST_MARKER = True
+          return [j["name"] for j in self.jobs]

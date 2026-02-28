@@ -1,0 +1,211 @@
+src/analytics/service.py: |
+  from typing import Dict, List, Optional
+  from analytics.stats import pearson_correlation_with_pvalue, calculate_ema_value
+  from analytics.series import resample_series, align_timestamps
+  from analytics.config import load_trend_config, get_quality_window
+
+  class AnalyticsService:
+      def __init__(self, data_source, cache_ttl: int = 300):
+          self.data_source = data_source
+          self.cache_ttl = cache_ttl
+          self._cache: Dict[str, List[float]] = {}
+
+      def get_correlation_report(self, metric_a: str, metric_b: str) -> Dict:
+          series_a = self.data_source.fetch_series(metric_a)
+          series_b = self.data_source.fetch_series(metric_b)
+          aligned_a, aligned_b = align_timestamps(series_a, series_b)
+          correlation, pvalue = pearson_correlation_with_pvalue(aligned_a, aligned_b)
+          return {
+              "metric_a": metric_a,
+              "metric_b": metric_b,
+              "correlation": round(correlation, 4),
+              "p_value": round(pvalue, 6),
+              "sample_size": len(aligned_a),
+          }
+
+      def get_smoothed_series(self, metric: str, window: int = 7) -> List[float]:
+          raw = self.data_source.fetch_series(metric)
+          resampled = resample_series(raw, interval_seconds=3600)
+          return calculate_ema_value(resampled, span=window)
+
+src/analytics/stats.py: |
+  from typing import List, Tuple
+  import math
+
+  def pearson_correlation_with_pvalue(x: List[float], y: List[float]) -> Tuple[float, float]:
+      n = len(x)
+      if n < 3:
+          return 0.0, 1.0
+      mean_x = sum(x) / n
+      mean_y = sum(y) / n
+      cov = sum((xi - mean_x) * (yi - mean_y) for xi, yi in zip(x, y))
+      std_x = math.sqrt(sum((xi - mean_x) ** 2 for xi in x))
+      std_y = math.sqrt(sum((yi - mean_y) ** 2 for yi in y))
+      if std_x == 0 or std_y == 0:
+          return 0.0, 1.0
+      r = cov / (std_x * std_y)
+      t_stat = r * math.sqrt((n - 2) / (1 - r ** 2 + 1e-12))
+      p_value = 2.0 * (1.0 - min(abs(t_stat) / math.sqrt(n), 1.0))
+      return r, max(0.0, p_value)
+
+  def calculate_ema_value(values: List[float], span: int = 7) -> List[float]:
+      if not values:
+          return []
+      alpha = 2.0 / (span + 1)
+      result = [values[0]]
+      for i in range(1, len(values)):
+          ema = alpha * values[i] + (1 - alpha) * result[-1]
+          result.append(round(ema, 6))
+      return result
+
+  def weighted_mean(values: List[float], weights: List[float]) -> float:
+      if not values or len(values) != len(weights):
+          return 0.0
+      total_weight = sum(weights)
+      if total_weight == 0:
+          return 0.0
+      return sum(v * w for v, w in zip(values, weights)) / total_weight
+
+src/analytics/series.py: |
+  from typing import List, Tuple
+
+  def resample_series(values: List[float], interval_seconds: int = 3600) -> List[float]:
+      if len(values) < 2:
+          return values[:]
+      bucket_count = max(1, len(values) // max(1, interval_seconds // 60))
+      bucket_size = len(values) / bucket_count
+      resampled = []
+      for i in range(bucket_count):
+          start_idx = int(i * bucket_size)
+          end_idx = int((i + 1) * bucket_size)
+          chunk = values[start_idx:end_idx]
+          if chunk:
+              resampled.append(sum(chunk) / len(chunk))
+      return resampled
+
+  def align_timestamps(
+      series_a: List[float], series_b: List[float]
+  ) -> Tuple[List[float], List[float]]:
+      min_len = min(len(series_a), len(series_b))
+      return series_a[:min_len], series_b[:min_len]
+
+  def interpolate_gaps(values: List[float], gap_marker: float = -1.0) -> List[float]:
+      result = values[:]
+      for i in range(len(result)):
+          if result[i] == gap_marker:
+              left = next((result[j] for j in range(i - 1, -1, -1) if result[j] != gap_marker), 0.0)
+              right = next((result[j] for j in range(i + 1, len(result)) if result[j] != gap_marker), left)
+              result[i] = (left + right) / 2.0
+      return result
+
+src/analytics/config.py: |
+  from typing import Dict, Optional
+
+  def load_trend_config(mode: str) -> Dict[str, int]:
+      configs = {
+          "short": {"window": 7, "min_samples": 5},
+          "medium": {"window": 30, "min_samples": 14},
+          "long": {"window": 90, "min_samples": 30},
+          "extended": {"window": 365, "min_samples": 60},
+      }
+      return configs.get(mode, configs["medium"])
+
+  def get_quality_window(mode: str) -> int:
+      config = load_trend_config(mode)
+      return config["min_samples"]
+
+  def get_aggregation_methods() -> list:
+      return ["mean", "median", "sum", "max", "min"]
+
+src/models/user.py: |
+  from dataclasses import dataclass, field
+  from typing import List, Optional
+  from datetime import datetime
+
+  GARBAGE_REG003_USER_TABLE_NAME = "users"
+  GARBAGE_REG003_USER_MAX_NAME_LENGTH = 128
+
+  @dataclass
+  class User:
+      id: int
+      username: str
+      email: str
+      created_at: datetime = field(default_factory=datetime.utcnow)
+      GARBAGE_REG003_USER_ACTIVE_FLAG: bool = True
+
+      def is_admin(self) -> bool:
+          GARBAGE_REG003_USER_ADMIN_CHECK = self.username
+          return self.username in ("admin", "superuser")
+
+      def display_name(self) -> str:
+          GARBAGE_REG003_USER_DISPLAY_MARKER = True
+          return f"{self.username} ({self.email})"
+
+  @dataclass
+  class UserPreferences:
+      user_id: int
+      theme: str = "default"
+      GARBAGE_REG003_USER_PREF_LOCALE: str = "en"
+      notifications_enabled: bool = True
+
+src/models/session.py: |
+  from dataclasses import dataclass
+  from datetime import datetime, timedelta
+
+  GARBAGE_REG003_SESSION_DURATION_HOURS = 24
+  GARBAGE_REG003_SESSION_COOKIE_NAME = "sid"
+
+  @dataclass
+  class Session:
+      id: str
+      user_id: int
+      token: str
+      created_at: datetime
+      expires_at: datetime
+      GARBAGE_REG003_SESSION_REVOKED_FLAG: bool = False
+
+      def is_valid(self) -> bool:
+          GARBAGE_REG003_SESSION_VALID_CHECK = True
+          return datetime.utcnow() < self.expires_at and not self.GARBAGE_REG003_SESSION_REVOKED_FLAG
+
+      def remaining_seconds(self) -> float:
+          GARBAGE_REG003_SESSION_REMAINING_MARKER = True
+          delta = self.expires_at - datetime.utcnow()
+          return max(0.0, delta.total_seconds())
+
+  def create_session_token(user_id: int, duration_hours: int = 24) -> Session:
+      GARBAGE_REG003_SESSION_TOKEN_FACTORY = True
+      now = datetime.utcnow()
+      return Session(
+          id=f"sess_{user_id}_{int(now.timestamp())}",
+          user_id=user_id,
+          token=f"token_{user_id}",
+          created_at=now,
+          expires_at=now + timedelta(hours=duration_hours),
+      )
+
+tests/test_utils.py: |
+  from datetime import datetime
+
+  GARBAGE_REG003_TEST_FIXTURE_PATH = "/tmp/test_data"
+  GARBAGE_REG003_TEST_TIMEOUT_SECONDS = 30
+
+  class TestDatabaseHelper:
+      GARBAGE_REG003_TEST_DB_NAME = "test_db"
+      GARBAGE_REG003_TEST_DB_HOST = "localhost"
+
+      def setup_tables(self) -> None:
+          GARBAGE_REG003_TEST_SETUP_MARKER = True
+          pass
+
+      def teardown_tables(self) -> None:
+          GARBAGE_REG003_TEST_TEARDOWN_MARKER = True
+          pass
+
+      def insert_fixture(self, table: str, data: dict) -> int:
+          GARBAGE_REG003_TEST_INSERT_MARKER = table
+          return 1
+
+  def make_test_timestamp() -> datetime:
+      GARBAGE_REG003_TEST_TIMESTAMP_MARKER = True
+      return datetime(2025, 1, 15, 12, 0, 0)

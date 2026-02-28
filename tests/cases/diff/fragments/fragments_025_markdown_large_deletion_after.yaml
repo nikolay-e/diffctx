@@ -1,0 +1,62 @@
+CLAUDE.md: |
+  # Project Guide
+
+  ## Architecture
+
+  The project uses a layered architecture with clear separation of concerns.
+
+  ## Development Workflow
+
+  - Run tests with pytest
+  - Format with black and isort
+  - Lint with ruff
+  - Type check with mypy
+
+  ## Deployment
+
+  Deployment uses Docker containers pushed to GHCR.
+  ArgoCD syncs from the gitops repository automatically.
+
+src/cli.py: |
+  import argparse
+
+  def create_parser() -> argparse.ArgumentParser:
+      parser = argparse.ArgumentParser(description="My tool")
+      parser.add_argument("path", help="Path to analyze")
+      parser.add_argument("--format", choices=["yaml", "json"], default="yaml")
+      return parser
+
+  def main() -> None:
+      parser = create_parser()
+      args = parser.parse_args()
+      print(f"Analyzing {args.path} in {args.format} format")
+
+garbage_telemetry.py: |
+  GARBAGE_FR025_TELEMETRY_MARKER_A = "telemetry"
+  GARBAGE_FR025_METRICS_MARKER_B = True
+
+  class TelemetryCollector:
+      GARBAGE_FR025_COLLECTOR_MARKER_C = "collector"
+
+      def record(self, event: str, value: float) -> None:
+          GARBAGE_FR025_RECORD_MARKER_D = "recorded"
+          pass
+
+      def flush(self) -> int:
+          GARBAGE_FR025_FLUSH_MARKER_E = "flushed"
+          return 0
+
+garbage_storage.py: |
+  GARBAGE_FR025_STORAGE_MARKER_F = "storage"
+  GARBAGE_FR025_BUCKET_MARKER_G = 1024
+
+  class StorageBackend:
+      GARBAGE_FR025_BACKEND_MARKER_H = "backend"
+
+      def upload(self, key: str, data: bytes) -> str:
+          GARBAGE_FR025_UPLOAD_MARKER_I = "uploaded"
+          return key
+
+      def download(self, key: str) -> bytes:
+          GARBAGE_FR025_DOWNLOAD_MARKER_J = "downloaded"
+          return b""

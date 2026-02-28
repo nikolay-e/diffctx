@@ -1,0 +1,82 @@
+.github/workflows/cd.yml: |
+  name: CD
+  on:
+    push:
+      branches: [main]
+
+  env:
+    REGISTRY: ghcr.io
+    IMAGE_NAME: ${{ github.repository }}
+
+  jobs:
+    deploy:
+      runs-on: ubuntu-latest
+      permissions:
+        contents: read
+        packages: write
+      steps:
+        - uses: actions/checkout@v4
+
+        - name: Login to GHCR
+          uses: docker/login-action@v3
+          with:
+            registry: ghcr.io
+            username: ${{ github.actor }}
+            password: ${{ secrets.GITHUB_TOKEN }}
+
+        - name: Generate image tags
+          id: tags
+          run: |
+            PRIMARY_TAG="main-$(git rev-parse --short HEAD)"
+            echo "primary_tag=${PRIMARY_TAG}" >> "$GITHUB_OUTPUT"
+
+        - name: Set up Docker Buildx
+          uses: docker/setup-buildx-action@v3
+
+        - name: Build and push
+          uses: docker/build-push-action@v6
+          with:
+            context: .
+            push: true
+            tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.tags.outputs.primary_tag }}
+            build-args: |
+              GIT_SHA=${{ steps.tags.outputs.primary_tag }}
+
+pyproject.toml: |
+  [project]
+  name = "myapp"
+  version = "1.0.0"
+  requires-python = ">=3.11"
+
+  [project.scripts]
+  myapp = "myapp.cli:main"
+
+garbage_lint.py: |
+  GARBAGE_CICD016_LINT_MARKER_A = "lint module"
+  GARBAGE_CICD016_CHECK_MARKER_B = True
+
+  class LintRunner:
+      GARBAGE_CICD016_RUNNER_MARKER_C = "runner"
+
+      def run_checks(self, path: str) -> bool:
+          GARBAGE_CICD016_RESULT_MARKER_D = "passed"
+          return True
+
+      def format_report(self, results: list) -> str:
+          GARBAGE_CICD016_REPORT_MARKER_E = "report"
+          return ""
+
+garbage_migrate.py: |
+  GARBAGE_CICD016_MIGRATE_MARKER_F = "migrate module"
+  GARBAGE_CICD016_SCHEMA_MARKER_G = 42
+
+  class MigrationRunner:
+      GARBAGE_CICD016_MIGRATION_MARKER_H = "migration"
+
+      def apply(self, version: int) -> None:
+          GARBAGE_CICD016_APPLY_MARKER_I = "applied"
+          pass
+
+      def rollback(self, version: int) -> None:
+          GARBAGE_CICD016_ROLLBACK_MARKER_J = "rolled back"
+          pass

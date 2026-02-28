@@ -91,6 +91,9 @@ def _build_sigma(
     return sigma
 
 
+_CLOSURE_EDGE_CATEGORIES = frozenset({"structural", "semantic"})
+
+
 def _closure_expand_step(
     closure: set[str],
     frag_by_symbol: dict[str, list[Fragment]],
@@ -102,6 +105,9 @@ def _closure_expand_step(
         for frag in frag_by_symbol.get(sym, []):
             for nbr_id, weight in graph.neighbors(frag.id).items():
                 if weight < _CLOSURE_MIN_EDGE_WEIGHT:
+                    continue
+                cat = graph.edge_categories.get((frag.id, nbr_id), "")
+                if cat and cat not in _CLOSURE_EDGE_CATEGORIES:
                     continue
                 nbr = frag_by_id.get(nbr_id)
                 if nbr and nbr.symbol_name and nbr.symbol_name.lower() not in closure:
@@ -282,7 +288,10 @@ def marginal_gain(
         gain += _phi(new_max) - _phi(old_max)
 
     if rel_score >= _MIN_REL_FOR_BONUS and (gain > 0 or rel_score >= _STRONG_REL_THRESHOLD):
-        gain = max(gain, rel_score * _RELATEDNESS_BONUS)
+        total_covered = sum(min(state.max_rel.get(n.symbol, 0.0), 1.0) for n in needs)
+        unsatisfied = max(0.0, 1.0 - total_covered / max(1, len(needs)))
+        floor = rel_score * _RELATEDNESS_BONUS * unsatisfied
+        gain = max(gain, floor)
 
     return gain
 

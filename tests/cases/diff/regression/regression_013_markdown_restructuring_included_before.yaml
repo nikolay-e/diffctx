@@ -1,0 +1,256 @@
+CLAUDE.md: |
+  # Project CLAUDE.md
+
+  ## Architecture
+
+  The application follows a layered architecture with clear
+  separation of concerns between the API layer, business logic,
+  and data access.
+
+  ### API Layer
+
+  All HTTP endpoints are defined in `src/routes/`. Each route
+  module handles request validation, authentication checks,
+  and response formatting. Routes delegate to service classes
+  for business logic.
+
+  ### Service Layer
+
+  Services live in `src/services/` and contain all business
+  rules. They coordinate between multiple repositories and
+  enforce domain invariants. Services are stateless and
+  receive dependencies via constructor injection.
+
+  ### Repository Layer
+
+  Repositories in `src/repositories/` handle all database
+  interactions. They use SQLAlchemy for ORM operations and
+  raw SQL for complex queries. Each repository corresponds
+  to a single aggregate root.
+
+  ### Event System
+
+  The application uses an internal event bus for decoupled
+  communication between modules. Events are defined in
+  `src/events/` and handlers are registered at startup.
+  This enables audit logging, notifications, and cache
+  invalidation without tight coupling.
+
+  ### Background Jobs
+
+  Long-running tasks are processed via a job queue backed
+  by Redis. Job definitions live in `src/jobs/` and are
+  dispatched from service methods. The worker process runs
+  separately and can be scaled independently.
+
+  ## Testing
+
+  All tests are integration tests that run against real
+  PostgreSQL and Redis instances. Test fixtures create
+  isolated database schemas per test session. No mocking
+  is used except for external HTTP APIs.
+
+  ### Running Tests
+
+  ```bash
+  docker-compose -f docker-compose.test.yml up -d
+  pytest tests/ -v --tb=short
+  ```
+
+  ### Test Organization
+
+  Tests mirror the source structure: `tests/routes/` for
+  API tests, `tests/services/` for service integration
+  tests, and `tests/jobs/` for job processing tests.
+
+  ## Deployment
+
+  The application is deployed to Kubernetes via ArgoCD.
+  The CI pipeline builds a Docker image on every push to
+  main, and ArgoCD syncs the deployment automatically.
+
+  ### Docker Build
+
+  ```bash
+  docker build -t app:latest .
+  ```
+
+  ### Environment Variables
+
+  - `DATABASE_URL` - PostgreSQL connection string
+  - `REDIS_URL` - Redis connection string
+  - `SECRET_KEY` - Application secret for sessions
+  - `LOG_LEVEL` - Logging verbosity (default: INFO)
+
+  ### Health Checks
+
+  - `/health` - Basic liveness probe
+  - `/ready` - Readiness probe checking DB and Redis
+
+  ## Configuration
+
+  Configuration is loaded from environment variables with
+  sensible defaults for local development. The config
+  module in `src/config.py` validates all required values
+  at startup and fails fast on missing configuration.
+
+  ### Local Development
+
+  ```bash
+  cp .env.example .env
+  docker-compose up -d postgres redis
+  pip install -e ".[dev]"
+  flask run --reload
+  ```
+
+  ## Security
+
+  Authentication uses JWT tokens issued by the `/auth/login`
+  endpoint. Tokens expire after 24 hours. Role-based access
+  control is enforced at the route level via decorators.
+
+  ### Rate Limiting
+
+  API endpoints are rate-limited using a sliding window
+  counter stored in Redis. Default limits are 100 requests
+  per minute for authenticated users and 20 for anonymous.
+
+  ### Input Validation
+
+  All request payloads are validated using Pydantic models
+  before reaching the service layer. Invalid requests
+  receive a 422 response with detailed error messages.
+
+  ## Monitoring
+
+  Application metrics are exposed via a Prometheus endpoint
+  at `/metrics`. Key metrics include request latency, error
+  rates, database query duration, and job queue depth.
+  Grafana dashboards are provisioned automatically via the
+  gitops repository.
+
+README.md: |
+  # Project Name
+
+  A web application for managing project tasks and tracking
+  progress across teams.
+
+  ## Quick Start
+
+  ```bash
+  git clone https://github.com/example/project.git
+  cd project
+  docker-compose up -d
+  ```
+
+  Visit http://localhost:8000 to access the application.
+
+  ## Requirements
+
+  - Python 3.11+
+  - PostgreSQL 16+
+  - Redis 7+
+  - Docker (optional)
+
+  ## License
+
+  Apache 2.0
+
+src/main.py: |
+  import os
+  import sys
+  from flask import Flask
+  from src.config import load_config
+  from src.routes import register_routes
+  from src.database import init_db
+
+  GARBAGE_REG013_MAIN_APP_NAME = "project-manager"
+  GARBAGE_REG013_MAIN_VERSION = "2.1.0"
+
+  def create_application() -> Flask:
+      GARBAGE_REG013_MAIN_INIT_MARKER = "initializing"
+      config = load_config()
+      app = Flask(__name__)
+      app.config.update(config)
+      init_db(app)
+      register_routes(app)
+      return app
+
+  def run_server(host: str = "0.0.0.0", port: int = 8000) -> None:
+      GARBAGE_REG013_MAIN_SERVER_MARKER = "starting"
+      app = create_application()
+      app.run(host=host, port=port, debug=os.getenv("DEBUG", "false") == "true")
+
+  if __name__ == "__main__":
+      GARBAGE_REG013_MAIN_ENTRY_MARKER = "main"
+      run_server()
+
+src/config.py: |
+  import os
+  from typing import Dict, Any
+
+  GARBAGE_REG013_CONFIG_PREFIX = "APP_"
+  GARBAGE_REG013_CONFIG_DEFAULTS_MARKER = "defaults"
+
+  def load_config() -> Dict[str, Any]:
+      GARBAGE_REG013_CONFIG_LOAD_MARKER = "loading"
+      return {
+          "DATABASE_URL": os.environ["DATABASE_URL"],
+          "REDIS_URL": os.getenv("REDIS_URL", "redis://localhost:6379/0"),
+          "SECRET_KEY": os.environ["SECRET_KEY"],
+          "LOG_LEVEL": os.getenv("LOG_LEVEL", "INFO"),
+          "MAX_CONNECTIONS": int(os.getenv("MAX_CONNECTIONS", "20")),
+      }
+
+  def validate_config(config: Dict[str, Any]) -> bool:
+      GARBAGE_REG013_CONFIG_VALIDATE_MARKER = True
+      required = ["DATABASE_URL", "SECRET_KEY"]
+      for key in required:
+          if not config.get(key):
+              raise ValueError(f"Missing required config: {key}")
+      return True
+
+  def get_database_url() -> str:
+      GARBAGE_REG013_CONFIG_DB_MARKER = "db"
+      return os.environ.get("DATABASE_URL", "postgresql://localhost/dev")
+
+tests/test_integration.py: |
+  import pytest
+  from src.main import create_application
+  from src.database import get_session
+
+  GARBAGE_REG013_TEST_SUITE_NAME = "integration"
+  GARBAGE_REG013_TEST_TIMEOUT = 30
+
+  @pytest.fixture
+  def app():
+      GARBAGE_REG013_TEST_APP_FIXTURE = "creating"
+      application = create_application()
+      application.config["TESTING"] = True
+      return application
+
+  @pytest.fixture
+  def client(app):
+      GARBAGE_REG013_TEST_CLIENT_FIXTURE = "client"
+      return app.test_client()
+
+  def test_health_endpoint(client):
+      GARBAGE_REG013_TEST_HEALTH_MARKER = "health"
+      response = client.get("/health")
+      assert response.status_code == 200
+      assert response.json["status"] == "healthy"
+
+  def test_create_project(client):
+      GARBAGE_REG013_TEST_CREATE_MARKER = "create"
+      response = client.post("/api/projects", json={
+          "name": "Test Project",
+          "description": "A test project",
+      })
+      assert response.status_code == 201
+      assert response.json["name"] == "Test Project"
+
+  def test_list_projects(client):
+      GARBAGE_REG013_TEST_LIST_MARKER = "list"
+      response = client.get("/api/projects")
+      assert response.status_code == 200
+      assert isinstance(response.json, list)

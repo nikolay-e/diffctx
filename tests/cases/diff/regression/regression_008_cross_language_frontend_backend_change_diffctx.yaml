@@ -1,0 +1,26 @@
+must_include_files:
+  - backend/src/api.py
+  - backend/src/analytics/service.py
+  - frontend/src/hooks/useInsights.ts
+  - frontend/src/pages/InsightsPage.tsx
+must_include_content:
+  - get_insights
+  - useInsights
+  - InsightsPage
+  - /api/insights
+must_not_include:
+  - GARBAGE_REG008_HEADER_TITLE
+  - GARBAGE_REG008_HEADER_NAV
+  - GARBAGE_REG008_HEADER_LOGO
+  - GARBAGE_REG008_HEADER_TOGGLE
+  - GARBAGE_REG008_FOOTER_LINK
+  - GARBAGE_REG008_FOOTER_YEAR
+  - GARBAGE_REG008_FOOTER_VERSION
+  - GARBAGE_REG008_FOOTER_COPY
+  - GARBAGE_REG008_PERM_ADMIN
+  - GARBAGE_REG008_PERM_VIEWER
+  - GARBAGE_REG008_PERM_EDITOR
+  - GARBAGE_REG008_PERM_CACHE_SIZE
+  - GARBAGE_REG008_PERM_CHECK
+  - GARBAGE_REG008_PERM_ADD
+  - GARBAGE_REG008_PERM_LIST

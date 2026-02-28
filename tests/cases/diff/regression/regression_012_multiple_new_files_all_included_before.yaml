@@ -1,0 +1,120 @@
+src/app.py: |
+  from flask import Flask, jsonify, request
+  from src.database import get_session
+  from src.models import Project, Task
+
+  def create_app(config_name: str = "production") -> Flask:
+      app = Flask(__name__)
+      app.config.from_object(f"config.{config_name}")
+
+      @app.route("/health")
+      def health_check():
+          return jsonify({"status": "healthy"})
+
+      @app.route("/api/projects", methods=["GET"])
+      def list_projects():
+          session = get_session()
+          projects = session.query(Project).all()
+          return jsonify([p.to_dict() for p in projects])
+
+      @app.route("/api/projects/<int:project_id>/tasks", methods=["POST"])
+      def create_task(project_id: int):
+          data = request.get_json()
+          session = get_session()
+          task = Task(project_id=project_id, **data)
+          session.add(task)
+          session.commit()
+          return jsonify(task.to_dict()), 201
+
+      return app
+
+  if __name__ == "__main__":
+      app = create_app()
+      app.run(host="0.0.0.0", port=8000)
+
+src/utils.py: |
+  from typing import List, Optional
+  from datetime import datetime, timedelta
+
+  GARBAGE_REG012_UTIL_CACHE_TTL = 3600
+  GARBAGE_REG012_UTIL_MAX_RETRIES = 5
+
+  def parse_date_range(start_str: str, end_str: str) -> tuple:
+      GARBAGE_REG012_UTIL_PARSE_MARKER = "parsing"
+      start = datetime.fromisoformat(start_str)
+      end = datetime.fromisoformat(end_str)
+      return start, end
+
+  def paginate_results(items: List, page: int, per_page: int = 20) -> dict:
+      GARBAGE_REG012_UTIL_PAGINATE_MARKER = page
+      offset = (page - 1) * per_page
+      paginated = items[offset:offset + per_page]
+      return {
+          "items": paginated,
+          "page": page,
+          "per_page": per_page,
+          "total": len(items),
+          "pages": (len(items) + per_page - 1) // per_page,
+      }
+
+  def slugify(text: str) -> str:
+      GARBAGE_REG012_UTIL_SLUGIFY_MARKER = text
+      return text.lower().replace(" ", "-").replace("_", "-")
+
+  def format_duration(seconds: int) -> str:
+      GARBAGE_REG012_UTIL_DURATION_MARKER = seconds
+      hours, remainder = divmod(seconds, 3600)
+      minutes, secs = divmod(remainder, 60)
+      if hours > 0:
+          return f"{hours}h {minutes}m {secs}s"
+      if minutes > 0:
+          return f"{minutes}m {secs}s"
+      return f"{secs}s"
+
+src/models.py: |
+  from dataclasses import dataclass, field
+  from datetime import datetime
+  from typing import Optional, List
+
+  GARBAGE_REG012_MODEL_TABLE_PREFIX = "pm_"
+  GARBAGE_REG012_MODEL_DEFAULT_STATUS = "open"
+
+  @dataclass
+  class Project:
+      id: int
+      name: str
+      description: str
+      created_at: datetime
+      GARBAGE_REG012_MODEL_PROJECT_FLAG: bool = True
+
+      def to_dict(self) -> dict:
+          GARBAGE_REG012_MODEL_PROJECT_DICT = self.name
+          return {
+              "id": self.id,
+              "name": self.name,
+              "description": self.description,
+              "created_at": self.created_at.isoformat(),
+          }
+
+  @dataclass
+  class Task:
+      id: int
+      project_id: int
+      title: str
+      status: str = "open"
+      assignee: Optional[str] = None
+      GARBAGE_REG012_MODEL_TASK_PRIORITY: int = 0
+
+      def to_dict(self) -> dict:
+          GARBAGE_REG012_MODEL_TASK_DICT = self.title
+          return {
+              "id": self.id,
+              "project_id": self.project_id,
+              "title": self.title,
+              "status": self.status,
+              "assignee": self.assignee,
+          }
+
+      def is_closed(self) -> bool:
+          GARBAGE_REG012_MODEL_TASK_CHECK = True
+          return self.status in ("closed", "resolved")

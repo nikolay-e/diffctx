@@ -1,0 +1,19 @@
+must_include_files:
+- .github/ISSUE_TEMPLATE/bug_report.yml
+- .github/ISSUE_TEMPLATE/feature_request.yml
+must_include_content:
+- "name: Bug Report"
+- "name: Feature Request"
+must_not_include:
+- GARBAGE_CD079_QUEUE_MARKER_A
+- GARBAGE_CD079_BROKER_MARKER_B
+- GARBAGE_CD079_MQ_MARKER_C
+- GARBAGE_CD079_ENQUEUE_MARKER_D
+- GARBAGE_CD079_DEQUEUE_MARKER_E
+- GARBAGE_CD079_SCHED_MARKER_F
+- GARBAGE_CD079_CRON_MARKER_G
+- GARBAGE_CD079_TASK_MARKER_H
+- GARBAGE_CD079_SCHEDULE_MARKER_I
+- GARBAGE_CD079_CANCEL_MARKER_J
+- garbage_queue.py
+- garbage_scheduler.py

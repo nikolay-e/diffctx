@@ -2,13 +2,20 @@ from __future__ import annotations
 
 import heapq
 import logging
+import math
 import statistics
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from .types import Fragment, FragmentId
 from .utility import InformationNeed, UtilityState, apply_fragment, compute_density, marginal_gain, utility_value
 
-_BASELINE_K = 5
+_BASELINE_K_MAX = 5
+_CORE_BUDGET_FRACTION = 0.70
+
+
+def _adaptive_baseline_k(n_candidates: int) -> int:
+    return min(_BASELINE_K_MAX, math.ceil(0.1 * n_candidates))
 
 
 @dataclass
@@ -45,16 +52,30 @@ def _select_core_fragments(
     rel: dict[FragmentId, float],
     needs: tuple[InformationNeed, ...],
     state: _SelectionState,
+    budget_tokens: int,
+    sig_lookup: dict[FragmentId, Fragment] | None = None,
 ) -> None:
+    core_budget = int(budget_tokens * _CORE_BUDGET_FRACTION)
+    core_used = 0
     sorted_core = sorted(core_fragments, key=lambda f: rel.get(f.id, 0.0), reverse=True)
 
     for frag in sorted_core:
         if _is_subset_of_selected(frag, state.selected_ids):
             continue
+        if core_used + frag.token_count > core_budget:
+            sig = sig_lookup.get(frag.id) if sig_lookup else None
+            if sig and sig.id not in state.selected_ids and core_used + sig.token_count <= core_budget:
+                state.selected.append(sig)
+                state.selected_ids.add(sig.id)
+                state.remaining_budget -= sig.token_count
+                core_used += sig.token_count
+                apply_fragment(sig, rel.get(frag.id, 0.0), needs, state.utility_state)
+            continue
 
         state.selected.append(frag)
         state.selected_ids.add(frag.id)
         state.remaining_budget -= frag.token_count
+        core_used += frag.token_count
         apply_fragment(frag, rel.get(frag.id, 0.0), needs, state.utility_state)
 
 
@@ -159,8 +180,18 @@ def lazy_greedy_select(
     core_fragments.sort(key=lambda f: (f.token_count if f.token_count > 0 else 10**9, f.line_count, f.start_line))
     non_core_fragments = [f for f in fragments if f.id not in core_ids]
 
+    sig_by_loc: dict[tuple[Path, int], Fragment] = {}
+    for f in fragments:
+        if "_signature" in f.kind:
+            sig_by_loc[(f.path, f.start_line)] = f
+    sig_lookup: dict[FragmentId, Fragment] = {}
+    for cf in core_fragments:
+        key = (cf.path, cf.start_line)
+        if key in sig_by_loc:
+            sig_lookup[cf.id] = sig_by_loc[key]
+
     state = _SelectionState(remaining_budget=budget_tokens)
-    _select_core_fragments(core_fragments, rel, needs, state)
+    _select_core_fragments(core_fragments, rel, needs, state, budget_tokens, sig_lookup)
 
     if state.remaining_budget <= 0:
         used = budget_tokens - state.remaining_budget
@@ -179,10 +210,11 @@ def lazy_greedy_select(
     base_budget = state.remaining_budget
 
     candidates = [f for f in non_core_fragments if not _overlaps_with_selected(f, state.selected_ids)]
+    baseline_k = _adaptive_baseline_k(len(candidates))
     id_to_frag: dict[FragmentId, Fragment] = {}
     heap = _build_initial_heap(candidates, rel, needs, state.utility_state, id_to_frag)
 
-    selections_for_baseline, threshold = _run_greedy_loop_heap(heap, id_to_frag, state, rel, needs, tau)
+    selections_for_baseline, threshold = _run_greedy_loop_heap(heap, id_to_frag, state, rel, needs, tau, baseline_k)
 
     greedy_utility = utility_value(state.utility_state)
     base_selected_ids = {f.id for f in base_selected}
@@ -203,7 +235,15 @@ def lazy_greedy_select(
         return singleton_result
 
     return _determine_final_result(
-        state, base_selected, budget_tokens, greedy_utility, selections_for_baseline, threshold, bool(heap), core_ids
+        state,
+        base_selected,
+        budget_tokens,
+        greedy_utility,
+        selections_for_baseline,
+        threshold,
+        bool(heap),
+        core_ids,
+        baseline_k,
     )
 
 
@@ -214,6 +254,7 @@ def _run_greedy_loop_heap(
     rel: dict[FragmentId, float],
     needs: tuple[InformationNeed, ...],
     tau: float,
+    baseline_k: int = _BASELINE_K_MAX,
 ) -> tuple[int, float]:
     baseline_densities: list[float] = []
     threshold = 0.0
@@ -235,10 +276,10 @@ def _run_greedy_loop_heap(
         if best_frag is None or best_density <= 0:
             break
 
-        if selections_for_baseline < _BASELINE_K:
+        if selections_for_baseline < baseline_k:
             baseline_densities.append(best_density)
             selections_for_baseline += 1
-            if selections_for_baseline == _BASELINE_K and baseline_densities:
+            if selections_for_baseline == baseline_k and baseline_densities:
                 threshold = tau * statistics.median(baseline_densities)
         elif best_density < threshold:
             break
@@ -293,6 +334,7 @@ def _determine_final_result(
     threshold: float,
     has_remaining_candidates: bool,
     core_ids: set[FragmentId],
+    baseline_k: int = _BASELINE_K_MAX,
 ) -> SelectionResult:
     used = budget_tokens - state.remaining_budget
 
@@ -302,7 +344,7 @@ def _determine_final_result(
         reason = "no_utility"
     elif not state.selected or len(state.selected) == len(base_selected):
         reason = "no_candidates"
-    elif selections_for_baseline >= _BASELINE_K and threshold > 0 and has_remaining_candidates:
+    elif selections_for_baseline >= baseline_k and threshold > 0 and has_remaining_candidates:
         reason = "stopped_by_tau"
     else:
         reason = "no_candidates"

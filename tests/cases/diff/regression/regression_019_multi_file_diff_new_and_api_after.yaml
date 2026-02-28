@@ -1,0 +1,85 @@
+src/api/routes.py: |
+  from flask import Flask, jsonify, request
+  from src.api.auth import require_auth
+  from src.api.pagination import paginate
+
+  app = Flask(__name__)
+
+  @app.route("/api/users", methods=["GET"])
+  @require_auth
+  def list_users():
+      page = request.args.get("page", 1, type=int)
+      per_page = request.args.get("per_page", 20, type=int)
+      users = get_all_users()
+      return jsonify(paginate(users, page, per_page))
+
+  @app.route("/api/users/<int:user_id>", methods=["GET"])
+  @require_auth
+  def get_user(user_id):
+      return jsonify({"user": {"id": user_id}})
+
+  @app.route("/api/users", methods=["POST"])
+  @require_auth
+  def create_user():
+      data = request.get_json()
+      return jsonify({"user": data}), 201
+
+src/api/auth.py: |
+  from functools import wraps
+  from flask import request, abort
+
+  def require_auth(f):
+      @wraps(f)
+      def decorated(*args, **kwargs):
+          token = request.headers.get("Authorization")
+          if not token:
+              abort(401)
+          if not validate_token(token):
+              abort(403)
+          return f(*args, **kwargs)
+      return decorated
+
+  def validate_token(token: str) -> bool:
+      return token.startswith("Bearer ") and len(token) > 10
+
+src/api/pagination.py: |
+  from typing import Any
+
+  def paginate(items: list[Any], page: int, per_page: int) -> dict:
+      start = (page - 1) * per_page
+      end = start + per_page
+      page_items = items[start:end]
+      return {
+          "items": page_items,
+          "page": page,
+          "per_page": per_page,
+          "total": len(items),
+          "pages": (len(items) + per_page - 1) // per_page,
+      }
+
+src/api/middleware.py: |
+  import time
+  import logging
+
+  def request_logger(app):
+      @app.before_request
+      def log_request():
+          logging.info("Request: %s %s", request.method, request.path)
+
+      @app.after_request
+      def log_response(response):
+          logging.info("Response: %s", response.status_code)
+          return response
+
+tests/GARBAGE_REG019_test_utils.py: |
+  GARBAGE_REG019_TEST_MARKER = "test_utils_garbage"
+  def GARBAGE_REG019_create_fixture():
+      return "GARBAGE_REG019_FIXTURE_RESULT"
+
+docs/GARBAGE_REG019_api_spec.md: |
+  GARBAGE_REG019_SPEC_MARKER garbage spec content
+
+lib/GARBAGE_REG019_common.py: |
+  GARBAGE_REG019_COMMON_MARKER = "common_garbage"
+  def GARBAGE_REG019_shared_helper():
+      return "GARBAGE_REG019_COMMON_RESULT"

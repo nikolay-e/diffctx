@@ -1,0 +1,130 @@
+argocd/apps/myapp/values.yaml: |
+  replicaCount: 2
+  image:
+    repository: ghcr.io/myorg/myapp
+    tag: main-abc1234
+  service:
+    type: ClusterIP
+    port: 8080
+  ingress:
+    enabled: true
+    host: myapp.example.com
+  resources:
+    limits:
+      cpu: 500m
+      memory: 256Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+argocd/apps/myapp/Chart.yaml: |
+  apiVersion: v2
+  name: myapp
+  version: 0.1.0
+  appVersion: "1.0.0"
+  description: My application Helm chart
+
+ansible/scripts/music_consistency_checker.py: |
+  import os
+  from pathlib import Path
+  from typing import List, Dict, Optional
+
+  def scan_library(root_path: str) -> List[Dict]:
+      results = []
+      for entry in Path(root_path).rglob("*.flac"):
+          results.append({"path": str(entry), "format": "flac"})
+      for entry in Path(root_path).rglob("*.mp3"):
+          results.append({"path": str(entry), "format": "mp3"})
+      return results
+
+  def check_metadata(file_path: str) -> Dict[str, Optional[str]]:
+      return {
+          "title": None,
+          "artist": None,
+          "album": None,
+          "track_number": None,
+          "genre": None,
+      }
+
+  def validate_naming_convention(file_path: str) -> bool:
+      name = Path(file_path).stem
+      parts = name.split(" - ")
+      return len(parts) >= 2
+
+  def find_duplicates(library: List[Dict]) -> List[List[Dict]]:
+      seen = {}
+      duplicates = []
+      for item in library:
+          key = Path(item["path"]).stem
+          if key in seen:
+              duplicates.append([seen[key], item])
+          else:
+              seen[key] = item
+      return duplicates
+
+  def generate_report(library: List[Dict], duplicates: List[List[Dict]]) -> str:
+      lines = [f"Total files: {len(library)}", f"Duplicates: {len(duplicates)}"]
+      return "\n".join(lines)
+
+scripts/sops-new.sh: |
+  #!/bin/bash
+  set -euo pipefail
+
+  encrypt_file() {
+      local input_file="$1"
+      local output_file="$2"
+      sops --encrypt --age "$(cat ~/.sops/age-key.pub)" \
+          --input-type yaml --output-type yaml \
+          "$input_file" > "$output_file"
+  }
+
+  decrypt_file() {
+      local input_file="$1"
+      sops --decrypt --input-type yaml --output-type yaml "$input_file"
+  }
+
+  rotate_keys() {
+      local file="$1"
+      sops updatekeys -y "$file"
+  }
+
+  if [[ "${1:-}" == "encrypt" ]]; then
+      encrypt_file "${2:-}" "${3:-}"
+  elif [[ "${1:-}" == "decrypt" ]]; then
+      decrypt_file "${2:-}"
+  elif [[ "${1:-}" == "rotate" ]]; then
+      rotate_keys "${2:-}"
+  else
+      echo "Usage: $0 {encrypt|decrypt|rotate} [args...]"
+      exit 1
+  fi
+
+garbage_notifier.py: |
+  GARBAGE_ALG022_NOTIFIER_MARKER_A = "notifier"
+  GARBAGE_ALG022_CHANNEL_MARKER_B = True
+
+  class SlackNotifier:
+      GARBAGE_ALG022_SLACK_MARKER_C = "slack"
+
+      def send(self, channel: str, message: str) -> bool:
+          GARBAGE_ALG022_SEND_MARKER_D = "sent"
+          return True
+
+      def format_block(self, text: str) -> dict:
+          GARBAGE_ALG022_BLOCK_MARKER_E = "block"
+          return {"text": text}
+
+garbage_health.py: |
+  GARBAGE_ALG022_HEALTH_MARKER_F = "health"
+  GARBAGE_ALG022_PROBE_MARKER_G = 30
+
+  class HealthChecker:
+      GARBAGE_ALG022_CHECKER_MARKER_H = "checker"
+
+      def check_db(self) -> bool:
+          GARBAGE_ALG022_DB_MARKER_I = "ok"
+          return True
+
+      def check_redis(self) -> bool:
+          GARBAGE_ALG022_REDIS_MARKER_J = "ok"
+          return True

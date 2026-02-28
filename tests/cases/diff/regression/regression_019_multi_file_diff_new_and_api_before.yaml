@@ -1,0 +1,55 @@
+src/api/routes.py: |
+  from flask import Flask, jsonify, request
+  from src.api.auth import require_auth
+
+  app = Flask(__name__)
+
+  @app.route("/api/users", methods=["GET"])
+  @require_auth
+  def list_users():
+      return jsonify({"users": []})
+
+  @app.route("/api/users/<int:user_id>", methods=["GET"])
+  @require_auth
+  def get_user(user_id):
+      return jsonify({"user": {"id": user_id}})
+
+src/api/auth.py: |
+  from functools import wraps
+  from flask import request, abort
+
+  def require_auth(f):
+      @wraps(f)
+      def decorated(*args, **kwargs):
+          token = request.headers.get("Authorization")
+          if not token:
+              abort(401)
+          return f(*args, **kwargs)
+      return decorated
+
+src/api/middleware.py: |
+  import time
+  import logging
+
+  def request_logger(app):
+      @app.before_request
+      def log_request():
+          logging.info("Request: %s %s", request.method, request.path)
+
+      @app.after_request
+      def log_response(response):
+          logging.info("Response: %s", response.status_code)
+          return response
+
+tests/GARBAGE_REG019_test_utils.py: |
+  GARBAGE_REG019_TEST_MARKER = "test_utils_garbage"
+  def GARBAGE_REG019_create_fixture():
+      return "GARBAGE_REG019_FIXTURE_RESULT"
+
+docs/GARBAGE_REG019_api_spec.md: |
+  GARBAGE_REG019_SPEC_MARKER garbage spec content
+
+lib/GARBAGE_REG019_common.py: |
+  GARBAGE_REG019_COMMON_MARKER = "common_garbage"
+  def GARBAGE_REG019_shared_helper():
+      return "GARBAGE_REG019_COMMON_RESULT"

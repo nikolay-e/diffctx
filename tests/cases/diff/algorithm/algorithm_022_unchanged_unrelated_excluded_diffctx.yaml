@@ -1,0 +1,26 @@
+must_include_files:
+- argocd/apps/myapp/values.yaml
+- argocd/apps/myapp/Chart.yaml
+must_not_include:
+- music_consistency_checker.py
+- scan_library
+- check_metadata
+- validate_naming_convention
+- find_duplicates
+- generate_report
+- sops-new.sh
+- encrypt_file
+- decrypt_file
+- rotate_keys
+- GARBAGE_ALG022_NOTIFIER_MARKER_A
+- GARBAGE_ALG022_CHANNEL_MARKER_B
+- GARBAGE_ALG022_SLACK_MARKER_C
+- GARBAGE_ALG022_SEND_MARKER_D
+- GARBAGE_ALG022_BLOCK_MARKER_E
+- GARBAGE_ALG022_HEALTH_MARKER_F
+- GARBAGE_ALG022_PROBE_MARKER_G
+- GARBAGE_ALG022_CHECKER_MARKER_H
+- GARBAGE_ALG022_DB_MARKER_I
+- GARBAGE_ALG022_REDIS_MARKER_J
+- garbage_notifier.py
+- garbage_health.py

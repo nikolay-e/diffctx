@@ -1,0 +1,74 @@
+src/repository.py: |
+  from typing import List, Optional
+
+  class UserRepository:
+      def __init__(self, db_connection):
+          self.db = db_connection
+
+      def find_by_id(self, user_id: int) -> Optional[dict]:
+          return self.db.query("SELECT * FROM users WHERE id = %s", user_id)
+
+      def find_all(self) -> List[dict]:
+          return self.db.query("SELECT * FROM users")
+
+      def create(self, user_data: dict) -> int:
+          return self.db.insert("users", user_data)
+
+      def update(self, user_id: int, user_data: dict) -> bool:
+          return self.db.update("users", user_id, user_data)
+
+      def delete(self, user_id: int) -> bool:
+          return self.db.delete("users", user_id)
+
+src/models.py: |
+  from dataclasses import dataclass
+  from typing import Optional
+  from datetime import datetime
+
+  @dataclass
+  class User:
+      id: int
+      name: str
+      email: str
+      created_at: datetime
+      updated_at: Optional[datetime] = None
+
+  @dataclass
+  class UserProfile:
+      user_id: int
+      bio: Optional[str] = None
+      avatar_url: Optional[str] = None
+
+src/validators.py: |
+  import re
+  from typing import List
+
+  def validate_email(email: str) -> bool:
+      pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+      return bool(re.match(pattern, email))
+
+  def validate_username(name: str) -> bool:
+      return len(name) >= 3 and len(name) <= 50
+
+  def validate_password(password: str) -> List[str]:
+      errors = []
+      if len(password) < 8:
+          errors.append("Password must be at least 8 characters")
+      if not any(c.isupper() for c in password):
+          errors.append("Password must contain uppercase letter")
+      return errors
+
+scripts/GARBAGE_REG014_seed_data.py: |
+  GARBAGE_REG014_SEED_MARKER = "seed_data_garbage"
+  def GARBAGE_REG014_populate_database():
+      return "GARBAGE_REG014_POPULATE_RESULT"
+
+scripts/GARBAGE_REG014_migrate.py: |
+  GARBAGE_REG014_MIGRATE_MARKER = "migrate_garbage"
+  def GARBAGE_REG014_run_migrations():
+      return "GARBAGE_REG014_MIGRATION_RESULT"
+
+utils/GARBAGE_REG014_helpers.py: |
+  GARBAGE_REG014_HELPER_MARKER = "helper_garbage"
+  def GARBAGE_REG014_format_output():
+      return "GARBAGE_REG014_FORMAT_RESULT"

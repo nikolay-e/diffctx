@@ -42,9 +42,9 @@ jobs:
           python-version: '3.11'
 
       - name: Check that we're on main branch
+        env:
+          CURRENT_BRANCH: ${{ github.ref_name }}
         run: |
-          # Use GitHub context instead of git command to avoid detached HEAD issues
-          CURRENT_BRANCH="${{ github.ref_name }}"
           if [ "$CURRENT_BRANCH" != "main" ]; then
             echo "Error: Releases can only be created from the main branch. Current branch: $CURRENT_BRANCH"
             exit 1
@@ -182,10 +182,12 @@ jobs:
 
       - name: Restore repository from bundle
         shell: bash
+        env:
+          TAG_NAME: ${{ needs.prepare-version.outputs.tag_name }}
         run: |
           git clone repo.bundle repo
           cd repo
-          git checkout ${{ needs.prepare-version.outputs.tag_name }}
+          git checkout "$TAG_NAME"
 
           # Debug: verify we're in the right state
           echo "Current directory: $(pwd)"
@@ -206,6 +208,8 @@ jobs:
       - name: Install Dependencies (including PyInstaller)
         shell: bash
         working-directory: ./repo
+        env:
+          EXPECTED_VERSION: ${{ needs.prepare-version.outputs.version }}
         run: |
           python -m pip install --upgrade pip
           # Install in editable mode to ensure version.py changes are picked up
@@ -214,11 +218,13 @@ jobs:
           # Verify the installed version matches what we expect
           echo "Verifying installed version:"
           python -c "from treemapper.version import __version__; print(f'Version in module: {__version__}')"
-          echo "Expected version: ${{ needs.prepare-version.outputs.version }}"
+          echo "Expected version: ${EXPECTED_VERSION}"
 
       - name: Build with PyInstaller
         shell: bash
         working-directory: ./repo
+        env:
+          ASSET_DIR: ${{ matrix.asset_name }}
         run: |
           # Ensure PyInstaller can find the modules (use correct path separator for OS)
           SEP=$(python -c "import os; print(os.pathsep)")
@@ -226,22 +232,25 @@ jobs:
           echo "PYTHONPATH: $PYTHONPATH"
 
           # Run PyInstaller with explicit paths
-          python -m PyInstaller --clean -y --distpath "./dist/${{ matrix.asset_name }}" treemapper.spec
+          python -m PyInstaller --clean -y --distpath "./dist/${ASSET_DIR}" treemapper.spec
 
           # Verify the built executable exists (cross-platform)
-          echo "Checking for built executable in: ./dist/${{ matrix.asset_name }}/"
-          ls -la "./dist/${{ matrix.asset_name }}/" || echo "ERROR: dist directory not found!"
+          echo "Checking for built executable in: ./dist/${ASSET_DIR}/"
+          ls -la "./dist/${ASSET_DIR}/" || echo "ERROR: dist directory not found!"
 
       - name: Determine architecture
         id: arch
         shell: bash
+        env:
+          RUNNER_PLATFORM: ${{ runner.os }}
+          RUNNER_ARCHITECTURE: ${{ runner.arch }}
         run: |
           ARCH=$(uname -m)
-          if [[ "${{ runner.os }}" == "Windows" ]]; then
-             if [[ "${{ runner.arch }}" == "X64" ]]; then ARCH="x86_64"; \
-             elif [[ "${{ runner.arch }}" == "ARM64" ]]; then ARCH="arm64"; \
+          if [[ "$RUNNER_PLATFORM" == "Windows" ]]; then
+             if [[ "$RUNNER_ARCHITECTURE" == "X64" ]]; then ARCH="x86_64"; \
+             elif [[ "$RUNNER_ARCHITECTURE" == "ARM64" ]]; then ARCH="arm64"; \
              else ARCH="unknown"; fi
-          elif [[ "${{ runner.os }}" == "macOS" ]] && [[ "$ARCH" == "arm64" ]]; then
+          elif [[ "$RUNNER_PLATFORM" == "macOS" ]] && [[ "$ARCH" == "arm64" ]]; then
               echo "Detected ARM on macOS"
           fi
           echo "Determined ARCH: $ARCH"
@@ -250,14 +259,18 @@ jobs:
       - name: Rename asset with proper name
         shell: bash
         working-directory: ./repo
+        env:
+          ASSET_DIR: ${{ matrix.asset_name }}
+          ARCH: ${{ steps.arch.outputs.arch }}
+          VERSION: ${{ needs.prepare-version.outputs.version }}
+          RUNNER_PLATFORM: ${{ runner.os }}
         run: |
-          ASSET_NAME="treemapper-${{ matrix.asset_name }}-${{ steps.arch.outputs.arch }}"
-          ASSET_NAME="${ASSET_NAME}-${{ needs.prepare-version.outputs.version }}"
-          if [[ "${{ runner.os }}" == "Windows" ]]; then
+          ASSET_NAME="treemapper-${ASSET_DIR}-${ARCH}-${VERSION}"
+          if [[ "$RUNNER_PLATFORM" == "Windows" ]]; then
             ASSET_NAME="${ASSET_NAME}.exe"
-            mv "./dist/${{ matrix.asset_name }}/treemapper.exe" "./dist/${ASSET_NAME}"
+            mv "./dist/${ASSET_DIR}/treemapper.exe" "./dist/${ASSET_NAME}"
           else
-            mv "./dist/${{ matrix.asset_name }}/treemapper" "./dist/${ASSET_NAME}"
+            mv "./dist/${ASSET_DIR}/treemapper" "./dist/${ASSET_NAME}"
           fi
 
       - name: Upload artifact
@@ -285,10 +298,12 @@ jobs:
 
       - name: Restore repository from bundle
         shell: bash
+        env:
+          TAG_NAME: ${{ needs.prepare-version.outputs.tag_name }}
         run: |
           git clone repo.bundle repo
           cd repo
-          git checkout ${{ needs.prepare-version.outputs.tag_name }}
+          git checkout "$TAG_NAME"
 
           # Debug: verify we're in the right state
           echo "Current directory: $(pwd)"
@@ -306,6 +321,8 @@ jobs:
 
       - name: Install build tools
         working-directory: ./repo
+        env:
+          EXPECTED_VERSION: ${{ needs.prepare-version.outputs.version }}
         run: |
           python -m pip install --upgrade pip
           pip install build
@@ -313,10 +330,12 @@ jobs:
           # Verify version.py has the correct version
           echo "Version in version.py:"
           cat src/treemapper/version.py
-          echo "Expected version: ${{ needs.prepare-version.outputs.version }}"
+          echo "Expected version: ${EXPECTED_VERSION}"
 
       - name: Build sdist and wheel
         working-directory: ./repo
+        env:
+          VERSION: ${{ needs.prepare-version.outputs.version }}
         run: |
           # Build the distribution packages
           python -m build
@@ -324,9 +343,12 @@ jobs:
           # Verify the built packages have correct version in filename
           echo "Built packages:"
           ls -la dist/
-          VERSION="${{ needs.prepare-version.outputs.version }}"
+          if [ -z "$VERSION" ]; then
+            echo "ERROR: VERSION is empty"
+            exit 1
+          fi
           echo "Looking for version ${VERSION} in package names..."
-          ls dist/*${VERSION}* || echo "WARNING: No packages found!"
+          ls dist/*"${VERSION}"* || echo "WARNING: No packages found!"
 
       - name: Publish package distributions to PyPI
         uses: pypa/gh-action-pypi-publish@ed0c53931b1dc9bd32cbe73a98c7f6766f8a527e  # release/v1
@@ -354,19 +376,23 @@ jobs:
       - name: Restore repository from bundle
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          COMMIT_SHA: ${{ needs.prepare-version.outputs.commit_sha }}
+          REPO_FULL_NAME: ${{ github.repository }}
         run: |
           git clone repo.bundle repo
           cd repo
           # Checkout the version commit (not old main) to preserve version bump
-          git checkout ${{ needs.prepare-version.outputs.commit_sha }}
+          git checkout "$COMMIT_SHA"
           echo "Current commit: $(git rev-parse HEAD)"
-          echo "Expected commit: ${{ needs.prepare-version.outputs.commit_sha }}"
+          echo "Expected commit: ${COMMIT_SHA}"
 
           # Set up remote to point to the actual GitHub repository
-          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git"
+          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${REPO_FULL_NAME}.git"
 
       - name: Push commit and tag to main
         working-directory: ./repo
+        env:
+          TAG_NAME: ${{ needs.prepare-version.outputs.tag_name }}
         run: |
           git config user.name "github-actions[bot]"
           # 41898282 is GitHub's bot user ID for github-actions[bot]
@@ -391,7 +417,7 @@ jobs:
           git push origin HEAD:main
 
           # Push the tag
-          git push origin ${{ needs.prepare-version.outputs.tag_name }}
+          git push origin "$TAG_NAME"
 
           echo "Successfully pushed version commit and tag"
 

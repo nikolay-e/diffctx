@@ -1,8 +1,41 @@
-# Git
-.git
+# Version control
+.git/
 .gitignore
 .gitattributes
 .github/
+.gitleaksignore
+.gitlint
+
+# Secrets and credentials
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.p12
+*.pfx
+*id_rsa*
+*id_ed25519*
+credentials.json
+secrets.json
+.secrets.baseline
+.netrc
+.npmrc
+.yarnrc
+.age-key.txt
+
+# Cloud credentials
+.aws/
+.gcloud/
+.azure/
+
+# Private directory
+private/
+
+# Shell history
+.bash_history
+.zsh_history
+.sh_history
 
 # Python artifacts
 __pycache__/
@@ -64,19 +97,10 @@ mutants/
 Thumbs.db
 .AppleDouble
 
-# Secrets and environment
-.env
-.env.*
-!.env.example
-*.pem
-*.key
-*id_rsa*
-*id_ed25519*
-credentials.json
-secrets.json
-.secrets.baseline
+# Claude AI tools
+.claude/
 
-# Documentation (not needed in image)
+# Documentation
 *.md
 !README.md
 docs/
@@ -86,6 +110,15 @@ site/
 release-*/
 *.bundle
 
+# CI/CD
+.pre-commit-config.yaml
+renovate.json
+
+# Docker (prevent recursive inclusion)
+Dockerfile*
+.dockerignore
+docker-compose*.yml
+
 # Tree mapper output
 tree.tmp
 directory_tree.yaml
@@ -93,9 +126,6 @@ directory_tree.yaml
 # PyInstaller
 *.spec
 
-# Claude AI tools
-.claude/
-
-# CI/CD
-.pre-commit-config.yaml
-renovate.json
+# Temporary files
+*.tmp
+*.bak

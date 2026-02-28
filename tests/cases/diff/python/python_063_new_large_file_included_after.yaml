@@ -1,0 +1,157 @@
+src/analytics/service.py: |
+  from src.analytics.stats import calculate_mean, calculate_median
+  from src.analytics.advanced import AdvancedInsights
+
+  class AnalyticsService:
+      def __init__(self, data_loader):
+          self.data_loader = data_loader
+          self.advanced = AdvancedInsights()
+
+      def get_basic_stats(self, metric_name: str, days: int = 30) -> dict:
+          data = self.data_loader.load(metric_name, days)
+          return {
+              "mean": calculate_mean(data),
+              "median": calculate_median(data),
+              "count": len(data),
+          }
+
+      def get_summary(self, metric_name: str) -> str:
+          stats = self.get_basic_stats(metric_name)
+          return f"{metric_name}: mean={stats['mean']:.2f}, median={stats['median']:.2f}"
+
+      def get_advanced_analysis(self, metric_name: str, days: int = 90) -> dict:
+          data = self.data_loader.load(metric_name, days)
+          trend = self.advanced.detect_trend(data)
+          outliers = self.advanced.find_outliers(data)
+          correlation = self.advanced.compute_rolling_correlation(data, data)
+          return {
+              "trend": trend,
+              "outlier_count": len(outliers),
+              "correlation": correlation,
+          }
+
+src/analytics/advanced.py: |
+  from typing import List, Optional, Tuple
+  from src.analytics.stats import calculate_mean, calculate_std, calculate_percentile
+
+  class AdvancedInsights:
+      def __init__(self, window_size: int = 7, sensitivity: float = 2.0):
+          self.window_size = window_size
+          self.sensitivity = sensitivity
+
+      def detect_trend(self, values: List[float]) -> str:
+          if len(values) < self.window_size * 2:
+              return "insufficient_data"
+          first_half = values[:len(values) // 2]
+          second_half = values[len(values) // 2:]
+          first_mean = calculate_mean(first_half)
+          second_mean = calculate_mean(second_half)
+          diff = second_mean - first_mean
+          threshold = calculate_std(values) * 0.5
+          if diff > threshold:
+              return "increasing"
+          elif diff < -threshold:
+              return "decreasing"
+          return "stable"
+
+      def find_outliers(self, values: List[float]) -> List[Tuple[int, float]]:
+          if len(values) < 3:
+              return []
+          mean = calculate_mean(values)
+          std = calculate_std(values)
+          if std == 0:
+              return []
+          outliers = []
+          for i, v in enumerate(values):
+              z_score = abs(v - mean) / std
+              if z_score > self.sensitivity:
+                  outliers.append((i, v))
+          return outliers
+
+      def compute_rolling_correlation(
+          self, series_a: List[float], series_b: List[float]
+      ) -> List[Optional[float]]:
+          if len(series_a) != len(series_b):
+              return []
+          results: List[Optional[float]] = [None] * min(self.window_size - 1, len(series_a))
+          for i in range(self.window_size - 1, len(series_a)):
+              window_a = series_a[i - self.window_size + 1:i + 1]
+              window_b = series_b[i - self.window_size + 1:i + 1]
+              mean_a = calculate_mean(window_a)
+              mean_b = calculate_mean(window_b)
+              std_a = calculate_std(window_a)
+              std_b = calculate_std(window_b)
+              if std_a == 0 or std_b == 0:
+                  results.append(None)
+                  continue
+              cov = sum((a - mean_a) * (b - mean_b) for a, b in zip(window_a, window_b)) / (self.window_size - 1)
+              results.append(cov / (std_a * std_b))
+          return results
+
+src/analytics/stats.py: |
+  from typing import List
+
+  def calculate_mean(values: List[float]) -> float:
+      if not values:
+          return 0.0
+      return sum(values) / len(values)
+
+  def calculate_median(values: List[float]) -> float:
+      if not values:
+          return 0.0
+      sorted_vals = sorted(values)
+      n = len(sorted_vals)
+      mid = n // 2
+      if n % 2 == 0:
+          return (sorted_vals[mid - 1] + sorted_vals[mid]) / 2
+      return sorted_vals[mid]
+
+  def calculate_std(values: List[float]) -> float:
+      if len(values) < 2:
+          return 0.0
+      mean = calculate_mean(values)
+      variance = sum((x - mean) ** 2 for x in values) / (len(values) - 1)
+      return variance ** 0.5
+
+  def calculate_percentile(values: List[float], percentile: float) -> float:
+      if not values:
+          return 0.0
+      sorted_vals = sorted(values)
+      k = (len(sorted_vals) - 1) * (percentile / 100)
+      f = int(k)
+      c = f + 1
+      if c >= len(sorted_vals):
+          return sorted_vals[f]
+      return sorted_vals[f] + (k - f) * (sorted_vals[c] - sorted_vals[f])
+
+garbage_billing.py: |
+  GARBAGE_PY063_BILLING_MARKER_A = "billing module"
+  GARBAGE_PY063_INVOICE_MARKER_B = True
+
+  class InvoiceGenerator:
+      GARBAGE_PY063_GENERATOR_MARKER_C = "invoice gen"
+
+      def __init__(self):
+          self.GARBAGE_PY063_TEMPLATE_MARKER_D = "default"
+
+      def generate(self, order_id: int) -> str:
+          return f"INV-{order_id}"
+
+      def send_invoice(self, invoice_id: str) -> bool:
+          GARBAGE_PY063_SEND_MARKER_E = "sent"
+          return True
+
+garbage_cache.py: |
+  GARBAGE_PY063_CACHE_MARKER_F = "cache module"
+  GARBAGE_PY063_REDIS_MARKER_G = 3600
+
+  class CacheManager:
+      GARBAGE_PY063_MANAGER_MARKER_H = "manager"
+
+      def get(self, key: str) -> str:
+          GARBAGE_PY063_GET_MARKER_I = "cache hit"
+          return ""
+
+      def set(self, key: str, value: str, ttl: int = 300) -> None:
+          GARBAGE_PY063_SET_MARKER_J = "cache set"
+          pass

@@ -5,6 +5,7 @@ import math
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .config import LIMITS
 from .edges import collect_all_edges
 from .edges.similarity.lexical import clamp_lexical_weight
 from .embeddings import _build_embedding_edges
@@ -14,6 +15,7 @@ from .types import Fragment, FragmentId
 @dataclass
 class Graph:
     adjacency: dict[FragmentId, dict[FragmentId, float]] = field(default_factory=dict)
+    reverse_adjacency: dict[FragmentId, dict[FragmentId, float]] = field(default_factory=dict)
     nodes: set[FragmentId] = field(default_factory=set)
     edge_categories: dict[tuple[FragmentId, FragmentId], str] = field(default_factory=dict)
 
@@ -28,6 +30,12 @@ class Graph:
             self.adjacency[src] = {}
         existing = self.adjacency[src].get(dst, 0.0)
         self.adjacency[src][dst] = max(existing, weight)
+
+        if dst not in self.reverse_adjacency:
+            self.reverse_adjacency[dst] = {}
+        existing_rev = self.reverse_adjacency[dst].get(src, 0.0)
+        self.reverse_adjacency[dst][src] = max(existing_rev, weight)
+
         self.nodes.add(src)
         self.nodes.add(dst)
 
@@ -41,20 +49,25 @@ def build_graph(fragments: list[Fragment], repo_root: Path | None = None) -> Gra
     for frag in fragments:
         graph.nodes.add(frag.id)
 
+    skip_expensive = len(fragments) > LIMITS.skip_expensive_threshold
+    if skip_expensive:
+        logging.debug("diffctx: %d fragments exceed threshold, skipping expensive edge builders", len(fragments))
+
     all_edges: dict[tuple[FragmentId, FragmentId], float] = {}
     edge_categories: dict[tuple[FragmentId, FragmentId], str] = {}
 
-    plugin_edges, plugin_categories = collect_all_edges(fragments, repo_root)
+    plugin_edges, plugin_categories = collect_all_edges(fragments, repo_root, skip_expensive=skip_expensive)
     for (src, dst), weight in plugin_edges.items():
         if weight > all_edges.get((src, dst), 0.0):
             all_edges[(src, dst)] = weight
             edge_categories[(src, dst)] = plugin_categories.get((src, dst), "generic")
 
-    embedding_edges = _build_embedding_edges(fragments, clamp_lexical_weight)
-    for (src, dst), weight in embedding_edges.items():
-        if weight > all_edges.get((src, dst), 0.0):
-            all_edges[(src, dst)] = weight
-            edge_categories[(src, dst)] = "similarity"
+    if not skip_expensive:
+        embedding_edges = _build_embedding_edges(fragments, clamp_lexical_weight)
+        for (src, dst), weight in embedding_edges.items():
+            if weight > all_edges.get((src, dst), 0.0):
+                all_edges[(src, dst)] = weight
+                edge_categories[(src, dst)] = "similarity"
 
     all_edges = _apply_hub_suppression(all_edges, edge_categories)
 

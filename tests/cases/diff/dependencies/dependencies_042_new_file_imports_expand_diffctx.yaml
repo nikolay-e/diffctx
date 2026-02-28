@@ -1,0 +1,24 @@
+must_include_files:
+- src/analyzer.py
+- src/stats.py
+- src/date_utils.py
+must_include_content:
+- class TrendAnalyzer
+- def analyze_correlation
+- def pearson_correlation
+- def moving_average
+- def date_range
+- def week_boundaries
+must_not_include:
+- GARBAGE_DEP042_EXPORT_MARKER_A
+- GARBAGE_DEP042_FORMAT_MARKER_B
+- GARBAGE_DEP042_EXPORTER_MARKER_C
+- GARBAGE_DEP042_CSV_MARKER_D
+- GARBAGE_DEP042_JSON_MARKER_E
+- GARBAGE_DEP042_AUTH_MARKER_F
+- GARBAGE_DEP042_TOKEN_MARKER_G
+- GARBAGE_DEP042_MANAGER_MARKER_H
+- GARBAGE_DEP042_VERIFY_MARKER_I
+- GARBAGE_DEP042_REFRESH_MARKER_J
+- garbage_export.py
+- garbage_auth.py

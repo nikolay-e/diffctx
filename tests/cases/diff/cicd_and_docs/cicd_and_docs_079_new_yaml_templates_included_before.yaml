@@ -1,0 +1,61 @@
+.github/workflows/ci.yml: |
+  name: CI
+  on: [push, pull_request]
+  jobs:
+    test:
+      runs-on: ubuntu-latest
+      steps:
+        - uses: actions/checkout@v4
+        - uses: actions/setup-python@v5
+          with:
+            python-version: "3.12"
+        - run: pip install -e ".[dev]"
+        - run: pytest
+
+README.md: |
+  # My Project
+
+  A sample project for testing.
+
+  ## Installation
+
+  ```bash
+  pip install myproject
+  ```
+
+  ## Usage
+
+  ```python
+  from myproject import main
+  main()
+  ```
+
+garbage_queue.py: |
+  GARBAGE_CD079_QUEUE_MARKER_A = "queue module"
+  GARBAGE_CD079_BROKER_MARKER_B = True
+
+  class MessageQueue:
+      GARBAGE_CD079_MQ_MARKER_C = "mq"
+
+      def enqueue(self, message: str) -> None:
+          GARBAGE_CD079_ENQUEUE_MARKER_D = "enqueued"
+          pass
+
+      def dequeue(self) -> str:
+          GARBAGE_CD079_DEQUEUE_MARKER_E = "dequeued"
+          return ""
+
+garbage_scheduler.py: |
+  GARBAGE_CD079_SCHED_MARKER_F = "scheduler"
+  GARBAGE_CD079_CRON_MARKER_G = 60
+
+  class TaskScheduler:
+      GARBAGE_CD079_TASK_MARKER_H = "task"
+
+      def schedule(self, task_name: str, interval: int) -> None:
+          GARBAGE_CD079_SCHEDULE_MARKER_I = "scheduled"
+          pass
+
+      def cancel(self, task_name: str) -> bool:
+          GARBAGE_CD079_CANCEL_MARKER_J = "cancelled"
+          return True

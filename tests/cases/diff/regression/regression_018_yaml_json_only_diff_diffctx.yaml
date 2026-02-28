@@ -1,0 +1,15 @@
+must_include_files:
+- .pre-commit-config.yaml
+- .github/workflows/ci.yml
+- package.json
+must_include_content:
+- gitleaks
+- "needs: lint"
+- '"version": "2.0.0"'
+must_not_include:
+- GARBAGE_REG018_CONTROLLER_MARKER
+- GARBAGE_REG018_INDEX_RESULT
+- GARBAGE_REG018_MIDDLEWARE_MARKER
+- GARBAGE_REG018_AUTH_RESULT
+- GARBAGE_REG018_CACHE_MARKER
+- GARBAGE_REG018_CACHE_RESULT

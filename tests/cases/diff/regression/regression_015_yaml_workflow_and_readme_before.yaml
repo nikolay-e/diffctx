@@ -1,0 +1,47 @@
+src/app.py: |
+  from flask import Flask
+
+  def create_app():
+      app = Flask(__name__)
+      app.config["DEBUG"] = False
+      return app
+
+  def run_server(app):
+      app.run(host="0.0.0.0", port=8080)
+
+src/routes.py: |
+  from flask import jsonify
+
+  def register_routes(app):
+      @app.route("/health")
+      def health():
+          return jsonify({"status": "ok"})
+
+      @app.route("/api/version")
+      def version():
+          return jsonify({"version": "1.0.0"})
+
+.github/workflows/ci.yml: |
+  name: CI
+  on:
+    push:
+      branches: [main]
+  jobs:
+    test:
+      runs-on: ubuntu-latest
+      steps:
+        - uses: actions/checkout@v4
+        - name: Run tests
+          run: pytest
+
+frontend/GARBAGE_REG015_component.tsx: |
+  export const GARBAGE_REG015_COMPONENT_MARKER = "garbage_component";
+  export function GARBAGE_REG015_RenderWidget() {
+      return "GARBAGE_REG015_WIDGET_RESULT";
+  }
+
+frontend/GARBAGE_REG015_styles.css: |
+  .GARBAGE_REG015_STYLE_MARKER { color: red; }
+
+data/GARBAGE_REG015_fixtures.json: |
+  {"GARBAGE_REG015_JSON_MARKER": "garbage_json_value"}

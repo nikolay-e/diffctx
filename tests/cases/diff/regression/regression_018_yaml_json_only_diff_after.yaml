@@ -1,0 +1,71 @@
+.pre-commit-config.yaml: |
+  repos:
+    - repo: https://github.com/pre-commit/pre-commit-hooks
+      rev: v5.0.0
+      hooks:
+        - id: trailing-whitespace
+        - id: end-of-file-fixer
+        - id: check-yaml
+    - repo: https://github.com/gitleaks/gitleaks
+      rev: v8.21.0
+      hooks:
+        - id: gitleaks
+
+.github/workflows/ci.yml: |
+  name: CI
+  on:
+    push:
+      branches: [main]
+    pull_request:
+      branches: [main]
+  jobs:
+    lint:
+      runs-on: ubuntu-latest
+      steps:
+        - uses: actions/checkout@v4
+        - name: Lint
+          run: npm run lint
+    build:
+      runs-on: ubuntu-latest
+      needs: lint
+      steps:
+        - uses: actions/checkout@v4
+        - name: Install
+          run: npm ci
+        - name: Build
+          run: npm run build
+
+package.json: |
+  {
+    "name": "myapp",
+    "version": "2.0.0",
+    "dependencies": {
+      "express": "^5.0.0",
+      "helmet": "^7.0.0"
+    },
+    "devDependencies": {
+      "eslint": "^9.0.0",
+      "prettier": "^3.0.0"
+    },
+    "scripts": {
+      "lint": "eslint .",
+      "build": "tsc",
+      "start": "node dist/index.js"
+    }
+  }
+
+src/GARBAGE_REG018_controller.py: |
+  class GARBAGE_REG018_MainController:
+      GARBAGE_REG018_CONTROLLER_MARKER = "controller_garbage"
+      def GARBAGE_REG018_handle_index(self):
+          return "GARBAGE_REG018_INDEX_RESULT"
+
+src/GARBAGE_REG018_middleware.py: |
+  GARBAGE_REG018_MIDDLEWARE_MARKER = "middleware_garbage"
+  def GARBAGE_REG018_auth_middleware():
+      return "GARBAGE_REG018_AUTH_RESULT"
+
+lib/GARBAGE_REG018_cache.py: |
+  GARBAGE_REG018_CACHE_MARKER = "cache_garbage"
+  def GARBAGE_REG018_invalidate_cache():
+      return "GARBAGE_REG018_CACHE_RESULT"

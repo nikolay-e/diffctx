@@ -1,0 +1,86 @@
+src/analytics/service.py: |
+  from src.analytics.stats import calculate_mean, calculate_median
+
+  class AnalyticsService:
+      def __init__(self, data_loader):
+          self.data_loader = data_loader
+
+      def get_basic_stats(self, metric_name: str, days: int = 30) -> dict:
+          data = self.data_loader.load(metric_name, days)
+          return {
+              "mean": calculate_mean(data),
+              "median": calculate_median(data),
+              "count": len(data),
+          }
+
+      def get_summary(self, metric_name: str) -> str:
+          stats = self.get_basic_stats(metric_name)
+          return f"{metric_name}: mean={stats['mean']:.2f}, median={stats['median']:.2f}"
+
+src/analytics/stats.py: |
+  from typing import List
+
+  def calculate_mean(values: List[float]) -> float:
+      if not values:
+          return 0.0
+      return sum(values) / len(values)
+
+  def calculate_median(values: List[float]) -> float:
+      if not values:
+          return 0.0
+      sorted_vals = sorted(values)
+      n = len(sorted_vals)
+      mid = n // 2
+      if n % 2 == 0:
+          return (sorted_vals[mid - 1] + sorted_vals[mid]) / 2
+      return sorted_vals[mid]
+
+  def calculate_std(values: List[float]) -> float:
+      if len(values) < 2:
+          return 0.0
+      mean = calculate_mean(values)
+      variance = sum((x - mean) ** 2 for x in values) / (len(values) - 1)
+      return variance ** 0.5
+
+  def calculate_percentile(values: List[float], percentile: float) -> float:
+      if not values:
+          return 0.0
+      sorted_vals = sorted(values)
+      k = (len(sorted_vals) - 1) * (percentile / 100)
+      f = int(k)
+      c = f + 1
+      if c >= len(sorted_vals):
+          return sorted_vals[f]
+      return sorted_vals[f] + (k - f) * (sorted_vals[c] - sorted_vals[f])
+
+garbage_billing.py: |
+  GARBAGE_PY063_BILLING_MARKER_A = "billing module"
+  GARBAGE_PY063_INVOICE_MARKER_B = True
+
+  class InvoiceGenerator:
+      GARBAGE_PY063_GENERATOR_MARKER_C = "invoice gen"
+
+      def __init__(self):
+          self.GARBAGE_PY063_TEMPLATE_MARKER_D = "default"
+
+      def generate(self, order_id: int) -> str:
+          return f"INV-{order_id}"
+
+      def send_invoice(self, invoice_id: str) -> bool:
+          GARBAGE_PY063_SEND_MARKER_E = "sent"
+          return True
+
+garbage_cache.py: |
+  GARBAGE_PY063_CACHE_MARKER_F = "cache module"
+  GARBAGE_PY063_REDIS_MARKER_G = 3600
+
+  class CacheManager:
+      GARBAGE_PY063_MANAGER_MARKER_H = "manager"
+
+      def get(self, key: str) -> str:
+          GARBAGE_PY063_GET_MARKER_I = "cache hit"
+          return ""
+
+      def set(self, key: str, value: str, ttl: int = 300) -> None:
+          GARBAGE_PY063_SET_MARKER_J = "cache set"
+          pass

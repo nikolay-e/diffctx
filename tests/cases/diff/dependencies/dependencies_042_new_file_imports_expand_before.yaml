@@ -1,0 +1,88 @@
+src/stats.py: |
+  from typing import List
+
+  def pearson_correlation(x: List[float], y: List[float]) -> float:
+      n = len(x)
+      if n < 2:
+          return 0.0
+      mean_x = sum(x) / n
+      mean_y = sum(y) / n
+      cov = sum((xi - mean_x) * (yi - mean_y) for xi, yi in zip(x, y))
+      std_x = (sum((xi - mean_x) ** 2 for xi in x)) ** 0.5
+      std_y = (sum((yi - mean_y) ** 2 for yi in y)) ** 0.5
+      if std_x == 0 or std_y == 0:
+          return 0.0
+      return cov / (std_x * std_y)
+
+  def moving_average(values: List[float], window: int = 7) -> List[float]:
+      if len(values) < window:
+          return values[:]
+      result = []
+      for i in range(len(values) - window + 1):
+          result.append(sum(values[i:i + window]) / window)
+      return result
+
+src/date_utils.py: |
+  from datetime import datetime, timedelta
+  from typing import List, Tuple
+
+  def date_range(start: datetime, end: datetime) -> List[datetime]:
+      dates = []
+      current = start
+      while current <= end:
+          dates.append(current)
+          current += timedelta(days=1)
+      return dates
+
+  def week_boundaries(date: datetime) -> Tuple[datetime, datetime]:
+      start = date - timedelta(days=date.weekday())
+      end = start + timedelta(days=6)
+      return start, end
+
+  def format_iso(date: datetime) -> str:
+      return date.strftime("%Y-%m-%d")
+
+src/service.py: |
+  from src.stats import pearson_correlation
+
+  class MetricsService:
+      def __init__(self, repository):
+          self.repository = repository
+
+      def get_correlation(self, metric_a: str, metric_b: str) -> float:
+          data_a = self.repository.fetch(metric_a)
+          data_b = self.repository.fetch(metric_b)
+          return pearson_correlation(data_a, data_b)
+
+      def list_metrics(self) -> list:
+          return self.repository.list_all()
+
+garbage_export.py: |
+  GARBAGE_DEP042_EXPORT_MARKER_A = "export module"
+  GARBAGE_DEP042_FORMAT_MARKER_B = True
+
+  class DataExporter:
+      GARBAGE_DEP042_EXPORTER_MARKER_C = "exporter"
+
+      def export_csv(self, data: list, path: str) -> None:
+          GARBAGE_DEP042_CSV_MARKER_D = "csv"
+          pass
+
+      def export_json(self, data: list, path: str) -> None:
+          GARBAGE_DEP042_JSON_MARKER_E = "json"
+          pass
+
+garbage_auth.py: |
+  GARBAGE_DEP042_AUTH_MARKER_F = "auth module"
+  GARBAGE_DEP042_TOKEN_MARKER_G = 7200
+
+  class AuthManager:
+      GARBAGE_DEP042_MANAGER_MARKER_H = "auth mgr"
+
+      def verify_token(self, token: str) -> bool:
+          GARBAGE_DEP042_VERIFY_MARKER_I = "verified"
+          return True
+
+      def refresh_token(self, token: str) -> str:
+          GARBAGE_DEP042_REFRESH_MARKER_J = "refreshed"
+          return token

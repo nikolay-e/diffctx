@@ -1,0 +1,11 @@
+must_include_files:
+- .github/workflows/ci.yml
+- README.md
+must_include_content:
+- "needs: lint"
+- "# My Application"
+must_not_include:
+- GARBAGE_REG015_COMPONENT_MARKER
+- GARBAGE_REG015_WIDGET_RESULT
+- GARBAGE_REG015_STYLE_MARKER
+- GARBAGE_REG015_JSON_MARKER
