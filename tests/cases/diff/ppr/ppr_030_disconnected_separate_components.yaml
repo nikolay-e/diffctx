@@ -1,0 +1,150 @@
+initial:
+  comp1_a.py: |
+    SHARED1 = "shared1"
+
+    def comp1_a():
+        return SHARED1
+  comp1_b.py: |
+    SHARED1 = "shared1"
+
+    def comp1_b():
+        return SHARED1
+  comp2_a.py: |
+    SHARED2 = "shared2"
+
+    def comp2_a():
+        return SHARED2
+  comp2_b.py: |
+    SHARED2 = "shared2"
+
+    def comp2_b():
+        return SHARED2
+
+  # --- Tricky garbage: uses SHARED1 like the changed comp1_a ---
+  garbage_shared1_consumer.py: |
+    GARBAGE_PPR030_CONSUMER_A = "shared1_consumer"
+    GARBAGE_PPR030_CONSUMER_B = True
+
+    SHARED1 = "shared1"
+
+    def consume_shared1():
+        return SHARED1
+
+    class Shared1Processor:
+        GARBAGE_PPR030_PROCESSOR_C = 99
+
+        def process(self):
+            return SHARED1
+
+  # --- Tricky garbage: comp1_* naming pattern, looks like component 1 ---
+  garbage_comp1_helper.py: |
+    GARBAGE_PPR030_HELPER_D = "comp1_helper"
+    GARBAGE_PPR030_HELPER_E = False
+
+    def comp1_helper():
+        return "helper_for_comp1"
+
+    def comp1_validate():
+        GARBAGE_PPR030_VALIDATE_F = 42
+        return True
+
+  # --- Tricky garbage: uses "_modified" like the diff ---
+  garbage_modifier.py: |
+    GARBAGE_PPR030_MOD_G = "modifier"
+    GARBAGE_PPR030_MOD_H = 0
+
+    def apply_modified():
+        return "_modified"
+
+    def get_comp_modified():
+        return "comp" + "_modified"
+
+changed:
+  comp1_a.py: |
+    SHARED1 = "shared1"
+
+    def comp1_a():
+        return SHARED1 + "_modified"
+  comp1_b.py: |
+    SHARED1 = "shared1"
+
+    def comp1_b():
+        return SHARED1
+  comp2_a.py: |
+    SHARED2 = "shared2"
+
+    def comp2_a():
+        return SHARED2
+  comp2_b.py: |
+    SHARED2 = "shared2"
+
+    def comp2_b():
+        return SHARED2
+  garbage_shared1_consumer.py: |
+    GARBAGE_PPR030_CONSUMER_A = "shared1_consumer"
+    GARBAGE_PPR030_CONSUMER_B = True
+
+    SHARED1 = "shared1"
+
+    def consume_shared1():
+        return SHARED1
+
+    class Shared1Processor:
+        GARBAGE_PPR030_PROCESSOR_C = 99
+
+        def process(self):
+            return SHARED1
+  garbage_comp1_helper.py: |
+    GARBAGE_PPR030_HELPER_D = "comp1_helper"
+    GARBAGE_PPR030_HELPER_E = False
+
+    def comp1_helper():
+        return "helper_for_comp1"
+
+    def comp1_validate():
+        GARBAGE_PPR030_VALIDATE_F = 42
+        return True
+  garbage_modifier.py: |
+    GARBAGE_PPR030_MOD_G = "modifier"
+    GARBAGE_PPR030_MOD_H = 0
+
+    def apply_modified():
+        return "_modified"
+
+    def get_comp_modified():
+        return "comp" + "_modified"
+
+# === Assertions ===
+
+must_include_files:
+- comp1_a.py
+
+must_include_content_from:
+  comp1_a.py:
+    - 'def comp1_a():'
+    - return SHARED1 + "_modified"
+
+must_not_include:
+- comp2_a
+- comp2_b
+# Tricky: uses SHARED1 like the diff
+- GARBAGE_PPR030_CONSUMER_A
+- GARBAGE_PPR030_CONSUMER_B
+- GARBAGE_PPR030_PROCESSOR_C
+# Tricky: comp1_* naming pattern
+- GARBAGE_PPR030_HELPER_D
+- GARBAGE_PPR030_HELPER_E
+- GARBAGE_PPR030_VALIDATE_F
+# Tricky: uses "_modified" string
+- GARBAGE_PPR030_MOD_G
+- GARBAGE_PPR030_MOD_H
+
+must_not_include_files:
+- garbage_shared1_consumer.py
+- garbage_comp1_helper.py
+- garbage_modifier.py
+
+max_fragments: 4
+max_files: 2
+add_garbage_files: false
+skip_garbage_check: true

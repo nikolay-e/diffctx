@@ -1,0 +1,306 @@
+initial:
+  src/api_handlers.py: |
+    from dataclasses import dataclass
+    from typing import Optional
+    import json
+
+    @dataclass
+    class ApiResponse:
+        status: str
+        data: Optional[dict] = None
+        error: Optional[str] = None
+        meta: Optional[dict] = None
+
+        def to_json(self) -> str:
+            result = {"status": self.status}
+            if self.data is not None:
+                result["data"] = self.data
+            if self.error is not None:
+                result["error"] = self.error
+            if self.meta is not None:
+                result["meta"] = self.meta
+            return json.dumps(result, indent=2)
+
+    class UserApiHandler:
+        def __init__(self):
+            self.users = {
+                1: {"id": 1, "name": "Admin", "role": "admin"},
+                2: {"id": 2, "name": "User", "role": "user"},
+            }
+
+        def get_user(self, user_id: int) -> ApiResponse:
+            if user_id not in self.users:
+                return ApiResponse(
+                    status="error",
+                    error=f"User {user_id} not found",
+                    meta={"request_id": "req_123"}
+                )
+            return ApiResponse(
+                status="success",
+                data=self.users[user_id],
+                meta={"request_id": "req_123", "cached": False}
+            )
+
+        def list_users(self, page: int = 1, limit: int = 10) -> ApiResponse:
+            users = list(self.users.values())
+            return ApiResponse(
+                status="success",
+                data={"users": users, "total": len(users)},
+                meta={"page": page, "limit": limit}
+            )
+  tests/test_api_handlers.py: |
+    from src.api_handlers import UserApiHandler
+
+    def test_get_user_exists():
+        handler = UserApiHandler()
+        response = handler.get_user(1)
+        assert response.status == "success"
+
+  # --- Tricky: same ApiResponse dataclass import, same to_json pattern ---
+  src/order_handlers.py: |
+    from src.api_handlers import ApiResponse
+    GARBAGE_DEP041_ORDERHDL_A = "order_handlers"
+    GARBAGE_DEP041_ORDERHDL_INIT_B = True
+
+    class OrderApiHandler:
+        def __init__(self):
+            self.orders = {}
+
+        def get_order(self, order_id: int) -> ApiResponse:
+            GARBAGE_DEP041_ORDERHDL_GET_C = "getting_order"
+            if order_id not in self.orders:
+                return ApiResponse(
+                    status="error",
+                    error=f"Order {order_id} not found",
+                    meta={"request_id": "req_456"}
+                )
+            return ApiResponse(
+                status="success",
+                data=self.orders[order_id],
+                meta={"request_id": "req_456", "cached": False}
+            )
+
+  # --- Tricky: same json.loads(response.to_json()) snapshot pattern ---
+  tests/test_order_handlers.py: |
+    import json
+    from src.order_handlers import OrderApiHandler
+    GARBAGE_DEP041_ORDTEST_D = "order_handler_tests"
+    GARBAGE_DEP041_ORDTEST_INIT_E = True
+
+    def test_get_order_snapshot():
+        GARBAGE_DEP041_ORDTEST_SNAP_F = "snapshot_test"
+        handler = OrderApiHandler()
+        handler.orders = {1: {"id": 1, "item": "Widget", "qty": 5}}
+        response = handler.get_order(1)
+        result = json.loads(response.to_json())
+        assert result["status"] == "success"
+        assert result["data"]["item"] == "Widget"
+
+  # --- Tricky: same dataclass + to_json pattern (structural sibling) ---
+  src/health_check.py: |
+    from dataclasses import dataclass
+    from typing import Optional
+    import json
+    GARBAGE_DEP041_HEALTH_G = "health_check_module"
+    GARBAGE_DEP041_HEALTH_INIT_H = True
+
+    @dataclass
+    class HealthResponse:
+        status: str
+        data: Optional[dict] = None
+        error: Optional[str] = None
+
+        def to_json(self) -> str:
+            GARBAGE_DEP041_HEALTH_JSON_I = "serializing"
+            result = {"status": self.status}
+            if self.data is not None:
+                result["data"] = self.data
+            if self.error is not None:
+                result["error"] = self.error
+            return json.dumps(result, indent=2)
+
+changed:
+  src/api_handlers.py: |
+    from dataclasses import dataclass
+    from typing import Optional
+    import json
+
+    @dataclass
+    class ApiResponse:
+        status: str
+        data: Optional[dict] = None
+        error: Optional[str] = None
+        meta: Optional[dict] = None
+
+        def to_json(self) -> str:
+            result = {"status": self.status}
+            if self.data is not None:
+                result["data"] = self.data
+            if self.error is not None:
+                result["error"] = self.error
+            if self.meta is not None:
+                result["meta"] = self.meta
+            return json.dumps(result, indent=2)
+
+    class UserApiHandler:
+        def __init__(self):
+            self.users = {
+                1: {"id": 1, "name": "Admin", "role": "admin"},
+                2: {"id": 2, "name": "User", "role": "user"},
+            }
+
+        def get_user(self, user_id: int) -> ApiResponse:
+            if user_id not in self.users:
+                return ApiResponse(
+                    status="error",
+                    error=f"User {user_id} not found",
+                    meta={"request_id": "req_123"}
+                )
+            return ApiResponse(
+                status="success",
+                data=self.users[user_id],
+                meta={"request_id": "req_123", "cached": False}
+            )
+
+        def list_users(self, page: int = 1, limit: int = 10) -> ApiResponse:
+            users = list(self.users.values())
+            return ApiResponse(
+                status="success",
+                data={"users": users, "total": len(users)},
+                meta={"page": page, "limit": limit}
+            )
+  tests/test_api_handlers.py: |
+    import json
+    from src.api_handlers import UserApiHandler, ApiResponse
+
+    def test_get_user_exists():
+        handler = UserApiHandler()
+        response = handler.get_user(1)
+        assert response.status == "success"
+
+    def test_get_user_success_snapshot():
+        handler = UserApiHandler()
+        response = handler.get_user(1)
+        result = json.loads(response.to_json())
+
+        assert result["status"] == "success"
+        assert result["data"]["id"] == 1
+        assert result["data"]["name"] == "Admin"
+        assert result["data"]["role"] == "admin"
+        assert "meta" in result
+        assert result["meta"]["cached"] is False
+
+    def test_get_user_not_found_snapshot():
+        handler = UserApiHandler()
+        response = handler.get_user(999)
+        result = json.loads(response.to_json())
+
+        assert result["status"] == "error"
+        assert "999" in result["error"]
+        assert "not found" in result["error"]
+        assert "data" not in result
+
+    def test_list_users_snapshot():
+        handler = UserApiHandler()
+        response = handler.list_users(page=1, limit=10)
+        result = json.loads(response.to_json())
+
+        assert result["status"] == "success"
+        assert result["data"]["total"] == 2
+        assert len(result["data"]["users"]) == 2
+        assert result["meta"]["page"] == 1
+        assert result["meta"]["limit"] == 10
+  src/order_handlers.py: |
+    from src.api_handlers import ApiResponse
+    GARBAGE_DEP041_ORDERHDL_A = "order_handlers"
+    GARBAGE_DEP041_ORDERHDL_INIT_B = True
+
+    class OrderApiHandler:
+        def __init__(self):
+            self.orders = {}
+
+        def get_order(self, order_id: int) -> ApiResponse:
+            GARBAGE_DEP041_ORDERHDL_GET_C = "getting_order"
+            if order_id not in self.orders:
+                return ApiResponse(
+                    status="error",
+                    error=f"Order {order_id} not found",
+                    meta={"request_id": "req_456"}
+                )
+            return ApiResponse(
+                status="success",
+                data=self.orders[order_id],
+                meta={"request_id": "req_456", "cached": False}
+            )
+  tests/test_order_handlers.py: |
+    import json
+    from src.order_handlers import OrderApiHandler
+    GARBAGE_DEP041_ORDTEST_D = "order_handler_tests"
+    GARBAGE_DEP041_ORDTEST_INIT_E = True
+
+    def test_get_order_snapshot():
+        GARBAGE_DEP041_ORDTEST_SNAP_F = "snapshot_test"
+        handler = OrderApiHandler()
+        handler.orders = {1: {"id": 1, "item": "Widget", "qty": 5}}
+        response = handler.get_order(1)
+        result = json.loads(response.to_json())
+        assert result["status"] == "success"
+        assert result["data"]["item"] == "Widget"
+  src/health_check.py: |
+    from dataclasses import dataclass
+    from typing import Optional
+    import json
+    GARBAGE_DEP041_HEALTH_G = "health_check_module"
+    GARBAGE_DEP041_HEALTH_INIT_H = True
+
+    @dataclass
+    class HealthResponse:
+        status: str
+        data: Optional[dict] = None
+        error: Optional[str] = None
+
+        def to_json(self) -> str:
+            GARBAGE_DEP041_HEALTH_JSON_I = "serializing"
+            result = {"status": self.status}
+            if self.data is not None:
+                result["data"] = self.data
+            if self.error is not None:
+                result["error"] = self.error
+            return json.dumps(result, indent=2)
+
+# === Assertions ===
+
+must_include_files:
+- tests/test_api_handlers.py
+- src/api_handlers.py
+
+must_include_content_from:
+  tests/test_api_handlers.py:
+    - from src.api_handlers import UserApiHandler, ApiResponse
+    - 'def test_get_user_success_snapshot():'
+  src/api_handlers.py:
+    - 'def get_user(self, user_id: int) -> ApiResponse:'
+
+must_not_include:
+# Tricky: imports ApiResponse, same get_ pattern, same error/success responses
+- GARBAGE_DEP041_ORDERHDL_A
+- GARBAGE_DEP041_ORDERHDL_INIT_B
+- GARBAGE_DEP041_ORDERHDL_GET_C
+# Tricky: same json.loads(response.to_json()) snapshot pattern
+- GARBAGE_DEP041_ORDTEST_D
+- GARBAGE_DEP041_ORDTEST_INIT_E
+- GARBAGE_DEP041_ORDTEST_SNAP_F
+# Tricky: same @dataclass + to_json method, same field names
+- GARBAGE_DEP041_HEALTH_G
+- GARBAGE_DEP041_HEALTH_INIT_H
+- GARBAGE_DEP041_HEALTH_JSON_I
+
+must_not_include_files:
+- src/order_handlers.py
+- tests/test_order_handlers.py
+- src/health_check.py
+
+max_fragments: 6
+max_files: 2
+add_garbage_files: false
+skip_garbage_check: true

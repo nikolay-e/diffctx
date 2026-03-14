@@ -1,0 +1,93 @@
+# Scenario: Adding security compliance tags via merge() alongside existing base
+#   tags, creating a three-way merge for the instance tags.
+# Reviewer questions:
+#   1. What resources consume these merged tags? (main.tf has the instance)
+#   2. What extra_tags variable is expected? (main.tf defines var.extra_tags)
+# Traps:
+#   - cache/instances.tf: another instance also using merge() for tags (same function, different resource)
+#   - ecr/repository.tf: ECR repository (unrelated to tagging strategy)
+
+initial:
+  main.tf: |
+    variable "extra_tags" {
+      type    = map(string)
+      default = {}
+    }
+
+    locals {
+      base_tags = {
+        Project   = "webapp"
+        ManagedBy = "terraform"
+      }
+    }
+
+    resource "aws_instance" "web" {
+      ami           = "ami-12345678"
+      instance_type = "t3.micro"
+      tags          = merge(local.base_tags, var.extra_tags)
+    }
+  cache/instances.tf: |
+    resource "aws_instance" "cache" {
+      ami           = "ami-44556677"
+      instance_type = "r5.large"
+      tags          = merge(local.base_tags, { Role = "cache" })
+    }
+  ecr/repository.tf: |
+    resource "aws_ecr_repository" "app" {
+      name = "app-images"
+      image_scanning_configuration {
+        scan_on_push = true
+      }
+    }
+
+changed:
+  main.tf: |
+    variable "extra_tags" {
+      type    = map(string)
+      default = {}
+    }
+
+    locals {
+      base_tags = {
+        Project     = "webapp"
+        ManagedBy   = "terraform"
+        Environment = terraform.workspace
+      }
+
+      security_tags = {
+        Compliance = "pci-dss"
+        DataClass  = "confidential"
+      }
+    }
+
+    resource "aws_instance" "web" {
+      ami           = "ami-12345678"
+      instance_type = "t3.micro"
+      tags          = merge(local.base_tags, local.security_tags, var.extra_tags)
+    }
+
+must_include_files:
+  - main.tf
+
+must_include_content_from:
+  main.tf:
+    - Environment = terraform.workspace
+    - security_tags = {
+    - Compliance = "pci-dss"
+    - merge(local.base_tags, local.security_tags, var.extra_tags)
+
+must_not_include:
+  # Cache instance - also uses merge() for tags but on a different resource
+  - Role = "cache"
+  - r5.large
+  # ECR - container registry, no relation to tagging strategy
+  - app-images
+
+must_not_include_files:
+  - cache/instances.tf
+  - ecr/repository.tf
+
+max_fragments: 3
+max_files: 1
+add_garbage_files: false
+skip_garbage_check: true

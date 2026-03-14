@@ -1,0 +1,100 @@
+initial:
+  chart/Chart.yaml: |
+    apiVersion: v2
+    name: gpu-worker
+    description: GPU worker with dedicated node tolerations
+    type: application
+    version: 1.0.0
+  chart/values.yaml: |
+    replicaCount: 1
+    image:
+      repository: gpu-worker
+      tag: "1.0.0"
+    tolerations: []
+    resources:
+      limits:
+        nvidia.com/gpu: 1
+  chart/templates/deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: {{ .Release.Name }}-{{ .Chart.Name }}
+    spec:
+      replicas: {{ .Values.replicaCount }}
+      template:
+        spec:
+          containers:
+            - name: {{ .Chart.Name }}
+              image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+              resources:
+                {{- toYaml .Values.resources | nindent 14 }}
+          {{- with .Values.tolerations }}
+          tolerations:
+            {{- toYaml . | nindent 8 }}
+          {{- end }}
+  chart/templates/otel-collector.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+    spec:
+      template:
+        spec:
+          containers:
+  chart/docs/gpu-setup.md: |
+    # GPU Setup Guide
+    ## Driver Installation
+changed:
+  chart/Chart.yaml: |
+    apiVersion: v2
+    name: gpu-worker
+    description: GPU worker with dedicated node tolerations
+    type: application
+    version: 1.0.0
+  chart/values.yaml: |
+    replicaCount: 1
+    image:
+      repository: gpu-worker
+      tag: "1.0.0"
+    tolerations:
+      - key: "dedicated"
+        operator: "Equal"
+        value: "app"
+        effect: "NoSchedule"
+    resources:
+      limits:
+        nvidia.com/gpu: 1
+  chart/templates/deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: {{ .Release.Name }}-{{ .Chart.Name }}
+    spec:
+      replicas: {{ .Values.replicaCount }}
+      template:
+        spec:
+          containers:
+            - name: {{ .Chart.Name }}
+              image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+              resources:
+                {{- toYaml .Values.resources | nindent 14 }}
+          {{- with .Values.tolerations }}
+          tolerations:
+            {{- toYaml . | nindent 8 }}
+          {{- end }}
+  chart/templates/otel-collector.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+    spec:
+      template:
+        spec:
+          containers:
+  chart/docs/gpu-setup.md: |
+    # GPU Setup Guide
+    ## Driver Installation
+must_include_files:
+- chart/values.yaml
+must_include_content:
+- '- key: "dedicated"'
+add_garbage_files: false
+skip_garbage_check: true

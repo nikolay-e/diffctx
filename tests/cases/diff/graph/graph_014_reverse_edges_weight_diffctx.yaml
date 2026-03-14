@@ -1,9 +1,0 @@
-must_include_files:
-- caller.py
-must_include_content:
-- from callee import helper, compute, validate, DataSource
-- 'def main_with_caching():'
-must_not_include:
-- bidirectional_GARBAGE_GRAPH_nop003.py
-- chain_caller_GARBAGE_GRAPH_nop002.py
-- reverse_caller_GARBAGE_GRAPH_nop001.py

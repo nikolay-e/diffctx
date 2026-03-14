@@ -1,0 +1,92 @@
+# Scenario: CommonJS require with destructuring — reviewer needs the module exports.
+#
+# Diff: main.js is rewritten to require { a, b } from module.js and log their sum.
+#
+# Reviewer questions:
+#   Q1: "What values are a and b?" -> module.js (UNCHANGED) defines a = 1, b = 2
+#        and exports them via module.exports. The reviewer verifies console.log(a + b)
+#        produces 3 and understands the data flow.
+#
+# Not needed:
+#   - config.js: another CommonJS module exporting { port, host, debug }.
+#     Same module.exports pattern but different data, not required by main.js.
+#   - helpers.js: utility functions (clamp, range) in the same directory.
+#     Not required by main.js.
+
+initial:
+  module.js: |
+    const a = 1;
+    const b = 2;
+
+    module.exports = { a, b };
+  main.js: |
+    console.log('initial');
+  config.js: |
+    const port = 3000;
+    const host = 'localhost';
+    const debug = false;
+
+    module.exports = { port, host, debug };
+  helpers.js: |
+    function clamp(value, min, max) {
+        return Math.min(Math.max(value, min), max);
+    }
+
+    function range(start, end) {
+        return Array.from({ length: end - start }, (_, i) => start + i);
+    }
+
+    module.exports = { clamp, range };
+
+changed:
+  module.js: |
+    const a = 1;
+    const b = 2;
+
+    module.exports = { a, b };
+  main.js: |
+    const { a, b } = require('./module');
+
+    function main() {
+        console.log(a + b);
+    }
+
+    main();
+  config.js: |
+    const port = 3000;
+    const host = 'localhost';
+    const debug = false;
+
+    module.exports = { port, host, debug };
+  helpers.js: |
+    function clamp(value, min, max) {
+        return Math.min(Math.max(value, min), max);
+    }
+
+    function range(start, end) {
+        return Array.from({ length: end - start }, (_, i) => start + i);
+    }
+
+    module.exports = { clamp, range };
+
+must_include_files:
+  # Q1: module.js defines a and b — reviewer needs their values
+  - module.js
+must_include_content_from:
+  module.js:
+    - "const a = 1"
+    - "const b = 2"
+must_not_include:
+  # config.js: different module, not required by main.js
+  - port
+  - host
+  # helpers.js: utility functions not used by main.js
+  - clamp
+  - range
+must_not_include_files:
+  - config.js
+  - helpers.js
+max_fragments: 5
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

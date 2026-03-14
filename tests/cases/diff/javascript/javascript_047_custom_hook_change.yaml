@@ -1,0 +1,122 @@
+# Scenario: useCounter hook gains a step parameter, wraps callbacks with useCallback,
+# and adds a reset function. Counter.tsx consumes useCounter.
+#
+# Diff: useCounter.ts changes signature from `useCounter(initial = 0)` to
+# `useCounter(initial = 0, step = 1)`, wraps increment/decrement/reset in useCallback.
+#
+# Reviewer questions:
+#   Q1: "Do existing consumers break with the new API?"
+#       -> Counter.tsx (UNCHANGED) calls useCounter(0) and destructures
+#          { count, increment, decrement }. step defaults to 1, so the call works.
+#          But reset is now returned and not consumed — reviewer notes this.
+#   Q2: "Should Counter.tsx adopt the new step/reset features?"
+#       -> Counter.tsx still uses useCounter(0) without step. Reviewer evaluates
+#          if the component should be updated.
+#
+# Not needed:
+#   - useToggle.ts: another custom hook for boolean toggle. Same hook pattern
+#     but manages unrelated boolean state, no import edge.
+#   - Counter.styles.ts: CSS-in-JS styles for Counter. Visual concern,
+#     unaffected by hook API changes.
+
+initial:
+  useCounter.ts: |
+    import { useState } from 'react';
+
+    export function useCounter(initial = 0) {
+        const [count, setCount] = useState(initial);
+        const increment = () => setCount(c => c + 1);
+        const decrement = () => setCount(c => c - 1);
+        return { count, increment, decrement };
+    }
+  Counter.tsx: |
+    import { useCounter } from './useCounter';
+
+    export function Counter() {
+        const { count, increment, decrement } = useCounter(0);
+        return (
+            <div>
+                <span>{count}</span>
+                <button onClick={increment}>+</button>
+                <button onClick={decrement}>-</button>
+            </div>
+        );
+    }
+  useToggle.ts: |
+    import { useState, useCallback } from 'react';
+
+    export function useToggle(initial: boolean = false) {
+        const [value, setValue] = useState(initial);
+        const toggle = useCallback(() => setValue(v => !v), []);
+        const setTrue = useCallback(() => setValue(true), []);
+        const setFalse = useCallback(() => setValue(false), []);
+        return { value, toggle, setTrue, setFalse };
+    }
+  Counter.styles.ts: |
+    export const counterStyles = {
+        container: { display: 'flex', alignItems: 'center', gap: '8px' },
+        count: { fontSize: '24px', fontWeight: 'bold' as const, minWidth: '40px', textAlign: 'center' as const },
+        button: { padding: '8px 16px', borderRadius: '4px', cursor: 'pointer' },
+    };
+changed:
+  useCounter.ts: |
+    import { useState, useCallback } from 'react';
+
+    export function useCounter(initial = 0, step = 1) {
+        const [count, setCount] = useState(initial);
+        const increment = useCallback(() => setCount(c => c + step), [step]);
+        const decrement = useCallback(() => setCount(c => c - step), [step]);
+        const reset = useCallback(() => setCount(initial), [initial]);
+        return { count, increment, decrement, reset };
+    }
+  Counter.tsx: |
+    import { useCounter } from './useCounter';
+
+    export function Counter() {
+        const { count, increment, decrement } = useCounter(0);
+        return (
+            <div>
+                <span>{count}</span>
+                <button onClick={increment}>+</button>
+                <button onClick={decrement}>-</button>
+            </div>
+        );
+    }
+  useToggle.ts: |
+    import { useState, useCallback } from 'react';
+
+    export function useToggle(initial: boolean = false) {
+        const [value, setValue] = useState(initial);
+        const toggle = useCallback(() => setValue(v => !v), []);
+        const setTrue = useCallback(() => setValue(true), []);
+        const setFalse = useCallback(() => setValue(false), []);
+        return { value, toggle, setTrue, setFalse };
+    }
+  Counter.styles.ts: |
+    export const counterStyles = {
+        container: { display: 'flex', alignItems: 'center', gap: '8px' },
+        count: { fontSize: '24px', fontWeight: 'bold' as const, minWidth: '40px', textAlign: 'center' as const },
+        button: { padding: '8px 16px', borderRadius: '4px', cursor: 'pointer' },
+    };
+must_include_files:
+  # Q1: Counter.tsx imports useCounter — reviewer checks if existing consumer breaks
+  - Counter.tsx
+must_include_content_from:
+  Counter.tsx:
+    - "import { useCounter } from './useCounter'"
+    - "useCounter(0)"
+must_not_include:
+  # useToggle.ts: different custom hook, no relation to counter
+  - useToggle
+  - setTrue
+  - setFalse
+  # Counter.styles.ts: visual styling, unaffected by hook API change
+  - counterStyles
+  - fontSize
+must_not_include_files:
+  - useToggle.ts
+  - Counter.styles.ts
+max_fragments: 5
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

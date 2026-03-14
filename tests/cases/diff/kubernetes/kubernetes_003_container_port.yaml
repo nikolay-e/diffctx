@@ -1,0 +1,276 @@
+# Scenario: Deployment containerPort corrected from 3000 to 8080 to match
+#   the app's actual listen port. Only k8s/deployment.yaml is changed.
+#
+# Diff shows:
+#   - containerPort: 3000  ->  + containerPort: 8080
+#
+# Reviewer questions:
+#   Q1: "Does the service targetPort already point to 8080?"
+#       -> Needs k8s/service.yaml: Service with targetPort: 8080. Confirms
+#          the service was already pointing to 8080, meaning the deployment's
+#          containerPort 3000 was the bug. Without this, the reviewer cannot
+#          verify the fix aligns with the service configuration.
+#
+#   Q2: "Does the application actually listen on 8080?"
+#       -> Needs src/main.py: uvicorn.run(app, host="0.0.0.0", port=8080).
+#          Confirms the app binds to 8080. The containerPort fix now
+#          matches both the app and the service.
+#
+# Not needed for comprehension:
+#   - k8s/monitoring/prometheus-scrape.yaml: ServiceMonitor selecting
+#     app: fastapi-app and scraping port "metrics". Direct structural edge:
+#     selects the same app label. HARDEST TRAP: the deployment has
+#     prometheus.io/port: "9100" annotation, and this ServiceMonitor
+#     targets the same service. But the monitoring config doesn't help
+#     review whether containerPort 8080 is correct — that needs the
+#     service targetPort and app listen port.
+#
+#   - k8s/apps/worker/deployment.yaml: Background worker deployment in
+#     same namespace (default). Shares Deployment kind and similar structure.
+#     But different app entirely — its Celery worker config has no relation
+#     to the FastAPI app's port configuration.
+initial:
+  src/main.py: |
+    from fastapi import FastAPI
+    from prometheus_client import make_asgi_app
+
+    app = FastAPI()
+    metrics_app = make_asgi_app()
+
+    @app.get("/")
+    def root():
+        return {"status": "ok"}
+
+    @app.get("/health")
+    def health():
+        return {"healthy": True}
+
+    if __name__ == "__main__":
+        import uvicorn
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+  k8s/deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: fastapi-app
+      namespace: default
+      labels:
+        app: fastapi-app
+        version: v1
+    spec:
+      replicas: 2
+      selector:
+        matchLabels:
+          app: fastapi-app
+      template:
+        metadata:
+          labels:
+            app: fastapi-app
+            version: v1
+          annotations:
+            prometheus.io/scrape: "true"
+            prometheus.io/port: "9100"
+        spec:
+          containers:
+          - name: app
+            image: fastapi-app:latest
+            ports:
+            - containerPort: 3000
+              name: http
+              protocol: TCP
+            env:
+            - name: ENVIRONMENT
+              value: "production"
+            volumeMounts:
+            - name: config
+              mountPath: /app/config
+          volumes:
+          - name: config
+            configMap:
+              name: app-config
+  k8s/service.yaml: |
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: fastapi-app
+      namespace: default
+    spec:
+      selector:
+        app: fastapi-app
+      ports:
+      - name: http
+        port: 80
+        targetPort: 8080
+        protocol: TCP
+  k8s/monitoring/prometheus-scrape.yaml: |
+    apiVersion: monitoring.coreos.com/v1
+    kind: ServiceMonitor
+    metadata:
+      name: fastapi-app-monitor
+      namespace: monitoring
+    spec:
+      selector:
+        matchLabels:
+          app: fastapi-app
+      endpoints:
+      - port: metrics
+        interval: 15s
+        path: /metrics
+  k8s/apps/worker/deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: background-worker
+      namespace: default
+    spec:
+      replicas: 2
+      selector:
+        matchLabels:
+          app: background-worker
+      template:
+        metadata:
+          labels:
+            app: background-worker
+        spec:
+          containers:
+          - name: worker
+            image: worker:v1.3.0
+            command: ["python", "-m", "celery", "worker"]
+            env:
+            - name: BROKER_URL
+              value: "redis://redis:6379/0"
+changed:
+  src/main.py: |
+    from fastapi import FastAPI
+    from prometheus_client import make_asgi_app
+
+    app = FastAPI()
+    metrics_app = make_asgi_app()
+
+    @app.get("/")
+    def root():
+        return {"status": "ok"}
+
+    @app.get("/health")
+    def health():
+        return {"healthy": True}
+
+    if __name__ == "__main__":
+        import uvicorn
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+  k8s/deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: fastapi-app
+      namespace: default
+      labels:
+        app: fastapi-app
+        version: v1
+    spec:
+      replicas: 2
+      selector:
+        matchLabels:
+          app: fastapi-app
+      template:
+        metadata:
+          labels:
+            app: fastapi-app
+            version: v1
+          annotations:
+            prometheus.io/scrape: "true"
+            prometheus.io/port: "9100"
+        spec:
+          containers:
+          - name: app
+            image: fastapi-app:latest
+            ports:
+            - containerPort: 8080
+              name: http
+              protocol: TCP
+            env:
+            - name: ENVIRONMENT
+              value: "production"
+            volumeMounts:
+            - name: config
+              mountPath: /app/config
+          volumes:
+          - name: config
+            configMap:
+              name: app-config
+  k8s/service.yaml: |
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: fastapi-app
+      namespace: default
+    spec:
+      selector:
+        app: fastapi-app
+      ports:
+      - name: http
+        port: 80
+        targetPort: 8080
+        protocol: TCP
+  k8s/monitoring/prometheus-scrape.yaml: |
+    apiVersion: monitoring.coreos.com/v1
+    kind: ServiceMonitor
+    metadata:
+      name: fastapi-app-monitor
+      namespace: monitoring
+    spec:
+      selector:
+        matchLabels:
+          app: fastapi-app
+      endpoints:
+      - port: metrics
+        interval: 15s
+        path: /metrics
+  k8s/apps/worker/deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: background-worker
+      namespace: default
+    spec:
+      replicas: 2
+      selector:
+        matchLabels:
+          app: background-worker
+      template:
+        metadata:
+          labels:
+            app: background-worker
+        spec:
+          containers:
+          - name: worker
+            image: worker:v1.3.0
+            command: ["python", "-m", "celery", "worker"]
+            env:
+            - name: BROKER_URL
+              value: "redis://redis:6379/0"
+must_include_files:
+  - k8s/deployment.yaml
+  # Q1: Service targetPort must match containerPort.
+  - k8s/service.yaml
+must_include_content_from:
+  k8s/deployment.yaml:
+    - 'containerPort: 8080'
+  k8s/service.yaml:
+    - 'targetPort: 8080'
+must_not_include:
+  # --- prometheus-scrape.yaml: selects same app label, different concern ---
+  - fastapi-app-monitor
+  - ServiceMonitor
+  - "interval: 15s"
+  # --- worker deployment: different app in same namespace ---
+  - background-worker
+  - celery
+  - "redis://redis:6379"
+must_not_include_files:
+  - k8s/monitoring/prometheus-scrape.yaml
+  - k8s/apps/worker/deployment.yaml
+add_garbage_files: false
+skip_garbage_check: true
+max_fragments: 8
+max_files: 5

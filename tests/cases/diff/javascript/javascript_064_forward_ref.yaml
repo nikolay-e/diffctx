@@ -1,0 +1,136 @@
+# Reviewer sees: Form.tsx creates a ref and passes it to Input component.
+# Q1: "Can Input accept a ref — is it forwardRef-wrapped?"
+#     -> Input.tsx: uses forwardRef<HTMLInputElement, InputProps>.
+#        Yes, ref forwarding is supported. Form's useRef type matches.
+# Q2: "What props does Input accept besides ref?"
+#     -> Input.tsx: label (required), type (optional, defaults to 'text').
+#        Form passes label="Email" type="email" — valid usage.
+#
+# Not needed:
+#   - TextArea.tsx: another forwardRef component. Same pattern but
+#     different HTML element, not used by Form.
+#   - form-validation.ts: validation logic. Different concern,
+#     unrelated to ref forwarding.
+
+initial:
+  src/Input.tsx: |
+    import { forwardRef } from 'react';
+
+    interface InputProps {
+        label: string;
+        type?: string;
+    }
+
+    export const Input = forwardRef<HTMLInputElement, InputProps>(
+        ({ label, type = 'text' }, ref) => (
+            <div>
+                <label>{label}</label>
+                <input ref={ref} type={type} />
+            </div>
+        )
+    );
+  src/Form.tsx: |
+    export function Form() {
+        return <form>Placeholder</form>;
+    }
+  src/TextArea.tsx: |
+    import { forwardRef } from 'react';
+
+    interface TextAreaProps {
+        label: string;
+        rows?: number;
+    }
+
+    export const TextArea = forwardRef<HTMLTextAreaElement, TextAreaProps>(
+        ({ label, rows = 3 }, ref) => (
+            <div>
+                <label>{label}</label>
+                <textarea ref={ref} rows={rows} />
+            </div>
+        )
+    );
+  src/form-validation.ts: |
+    export function validateRequired(value: string): string | null {
+        return value.trim().length === 0 ? 'This field is required' : null;
+    }
+
+    export function validateEmail(value: string): string | null {
+        return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) ? null : 'Invalid email';
+    }
+changed:
+  src/Input.tsx: |
+    import { forwardRef } from 'react';
+
+    interface InputProps {
+        label: string;
+        type?: string;
+    }
+
+    export const Input = forwardRef<HTMLInputElement, InputProps>(
+        ({ label, type = 'text' }, ref) => (
+            <div>
+                <label>{label}</label>
+                <input ref={ref} type={type} />
+            </div>
+        )
+    );
+  src/Form.tsx: |
+    import { useRef } from 'react';
+    import { Input } from './Input';
+
+    export function Form() {
+        const emailRef = useRef<HTMLInputElement>(null);
+
+        const handleSubmit = () => {
+            emailRef.current?.focus();
+        };
+
+        return (
+            <form onSubmit={handleSubmit}>
+                <Input ref={emailRef} label="Email" type="email" />
+            </form>
+        );
+    }
+  src/TextArea.tsx: |
+    import { forwardRef } from 'react';
+
+    interface TextAreaProps {
+        label: string;
+        rows?: number;
+    }
+
+    export const TextArea = forwardRef<HTMLTextAreaElement, TextAreaProps>(
+        ({ label, rows = 3 }, ref) => (
+            <div>
+                <label>{label}</label>
+                <textarea ref={ref} rows={rows} />
+            </div>
+        )
+    );
+  src/form-validation.ts: |
+    export function validateRequired(value: string): string | null {
+        return value.trim().length === 0 ? 'This field is required' : null;
+    }
+
+    export function validateEmail(value: string): string | null {
+        return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) ? null : 'Invalid email';
+    }
+must_include_files:
+  # Unchanged file — the import target. Reviewer needs to confirm
+  # Input uses forwardRef and its props match what Form passes.
+  - src/Input.tsx
+must_include_content_from:
+  src/Input.tsx:
+    - "forwardRef<HTMLInputElement, InputProps>"
+    - "InputProps"
+must_not_include:
+  # TextArea.tsx: different forwardRef component, not used by Form
+  - TextAreaProps
+  - textarea
+  # form-validation.ts: validation logic, unrelated to ref forwarding
+  - validateRequired
+  - validateEmail
+max_fragments: 5
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

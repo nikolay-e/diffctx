@@ -1,0 +1,142 @@
+initial:
+  api/src/app.py: |
+    from flask import Flask, jsonify
+    from flask_cors import CORS
+    import os
+
+    app = Flask(__name__)
+    CORS(app)
+
+    @app.route('/health')
+    def health():
+        return jsonify(status='ok', service='api')
+
+    @app.route('/api/v1/users')
+    def get_users():
+        return jsonify(users=[])
+
+    if __name__ == '__main__':
+        app.run(host='0.0.0.0', port=8080)
+  api/requirements.txt: |
+    flask==2.3.0
+    flask-cors==4.0.0
+    gunicorn==21.2.0
+  api/Dockerfile: |
+    FROM python:3.12-slim
+    WORKDIR /app
+    COPY requirements.txt .
+    RUN pip install -r requirements.txt
+    COPY src/ ./src/
+    CMD ["gunicorn", "-b", "0.0.0.0:8080", "src.app:app"]
+  docker-compose.yml: |
+    version: '3.8'
+    services: {}
+  scripts/start_services.sh: |
+    #!/bin/bash
+    docker-compose up -d
+  tests/test_services.py: |
+    def test_service_health():
+        pass
+  docs/services.md: |
+    # Services
+  k8s/service.yaml: |
+    apiVersion: v1
+changed:
+  api/src/app.py: |
+    from flask import Flask, jsonify
+    from flask_cors import CORS
+    import os
+
+    app = Flask(__name__)
+    CORS(app)
+
+    @app.route('/health')
+    def health():
+        return jsonify(status='ok', service='api')
+
+    @app.route('/api/v1/users')
+    def get_users():
+        return jsonify(users=[])
+
+    if __name__ == '__main__':
+        app.run(host='0.0.0.0', port=8080)
+  api/requirements.txt: |
+    flask==2.3.0
+    flask-cors==4.0.0
+    gunicorn==21.2.0
+  api/Dockerfile: |
+    FROM python:3.12-slim
+    WORKDIR /app
+    COPY requirements.txt .
+    RUN pip install -r requirements.txt
+    COPY src/ ./src/
+    CMD ["gunicorn", "-b", "0.0.0.0:8080", "src.app:app"]
+  docker-compose.yml: |
+    version: '3.8'
+
+    services:
+      api:
+        build:
+          context: ./api
+          dockerfile: Dockerfile
+          args:
+            - BUILD_DATE=${BUILD_DATE:-}
+            - GIT_SHA=${GIT_SHA:-unknown}
+        image: myregistry/api:${VERSION:-latest}
+        container_name: api-service
+        hostname: api
+        ports:
+          - "8080:8080"
+        environment:
+          - APP_ENV=production
+          - LOG_LEVEL=info
+        env_file:
+          - .env
+        volumes:
+          - api_logs:/var/log/app
+        restart: unless-stopped
+        healthcheck:
+          test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+          interval: 30s
+          timeout: 10s
+          retries: 3
+          start_period: 40s
+        logging:
+          driver: json-file
+          options:
+            max-size: "10m"
+            max-file: "3"
+
+      worker:
+        build:
+          context: ./api
+          dockerfile: Dockerfile
+        image: myregistry/api:${VERSION:-latest}
+        container_name: worker-service
+        command: ["python", "-m", "src.worker"]
+        environment:
+          - APP_ENV=production
+          - WORKER_CONCURRENCY=4
+        depends_on:
+          api:
+            condition: service_healthy
+        restart: unless-stopped
+
+    volumes:
+      api_logs:
+  scripts/start_services.sh: |
+    #!/bin/bash
+    docker-compose up -d
+  tests/test_services.py: |
+    def test_service_health():
+        pass
+  docs/services.md: |
+    # Services
+  k8s/service.yaml: |
+    apiVersion: v1
+must_include_files:
+- docker-compose.yml
+must_include_content:
+- 'context: ./api'
+add_garbage_files: false
+skip_garbage_check: true

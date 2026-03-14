@@ -1,3 +1,0 @@
-emitter.ts: "import { EventEmitter } from 'events';\n\nexport const appEmitter = new EventEmitter();\n\nexport function emitUserCreated(user: { id: string; name: string }) {\n    appEmitter.emit('userCreated',\
-  \ user);\n}\n\n// js_garbage_marker_012\n"
-listener.ts: "import { appEmitter } from './emitter';\n\nappEmitter.on('userCreated', (user) => {\n    console.log('User created:', user);\n});\n"

@@ -1,0 +1,216 @@
+# Reviewer sees: base.ts adds LogLevel type, changes log() signature to accept
+# a level parameter, and changes process() to accept an optional options bag
+# with a prefix field.
+#
+# Reviewer questions:
+#   Q1: "ExtendedService overrides process() — does it break with the new signature?"
+#       -> src/derived.ts: ExtendedService extends BaseService and overrides
+#          process(data: string). The base now accepts an optional second param
+#          (options?: { prefix?: string }). The override only passes one arg to
+#          super.process(data). TypeScript allows this (optional param), but the
+#          reviewer must verify the subclass doesn't break.
+#
+# Not needed:
+#   - src/formatters/text-formatter.ts: string formatting utilities. Same-domain
+#     (text processing) but no inheritance relationship with BaseService.
+#   - src/validators/input-validator.ts: input validation logic. Similar method
+#     names (validate) but completely independent class hierarchy.
+
+initial:
+  src/base.ts: |
+    export class BaseService {
+        protected log(message: string): void {
+            console.log(message);
+        }
+
+        process(data: string): string {
+            this.log(`Processing: ${data}`);
+            return data.toUpperCase();
+        }
+
+        validate(data: string): boolean {
+            return data.length > 0 && data.length < 1000;
+        }
+
+        sanitize(data: string): string {
+            return data.trim().replace(/[<>]/g, '');
+        }
+    }
+  src/derived.ts: |
+    import { BaseService } from './base';
+
+    export class ExtendedService extends BaseService {
+        process(data: string): string {
+            const result = super.process(data);
+            return `[Extended] ${result}`;
+        }
+
+        processAll(items: string[]): string[] {
+            return items.map(item => this.process(item));
+        }
+    }
+  # --- Not needed: string formatting, no inheritance from BaseService ---
+  src/formatters/text-formatter.ts: |
+    export class TextFormatter {
+        capitalize(text: string): string {
+            return text.charAt(0).toUpperCase() + text.slice(1);
+        }
+
+        truncate(text: string, maxLength: number): string {
+            if (text.length <= maxLength) return text;
+            return text.slice(0, maxLength - 3) + '...';
+        }
+
+        slugify(text: string): string {
+            return text.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+        }
+    }
+
+    export function wrapInQuotes(text: string): string {
+        return `"${text}"`;
+    }
+  # --- Not needed: input validation, similar method names but independent ---
+  src/validators/input-validator.ts: |
+    interface ValidationRule {
+        field: string;
+        required: boolean;
+        minLength?: number;
+        maxLength?: number;
+        pattern?: RegExp;
+    }
+
+    export class InputValidator {
+        private rules: ValidationRule[] = [];
+
+        addRule(rule: ValidationRule): void {
+            this.rules.push(rule);
+        }
+
+        validate(data: Record<string, unknown>): string[] {
+            const errors: string[] = [];
+            for (const rule of this.rules) {
+                const value = data[rule.field];
+                if (rule.required && (value === undefined || value === null)) {
+                    errors.push(`${rule.field} is required`);
+                }
+            }
+            return errors;
+        }
+
+        hasErrors(data: Record<string, unknown>): boolean {
+            return this.validate(data).length > 0;
+        }
+    }
+
+changed:
+  src/base.ts: |
+    export type LogLevel = 'info' | 'warn' | 'error';
+
+    export class BaseService {
+        protected log(message: string, level: LogLevel = 'info'): void {
+            console[level](message);
+        }
+
+        process(data: string, options?: { prefix?: string }): string {
+            this.log(`Processing: ${data}`, 'info');
+            const result = data.toUpperCase();
+            return options?.prefix ? `${options.prefix}${result}` : result;
+        }
+
+        validate(data: string): boolean {
+            return data.length > 0 && data.length < 1000;
+        }
+
+        sanitize(data: string): string {
+            return data.trim().replace(/[<>]/g, '');
+        }
+    }
+  # Unchanged
+  src/derived.ts: |
+    import { BaseService } from './base';
+
+    export class ExtendedService extends BaseService {
+        process(data: string): string {
+            const result = super.process(data);
+            return `[Extended] ${result}`;
+        }
+
+        processAll(items: string[]): string[] {
+            return items.map(item => this.process(item));
+        }
+    }
+  src/formatters/text-formatter.ts: |
+    export class TextFormatter {
+        capitalize(text: string): string {
+            return text.charAt(0).toUpperCase() + text.slice(1);
+        }
+
+        truncate(text: string, maxLength: number): string {
+            if (text.length <= maxLength) return text;
+            return text.slice(0, maxLength - 3) + '...';
+        }
+
+        slugify(text: string): string {
+            return text.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+        }
+    }
+
+    export function wrapInQuotes(text: string): string {
+        return `"${text}"`;
+    }
+  src/validators/input-validator.ts: |
+    interface ValidationRule {
+        field: string;
+        required: boolean;
+        minLength?: number;
+        maxLength?: number;
+        pattern?: RegExp;
+    }
+
+    export class InputValidator {
+        private rules: ValidationRule[] = [];
+
+        addRule(rule: ValidationRule): void {
+            this.rules.push(rule);
+        }
+
+        validate(data: Record<string, unknown>): string[] {
+            const errors: string[] = [];
+            for (const rule of this.rules) {
+                const value = data[rule.field];
+                if (rule.required && (value === undefined || value === null)) {
+                    errors.push(`${rule.field} is required`);
+                }
+            }
+            return errors;
+        }
+
+        hasErrors(data: Record<string, unknown>): boolean {
+            return this.validate(data).length > 0;
+        }
+    }
+
+must_include_files:
+  # Q1: Subclass overrides process() and calls super.process(data).
+  # Reviewer must verify the override is compatible with the new optional
+  # options parameter.
+  - src/derived.ts
+must_include_content_from:
+  src/derived.ts:
+    - "ExtendedService extends BaseService"
+    - "super.process(data)"
+must_not_include:
+  # text-formatter.ts: string utilities, no BaseService relationship
+  - slugify
+  - wrapInQuotes
+  # input-validator.ts: independent validation, similar method name overlap
+  - InputValidator
+  - ValidationRule
+  - hasErrors
+must_not_include_files:
+  - src/formatters/text-formatter.ts
+  - src/validators/input-validator.ts
+max_fragments: 12
+max_files: 4
+add_garbage_files: false
+skip_garbage_check: true

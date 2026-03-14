@@ -1,0 +1,46 @@
+initial:
+  large_gap.py: |
+    def func1():
+        pass
+
+
+    # Many empty lines follow
+    #
+    #
+    #
+    #
+    #
+    #
+    #
+    #
+    #
+    #
+
+
+    def func2():
+        pass
+changed:
+  large_gap.py: |
+    def func1():
+        return 1
+
+
+    # Many empty lines follow
+    #
+    #
+    #
+    #
+    #
+    #
+    #
+    #
+    #
+    #
+
+
+    def func2():
+        return 2
+must_include_files:
+- large_gap.py
+add_garbage_files: false
+skip_garbage_check: true

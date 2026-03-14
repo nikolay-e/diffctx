@@ -1,0 +1,111 @@
+initial:
+  Services/Pipeline.cs: |
+    namespace MyApp.Services;
+
+    public class Pipeline<T>
+    {
+        private readonly List<Func<T, T>> _steps = new();
+
+        public Pipeline<T> AddStep(Func<T, T> step)
+        {
+            _steps.Add(step);
+            return this;
+        }
+
+        public T Execute(T input)
+        {
+            return _steps.Aggregate(input, (current, step) => step(current));
+        }
+    }
+  Program.cs: |
+    using System;
+
+    class Program
+    {
+        static void Main() { }
+    }
+  Unrelated/EventBus.cs: |
+    namespace MyApp.Unrelated;
+
+    public class EventBus
+    {
+        private const string GARBAGE_CS_015_EVENT_BUS_A = "event_bus_marker";
+
+        public void Publish(string topic) => _ = GARBAGE_CS_015_EVENT_BUS_A + topic;
+    }
+  Unrelated/FeatureToggle.cs: |
+    namespace MyApp.Unrelated;
+
+    public class FeatureToggle
+    {
+        public const string GARBAGE_CS_015_FEATURE_TOGGLE_B = "feature_toggle_marker";
+
+        public bool IsEnabled(string feature) => GARBAGE_CS_015_FEATURE_TOGGLE_B.Length > 0;
+    }
+changed:
+  Services/Pipeline.cs: |
+    namespace MyApp.Services;
+
+    public class Pipeline<T>
+    {
+        private readonly List<Func<T, T>> _steps = new();
+
+        public Pipeline<T> AddStep(Func<T, T> step)
+        {
+            _steps.Add(step);
+            return this;
+        }
+
+        public T Execute(T input)
+        {
+            return _steps.Aggregate(input, (current, step) => step(current));
+        }
+    }
+  Program.cs: |
+    using System;
+    using MyApp.Services;
+
+    class Program
+    {
+        static void Main()
+        {
+            var pipeline = new Pipeline<string>()
+                .AddStep(s => s.Trim())
+                .AddStep(s => s.ToUpper())
+                .AddStep(s => $"[{s}]");
+
+            var result = pipeline.Execute("  hello world  ");
+            Console.WriteLine(result);
+        }
+    }
+  Unrelated/EventBus.cs: |
+    namespace MyApp.Unrelated;
+
+    public class EventBus
+    {
+        private const string GARBAGE_CS_015_EVENT_BUS_A = "event_bus_marker";
+
+        public void Publish(string topic) => _ = GARBAGE_CS_015_EVENT_BUS_A + topic;
+    }
+  Unrelated/FeatureToggle.cs: |
+    namespace MyApp.Unrelated;
+
+    public class FeatureToggle
+    {
+        public const string GARBAGE_CS_015_FEATURE_TOGGLE_B = "feature_toggle_marker";
+
+        public bool IsEnabled(string feature) => GARBAGE_CS_015_FEATURE_TOGGLE_B.Length > 0;
+    }
+must_include_files:
+- Program.cs
+must_include_content:
+- using MyApp.Services;
+- static void Main()
+must_not_include:
+- GARBAGE_CS_015_EVENT_BUS_A
+- GARBAGE_CS_015_FEATURE_TOGGLE_B
+- GARBAGE_CS_015_FEATURE_TOGGLE_B.Length
+- EventBus.cs
+- FeatureToggle.cs
+add_garbage_files: false
+skip_garbage_check: true

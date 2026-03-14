@@ -1,0 +1,346 @@
+initial:
+  docs/user-guide.md: |
+    # User Guide
+
+    Welcome to the user guide. This document covers everything you need to know
+    to get started with our platform.
+
+    ## Table of Contents
+
+    - [Quick Start](#quick-start)
+    - [Installation](#installation)
+    - [Configuration](#configuration)
+    - [API Reference](#api-reference)
+    - [Troubleshooting](#troubleshooting)
+
+    ## Quick Start
+
+    Before diving in, make sure you've completed the [Installation](#installation)
+    steps and reviewed the [Configuration](#configuration) options.
+
+    ```bash
+    quickstart init myproject
+    cd myproject
+    quickstart run
+    ```
+
+    ## Installation
+
+    ### System Requirements
+
+    - Python 3.9+
+    - pip 21.0+
+    - 4GB RAM minimum
+
+    ### Package Installation
+
+    Run the following command:
+
+    ```bash
+    pip install our-package
+    ```
+
+    For development:
+
+    ```bash
+    pip install our-package[dev]
+    ```
+
+    ## Configuration
+
+    See [API Reference](#api-reference) for detailed configuration options.
+
+    ## API Reference
+
+    Full API documentation is available at `/docs/api`.
+
+    ## Troubleshooting
+
+    If you encounter issues, check [Installation](#installation) requirements first.
+
+  # --- Tricky garbage: structural sibling — another guide in same directory ---
+  docs/admin-guide.md: |
+    # Admin Guide
+
+    GARBAGE_ALGO_009_ADMIN_GUIDE_G
+    GARBAGE_ALGO_009_ADMIN_TOC_H
+
+    ## Table of Contents
+
+    - [Quick Start](#quick-start)
+    - [Installation](#installation)
+    - [Configuration](#configuration)
+
+    ## Quick Start
+
+    Admin-specific quick start instructions.
+
+    ## Installation
+
+    ### System Requirements
+
+    - Python 3.9+
+    - pip 21.0+
+    - 8GB RAM minimum
+    - Docker required
+
+    ### Package Installation
+
+    ```bash
+    pip install our-package[admin]
+    ```
+
+  # --- Tricky garbage: name collision — another doc with same anchors and structure ---
+  docs/developer-guide.md: |
+    # Developer Guide
+
+    GARBAGE_ALGO_009_DEV_GUIDE_I
+    GARBAGE_ALGO_009_DEV_SETUP_J
+
+    ## Installation
+
+    ### System Requirements
+
+    - Python 3.10+
+    - pip 22.0+
+    - 16GB RAM recommended
+    - Docker (optional, for containerized deployment)
+
+    ### Package Installation
+
+    ```bash
+    pip install our-package[dev]>=2.0.0
+    ```
+
+    ## Troubleshooting
+
+    If you encounter issues, check [Installation](#installation) requirements first.
+
+  # --- Tricky garbage: cross-referencing document that links to user-guide.md ---
+  docs/quickstart-tutorial.md: |
+    # Quickstart Tutorial
+
+    GARBAGE_ALGO_009_TUTORIAL_MARKER_K
+    GARBAGE_ALGO_009_WALKTHROUGH_L
+
+    For full details, see the [User Guide](user-guide.md).
+    System requirements are listed in [Installation](user-guide.md#installation).
+
+    ## Step 1: Install
+
+    Follow the [Package Installation](user-guide.md#package-installation) instructions.
+
+  # --- Plain garbage ---
+  garbage_faq.md: |
+    # FAQ
+
+    GARBAGE_ALGO_009_FAQ_MARKER_A
+
+    ## Questions
+
+    GARBAGE_ALGO_009_QUESTIONS_MARKER_B
+    GARBAGE_ALGO_009_ANSWERS_MARKER_C
+  garbage_changelog.md: |
+    # Changelog
+
+    GARBAGE_ALGO_009_VERSION_MARKER_D
+    GARBAGE_ALGO_009_RELEASE_MARKER_E
+    GARBAGE_ALGO_009_NOTES_MARKER_F
+
+    ## v1.0.0
+    - Initial release
+changed:
+  docs/user-guide.md: |
+    # User Guide
+
+    Welcome to the user guide. This document covers everything you need to know
+    to get started with our platform.
+
+    ## Table of Contents
+
+    - [Quick Start](#quick-start)
+    - [Installation](#installation)
+    - [Configuration](#configuration)
+    - [API Reference](#api-reference)
+    - [Troubleshooting](#troubleshooting)
+
+    ## Quick Start
+
+    Before diving in, make sure you've completed the [Installation](#installation)
+    steps and reviewed the [Configuration](#configuration) options.
+
+    ```bash
+    quickstart init myproject
+    cd myproject
+    quickstart run
+    ```
+
+    ## Installation
+
+    ### System Requirements
+
+    - Python 3.10+ (upgraded from 3.9)
+    - pip 22.0+
+    - 8GB RAM minimum (increased for better performance)
+    - Docker (optional, for containerized deployment)
+
+    ### Package Installation
+
+    Run the following command:
+
+    ```bash
+    pip install our-package>=2.0.0
+    ```
+
+    For development:
+
+    ```bash
+    pip install our-package[dev]>=2.0.0
+    ```
+
+    ### Docker Installation
+
+    Alternatively, use Docker:
+
+    ```bash
+    docker pull ourorg/our-package:latest
+    docker run -p 8080:8080 ourorg/our-package:latest
+    ```
+
+    ## Configuration
+
+    See [API Reference](#api-reference) for detailed configuration options.
+
+    ## API Reference
+
+    Full API documentation is available at `/docs/api`.
+
+    ## Troubleshooting
+
+    If you encounter issues, check [Installation](#installation) requirements first.
+  docs/admin-guide.md: |
+    # Admin Guide
+
+    GARBAGE_ALGO_009_ADMIN_GUIDE_G
+    GARBAGE_ALGO_009_ADMIN_TOC_H
+
+    ## Table of Contents
+
+    - [Quick Start](#quick-start)
+    - [Installation](#installation)
+    - [Configuration](#configuration)
+
+    ## Quick Start
+
+    Admin-specific quick start instructions.
+
+    ## Installation
+
+    ### System Requirements
+
+    - Python 3.9+
+    - pip 21.0+
+    - 8GB RAM minimum
+    - Docker required
+
+    ### Package Installation
+
+    ```bash
+    pip install our-package[admin]
+    ```
+  docs/developer-guide.md: |
+    # Developer Guide
+
+    GARBAGE_ALGO_009_DEV_GUIDE_I
+    GARBAGE_ALGO_009_DEV_SETUP_J
+
+    ## Installation
+
+    ### System Requirements
+
+    - Python 3.10+
+    - pip 22.0+
+    - 16GB RAM recommended
+    - Docker (optional, for containerized deployment)
+
+    ### Package Installation
+
+    ```bash
+    pip install our-package[dev]>=2.0.0
+    ```
+
+    ## Troubleshooting
+
+    If you encounter issues, check [Installation](#installation) requirements first.
+  docs/quickstart-tutorial.md: |
+    # Quickstart Tutorial
+
+    GARBAGE_ALGO_009_TUTORIAL_MARKER_K
+    GARBAGE_ALGO_009_WALKTHROUGH_L
+
+    For full details, see the [User Guide](user-guide.md).
+    System requirements are listed in [Installation](user-guide.md#installation).
+
+    ## Step 1: Install
+
+    Follow the [Package Installation](user-guide.md#package-installation) instructions.
+  garbage_faq.md: |
+    # FAQ
+
+    GARBAGE_ALGO_009_FAQ_MARKER_A
+
+    ## Questions
+
+    GARBAGE_ALGO_009_QUESTIONS_MARKER_B
+    GARBAGE_ALGO_009_ANSWERS_MARKER_C
+  garbage_changelog.md: |
+    # Changelog
+
+    GARBAGE_ALGO_009_VERSION_MARKER_D
+    GARBAGE_ALGO_009_RELEASE_MARKER_E
+    GARBAGE_ALGO_009_NOTES_MARKER_F
+
+    ## v1.0.0
+    - Initial release
+
+# === Assertions ===
+
+must_include_files:
+- docs/user-guide.md
+
+must_include_content_from:
+  docs/user-guide.md:
+    - '- Python 3.10+ (upgraded from 3.9)'
+    - pip install our-package>=2.0.0
+    - 8GB RAM minimum (increased for better performance)
+    - docker pull ourorg/our-package:latest
+
+must_not_include:
+# Plain garbage markers
+- GARBAGE_ALGO_009_FAQ_MARKER_A
+- GARBAGE_ALGO_009_QUESTIONS_MARKER_B
+- GARBAGE_ALGO_009_ANSWERS_MARKER_C
+- GARBAGE_ALGO_009_VERSION_MARKER_D
+- GARBAGE_ALGO_009_RELEASE_MARKER_E
+- GARBAGE_ALGO_009_NOTES_MARKER_F
+# Tricky: structural sibling — same TOC anchors, same Installation section
+- GARBAGE_ALGO_009_ADMIN_GUIDE_G
+- GARBAGE_ALGO_009_ADMIN_TOC_H
+# Tricky: name collision — overlapping content (Python 3.10+, Docker, pip install >=2.0.0)
+- GARBAGE_ALGO_009_DEV_GUIDE_I
+- GARBAGE_ALGO_009_DEV_SETUP_J
+# Tricky: cross-references user-guide.md sections directly
+- GARBAGE_ALGO_009_TUTORIAL_MARKER_K
+- GARBAGE_ALGO_009_WALKTHROUGH_L
+
+must_not_include_files:
+- garbage_faq.md
+- garbage_changelog.md
+- docs/admin-guide.md
+- docs/developer-guide.md
+- docs/quickstart-tutorial.md
+
+max_fragments: 4
+max_files: 1
+add_garbage_files: false
+skip_garbage_check: true

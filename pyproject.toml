@@ -147,7 +147,7 @@ dev = [
     "pytest-cov>=3.0,<8.0",
     "pytest-xdist>=3.0,<4.0",
     "hypothesis>=6.0,<7.0",
-    "mutmut>=2.0,<4.0",
+    "mutmut>=3.5,<4.0",
     "coverage>=7.0,<8.0",
     # Quality checks
     "ruff>=0.4,<1.0",
@@ -166,6 +166,14 @@ dev = [
     "pyinstaller>=5.0,<7.0",
     # Security fixes
     "urllib3>=2.6.0",
+]
+
+[tool.mutmut]
+paths_to_mutate = ["src/treemapper/"]
+tests_dir = ["tests/"]
+do_not_mutate = [
+    "src/treemapper/diffctx/parsers/__init__.py",
+    "src/treemapper/diffctx/stopwords.py",
 ]
 
 [tool.setuptools.dynamic]

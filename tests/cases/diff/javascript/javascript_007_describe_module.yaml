@@ -1,0 +1,108 @@
+# Scenario: Test file imports module under test — reviewer needs the source functions.
+#
+# Diff: calculator.test.ts is written from scratch importing add and multiply from
+# calculator.ts. Tests verify expected outputs for known inputs.
+#
+# Reviewer questions:
+#   Q1: "Do add and multiply have any edge-case behavior (overflow, NaN, etc.)?"
+#       -> calculator.ts (UNCHANGED) shows simple `a + b` and `a * b`.
+#          The reviewer must see the implementations to judge test coverage.
+#
+# Not needed:
+#   - string-utils.ts: another utility module in the same directory.
+#     Different domain (string manipulation), not imported by the test.
+#   - calculator.config.ts: configuration for precision/rounding modes.
+#     Not imported by calculator.ts or the test file.
+
+initial:
+  calculator.ts: |
+    export function add(a: number, b: number): number {
+        return a + b;
+    }
+
+    export function multiply(a: number, b: number): number {
+        return a * b;
+    }
+  calculator.test.ts: |
+    console.log('initial');
+  string-utils.ts: |
+    export function capitalize(str: string): string {
+        return str.charAt(0).toUpperCase() + str.slice(1);
+    }
+
+    export function truncate(str: string, maxLength: number): string {
+        return str.length > maxLength ? str.slice(0, maxLength) + '...' : str;
+    }
+  calculator.config.ts: |
+    export const PRECISION = 2;
+    export const ROUNDING_MODE = 'half-up';
+
+    export function roundToDecimal(value: number, decimals: number = PRECISION): number {
+        const factor = Math.pow(10, decimals);
+        return Math.round(value * factor) / factor;
+    }
+
+changed:
+  calculator.ts: |
+    export function add(a: number, b: number): number {
+        return a + b;
+    }
+
+    export function multiply(a: number, b: number): number {
+        return a * b;
+    }
+  calculator.test.ts: |
+    import { add, multiply } from './calculator';
+
+    describe('Calculator', () => {
+        describe('add', () => {
+            it('should add two numbers', () => {
+                expect(add(1, 2)).toBe(3);
+            });
+        });
+
+        describe('multiply', () => {
+            it('should multiply two numbers', () => {
+                expect(multiply(2, 3)).toBe(6);
+            });
+        });
+    });
+  string-utils.ts: |
+    export function capitalize(str: string): string {
+        return str.charAt(0).toUpperCase() + str.slice(1);
+    }
+
+    export function truncate(str: string, maxLength: number): string {
+        return str.length > maxLength ? str.slice(0, maxLength) + '...' : str;
+    }
+  calculator.config.ts: |
+    export const PRECISION = 2;
+    export const ROUNDING_MODE = 'half-up';
+
+    export function roundToDecimal(value: number, decimals: number = PRECISION): number {
+        const factor = Math.pow(10, decimals);
+        return Math.round(value * factor) / factor;
+    }
+
+must_include_files:
+  # Q1: calculator.ts defines add and multiply — reviewer verifies test expectations
+  - calculator.ts
+must_include_content_from:
+  calculator.ts:
+    - "function add(a: number, b: number)"
+    - "function multiply(a: number, b: number)"
+must_not_include:
+  # string-utils.ts: different utility module, not imported by the test
+  - capitalize
+  - truncate
+  # calculator.config.ts: configuration not used by add/multiply
+  - PRECISION
+  - ROUNDING_MODE
+  - roundToDecimal
+must_not_include_files:
+  - string-utils.ts
+  - calculator.config.ts
+max_fragments: 5
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

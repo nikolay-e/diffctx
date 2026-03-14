@@ -1,0 +1,114 @@
+initial:
+  tests/conftest.py: |
+    import pytest
+
+    @pytest.fixture
+    def mock_api():
+        return {"status": "ok"}
+  tests/test_client.py: |
+    def test_fetch(mock_api):
+        assert mock_api["status"] == "ok"
+  tests/test_sync.py: |
+    def test_sync(mock_api):
+        assert mock_api["status"] == "ok"
+
+  # --- Tricky: same fixture name mock_api in different conftest (name collision) ---
+  tests/integration/conftest.py: |
+    import pytest
+    GARBAGE_DEP035_INTEG_CONFTEST_A = "integration_conftest"
+    GARBAGE_DEP035_INTEG_FIXTURE_B = True
+
+    @pytest.fixture
+    def mock_api():
+        GARBAGE_DEP035_INTEG_MOCKAPI_C = "integration_mock"
+        return {"status": "ok", "version": "3.0", "integration": True}
+
+  # --- Tricky: similar test using mock_api, same assertion pattern ---
+  tests/test_auth.py: |
+    GARBAGE_DEP035_AUTHTEST_D = "auth_test_module"
+    GARBAGE_DEP035_AUTHTEST_INIT_E = True
+
+    def test_auth_check(mock_api):
+        GARBAGE_DEP035_AUTHTEST_RUN_F = "running"
+        assert mock_api["status"] == "ok"
+
+  # --- Tricky: same directory, fixture with similar name ---
+  tests/test_cache.py: |
+    GARBAGE_DEP035_CACHETEST_G = "cache_test_module"
+    GARBAGE_DEP035_CACHETEST_INIT_H = True
+
+    def test_cache_status(mock_api):
+        GARBAGE_DEP035_CACHETEST_RUN_I = "running"
+        assert "status" in mock_api
+
+changed:
+  tests/conftest.py: |
+    import pytest
+
+    @pytest.fixture
+    def mock_api():
+        return {"status": "ok", "version": "2.0"}
+  tests/test_client.py: |
+    def test_fetch(mock_api):
+        assert mock_api["status"] == "ok"
+  tests/test_sync.py: |
+    def test_sync(mock_api):
+        assert mock_api["status"] == "ok"
+  tests/integration/conftest.py: |
+    import pytest
+    GARBAGE_DEP035_INTEG_CONFTEST_A = "integration_conftest"
+    GARBAGE_DEP035_INTEG_FIXTURE_B = True
+
+    @pytest.fixture
+    def mock_api():
+        GARBAGE_DEP035_INTEG_MOCKAPI_C = "integration_mock"
+        return {"status": "ok", "version": "3.0", "integration": True}
+  tests/test_auth.py: |
+    GARBAGE_DEP035_AUTHTEST_D = "auth_test_module"
+    GARBAGE_DEP035_AUTHTEST_INIT_E = True
+
+    def test_auth_check(mock_api):
+        GARBAGE_DEP035_AUTHTEST_RUN_F = "running"
+        assert mock_api["status"] == "ok"
+  tests/test_cache.py: |
+    GARBAGE_DEP035_CACHETEST_G = "cache_test_module"
+    GARBAGE_DEP035_CACHETEST_INIT_H = True
+
+    def test_cache_status(mock_api):
+        GARBAGE_DEP035_CACHETEST_RUN_I = "running"
+        assert "status" in mock_api
+
+# === Assertions ===
+
+must_include_files:
+- tests/conftest.py
+
+must_include_content_from:
+  tests/conftest.py:
+    - 'return {"status": "ok", "version": "2.0"}'
+    - 'def mock_api():'
+    - '@pytest.fixture'
+
+must_not_include:
+# Tricky: same fixture name mock_api, same return structure (name collision)
+- GARBAGE_DEP035_INTEG_CONFTEST_A
+- GARBAGE_DEP035_INTEG_FIXTURE_B
+- GARBAGE_DEP035_INTEG_MOCKAPI_C
+# Tricky: uses mock_api fixture, same assertion pattern
+- GARBAGE_DEP035_AUTHTEST_D
+- GARBAGE_DEP035_AUTHTEST_INIT_E
+- GARBAGE_DEP035_AUTHTEST_RUN_F
+# Tricky: also uses mock_api fixture, same directory
+- GARBAGE_DEP035_CACHETEST_G
+- GARBAGE_DEP035_CACHETEST_INIT_H
+- GARBAGE_DEP035_CACHETEST_RUN_I
+
+must_not_include_files:
+- tests/integration/conftest.py
+- tests/test_auth.py
+- tests/test_cache.py
+
+max_fragments: 5
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

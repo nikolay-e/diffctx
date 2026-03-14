@@ -1,5 +1,7 @@
 import logging
 
+PACKAGE_LOGGER_NAME = "treemapper"
+
 
 def setup_logging(verbosity: int) -> None:
     level_map = {
@@ -10,24 +12,16 @@ def setup_logging(verbosity: int) -> None:
     }
     level = level_map.get(verbosity, logging.INFO)
 
-    # Get the root logger
-    root_logger = logging.getLogger()
+    pkg_logger = logging.getLogger(PACKAGE_LOGGER_NAME)
+    pkg_logger.setLevel(level)
 
-    # Set the level on the root logger
-    root_logger.setLevel(level)
-
-    # Configure handlers - update existing ones or add new if needed
-    if root_logger.handlers:
-        # Update existing handlers
-        for handler in root_logger.handlers:
+    if pkg_logger.handlers:
+        for handler in pkg_logger.handlers:
             handler.setLevel(level)
             if not handler.formatter:
-                formatter = logging.Formatter("%(levelname)s: %(message)s")
-                handler.setFormatter(formatter)
+                handler.setFormatter(logging.Formatter("%(levelname)s: %(message)s"))
     else:
-        # Add new handler
         handler = logging.StreamHandler()
         handler.setLevel(level)
-        formatter = logging.Formatter("%(levelname)s: %(message)s")
-        handler.setFormatter(formatter)
-        root_logger.addHandler(handler)
+        handler.setFormatter(logging.Formatter("%(levelname)s: %(message)s"))
+        pkg_logger.addHandler(handler)

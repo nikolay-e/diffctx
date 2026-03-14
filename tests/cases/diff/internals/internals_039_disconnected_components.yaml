@@ -1,0 +1,34 @@
+initial:
+  component_a.py: |
+    def placeholder():
+        pass
+  component_b.py: |
+    def placeholder_b():
+        pass
+changed:
+  component_a.py: |
+    def alpha_one():
+        alpha_two()
+
+    def alpha_two():
+        alpha_three()
+
+    def alpha_three():
+        pass
+  component_b.py: |
+    def beta_one():
+        beta_two()
+
+    def beta_two():
+        beta_three()
+
+    def beta_three():
+        pass
+must_include_files:
+- component_a.py
+- component_b.py
+must_include_content:
+- 'def alpha_one():'
+- 'def alpha_two():'
+add_garbage_files: false
+skip_garbage_check: true

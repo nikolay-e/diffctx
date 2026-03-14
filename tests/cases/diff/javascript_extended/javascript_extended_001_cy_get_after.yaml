@@ -1,3 +1,0 @@
-form.ts: "export const FORM_SELECTORS = {\n    nameInput: '[data-testid=name-input]',\n    emailInput: '[data-testid=email-input]',\n    submitButton: '[data-testid=submit-btn]',\n};\n\n// cypress_garbage_marker_001\n"
-form.cy.ts: "import { FORM_SELECTORS } from './form';\n\ndescribe('Contact Form', () => {\n    it('should submit form', () => {\n        cy.visit('/contact');\n        cy.get(FORM_SELECTORS.nameInput).type('John\
-  \ Doe');\n        cy.get(FORM_SELECTORS.emailInput).type('john@example.com');\n        cy.get(FORM_SELECTORS.submitButton).click();\n        cy.contains('Thank you').should('be.visible');\n    });\n});\n"

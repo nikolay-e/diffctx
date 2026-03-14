@@ -11,6 +11,8 @@ from .edges.similarity.lexical import clamp_lexical_weight
 from .embeddings import _build_embedding_edges
 from .types import Fragment, FragmentId
 
+logger = logging.getLogger(__name__)
+
 
 @dataclass
 class Graph:
@@ -24,7 +26,7 @@ class Graph:
 
     def add_edge(self, src: FragmentId, dst: FragmentId, weight: float) -> None:
         if math.isnan(weight) or math.isinf(weight) or weight <= 0:
-            logging.debug("Dropping edge %s -> %s: invalid weight %r", src, dst, weight)
+            logger.debug("Dropping edge %s -> %s: invalid weight %r", src, dst, weight)
             return
         if src not in self.adjacency:
             self.adjacency[src] = {}
@@ -51,7 +53,7 @@ def build_graph(fragments: list[Fragment], repo_root: Path | None = None) -> Gra
 
     skip_expensive = len(fragments) > LIMITS.skip_expensive_threshold
     if skip_expensive:
-        logging.debug("diffctx: %d fragments exceed threshold, skipping expensive edge builders", len(fragments))
+        logger.debug("diffctx: %d fragments exceed threshold, skipping expensive edge builders", len(fragments))
 
     all_edges: dict[tuple[FragmentId, FragmentId], float] = {}
     edge_categories: dict[tuple[FragmentId, FragmentId], str] = {}
@@ -79,7 +81,7 @@ def build_graph(fragments: list[Fragment], repo_root: Path | None = None) -> Gra
     return graph
 
 
-_SUPPRESSION_EXEMPT = frozenset({"semantic", "structural", "config", "document"})
+_SUPPRESSION_EXEMPT = frozenset({"semantic", "structural", "test_edge"})
 
 
 def _apply_hub_suppression(

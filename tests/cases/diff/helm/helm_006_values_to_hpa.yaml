@@ -1,0 +1,135 @@
+initial:
+  chart/Chart.yaml: |
+    apiVersion: v2
+    name: order-processor
+    version: 3.1.0
+  chart/values.yaml: |
+    replicaCount: 1
+    image:
+      repository: order-processor
+      tag: "3.1.0"
+    autoscaling:
+      enabled: false
+      minReplicas: 1
+      maxReplicas: 10
+    resources:
+      limits:
+        cpu: 500m
+        memory: 512Mi
+  chart/templates/hpa.yaml: |
+    {{- if .Values.autoscaling.enabled }}
+    apiVersion: autoscaling/v2
+    kind: HorizontalPodAutoscaler
+    metadata:
+      name: {{ .Release.Name }}-{{ .Chart.Name }}
+      labels:
+        app.kubernetes.io/name: {{ .Chart.Name }}
+    spec:
+      scaleTargetRef:
+        apiVersion: apps/v1
+        kind: Deployment
+        name: {{ .Release.Name }}-{{ .Chart.Name }}
+      minReplicas: {{ .Values.autoscaling.minReplicas }}
+      maxReplicas: {{ .Values.autoscaling.maxReplicas }}
+      metrics:
+        - type: Resource
+          resource:
+            name: cpu
+            target:
+              type: Utilization
+              averageUtilization: {{ .Values.autoscaling.targetCPU | default 80 }}
+    {{- end }}
+  chart/templates/deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: {{ .Release.Name }}-{{ .Chart.Name }}
+    spec:
+      {{- if not .Values.autoscaling.enabled }}
+      replicas: {{ .Values.replicaCount }}
+      {{- end }}
+      template:
+        spec:
+          containers:
+            - name: {{ .Chart.Name }}
+              image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+              resources:
+                {{- toYaml .Values.resources | nindent 14 }}
+  chart/templates/sidecar-config.yaml: |
+    apiVersion: v1
+    kind: ConfigMap
+    metadata:
+    data:
+  chart/test/integration.sh: |
+    #!/bin/bash
+changed:
+  chart/Chart.yaml: |
+    apiVersion: v2
+    name: order-processor
+    version: 3.1.0
+  chart/values.yaml: |
+    replicaCount: 1
+    image:
+      repository: order-processor
+      tag: "3.1.0"
+    autoscaling:
+      enabled: true
+      minReplicas: 2
+      maxReplicas: 20
+      targetCPU: 80
+    resources:
+      limits:
+        cpu: 500m
+        memory: 512Mi
+  chart/templates/hpa.yaml: |
+    {{- if .Values.autoscaling.enabled }}
+    apiVersion: autoscaling/v2
+    kind: HorizontalPodAutoscaler
+    metadata:
+      name: {{ .Release.Name }}-{{ .Chart.Name }}
+      labels:
+        app.kubernetes.io/name: {{ .Chart.Name }}
+    spec:
+      scaleTargetRef:
+        apiVersion: apps/v1
+        kind: Deployment
+        name: {{ .Release.Name }}-{{ .Chart.Name }}
+      minReplicas: {{ .Values.autoscaling.minReplicas }}
+      maxReplicas: {{ .Values.autoscaling.maxReplicas }}
+      metrics:
+        - type: Resource
+          resource:
+            name: cpu
+            target:
+              type: Utilization
+              averageUtilization: {{ .Values.autoscaling.targetCPU | default 80 }}
+    {{- end }}
+  chart/templates/deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: {{ .Release.Name }}-{{ .Chart.Name }}
+    spec:
+      {{- if not .Values.autoscaling.enabled }}
+      replicas: {{ .Values.replicaCount }}
+      {{- end }}
+      template:
+        spec:
+          containers:
+            - name: {{ .Chart.Name }}
+              image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+              resources:
+                {{- toYaml .Values.resources | nindent 14 }}
+  chart/templates/sidecar-config.yaml: |
+    apiVersion: v1
+    kind: ConfigMap
+    metadata:
+    data:
+  chart/test/integration.sh: |
+    #!/bin/bash
+must_include_files:
+- chart/values.yaml
+must_include_content:
+- 'enabled: true'
+add_garbage_files: false
+skip_garbage_check: true

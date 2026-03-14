@@ -1,0 +1,165 @@
+initial:
+  config.py: |
+    MAX_RETRIES = 3
+    TIMEOUT = 30
+  client.py: |
+    from config import MAX_RETRIES
+
+    def fetch_with_retry(url):
+        for i in range(MAX_RETRIES):
+            try:
+                return fetch(url)
+            except:
+                pass
+        return None
+
+    def fetch(url):
+        return "data"
+  worker.py: |
+    from config import MAX_RETRIES
+
+    def process_job(job):
+        attempts = 0
+        while attempts < MAX_RETRIES:
+            try:
+                return do_work(job)
+            except:
+                attempts += 1
+        return None
+
+    def do_work(job):
+        return "done"
+
+  # --- Tricky: different MAX_RETRIES constant (name collision) ---
+  services/retry_config.py: |
+    GARBAGE_DEP_018_RETRY_CFG_A = "retry_module"
+    GARBAGE_DEP_018_RETRY_ALT_B = True
+
+    MAX_RETRIES = 10
+    TIMEOUT = 60
+    GARBAGE_DEP_018_RETRY_CONST_C = "constant_collision"
+
+  # --- Tricky: imports MAX_RETRIES from config, same usage pattern ---
+  scheduler.py: |
+    from config import MAX_RETRIES
+    GARBAGE_DEP_018_SCHED_IMPORT_D = "scheduler_consumer"
+    GARBAGE_DEP_018_SCHED_QUEUE_E = 50
+
+    def schedule_task(task):
+        GARBAGE_DEP_018_SCHED_RUN_F = True
+        for attempt in range(MAX_RETRIES):
+            try:
+                return run_task(task)
+            except:
+                pass
+        return None
+
+    def run_task(task):
+        return "scheduled"
+
+  # --- Tricky: same directory, similar config shape ---
+  defaults.py: |
+    GARBAGE_DEP_018_DEFAULTS_MOD_G = "defaults_sibling"
+    GARBAGE_DEP_018_DEFAULTS_KEY_H = 99
+
+    MAX_RETRIES = 3
+    TIMEOUT = 30
+    BATCH_SIZE = 100
+    GARBAGE_DEP_018_DEFAULTS_EXTRA_I = "extra_config"
+
+changed:
+  config.py: |
+    MAX_RETRIES = 5
+    TIMEOUT = 30
+  client.py: |
+    from config import MAX_RETRIES
+
+    def fetch_with_retry(url):
+        for i in range(MAX_RETRIES):
+            try:
+                return fetch(url)
+            except:
+                pass
+        return None
+
+    def fetch(url):
+        return "data"
+  worker.py: |
+    from config import MAX_RETRIES
+
+    def process_job(job):
+        attempts = 0
+        while attempts < MAX_RETRIES:
+            try:
+                return do_work(job)
+            except:
+                attempts += 1
+        return None
+
+    def do_work(job):
+        return "done"
+  services/retry_config.py: |
+    GARBAGE_DEP_018_RETRY_CFG_A = "retry_module"
+    GARBAGE_DEP_018_RETRY_ALT_B = True
+
+    MAX_RETRIES = 10
+    TIMEOUT = 60
+    GARBAGE_DEP_018_RETRY_CONST_C = "constant_collision"
+  scheduler.py: |
+    from config import MAX_RETRIES
+    GARBAGE_DEP_018_SCHED_IMPORT_D = "scheduler_consumer"
+    GARBAGE_DEP_018_SCHED_QUEUE_E = 50
+
+    def schedule_task(task):
+        GARBAGE_DEP_018_SCHED_RUN_F = True
+        for attempt in range(MAX_RETRIES):
+            try:
+                return run_task(task)
+            except:
+                pass
+        return None
+
+    def run_task(task):
+        return "scheduled"
+  defaults.py: |
+    GARBAGE_DEP_018_DEFAULTS_MOD_G = "defaults_sibling"
+    GARBAGE_DEP_018_DEFAULTS_KEY_H = 99
+
+    MAX_RETRIES = 3
+    TIMEOUT = 30
+    BATCH_SIZE = 100
+    GARBAGE_DEP_018_DEFAULTS_EXTRA_I = "extra_config"
+
+# === Assertions ===
+
+must_include_files:
+- config.py
+
+must_include_content_from:
+  config.py:
+    - MAX_RETRIES = 5
+    - TIMEOUT = 30
+
+must_not_include:
+# Tricky: same constant name MAX_RETRIES in different module
+- GARBAGE_DEP_018_RETRY_CFG_A
+- GARBAGE_DEP_018_RETRY_ALT_B
+- GARBAGE_DEP_018_RETRY_CONST_C
+# Tricky: imports MAX_RETRIES from config, same retry loop pattern
+- GARBAGE_DEP_018_SCHED_IMPORT_D
+- GARBAGE_DEP_018_SCHED_QUEUE_E
+- GARBAGE_DEP_018_SCHED_RUN_F
+# Tricky: same directory sibling with identical MAX_RETRIES/TIMEOUT shape
+- GARBAGE_DEP_018_DEFAULTS_MOD_G
+- GARBAGE_DEP_018_DEFAULTS_KEY_H
+- GARBAGE_DEP_018_DEFAULTS_EXTRA_I
+
+must_not_include_files:
+- services/retry_config.py
+- scheduler.py
+- defaults.py
+
+max_fragments: 5
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

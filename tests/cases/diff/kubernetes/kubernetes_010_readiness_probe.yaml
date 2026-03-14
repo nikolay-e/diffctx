@@ -1,0 +1,280 @@
+# Scenario: Gateway deployment adds tcpSocket readiness probe to gate
+#   traffic until port 8080 is open. Only k8s/apps/gateway/deployment.yaml
+#   is changed.
+#
+# Diff shows:
+#   + readinessProbe: tcpSocket port 8080
+#   + initialDelaySeconds: 5, periodSeconds: 5, timeoutSeconds: 3
+#   + failureThreshold: 3, successThreshold: 1
+#
+# Reviewer questions:
+#   Q1: "Should this be httpGet instead of tcpSocket for an API gateway?"
+#       -> Pure config review: tcpSocket only verifies the port is open,
+#          not that the gateway is fully initialized. httpGet to a health
+#          endpoint would be more thorough. But if the gateway serves
+#          non-HTTP protocols (gRPC, WebSocket), tcpSocket may be correct.
+#
+#   Q2: "Is 5s initialDelay enough for gateway startup?"
+#       -> Pure config review: depends on gateway initialization time.
+#          If the gateway loads routing rules, TLS certs, or upstream
+#          discovery, 5s may be too short.
+#
+# Not needed for comprehension:
+#   - k8s/apps/gateway/rate-limit.yaml: ConfigMap with rate limiting
+#     rules (requests_per_second, burst). Shares "gateway" naming and
+#     same directory. But rate limiting configuration is a feature concern,
+#     not related to readiness probe correctness.
+#
+#   - k8s/apps/backend/deployment.yaml: Backend deployment that the
+#     gateway routes to (UPSTREAM_URL references backend-api). Direct
+#     structural edge: the gateway's env var points to this backend.
+#     But the backend's deployment config doesn't help review whether
+#     the gateway's readiness probe thresholds are appropriate.
+initial:
+  k8s/apps/gateway/deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: api-gateway
+      namespace: production
+      labels:
+        app: api-gateway
+        component: networking
+    spec:
+      replicas: 3
+      selector:
+        matchLabels:
+          app: api-gateway
+      strategy:
+        type: RollingUpdate
+        rollingUpdate:
+          maxSurge: 1
+          maxUnavailable: 0
+      template:
+        metadata:
+          labels:
+            app: api-gateway
+            component: networking
+        spec:
+          containers:
+          - name: gateway
+            image: api-gateway:v2.0.0
+            ports:
+            - containerPort: 8080
+              name: http
+            - containerPort: 8443
+              name: https
+            - containerPort: 9090
+              name: admin
+            env:
+            - name: UPSTREAM_URL
+              value: "http://backend-api.production.svc.cluster.local"
+            resources:
+              requests:
+                memory: "128Mi"
+                cpu: "100m"
+              limits:
+                memory: "256Mi"
+                cpu: "200m"
+  k8s/apps/gateway/service.yaml: |
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: api-gateway
+      namespace: production
+    spec:
+      type: LoadBalancer
+      selector:
+        app: api-gateway
+      ports:
+      - name: http
+        port: 80
+        targetPort: 8080
+      - name: https
+        port: 443
+        targetPort: 8443
+  k8s/apps/gateway/rate-limit.yaml: |
+    apiVersion: v1
+    kind: ConfigMap
+    metadata:
+      name: gateway-rate-limits
+      namespace: production
+    data:
+      config.yaml: |
+        rate_limits:
+          - name: global
+            requests_per_second: 100
+            burst: 50
+          - name: per_ip
+            requests_per_second: 10
+            burst: 20
+          - name: authenticated
+            requests_per_second: 50
+            burst: 100
+  k8s/apps/backend/deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: backend-api
+      namespace: production
+    spec:
+      replicas: 3
+      selector:
+        matchLabels:
+          app: backend-api
+      template:
+        metadata:
+          labels:
+            app: backend-api
+        spec:
+          containers:
+          - name: api
+            image: backend-api:v3.1.0
+            ports:
+            - containerPort: 8080
+            env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: url
+changed:
+  k8s/apps/gateway/deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: api-gateway
+      namespace: production
+      labels:
+        app: api-gateway
+        component: networking
+    spec:
+      replicas: 3
+      selector:
+        matchLabels:
+          app: api-gateway
+      strategy:
+        type: RollingUpdate
+        rollingUpdate:
+          maxSurge: 1
+          maxUnavailable: 0
+      template:
+        metadata:
+          labels:
+            app: api-gateway
+            component: networking
+        spec:
+          containers:
+          - name: gateway
+            image: api-gateway:v2.0.0
+            ports:
+            - containerPort: 8080
+              name: http
+            - containerPort: 8443
+              name: https
+            - containerPort: 9090
+              name: admin
+            env:
+            - name: UPSTREAM_URL
+              value: "http://backend-api.production.svc.cluster.local"
+            readinessProbe:
+              tcpSocket:
+                port: 8080
+              initialDelaySeconds: 5
+              periodSeconds: 5
+              timeoutSeconds: 3
+              failureThreshold: 3
+              successThreshold: 1
+            resources:
+              requests:
+                memory: "128Mi"
+                cpu: "100m"
+              limits:
+                memory: "256Mi"
+                cpu: "200m"
+  k8s/apps/gateway/service.yaml: |
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: api-gateway
+      namespace: production
+    spec:
+      type: LoadBalancer
+      selector:
+        app: api-gateway
+      ports:
+      - name: http
+        port: 80
+        targetPort: 8080
+      - name: https
+        port: 443
+        targetPort: 8443
+  k8s/apps/gateway/rate-limit.yaml: |
+    apiVersion: v1
+    kind: ConfigMap
+    metadata:
+      name: gateway-rate-limits
+      namespace: production
+    data:
+      config.yaml: |
+        rate_limits:
+          - name: global
+            requests_per_second: 100
+            burst: 50
+          - name: per_ip
+            requests_per_second: 10
+            burst: 20
+          - name: authenticated
+            requests_per_second: 50
+            burst: 100
+  k8s/apps/backend/deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: backend-api
+      namespace: production
+    spec:
+      replicas: 3
+      selector:
+        matchLabels:
+          app: backend-api
+      template:
+        metadata:
+          labels:
+            app: backend-api
+        spec:
+          containers:
+          - name: api
+            image: backend-api:v3.1.0
+            ports:
+            - containerPort: 8080
+            env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: url
+must_include_files:
+- k8s/apps/gateway/deployment.yaml
+must_include_content_from:
+  k8s/apps/gateway/deployment.yaml:
+    - 'readinessProbe:'
+    - 'tcpSocket:'
+    - 'initialDelaySeconds: 5'
+    - 'failureThreshold: 3'
+must_not_include:
+  # --- rate-limit.yaml: gateway feature config, not probe config ---
+  - gateway-rate-limits
+  - requests_per_second
+  - "burst: 50"
+  # --- backend deployment: upstream target, not probe concern ---
+  - backend-api:v3.1.0
+  - db-credentials
+  - DATABASE_URL
+must_not_include_files:
+  - k8s/apps/gateway/rate-limit.yaml
+  - k8s/apps/backend/deployment.yaml
+add_garbage_files: false
+skip_garbage_check: true
+max_fragments: 8
+max_files: 5

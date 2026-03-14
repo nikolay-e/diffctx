@@ -1,0 +1,147 @@
+# Scenario: application.yaml database and logging sections changed for production
+# (host, pool_size, ssl_mode, log level).
+# Reviewer asks: "What config values changed for production hardening?"
+# Trap rationale: docker-compose.yaml and terraform.tfvars share config/infra
+# vocabulary but are separate config files with no structural dependency.
+
+initial:
+  config/application.yaml: |
+    database:
+      host: localhost
+      port: 5432
+      name: appdb
+      pool_size: 10
+      timeout_ms: 5000
+      ssl_mode: disable
+
+    logging:
+      level: INFO
+      format: json
+      output: stdout
+      max_file_size: 100MB
+
+    server:
+      host: 0.0.0.0
+      port: 8080
+      workers: 4
+      max_connections: 1000
+      read_timeout: 30s
+      write_timeout: 30s
+
+    cache:
+      backend: redis
+      host: localhost
+      port: 6379
+      ttl_seconds: 300
+      max_memory: 256MB
+  config/docker-compose.yaml: |
+    version: "3.8"
+    services:
+      postgres:
+        image: postgres:16-alpine
+        environment:
+          POSTGRES_DB: appdb
+          POSTGRES_USER: devuser
+          POSTGRES_PASSWORD: devpass
+        ports:
+          - "5432:5432"
+        volumes:
+          - pgdata:/var/lib/postgresql/data
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - "6379:6379"
+        command: redis-server --maxmemory 256mb
+
+    volumes:
+      pgdata:
+  config/terraform.tfvars: |
+    region         = "us-east-1"
+    instance_type  = "t3.medium"
+    db_instance    = "db.r6g.large"
+    db_name        = "appdb"
+    db_port        = 5432
+    cache_node     = "cache.r6g.large"
+    cache_port     = 6379
+    environment    = "production"
+    min_instances  = 2
+    max_instances  = 10
+changed:
+  config/application.yaml: |
+    database:
+      host: production-db.internal
+      port: 5432
+      name: appdb
+      pool_size: 25
+      timeout_ms: 3000
+      ssl_mode: require
+
+    logging:
+      level: WARNING
+      format: json
+      output: stdout
+      max_file_size: 100MB
+
+    server:
+      host: 0.0.0.0
+      port: 8080
+      workers: 4
+      max_connections: 1000
+      read_timeout: 30s
+      write_timeout: 30s
+
+    cache:
+      backend: redis
+      host: localhost
+      port: 6379
+      ttl_seconds: 300
+      max_memory: 256MB
+  config/docker-compose.yaml: |
+    version: "3.8"
+    services:
+      postgres:
+        image: postgres:16-alpine
+        environment:
+          POSTGRES_DB: appdb
+          POSTGRES_USER: devuser
+          POSTGRES_PASSWORD: devpass
+        ports:
+          - "5432:5432"
+        volumes:
+          - pgdata:/var/lib/postgresql/data
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - "6379:6379"
+        command: redis-server --maxmemory 256mb
+
+    volumes:
+      pgdata:
+  config/terraform.tfvars: |
+    region         = "us-east-1"
+    instance_type  = "t3.medium"
+    db_instance    = "db.r6g.large"
+    db_name        = "appdb"
+    db_port        = 5432
+    cache_node     = "cache.r6g.large"
+    cache_port     = 6379
+    environment    = "production"
+    min_instances  = 2
+    max_instances  = 10
+must_include_files:
+- config/application.yaml
+must_include_content:
+- 'host: production-db.internal'
+- 'level: WARNING'
+must_not_include:
+- docker-compose.yaml
+- terraform.tfvars
+- POSTGRES_USER
+- instance_type
+must_not_include_files:
+- config/docker-compose.yaml
+- config/terraform.tfvars
+add_garbage_files: false
+skip_garbage_check: true

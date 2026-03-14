@@ -1,0 +1,86 @@
+# Scenario: Replacing a hardcoded AMI with an aws_ami data source lookup
+#   for Amazon Linux 2.
+# Reviewer questions:
+#   1. What AMI was hardcoded before? (visible in diff as ami-12345)
+#   2. What other instances might benefit from the same data source?
+# Traps:
+#   - networking/ami_lookup.tf: same data source type but for a network appliance (self-owned)
+#   - packer/web.pkr.hcl: AMI-related but for building, not looking up (different tool)
+
+initial:
+  main.tf: |
+    resource "aws_instance" "web" {
+      ami           = "ami-12345"
+      instance_type = "t3.micro"
+    }
+  networking/ami_lookup.tf: |
+    data "aws_ami" "network_appliance" {
+      most_recent = true
+      owners      = ["self"]
+
+      filter {
+        name   = "name"
+        values = ["network-appliance-*"]
+      }
+    }
+
+    resource "aws_instance" "firewall" {
+      ami           = data.aws_ami.network_appliance.id
+      instance_type = "c5.xlarge"
+    }
+  packer/web.pkr.hcl: |
+    source "amazon-ebs" "web" {
+      ami_name      = "web-server-{{timestamp}}"
+      instance_type = "t3.micro"
+      source_ami_filter {
+        filters = {
+          name = "amzn2-ami-hvm-*-x86_64-gp2"
+        }
+        owners = ["amazon"]
+      }
+    }
+
+changed:
+  main.tf: |
+    data "aws_ami" "amazon_linux" {
+      most_recent = true
+      owners      = ["amazon"]
+
+      filter {
+        name   = "name"
+        values = ["amzn2-ami-hvm-*-x86_64-gp2"]
+      }
+    }
+
+    resource "aws_instance" "web" {
+      ami           = data.aws_ami.amazon_linux.id
+      instance_type = "t3.micro"
+    }
+
+# The diff is self-contained: main.tf adds the data source and references it.
+# No unchanged files are needed for understanding the change itself.
+must_include_files:
+  - main.tf
+
+must_include_content:
+  - data "aws_ami" "amazon_linux" {
+  - owners      = ["amazon"]
+  - data.aws_ami.amazon_linux.id
+
+must_not_include:
+  # Networking AMI lookup is same data source type but self-owned appliance
+  - network_appliance
+  - network-appliance-*
+  - c5.xlarge
+  # Packer is AMI building, not Terraform data source
+  - amazon-ebs
+  - web-server-{{timestamp}}
+
+must_not_include_files:
+  - networking/ami_lookup.tf
+  - packer/web.pkr.hcl
+
+max_fragments: 3
+max_files: 1
+add_garbage_files: false
+skip_garbage_check: true

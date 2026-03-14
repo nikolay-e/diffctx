@@ -1,0 +1,211 @@
+initial:
+  base/handler.py: |
+    from abc import ABC, abstractmethod
+
+    class BaseHandler(ABC):
+        @abstractmethod
+        def handle(self, request: dict) -> dict:
+            pass
+
+        @abstractmethod
+        def validate(self, request: dict) -> bool:
+            pass
+  handlers/user_handler.py: |
+    from base.handler import BaseHandler
+
+    class UserHandler(BaseHandler):
+        def handle(self, request: dict) -> dict:
+            return {"user": request.get("user_id")}
+
+        def validate(self, request: dict) -> bool:
+            return "user_id" in request
+  handlers/order_handler.py: |
+    from base.handler import BaseHandler
+
+    class OrderHandler(BaseHandler):
+        def handle(self, request: dict) -> dict:
+            return {"order": request.get("order_id")}
+
+        def validate(self, request: dict) -> bool:
+            return "order_id" in request
+
+  # --- Tricky: different ABC BaseHandler with authorize method (name collision) ---
+  framework/handler.py: |
+    from abc import ABC, abstractmethod
+    from typing import Optional
+    GARBAGE_DEP_024_FRAMEWORK_A = "framework_handler"
+    GARBAGE_DEP_024_FRAMEWORK_VER_B = "2.0"
+
+    class BaseHandler(ABC):
+        GARBAGE_DEP_024_FRAMEWORK_CLASS_C = True
+
+        @abstractmethod
+        def handle(self, request: dict) -> dict:
+            pass
+
+        @abstractmethod
+        def validate(self, request: dict) -> bool:
+            pass
+
+        @abstractmethod
+        def authorize(self, request: dict) -> bool:
+            pass
+
+        def pre_process(self, request: dict) -> Optional[dict]:
+            return request
+
+  # --- Tricky: imports BaseHandler from base.handler, same subclass pattern ---
+  handlers/payment_handler.py: |
+    from base.handler import BaseHandler
+    GARBAGE_DEP_024_PAYMENT_IMPORT_D = "payment_consumer"
+    GARBAGE_DEP_024_PAYMENT_PROC_E = "stripe"
+
+    class PaymentHandler(BaseHandler):
+        GARBAGE_DEP_024_PAYMENT_CLASS_F = True
+
+        def handle(self, request: dict) -> dict:
+            return {"payment": request.get("amount")}
+
+        def validate(self, request: dict) -> bool:
+            return "amount" in request
+
+  # --- Tricky: same handlers/ directory sibling ---
+  handlers/health_check.py: |
+    GARBAGE_DEP_024_HEALTH_MOD_G = "health_sibling"
+    GARBAGE_DEP_024_HEALTH_STATUS_H = "ok"
+
+    class HealthCheckHandler:
+        GARBAGE_DEP_024_HEALTH_CLASS_I = True
+
+        def handle(self, request: dict) -> dict:
+            return {"status": "healthy"}
+
+        def validate(self, request: dict) -> bool:
+            return True
+
+changed:
+  base/handler.py: |
+    from abc import ABC, abstractmethod
+    from typing import Optional
+
+    class BaseHandler(ABC):
+        @abstractmethod
+        def handle(self, request: dict) -> dict:
+            pass
+
+        @abstractmethod
+        def validate(self, request: dict) -> bool:
+            pass
+
+        @abstractmethod
+        def authorize(self, request: dict) -> bool:
+            pass
+
+        def pre_process(self, request: dict) -> Optional[dict]:
+            return request
+
+        def post_process(self, response: dict) -> dict:
+            return response
+  handlers/user_handler.py: |
+    from base.handler import BaseHandler
+
+    class UserHandler(BaseHandler):
+        def handle(self, request: dict) -> dict:
+            return {"user": request.get("user_id")}
+
+        def validate(self, request: dict) -> bool:
+            return "user_id" in request
+  handlers/order_handler.py: |
+    from base.handler import BaseHandler
+
+    class OrderHandler(BaseHandler):
+        def handle(self, request: dict) -> dict:
+            return {"order": request.get("order_id")}
+
+        def validate(self, request: dict) -> bool:
+            return "order_id" in request
+  framework/handler.py: |
+    from abc import ABC, abstractmethod
+    from typing import Optional
+    GARBAGE_DEP_024_FRAMEWORK_A = "framework_handler"
+    GARBAGE_DEP_024_FRAMEWORK_VER_B = "2.0"
+
+    class BaseHandler(ABC):
+        GARBAGE_DEP_024_FRAMEWORK_CLASS_C = True
+
+        @abstractmethod
+        def handle(self, request: dict) -> dict:
+            pass
+
+        @abstractmethod
+        def validate(self, request: dict) -> bool:
+            pass
+
+        @abstractmethod
+        def authorize(self, request: dict) -> bool:
+            pass
+
+        def pre_process(self, request: dict) -> Optional[dict]:
+            return request
+  handlers/payment_handler.py: |
+    from base.handler import BaseHandler
+    GARBAGE_DEP_024_PAYMENT_IMPORT_D = "payment_consumer"
+    GARBAGE_DEP_024_PAYMENT_PROC_E = "stripe"
+
+    class PaymentHandler(BaseHandler):
+        GARBAGE_DEP_024_PAYMENT_CLASS_F = True
+
+        def handle(self, request: dict) -> dict:
+            return {"payment": request.get("amount")}
+
+        def validate(self, request: dict) -> bool:
+            return "amount" in request
+  handlers/health_check.py: |
+    GARBAGE_DEP_024_HEALTH_MOD_G = "health_sibling"
+    GARBAGE_DEP_024_HEALTH_STATUS_H = "ok"
+
+    class HealthCheckHandler:
+        GARBAGE_DEP_024_HEALTH_CLASS_I = True
+
+        def handle(self, request: dict) -> dict:
+            return {"status": "healthy"}
+
+        def validate(self, request: dict) -> bool:
+            return True
+
+# === Assertions ===
+
+must_include_files:
+- base/handler.py
+
+must_include_content_from:
+  base/handler.py:
+    - from typing import Optional
+    - 'def authorize(self, request: dict) -> bool:'
+    - 'class BaseHandler(ABC):'
+    - 'def pre_process(self, request: dict) -> Optional[dict]:'
+    - 'def post_process(self, response: dict) -> dict:'
+
+must_not_include:
+# Tricky: identical BaseHandler(ABC) with same authorize/pre_process methods
+- GARBAGE_DEP_024_FRAMEWORK_A
+- GARBAGE_DEP_024_FRAMEWORK_VER_B
+- GARBAGE_DEP_024_FRAMEWORK_CLASS_C
+# Tricky: imports BaseHandler from base.handler, same subclass pattern
+- GARBAGE_DEP_024_PAYMENT_IMPORT_D
+- GARBAGE_DEP_024_PAYMENT_PROC_E
+- GARBAGE_DEP_024_PAYMENT_CLASS_F
+# Tricky: same handlers/ directory sibling with handle/validate methods
+- GARBAGE_DEP_024_HEALTH_MOD_G
+- GARBAGE_DEP_024_HEALTH_STATUS_H
+- GARBAGE_DEP_024_HEALTH_CLASS_I
+
+must_not_include_files:
+- framework/handler.py
+- handlers/payment_handler.py
+- handlers/health_check.py
+
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

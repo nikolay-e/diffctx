@@ -1,0 +1,96 @@
+# Scenario: Adding a main_override.tf to override production instance settings
+#   for development (smaller instance, dev AMI, dev tags).
+# Reviewer questions:
+#   1. What is the base resource being overridden? (main.tf defines the production instance)
+#   2. Does the override affect other resources that reference this instance? (outputs.tf)
+# Traps:
+#   - database/dev_override.tf: RDS override for dev (same override pattern, different resource)
+#   - sqs/queue.tf: SQS queue (unrelated to instance overrides)
+
+initial:
+  main.tf: |
+    resource "aws_instance" "web" {
+      ami           = "ami-production"
+      instance_type = "t3.large"
+      key_name      = "production-key"
+
+      tags = {
+        Name        = "web-server"
+        Environment = "production"
+      }
+    }
+  outputs.tf: |
+    output "instance_id" {
+      value = aws_instance.web.id
+    }
+
+    output "instance_type" {
+      value = aws_instance.web.instance_type
+    }
+  database/dev_override.tf: |
+    resource "aws_db_instance" "main" {
+      identifier     = "dev-database"
+      instance_class = "db.t3.micro"
+
+      tags = {
+        Environment = "dev"
+      }
+    }
+  sqs/queue.tf: |
+    resource "aws_sqs_queue" "tasks" {
+      name                      = "task-queue"
+      delay_seconds             = 0
+      max_message_size          = 262144
+      message_retention_seconds = 86400
+    }
+
+changed:
+  main.tf: |
+    resource "aws_instance" "web" {
+      ami           = "ami-production"
+      instance_type = "t3.large"
+      key_name      = "production-key"
+
+      tags = {
+        Name        = "web-server"
+        Environment = "production"
+      }
+    }
+  main_override.tf: |
+    resource "aws_instance" "web" {
+      ami           = "ami-development"
+      instance_type = "t3.micro"
+
+      tags = {
+        Environment = "dev"
+      }
+    }
+
+must_include_files:
+  - main_override.tf
+  - main.tf
+
+must_include_content_from:
+  main_override.tf:
+    - ami           = "ami-development"
+    - instance_type = "t3.micro"
+    - Environment = "dev"
+  main.tf:
+    - resource "aws_instance" "web" {
+    - ami           = "ami-production"
+
+must_not_include:
+  # Database dev override - same override concept but for RDS, different resource
+  - dev-database
+  - db.t3.micro
+  # SQS queue - unrelated messaging infrastructure
+  - task-queue
+
+must_not_include_files:
+  - database/dev_override.tf
+  - sqs/queue.tf
+
+max_fragments: 5
+max_files: 2
+add_garbage_files: false
+skip_garbage_check: true

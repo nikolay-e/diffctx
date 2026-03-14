@@ -1,0 +1,80 @@
+initial:
+  gap_between.py: |
+    import logging
+    from typing import Dict, List
+
+    def func1():
+        pass
+
+    def unrelated_before_const_021():
+
+    CONSTANT = 123
+
+    def unrelated_after_const_021():
+
+    def func2():
+        pass
+
+    class UnrelatedGapClass:
+
+        def gap_method(self):
+
+    def trailing_function_021():
+  garbage_gap_021.py: |
+    GARBAGE_CONST_A = "GARBAGE_FRAG_garbagea021"
+
+    def garbage_between_a():
+        return "GARBAGE_FRAG_betweena021"
+
+    GARBAGE_CONST_B = "GARBAGE_FRAG_garbageb021"
+
+    def garbage_between_b():
+        return "GARBAGE_FRAG_betweenb021"
+
+    class GarbageGapClass:
+        VALUE = "GARBAGE_FRAG_gapvalue021"
+changed:
+  gap_between.py: |
+    import logging
+    from typing import Dict, List
+
+    def func1():
+        pass
+
+    def unrelated_before_const_021():
+
+    CONSTANT = 456
+
+    def unrelated_after_const_021():
+
+    def func2():
+        pass
+
+    class UnrelatedGapClass:
+
+        def gap_method(self):
+
+    def trailing_function_021():
+  garbage_gap_021.py: |
+    GARBAGE_CONST_A = "GARBAGE_FRAG_garbagea021"
+
+    def garbage_between_a():
+        return "GARBAGE_FRAG_betweena021"
+
+    GARBAGE_CONST_B = "GARBAGE_FRAG_garbageb021"
+
+    def garbage_between_b():
+        return "GARBAGE_FRAG_betweenb021"
+
+    class GarbageGapClass:
+        VALUE = "GARBAGE_FRAG_gapvalue021"
+must_include_files:
+- gap_between.py
+must_include_content:
+- CONSTANT = 456
+must_not_include:
+- GARBAGE_CONST_A
+- GARBAGE_CONST_B
+- garbage_gap_021.py
+add_garbage_files: false
+skip_garbage_check: true

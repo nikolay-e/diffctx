@@ -1,0 +1,159 @@
+initial:
+  interfaces.py: |
+    from typing import Protocol
+
+    class Repository(Protocol):
+        def find(self, id: int):
+            ...
+  repos/user_repo.py: |
+    from interfaces import Repository
+
+    class UserRepository:
+        def find(self, id: int):
+            return {"id": id, "name": "User"}
+  repos/order_repo.py: |
+    from interfaces import Repository
+
+    class OrderRepository:
+        def find(self, id: int):
+            return {"id": id, "total": 100}
+
+  # --- Tricky: different Protocol class also named Repository ---
+  storage/interfaces.py: |
+    from typing import Protocol
+    GARBAGE_DEP_017_STORAGE_PROTO_A = "storage_protocol"
+    GARBAGE_DEP_017_STORAGE_MOD_B = True
+
+    class Repository(Protocol):
+        GARBAGE_DEP_017_STORAGE_CLASS_C = "different_repo"
+
+        def find(self, id: int):
+            ...
+
+        def find_by_criteria(self, criteria: dict) -> list:
+            ...
+
+  # --- Tricky: imports Repository from interfaces, same consumer pattern ---
+  repos/product_repo.py: |
+    from interfaces import Repository
+    GARBAGE_DEP_017_PRODUCT_IMPORT_D = "product_consumer"
+    GARBAGE_DEP_017_PRODUCT_TYPE_E = "inventory"
+
+    class ProductRepository:
+        GARBAGE_DEP_017_PRODUCT_CLASS_F = True
+
+        def find(self, id: int):
+            return {"id": id, "product": "Widget"}
+
+        def find_by_criteria(self, criteria: dict) -> list:
+            return []
+
+  # --- Tricky: same directory sibling repo ---
+  repos/cache_repo.py: |
+    GARBAGE_DEP_017_CACHE_MODULE_G = "cache_sibling"
+    GARBAGE_DEP_017_CACHE_TTL_H = 300
+
+    class CacheRepository:
+        GARBAGE_DEP_017_CACHE_CLASS_I = "no_protocol"
+
+        def find(self, key: str):
+            return None
+
+        def find_by_criteria(self, criteria: dict) -> list:
+            return []
+
+changed:
+  interfaces.py: |
+    from typing import Protocol
+
+    class Repository(Protocol):
+        def find(self, id: int):
+            ...
+
+        def find_by_criteria(self, criteria: dict) -> list:
+            ...
+  repos/user_repo.py: |
+    from interfaces import Repository
+
+    class UserRepository:
+        def find(self, id: int):
+            return {"id": id, "name": "User"}
+  repos/order_repo.py: |
+    from interfaces import Repository
+
+    class OrderRepository:
+        def find(self, id: int):
+            return {"id": id, "total": 100}
+  storage/interfaces.py: |
+    from typing import Protocol
+    GARBAGE_DEP_017_STORAGE_PROTO_A = "storage_protocol"
+    GARBAGE_DEP_017_STORAGE_MOD_B = True
+
+    class Repository(Protocol):
+        GARBAGE_DEP_017_STORAGE_CLASS_C = "different_repo"
+
+        def find(self, id: int):
+            ...
+
+        def find_by_criteria(self, criteria: dict) -> list:
+            ...
+  repos/product_repo.py: |
+    from interfaces import Repository
+    GARBAGE_DEP_017_PRODUCT_IMPORT_D = "product_consumer"
+    GARBAGE_DEP_017_PRODUCT_TYPE_E = "inventory"
+
+    class ProductRepository:
+        GARBAGE_DEP_017_PRODUCT_CLASS_F = True
+
+        def find(self, id: int):
+            return {"id": id, "product": "Widget"}
+
+        def find_by_criteria(self, criteria: dict) -> list:
+            return []
+  repos/cache_repo.py: |
+    GARBAGE_DEP_017_CACHE_MODULE_G = "cache_sibling"
+    GARBAGE_DEP_017_CACHE_TTL_H = 300
+
+    class CacheRepository:
+        GARBAGE_DEP_017_CACHE_CLASS_I = "no_protocol"
+
+        def find(self, key: str):
+            return None
+
+        def find_by_criteria(self, criteria: dict) -> list:
+            return []
+
+# === Assertions ===
+
+must_include_files:
+- interfaces.py
+
+must_include_content_from:
+  interfaces.py:
+    - 'def find_by_criteria(self, criteria: dict) -> list:'
+    - 'class Repository(Protocol):'
+    - 'criteria: dict'
+
+must_not_include:
+# Tricky: same class name Repository(Protocol) in different module
+- GARBAGE_DEP_017_STORAGE_PROTO_A
+- GARBAGE_DEP_017_STORAGE_MOD_B
+- GARBAGE_DEP_017_STORAGE_CLASS_C
+# Tricky: imports Repository from interfaces, has find_by_criteria
+- GARBAGE_DEP_017_PRODUCT_IMPORT_D
+- GARBAGE_DEP_017_PRODUCT_TYPE_E
+- GARBAGE_DEP_017_PRODUCT_CLASS_F
+# Tricky: same directory sibling with find/find_by_criteria methods
+- GARBAGE_DEP_017_CACHE_MODULE_G
+- GARBAGE_DEP_017_CACHE_TTL_H
+- GARBAGE_DEP_017_CACHE_CLASS_I
+
+must_not_include_files:
+- storage/interfaces.py
+- repos/product_repo.py
+- repos/cache_repo.py
+
+max_fragments: 5
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

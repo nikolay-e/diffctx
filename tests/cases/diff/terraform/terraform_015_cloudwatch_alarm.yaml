@@ -1,0 +1,143 @@
+# Scenario: Add a CPU utilization alarm for the web autoscaling group
+#
+# Reviewer questions:
+#   1. What ASG is being monitored? (compute.tf defines aws_autoscaling_group.web)
+#   2. What SNS topic receives the alarm? (sns.tf defines aws_sns_topic.alerts)
+#
+# The diff adds aws_cloudwatch_metric_alarm "cpu_high" in monitoring.tf.
+# compute.tf (unchanged) defines the ASG dimension target. sns.tf (unchanged)
+# defines the alarm_actions destination.
+#
+# Traps: monitoring_memory.tf has same alarm type but for memory metric.
+# logging.tf is CloudWatch but for log groups, not alarms.
+
+initial:
+  monitoring.tf: |
+    # Monitoring resources
+  compute.tf: |
+    resource "aws_autoscaling_group" "web" {
+      name             = "web-asg"
+      min_size         = 1
+      max_size         = 10
+      desired_capacity = 2
+
+      launch_template {
+        id      = aws_launch_template.web.id
+        version = "$Latest"
+      }
+    }
+  sns.tf: |
+    resource "aws_sns_topic" "alerts" {
+      name = "alerts-topic"
+    }
+
+    resource "aws_sns_topic_subscription" "email" {
+      topic_arn = aws_sns_topic.alerts.arn
+      protocol  = "email"
+      endpoint  = var.alert_email
+    }
+  monitoring_memory.tf: |
+    resource "aws_cloudwatch_metric_alarm" "memory_high" {
+      alarm_name          = "memory-high"
+      comparison_operator = "GreaterThanThreshold"
+      evaluation_periods  = 3
+      metric_name         = "MemoryUtilization"
+      namespace           = "CWAgent"
+      period              = 300
+      statistic           = "Average"
+      threshold           = 90
+
+      alarm_actions = [aws_sns_topic.ops.arn]
+    }
+  logging.tf: |
+    resource "aws_cloudwatch_log_group" "application" {
+      name              = "/app/${var.environment}/application"
+      retention_in_days = 30
+    }
+
+changed:
+  monitoring.tf: |
+    resource "aws_cloudwatch_metric_alarm" "cpu_high" {
+      alarm_name          = "cpu-high"
+      comparison_operator = "GreaterThanThreshold"
+      evaluation_periods  = 2
+      metric_name         = "CPUUtilization"
+      namespace           = "AWS/EC2"
+      period              = 300
+      statistic           = "Average"
+      threshold           = 80
+
+      dimensions = {
+        AutoScalingGroupName = aws_autoscaling_group.web.name
+      }
+
+      alarm_actions = [aws_sns_topic.alerts.arn]
+    }
+  compute.tf: |
+    resource "aws_autoscaling_group" "web" {
+      name             = "web-asg"
+      min_size         = 1
+      max_size         = 10
+      desired_capacity = 2
+
+      launch_template {
+        id      = aws_launch_template.web.id
+        version = "$Latest"
+      }
+    }
+  sns.tf: |
+    resource "aws_sns_topic" "alerts" {
+      name = "alerts-topic"
+    }
+
+    resource "aws_sns_topic_subscription" "email" {
+      topic_arn = aws_sns_topic.alerts.arn
+      protocol  = "email"
+      endpoint  = var.alert_email
+    }
+  monitoring_memory.tf: |
+    resource "aws_cloudwatch_metric_alarm" "memory_high" {
+      alarm_name          = "memory-high"
+      comparison_operator = "GreaterThanThreshold"
+      evaluation_periods  = 3
+      metric_name         = "MemoryUtilization"
+      namespace           = "CWAgent"
+      period              = 300
+      statistic           = "Average"
+      threshold           = 90
+
+      alarm_actions = [aws_sns_topic.ops.arn]
+    }
+  logging.tf: |
+    resource "aws_cloudwatch_log_group" "application" {
+      name              = "/app/${var.environment}/application"
+      retention_in_days = 30
+    }
+
+must_include_files:
+# Unchanged ASG that the alarm monitors
+- compute.tf
+
+must_include_content_from:
+  compute.tf:
+    # Reviewer needs the ASG definition to verify the monitoring target
+    - resource "aws_autoscaling_group" "web" {
+    - name             = "web-asg"
+
+must_not_include:
+# Memory alarm is same resource type but different metric
+- memory-high
+- MemoryUtilization
+- aws_sns_topic.ops.arn
+# Log groups are CloudWatch but not alarms
+- aws_cloudwatch_log_group
+- retention_in_days
+
+must_not_include_files:
+- monitoring_memory.tf  # same alarm type, different metric
+- logging.tf  # same AWS service, different resource type
+
+max_fragments: 5
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

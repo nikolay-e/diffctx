@@ -1,0 +1,175 @@
+# Scenario: derived.ts is rewritten to import BaseClass from base.ts and
+#   create DerivedClass that extends it. Only derived.ts is changed.
+#
+# Diff shows:
+#   - console.log('initial');
+#   + import { BaseClass } from './base';
+#   + export class DerivedClass extends BaseClass { constructor(name, age) { super(name); } ... }
+#
+# Reviewer questions:
+#   Q1: "What does super(name) do — what is BaseClass's constructor?"
+#       -> base.ts (UNCHANGED) constructor takes name: string and sets
+#          this.name = name. Reviewer must verify super(name) is correct.
+#
+#   Q2: "What does this.greet() return — called in describe()?"
+#       -> Same file: greet() returns `Hello, ${this.name}`. Reviewer needs
+#          to see greet() to verify describe() output format.
+#
+# Not needed for comprehension:
+#   - admin-user.ts: Another class extending BaseClass with additional
+#     permissions field. STRUCTURAL TRAP: same extends BaseClass pattern,
+#     same super(name) call. But another subclass doesn't help review
+#     DerivedClass's correctness.
+#
+#   - base-factory.ts: Factory function that creates BaseClass instances.
+#     Direct reference to BaseClass via import. But factory logic doesn't
+#     help review the inheritance in DerivedClass.
+
+initial:
+  base.ts: |
+    export class BaseClass {
+        protected name: string;
+
+        constructor(name: string) {
+            this.name = name;
+        }
+
+        greet(): string {
+            return `Hello, ${this.name}`;
+        }
+    }
+  derived.ts: |
+    console.log('initial');
+  admin-user.ts: |
+    import { BaseClass } from './base';
+
+    export class AdminUser extends BaseClass {
+        private permissions: string[];
+
+        constructor(name: string, permissions: string[]) {
+            super(name);
+            this.permissions = permissions;
+        }
+
+        hasPermission(perm: string): boolean {
+            return this.permissions.includes(perm);
+        }
+
+        describe(): string {
+            return `${this.greet()}, I have ${this.permissions.length} permissions`;
+        }
+    }
+  base-factory.ts: |
+    import { BaseClass } from './base';
+
+    export function createBaseInstance(name: string): BaseClass {
+        return new BaseClass(name);
+    }
+
+    export function createMultiple(names: string[]): BaseClass[] {
+        return names.map(name => new BaseClass(name));
+    }
+
+    export function greetAll(instances: BaseClass[]): string[] {
+        return instances.map(instance => instance.greet());
+    }
+
+changed:
+  base.ts: |
+    export class BaseClass {
+        protected name: string;
+
+        constructor(name: string) {
+            this.name = name;
+        }
+
+        greet(): string {
+            return `Hello, ${this.name}`;
+        }
+    }
+  derived.ts: |
+    import { BaseClass } from './base';
+
+    export class DerivedClass extends BaseClass {
+        private age: number;
+
+        constructor(name: string, age: number) {
+            super(name);
+            this.age = age;
+        }
+
+        describe(): string {
+            return `${this.greet()}, I am ${this.age} years old`;
+        }
+    }
+  admin-user.ts: |
+    import { BaseClass } from './base';
+
+    export class AdminUser extends BaseClass {
+        private permissions: string[];
+
+        constructor(name: string, permissions: string[]) {
+            super(name);
+            this.permissions = permissions;
+        }
+
+        hasPermission(perm: string): boolean {
+            return this.permissions.includes(perm);
+        }
+
+        describe(): string {
+            return `${this.greet()}, I have ${this.permissions.length} permissions`;
+        }
+    }
+  base-factory.ts: |
+    import { BaseClass } from './base';
+
+    export function createBaseInstance(name: string): BaseClass {
+        return new BaseClass(name);
+    }
+
+    export function createMultiple(names: string[]): BaseClass[] {
+        return names.map(name => new BaseClass(name));
+    }
+
+    export function greetAll(instances: BaseClass[]): string[] {
+        return instances.map(instance => instance.greet());
+    }
+
+must_include_files:
+  - derived.ts
+  # Q1+Q2: BaseClass defines constructor and greet() used by DerivedClass
+  - base.ts
+
+must_include_content_from:
+  derived.ts:
+    - "import { BaseClass } from './base'"
+    - "class DerivedClass extends BaseClass"
+    - "super(name)"
+    - "this.greet()"
+  base.ts:
+    - "class BaseClass"
+    - "constructor(name: string)"
+    - "greet(): string"
+
+must_not_include:
+  # --- admin-user.ts: IDENTICAL extends BaseClass pattern ---
+  # HARDEST TRAP. Same super(name), same this.greet(), same describe() method.
+  # Sibling subclass. But another subclass doesn't help review DerivedClass.
+  - AdminUser
+  - hasPermission
+  - permissions
+  # --- base-factory.ts: creates BaseClass instances ---
+  # Direct reference to BaseClass but factory logic doesn't help review inheritance.
+  - createBaseInstance
+  - createMultiple
+  - greetAll
+
+must_not_include_files:
+  - admin-user.ts
+  - base-factory.ts
+
+max_fragments: 5
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

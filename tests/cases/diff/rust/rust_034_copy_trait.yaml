@@ -1,0 +1,279 @@
+# Scenario: Point gains #[derive(Copy)] so it can be passed by value without
+# moves. Method signatures change from &self/&Point to self/Point. A new
+# geometry.rs uses these value-semantics methods.
+#
+# Diff: src/point.rs adds Copy derive and changes method signatures; src/lib.rs
+# adds pub mod geometry; src/geometry.rs (NEW) uses Point by value.
+#
+# Reviewer questions:
+#   Q1: "Which methods changed signature?" -> src/point.rs (CHANGED) shows
+#        distance and translate now take self/Point by value, not by reference.
+#   Q2: "Does new code rely on Copy semantics?" -> src/geometry.rs (NEW) passes
+#        p1, p2, p3 by value to multiple function calls (only possible with Copy).
+#
+# Trap files (plausible but no dependency on Point or geometry):
+#   - src/color.rs: also derives Copy for a small struct (Color with r,g,b,a).
+#     Same "Copy derive" pattern but completely independent type.
+#   - src/matrix.rs: 2D transformation matrices operating on coordinates.
+#     Shares "geometry" vocabulary but uses its own Matrix2D type, not Point.
+
+initial:
+  src/lib.rs: |
+    pub mod point;
+    pub mod color;
+    pub mod matrix;
+  src/point.rs: |
+    #[derive(Debug)]
+    pub struct Point {
+        x: f64,
+        y: f64,
+    }
+
+    impl Point {
+        pub fn new(x: f64, y: f64) -> Self {
+            Self { x, y }
+        }
+
+        pub fn x(&self) -> f64 {
+            self.x
+        }
+
+        pub fn y(&self) -> f64 {
+            self.y
+        }
+
+        pub fn distance(&self, other: &Point) -> f64 {
+            ((self.x - other.x).powi(2) + (self.y - other.y).powi(2)).sqrt()
+        }
+
+        pub fn translate(&self, dx: f64, dy: f64) -> Point {
+            Point::new(self.x + dx, self.y + dy)
+        }
+    }
+  src/color.rs: |
+    #[derive(Debug, Clone, Copy, PartialEq)]
+    pub struct Color {
+        pub r: u8,
+        pub g: u8,
+        pub b: u8,
+        pub a: u8,
+    }
+
+    impl Color {
+        pub fn new(r: u8, g: u8, b: u8, a: u8) -> Self {
+            Self { r, g, b, a }
+        }
+
+        pub fn white() -> Self {
+            Self::new(255, 255, 255, 255)
+        }
+
+        pub fn black() -> Self {
+            Self::new(0, 0, 0, 255)
+        }
+
+        pub fn blend(self, other: Color, factor: f32) -> Color {
+            let inv = 1.0 - factor;
+            Color::new(
+                (self.r as f32 * inv + other.r as f32 * factor) as u8,
+                (self.g as f32 * inv + other.g as f32 * factor) as u8,
+                (self.b as f32 * inv + other.b as f32 * factor) as u8,
+                (self.a as f32 * inv + other.a as f32 * factor) as u8,
+            )
+        }
+    }
+  src/matrix.rs: |
+    #[derive(Debug, Clone, Copy)]
+    pub struct Matrix2D {
+        data: [[f64; 3]; 3],
+    }
+
+    impl Matrix2D {
+        pub fn identity() -> Self {
+            Self {
+                data: [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
+            }
+        }
+
+        pub fn translation(tx: f64, ty: f64) -> Self {
+            let mut m = Self::identity();
+            m.data[0][2] = tx;
+            m.data[1][2] = ty;
+            m
+        }
+
+        pub fn rotation(angle_rad: f64) -> Self {
+            let c = angle_rad.cos();
+            let s = angle_rad.sin();
+            Self {
+                data: [[c, -s, 0.0], [s, c, 0.0], [0.0, 0.0, 1.0]],
+            }
+        }
+
+        pub fn multiply(self, other: Matrix2D) -> Matrix2D {
+            let mut result = Self::identity();
+            for i in 0..3 {
+                for j in 0..3 {
+                    result.data[i][j] = (0..3).map(|k| self.data[i][k] * other.data[k][j]).sum();
+                }
+            }
+            result
+        }
+    }
+
+changed:
+  src/lib.rs: |
+    pub mod point;
+    pub mod geometry;
+    pub mod color;
+    pub mod matrix;
+  src/point.rs: |
+    #[derive(Debug, Clone, Copy)]
+    pub struct Point {
+        x: f64,
+        y: f64,
+    }
+
+    impl Point {
+        pub fn new(x: f64, y: f64) -> Self {
+            Self { x, y }
+        }
+
+        pub fn x(&self) -> f64 {
+            self.x
+        }
+
+        pub fn y(&self) -> f64 {
+            self.y
+        }
+
+        pub fn distance(self, other: Point) -> f64 {
+            ((self.x - other.x).powi(2) + (self.y - other.y).powi(2)).sqrt()
+        }
+
+        pub fn translate(self, dx: f64, dy: f64) -> Point {
+            Point::new(self.x + dx, self.y + dy)
+        }
+
+        pub fn midpoint(self, other: Point) -> Point {
+            Point::new((self.x + other.x) / 2.0, (self.y + other.y) / 2.0)
+        }
+    }
+  src/geometry.rs: |
+    use crate::point::Point;
+
+    pub fn calculate_area(p1: Point, p2: Point, p3: Point) -> f64 {
+        let a = p1.distance(p2);
+        let b = p2.distance(p3);
+        let c = p3.distance(p1);
+        let s = (a + b + c) / 2.0;
+        (s * (s - a) * (s - b) * (s - c)).sqrt()
+    }
+
+    pub fn centroid(p1: Point, p2: Point, p3: Point) -> Point {
+        Point::new(
+            (p1.x() + p2.x() + p3.x()) / 3.0,
+            (p1.y() + p2.y() + p3.y()) / 3.0,
+        )
+    }
+  src/color.rs: |
+    #[derive(Debug, Clone, Copy, PartialEq)]
+    pub struct Color {
+        pub r: u8,
+        pub g: u8,
+        pub b: u8,
+        pub a: u8,
+    }
+
+    impl Color {
+        pub fn new(r: u8, g: u8, b: u8, a: u8) -> Self {
+            Self { r, g, b, a }
+        }
+
+        pub fn white() -> Self {
+            Self::new(255, 255, 255, 255)
+        }
+
+        pub fn black() -> Self {
+            Self::new(0, 0, 0, 255)
+        }
+
+        pub fn blend(self, other: Color, factor: f32) -> Color {
+            let inv = 1.0 - factor;
+            Color::new(
+                (self.r as f32 * inv + other.r as f32 * factor) as u8,
+                (self.g as f32 * inv + other.g as f32 * factor) as u8,
+                (self.b as f32 * inv + other.b as f32 * factor) as u8,
+                (self.a as f32 * inv + other.a as f32 * factor) as u8,
+            )
+        }
+    }
+  src/matrix.rs: |
+    #[derive(Debug, Clone, Copy)]
+    pub struct Matrix2D {
+        data: [[f64; 3]; 3],
+    }
+
+    impl Matrix2D {
+        pub fn identity() -> Self {
+            Self {
+                data: [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
+            }
+        }
+
+        pub fn translation(tx: f64, ty: f64) -> Self {
+            let mut m = Self::identity();
+            m.data[0][2] = tx;
+            m.data[1][2] = ty;
+            m
+        }
+
+        pub fn rotation(angle_rad: f64) -> Self {
+            let c = angle_rad.cos();
+            let s = angle_rad.sin();
+            Self {
+                data: [[c, -s, 0.0], [s, c, 0.0], [0.0, 0.0, 1.0]],
+            }
+        }
+
+        pub fn multiply(self, other: Matrix2D) -> Matrix2D {
+            let mut result = Self::identity();
+            for i in 0..3 {
+                for j in 0..3 {
+                    result.data[i][j] = (0..3).map(|k| self.data[i][k] * other.data[k][j]).sum();
+                }
+            }
+            result
+        }
+    }
+
+must_include_files:
+  # Changed: Point gains Copy, method signatures change to by-value
+  - src/point.rs
+  # New: geometry functions that rely on Point being Copy
+  - src/geometry.rs
+  # Changed: lib.rs adds pub mod geometry
+  - src/lib.rs
+must_include_content_from:
+  src/point.rs:
+    - "#[derive(Debug, Clone, Copy)]"
+    - "pub fn distance(self, other: Point) -> f64 {"
+  src/geometry.rs:
+    - "use crate::point::Point;"
+    - "pub fn calculate_area(p1: Point, p2: Point, p3: Point) -> f64 {"
+must_not_include:
+  # color.rs: also derives Copy but independent type, no Point usage
+  - "struct Color"
+  - blend
+  - white
+  # matrix.rs: geometry vocabulary but its own Matrix2D type
+  - Matrix2D
+  - rotation
+  - multiply
+must_not_include_files:
+  - src/color.rs
+  - src/matrix.rs
+max_fragments: 8
+max_files: 4
+add_garbage_files: false
+skip_garbage_check: true

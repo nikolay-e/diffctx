@@ -1,0 +1,166 @@
+# Scenario: main.ts is rewritten to import handlers from handler.ts and call
+#   a method via bracket notation handlers[name]. Only main.ts is changed.
+#
+# Diff shows:
+#   - console.log('initial');
+#   + import { handlers } from './handler';
+#   + function callHandler(name: string) { const method = handlers[name as keyof typeof handlers]; ... }
+#
+# Reviewer questions:
+#   Q1: "What handler methods are available — is 'onClick' a valid key?"
+#       -> handler.ts (UNCHANGED) exports handlers with onClick, onHover,
+#          onFocus. Reviewer must see the object to verify valid keys.
+#
+#   Q2: "What does each handler do — are there side effects?"
+#       -> Same file: each handler just console.logs. Reviewer needs
+#          the implementations to assess safety.
+#
+# Not needed for comprehension:
+#   - event-dispatcher.ts: Event system that also dispatches by string name.
+#     KEYWORD OVERLAP: dispatches handlers by name like bracket notation.
+#     But uses addEventListener/removeEventListener pattern, not imported.
+#
+#   - handler.test.ts: Tests for the handlers object. Imports handlers,
+#     calls handlers.onClick(). DIRECT EDGE: tests the same object.
+#     But test assertions don't help review the bracket-notation access.
+
+initial:
+  handler.ts: |
+    export const handlers = {
+        onClick: () => console.log('clicked'),
+        onHover: () => console.log('hovered'),
+        onFocus: () => console.log('focused'),
+    };
+  main.ts: |
+    console.log('initial');
+  event-dispatcher.ts: |
+    type EventCallback = (...args: unknown[]) => void;
+
+    export class EventDispatcher {
+        private listeners = new Map<string, Set<EventCallback>>();
+
+        addEventListener(event: string, callback: EventCallback): void {
+            if (!this.listeners.has(event)) this.listeners.set(event, new Set());
+            this.listeners.get(event)!.add(callback);
+        }
+
+        removeEventListener(event: string, callback: EventCallback): void {
+            this.listeners.get(event)?.delete(callback);
+        }
+
+        dispatch(event: string, ...args: unknown[]): void {
+            this.listeners.get(event)?.forEach(cb => cb(...args));
+        }
+    }
+  handler.test.ts: |
+    import { handlers } from './handler';
+
+    describe('handlers', () => {
+        it('should have onClick handler', () => {
+            const spy = jest.spyOn(console, 'log');
+            handlers.onClick();
+            expect(spy).toHaveBeenCalledWith('clicked');
+            spy.mockRestore();
+        });
+
+        it('should have onHover handler', () => {
+            const spy = jest.spyOn(console, 'log');
+            handlers.onHover();
+            expect(spy).toHaveBeenCalledWith('hovered');
+            spy.mockRestore();
+        });
+    });
+
+changed:
+  handler.ts: |
+    export const handlers = {
+        onClick: () => console.log('clicked'),
+        onHover: () => console.log('hovered'),
+        onFocus: () => console.log('focused'),
+    };
+  main.ts: |
+    import { handlers } from './handler';
+
+    function callHandler(name: string) {
+        const method = handlers[name as keyof typeof handlers];
+        if (method) {
+            method();
+        }
+    }
+
+    callHandler('onClick');
+  event-dispatcher.ts: |
+    type EventCallback = (...args: unknown[]) => void;
+
+    export class EventDispatcher {
+        private listeners = new Map<string, Set<EventCallback>>();
+
+        addEventListener(event: string, callback: EventCallback): void {
+            if (!this.listeners.has(event)) this.listeners.set(event, new Set());
+            this.listeners.get(event)!.add(callback);
+        }
+
+        removeEventListener(event: string, callback: EventCallback): void {
+            this.listeners.get(event)?.delete(callback);
+        }
+
+        dispatch(event: string, ...args: unknown[]): void {
+            this.listeners.get(event)?.forEach(cb => cb(...args));
+        }
+    }
+  handler.test.ts: |
+    import { handlers } from './handler';
+
+    describe('handlers', () => {
+        it('should have onClick handler', () => {
+            const spy = jest.spyOn(console, 'log');
+            handlers.onClick();
+            expect(spy).toHaveBeenCalledWith('clicked');
+            spy.mockRestore();
+        });
+
+        it('should have onHover handler', () => {
+            const spy = jest.spyOn(console, 'log');
+            handlers.onHover();
+            expect(spy).toHaveBeenCalledWith('hovered');
+            spy.mockRestore();
+        });
+    });
+
+must_include_files:
+  - main.ts
+  # Q1+Q2: handlers object defines the valid keys and their implementations
+  - handler.ts
+
+must_include_content_from:
+  main.ts:
+    - "import { handlers } from './handler'"
+    - "handlers[name as keyof typeof handlers]"
+  handler.ts:
+    - "onClick: () =>"
+    - "onHover: () =>"
+    - "onFocus: () =>"
+
+must_not_include:
+  # --- event-dispatcher.ts: string-based event dispatch ---
+  # KEYWORD OVERLAP: dispatches by string name like bracket notation.
+  # Different pattern (addEventListener), not imported by main.ts.
+  - EventDispatcher
+  - addEventListener
+  - removeEventListener
+  - "dispatch(event"
+  # --- handler.test.ts: tests the same handlers object ---
+  # DIRECT EDGE: imports and calls handlers. But test assertions
+  # don't help review bracket-notation access in main.ts.
+  - "describe('handlers'"
+  - "jest.spyOn"
+  - "toHaveBeenCalledWith"
+
+must_not_include_files:
+  - event-dispatcher.ts
+  - handler.test.ts
+
+max_fragments: 5
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

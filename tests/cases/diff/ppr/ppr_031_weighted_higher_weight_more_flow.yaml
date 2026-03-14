@@ -1,0 +1,146 @@
+initial:
+  source.py: |
+    from high_weight import high_func
+    from low_weight import low_func
+
+    def source_func():
+        high_func()
+        high_func()
+        high_func()
+        high_func()
+        high_func()
+        low_func()
+  high_weight.py: |
+    def high_func():
+        return "high"
+  low_weight.py: |
+    def low_func():
+        return "low"
+
+  # --- Tricky garbage: imports same high_func and low_func ---
+  garbage_weight_consumer.py: |
+    from high_weight import high_func
+    from low_weight import low_func
+    GARBAGE_PPR031_CONSUMER_A = "weight_consumer"
+    GARBAGE_PPR031_CONSUMER_B = True
+
+    def weight_consumer():
+        high_func()
+        low_func()
+
+    class WeightAnalyzer:
+        GARBAGE_PPR031_ANALYZER_C = 99
+
+        def analyze(self):
+            return high_func()
+
+  # --- Tricky garbage: same source_func name ---
+  garbage_source_mirror.py: |
+    GARBAGE_PPR031_MIRROR_D = "source_mirror"
+    GARBAGE_PPR031_MIRROR_E = False
+
+    def source_func():
+        return "unrelated_source"
+
+    def source_helper():
+        GARBAGE_PPR031_HELPER_F = 42
+        return source_func()
+
+  # --- Tricky garbage: uses "modified" like the diff ---
+  garbage_modified_output.py: |
+    GARBAGE_PPR031_OUTPUT_G = "modified_output"
+    GARBAGE_PPR031_OUTPUT_H = 0
+
+    def get_modified():
+        return "modified"
+
+    def apply_modification():
+        return "modified"
+
+changed:
+  source.py: |
+    from high_weight import high_func
+    from low_weight import low_func
+
+    def source_func():
+        high_func()
+        high_func()
+        high_func()
+        high_func()
+        high_func()
+        low_func()
+        return "modified"
+  high_weight.py: |
+    def high_func():
+        return "high"
+  low_weight.py: |
+    def low_func():
+        return "low"
+  garbage_weight_consumer.py: |
+    from high_weight import high_func
+    from low_weight import low_func
+    GARBAGE_PPR031_CONSUMER_A = "weight_consumer"
+    GARBAGE_PPR031_CONSUMER_B = True
+
+    def weight_consumer():
+        high_func()
+        low_func()
+
+    class WeightAnalyzer:
+        GARBAGE_PPR031_ANALYZER_C = 99
+
+        def analyze(self):
+            return high_func()
+  garbage_source_mirror.py: |
+    GARBAGE_PPR031_MIRROR_D = "source_mirror"
+    GARBAGE_PPR031_MIRROR_E = False
+
+    def source_func():
+        return "unrelated_source"
+
+    def source_helper():
+        GARBAGE_PPR031_HELPER_F = 42
+        return source_func()
+  garbage_modified_output.py: |
+    GARBAGE_PPR031_OUTPUT_G = "modified_output"
+    GARBAGE_PPR031_OUTPUT_H = 0
+
+    def get_modified():
+        return "modified"
+
+    def apply_modification():
+        return "modified"
+
+# === Assertions ===
+
+must_include_files:
+- source.py
+
+must_include_content_from:
+  source.py:
+    - 'def source_func():'
+    - return "modified"
+    - high_func()
+
+must_not_include:
+# Tricky: imports same high_func and low_func
+- GARBAGE_PPR031_CONSUMER_A
+- GARBAGE_PPR031_CONSUMER_B
+- GARBAGE_PPR031_ANALYZER_C
+# Tricky: same source_func name
+- GARBAGE_PPR031_MIRROR_D
+- GARBAGE_PPR031_MIRROR_E
+- GARBAGE_PPR031_HELPER_F
+# Tricky: uses "modified" string
+- GARBAGE_PPR031_OUTPUT_G
+- GARBAGE_PPR031_OUTPUT_H
+
+must_not_include_files:
+- garbage_weight_consumer.py
+- garbage_source_mirror.py
+- garbage_modified_output.py
+
+max_fragments: 5
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

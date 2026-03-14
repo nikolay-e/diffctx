@@ -1,0 +1,146 @@
+# Scenario: New file creates DTOs using Pick/Omit/Partial/Readonly on imported models.
+#
+# Diff: dtos.ts imports User and Product from models.ts and derives UserDTO,
+# CreateUserDTO, UpdateUserDTO, ProductPreview using built-in utility types.
+#
+# Reviewer questions:
+#   Q1: "What fields does Omit<User, 'password'> drop?" -> models.ts (UNCHANGED)
+#        shows User has id, name, email, password, createdAt, updatedAt.
+#        Without seeing the full interface, the reviewer cannot evaluate the DTO.
+#   Q2: "What fields does ProductPreview keep?" -> models.ts shows Product has
+#        id, name, price, description, category, inStock. Pick selects three.
+#
+# Not needed:
+#   - src/types/config.ts: also uses Partial/Pick/Readonly but on AppConfig.
+#     Same utility type pattern, different domain, no import edge.
+#   - src/mappers/user.ts: transforms user data at runtime with functions.
+#     Lexical overlap ("user", "email") but no type-level dependency.
+
+initial:
+  src/models.ts: |
+    export interface User {
+        id: string;
+        name: string;
+        email: string;
+        password: string;
+        createdAt: Date;
+        updatedAt: Date;
+    }
+
+    export interface Product {
+        id: string;
+        name: string;
+        price: number;
+        description: string;
+        category: string;
+        inStock: boolean;
+    }
+  src/dtos.ts: |
+    console.log('initial');
+  src/types/config.ts: |
+    export interface AppConfig {
+        apiUrl: string;
+        timeout: number;
+        retries: number;
+        debug: boolean;
+    }
+
+    export type PartialConfig = Partial<AppConfig>;
+    export type RequiredConfig = Pick<AppConfig, 'apiUrl' | 'timeout'>;
+  src/mappers/user.ts: |
+    interface UserInput {
+        name: string;
+        email: string;
+        password: string;
+    }
+
+    export function toUserOutput(input: UserInput & { id: string }) {
+        return {
+            id: input.id,
+            name: input.name,
+            email: input.email,
+            displayName: input.name.split(' ')[0],
+        };
+    }
+
+changed:
+  src/models.ts: |
+    export interface User {
+        id: string;
+        name: string;
+        email: string;
+        password: string;
+        createdAt: Date;
+        updatedAt: Date;
+    }
+
+    export interface Product {
+        id: string;
+        name: string;
+        price: number;
+        description: string;
+        category: string;
+        inStock: boolean;
+    }
+  src/dtos.ts: |
+    import { User, Product } from './models';
+
+    export type UserDTO = Omit<User, 'password'>;
+
+    export type CreateUserDTO = Pick<User, 'name' | 'email' | 'password'>;
+
+    export type UpdateUserDTO = Partial<Pick<User, 'name' | 'email'>>;
+
+    export type UserResponse = Readonly<UserDTO>;
+
+    export type ProductPreview = Pick<Product, 'id' | 'name' | 'price'>;
+
+    export type ProductUpdate = Partial<Omit<Product, 'id'>>;
+  src/types/config.ts: |
+    export interface AppConfig {
+        apiUrl: string;
+        timeout: number;
+        retries: number;
+        debug: boolean;
+    }
+
+    export type PartialConfig = Partial<AppConfig>;
+    export type RequiredConfig = Pick<AppConfig, 'apiUrl' | 'timeout'>;
+  src/mappers/user.ts: |
+    interface UserInput {
+        name: string;
+        email: string;
+        password: string;
+    }
+
+    export function toUserOutput(input: UserInput & { id: string }) {
+        return {
+            id: input.id,
+            name: input.name,
+            email: input.email,
+            displayName: input.name.split(' ')[0],
+        };
+    }
+
+must_include_files:
+  # Q1+Q2: models.ts defines User and Product — reviewer needs full field lists
+  - src/models.ts
+must_include_content_from:
+  src/models.ts:
+    - "interface User {"
+    - "password: string"
+    - "interface Product {"
+must_not_include:
+  # config.ts: utility types on AppConfig, no import edge from dtos.ts
+  - AppConfig
+  - PartialConfig
+  # user.ts: runtime mapper, lexical overlap but no dependency
+  - toUserOutput
+  - displayName
+must_not_include_files:
+  - src/types/config.ts
+  - src/mappers/user.ts
+max_fragments: 5
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

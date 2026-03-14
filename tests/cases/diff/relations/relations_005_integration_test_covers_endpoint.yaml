@@ -1,0 +1,134 @@
+# Test: list_users() gains pagination — integration test must be pulled
+#
+# Scenario: api/users.py changes list_users() to accept page/limit parameters
+# and return paginated results. tests/integration/test_api.py (UNCHANGED) imports
+# and tests list_users — reviewer needs to verify existing assertions.
+#
+# Reviewer questions:
+#   Q1: "Does the existing test pass page/limit or use defaults?"
+#       -> tests/integration/test_api.py (UNCHANGED) calls list_users() without
+#          args, relying on default page=1, limit=10.
+#   Q2: "Will the slicing logic return the same result for the single-item list?"
+#       -> list_users returns users[0:10] by default, which includes the one Alice.
+#
+# Trap files (plausible but unrelated):
+#   - api/products.py: another API endpoint module — same api/ directory but
+#     list_users doesn't reference products.
+#   - utils/pagination_helper.py: pagination utility — api/users.py implements
+#     its own slicing logic inline, doesn't use this helper.
+
+initial:
+  api/users.py: |
+    def list_users():
+        return [{"id": 1, "name": "Alice"}]
+  tests/integration/test_api.py: |
+    from api.users import list_users
+
+    def test_list_users_endpoint():
+        users = list_users()
+        assert len(users) == 1
+        assert users[0]["name"] == "Alice"
+  api/products.py: |
+    def list_products(category=None):
+        products = [
+            {"id": 1, "name": "Widget", "category": "tools", "price": 9.99},
+            {"id": 2, "name": "Gadget", "category": "electronics", "price": 29.99},
+        ]
+        if category:
+            return [p for p in products if p["category"] == category]
+        return products
+
+    def get_product(product_id):
+        products = list_products()
+        for p in products:
+            if p["id"] == product_id:
+                return p
+        return None
+  utils/pagination_helper.py: |
+    def paginate(items, page=1, per_page=20):
+        start = (page - 1) * per_page
+        end = start + per_page
+        return {
+            "items": items[start:end],
+            "page": page,
+            "per_page": per_page,
+            "total": len(items),
+            "total_pages": (len(items) + per_page - 1) // per_page,
+        }
+
+    def get_page_info(total, page, per_page):
+        return {
+            "has_next": page * per_page < total,
+            "has_prev": page > 1,
+        }
+changed:
+  api/users.py: |
+    def list_users(page=1, limit=10):
+        users = [{"id": 1, "name": "Alice"}]
+        return users[(page-1)*limit:page*limit]
+  tests/integration/test_api.py: |
+    from api.users import list_users
+
+    def test_list_users_endpoint():
+        users = list_users()
+        assert len(users) == 1
+        assert users[0]["name"] == "Alice"
+  api/products.py: |
+    def list_products(category=None):
+        products = [
+            {"id": 1, "name": "Widget", "category": "tools", "price": 9.99},
+            {"id": 2, "name": "Gadget", "category": "electronics", "price": 29.99},
+        ]
+        if category:
+            return [p for p in products if p["category"] == category]
+        return products
+
+    def get_product(product_id):
+        products = list_products()
+        for p in products:
+            if p["id"] == product_id:
+                return p
+        return None
+  utils/pagination_helper.py: |
+    def paginate(items, page=1, per_page=20):
+        start = (page - 1) * per_page
+        end = start + per_page
+        return {
+            "items": items[start:end],
+            "page": page,
+            "per_page": per_page,
+            "total": len(items),
+            "total_pages": (len(items) + per_page - 1) // per_page,
+        }
+
+    def get_page_info(total, page, per_page):
+        return {
+            "has_next": page * per_page < total,
+            "has_prev": page > 1,
+        }
+must_include_files:
+  - api/users.py
+  # Q1/Q2: integration test imports list_users — verify backward compatibility
+  - tests/integration/test_api.py
+must_include_content_from:
+  api/users.py:
+    - "def list_users(page=1, limit=10):"
+    - "return users[(page-1)*limit:page*limit]"
+  tests/integration/test_api.py:
+    - "from api.users import list_users"
+must_not_include:
+  # api/products.py: different API endpoint — no dependency from users.py
+  - list_products
+  - get_product
+  - Widget
+  # utils/pagination_helper.py: pagination helper — users.py has inline slicing
+  - paginate
+  - get_page_info
+  - total_pages
+must_not_include_files:
+  - api/products.py
+  - utils/pagination_helper.py
+max_fragments: 5
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

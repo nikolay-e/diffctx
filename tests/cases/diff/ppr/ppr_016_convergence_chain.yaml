@@ -1,0 +1,145 @@
+# Scenario: func_a() changes return value from 1 to 42. b.py imports func_a,
+#   c.py imports func_b — a three-file dependency chain. Only a.py is changed.
+#
+# Diff shows:
+#   - return 1
+#   + return 42
+#
+# Reviewer questions:
+#   Q1: "Does func_b() use func_a()'s return value or just call for side effects?"
+#       -> func_b() calls func_a() but ignores the return value. The change
+#         from 1 to 42 doesn't affect func_b()'s behavior.
+#
+# Not needed for comprehension:
+#   - alt_a.py: Defines its own func_a() returning a string. Name collision.
+#     Also has AWrapper that calls func_a(). But different module — not the
+#     func_a that b.py imports.
+#
+#   - chain_utils.py: Parallel chain structure (func_x -> func_y -> func_z).
+#     HARD TRAP: structurally identical chain pattern, similar naming. But
+#     completely independent functions with no import relationship.
+#
+#   - task_runner.py: Unrelated infrastructure module.
+
+initial:
+  a.py: |
+    def func_a():
+        return 1
+  b.py: |
+    from a import func_a
+
+    def func_b():
+        func_a()
+        return 2
+  c.py: |
+    from b import func_b
+
+    def func_c():
+        func_b()
+        return 3
+  alt_a.py: |
+    def func_a():
+        return "different_implementation"
+
+    class AWrapper:
+        def call_a(self):
+            return func_a()
+  chain_utils.py: |
+    def func_x():
+        return 10
+
+    def func_y():
+        return func_x() + 1
+
+    def func_z():
+        return func_y() + 1
+
+    class ChainProcessor:
+        def run(self):
+            return func_z()
+  task_runner.py: |
+    INTERVAL = 60
+    IS_ACTIVE = True
+
+    class TaskRunner:
+        def schedule(self, task):
+            pass
+
+changed:
+  a.py: |
+    def func_a():
+        return 42
+  b.py: |
+    from a import func_a
+
+    def func_b():
+        func_a()
+        return 2
+  c.py: |
+    from b import func_b
+
+    def func_c():
+        func_b()
+        return 3
+  alt_a.py: |
+    def func_a():
+        return "different_implementation"
+
+    class AWrapper:
+        def call_a(self):
+            return func_a()
+  chain_utils.py: |
+    def func_x():
+        return 10
+
+    def func_y():
+        return func_x() + 1
+
+    def func_z():
+        return func_y() + 1
+
+    class ChainProcessor:
+        def run(self):
+            return func_z()
+  task_runner.py: |
+    INTERVAL = 60
+    IS_ACTIVE = True
+
+    class TaskRunner:
+        def schedule(self, task):
+            pass
+
+must_include:
+  - func_a
+  - return 42
+
+must_include_files:
+  - a.py
+
+must_include_content_from:
+  a.py:
+    - "def func_a():"
+    - "return 42"
+
+must_not_include:
+  # --- alt_a.py: defines func_a() — name collision ---
+  - AWrapper
+  - different_implementation
+  # --- chain_utils.py: parallel chain structure, same pattern ---
+  - ChainProcessor
+  - func_x
+  - func_y
+  - func_z
+  # --- task_runner.py: unrelated ---
+  - TaskRunner
+  - INTERVAL
+
+must_not_include_files:
+  - alt_a.py
+  - chain_utils.py
+  - task_runner.py
+
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

@@ -1,0 +1,190 @@
+# Reviewer sees: service.test.ts mocks api.ts and tests getUserDisplayName
+# and getUserEmail from service.ts.
+# Q1: "What does service.ts do with fetchUser results?"
+#     -> src/service.ts: getUserDisplayName formats `name (role)`,
+#        getUserEmail returns user.email. Mock return values must
+#        match the fields the service reads.
+# Q2: "What is fetchUser's return type?"
+#     -> src/api.ts: UserResponse with id, name, email, role. Mock's
+#        mockResolvedValue must match this shape.
+#
+# Not needed:
+#   - src/unrelated/storage.ts: local storage adapter. Different
+#     infrastructure concern (persistence vs API calls).
+#   - src/unrelated/notifications.ts: notification dispatch. Different
+#     domain (notifications vs user data retrieval).
+
+initial:
+  src/api.ts: |
+    export interface UserResponse {
+        id: string;
+        name: string;
+        email: string;
+        role: string;
+    }
+
+    export async function fetchUser(id: string): Promise<UserResponse> {
+        const response = await fetch(`/api/users/${id}`);
+        if (!response.ok) {
+            throw new Error(`User not found: ${id}`);
+        }
+        return response.json();
+    }
+
+    export async function fetchUsers(): Promise<UserResponse[]> {
+        const response = await fetch('/api/users');
+        return response.json();
+    }
+  src/service.ts: |
+    import { fetchUser } from './api';
+
+    export async function getUserDisplayName(id: string): Promise<string> {
+        const user = await fetchUser(id);
+        return `${user.name} (${user.role})`;
+    }
+
+    export async function getUserEmail(id: string): Promise<string> {
+        const user = await fetchUser(id);
+        return user.email;
+    }
+  src/service.test.ts: |
+    console.log('placeholder');
+  src/unrelated/storage.ts: |
+    export class StorageAdapter {
+        private data: Record<string, string> = {};
+
+        save(key: string, value: string): void {
+            this.data[key] = value;
+        }
+
+        load(key: string): string | undefined {
+            return this.data[key];
+        }
+    }
+
+    export function syncStorage(): void {
+        console.log('syncing storage');
+    }
+  src/unrelated/notifications.ts: |
+    export class Notifier {
+        send(message: string): void {
+            console.log('notification:', message);
+        }
+    }
+
+    export function dispatchNotification(userId: string, text: string): void {
+        console.log('dispatching to', userId, text);
+    }
+changed:
+  src/api.ts: |
+    export interface UserResponse {
+        id: string;
+        name: string;
+        email: string;
+        role: string;
+    }
+
+    export async function fetchUser(id: string): Promise<UserResponse> {
+        const response = await fetch(`/api/users/${id}`);
+        if (!response.ok) {
+            throw new Error(`User not found: ${id}`);
+        }
+        return response.json();
+    }
+
+    export async function fetchUsers(): Promise<UserResponse[]> {
+        const response = await fetch('/api/users');
+        return response.json();
+    }
+  src/service.ts: |
+    import { fetchUser } from './api';
+
+    export async function getUserDisplayName(id: string): Promise<string> {
+        const user = await fetchUser(id);
+        return `${user.name} (${user.role})`;
+    }
+
+    export async function getUserEmail(id: string): Promise<string> {
+        const user = await fetchUser(id);
+        return user.email;
+    }
+  src/service.test.ts: |
+    import { getUserDisplayName, getUserEmail } from './service';
+    import { fetchUser } from './api';
+
+    jest.mock('./api');
+
+    const mockedFetchUser = fetchUser as jest.MockedFunction<typeof fetchUser>;
+
+    describe('UserService', () => {
+        beforeEach(() => {
+            mockedFetchUser.mockReset();
+        });
+
+        it('should return display name with role', async () => {
+            mockedFetchUser.mockResolvedValue({
+                id: '1', name: 'Alice', email: 'alice@test.com', role: 'admin',
+            });
+            const name = await getUserDisplayName('1');
+            expect(name).toBe('Alice (admin)');
+        });
+
+        it('should return user email', async () => {
+            mockedFetchUser.mockResolvedValue({
+                id: '2', name: 'Bob', email: 'bob@test.com', role: 'user',
+            });
+            const email = await getUserEmail('2');
+            expect(email).toBe('bob@test.com');
+        });
+    });
+  src/unrelated/storage.ts: |
+    export class StorageAdapter {
+        private data: Record<string, string> = {};
+
+        save(key: string, value: string): void {
+            this.data[key] = value;
+        }
+
+        load(key: string): string | undefined {
+            return this.data[key];
+        }
+    }
+
+    export function syncStorage(): void {
+        console.log('syncing storage');
+    }
+  src/unrelated/notifications.ts: |
+    export class Notifier {
+        send(message: string): void {
+            console.log('notification:', message);
+        }
+    }
+
+    export function dispatchNotification(userId: string, text: string): void {
+        console.log('dispatching to', userId, text);
+    }
+must_include_files:
+  # Unchanged — the service layer that the test exercises. Reviewer
+  # needs to see how getUserDisplayName formats the response.
+  - src/service.ts
+  # Unchanged — the API module being mocked. Reviewer needs to see
+  # UserResponse shape to verify mock return values are correct.
+  - src/api.ts
+must_include_content_from:
+  src/service.ts:
+    - "getUserDisplayName"
+    - "user.name"
+  src/api.ts:
+    - "UserResponse"
+    - "fetchUser"
+must_not_include:
+  # storage.ts: persistence layer, unrelated to API mocking
+  - StorageAdapter
+  - syncStorage
+  # notifications.ts: notification dispatch, different domain
+  - Notifier
+  - dispatchNotification
+max_fragments: 6
+max_files: 4
+add_garbage_files: false
+skip_garbage_check: true

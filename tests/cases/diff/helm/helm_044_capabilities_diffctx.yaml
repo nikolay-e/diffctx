@@ -1,6 +1,0 @@
-must_include_files:
-- templates/ingress.yaml
-must_include_content:
-- '{{- if .Capabilities.APIVersions.Has "networking.k8s.io/v1" }}'
-must_not_include:
-- unrelated.txt

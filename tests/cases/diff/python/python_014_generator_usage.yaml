@@ -1,0 +1,315 @@
+# Scenario: DataProcessor starts using data_batches generator from batching module
+# Changed: processor.py imports data_batches, BatchProcessor, get_batch_stats for batch processing
+# Reviewer questions: Does process_with_generator yield correctly? Is batch_size config respected?
+# Trap 1: paginator.py — pagination with similar chunk/page patterns but no dep on batching
+# Trap 2: stream_reader.py — streaming data reader with yield, shares "iterator" vocabulary but independent
+initial:
+  batching.py: |
+    from typing import List, TypeVar, Iterator, Optional, Callable, Any
+    from dataclasses import dataclass
+    import logging
+
+    logger = logging.getLogger(__name__)
+    T = TypeVar('T')
+
+    @dataclass
+    class BatchStats:
+        total_items: int
+        batch_count: int
+        avg_batch_size: float
+
+    class BatchingError(Exception):
+        pass
+
+    def data_batches(records: List[T], batch_size: int = 100) -> Iterator[List[T]]:
+        if batch_size <= 0:
+            raise BatchingError("Batch size must be positive")
+        for i in range(0, len(records), batch_size):
+            batch = records[i:i + batch_size]
+            yield batch
+
+    def enumerated_batches(records: List[T], batch_size: int = 100) -> Iterator[tuple]:
+        for idx, batch in enumerate(data_batches(records, batch_size)):
+            yield idx, batch
+
+    def filtered_batches(records: List[T], batch_size: int = 100, predicate: Optional[Callable[[T], bool]] = None) -> Iterator[List[T]]:
+        if predicate is None:
+            yield from data_batches(records, batch_size)
+        else:
+            filtered = [r for r in records if predicate(r)]
+            yield from data_batches(filtered, batch_size)
+
+    def get_batch_stats(records: List[Any], batch_size: int = 100) -> BatchStats:
+        total = len(records)
+        batch_count = (total + batch_size - 1) // batch_size
+        avg_size = total / batch_count if batch_count > 0 else 0
+        return BatchStats(total_items=total, batch_count=batch_count, avg_batch_size=avg_size)
+
+    class BatchProcessor:
+        def __init__(self, batch_size: int = 100):
+            self.batch_size = batch_size
+            self._processed_batches = 0
+
+        def process_in_batches(self, records: List[T], processor: Callable[[List[T]], List[Any]]) -> Iterator[Any]:
+            for batch in data_batches(records, self.batch_size):
+                results = processor(batch)
+                self._processed_batches += 1
+                yield from results
+
+        def get_processed_count(self) -> int:
+            return self._processed_batches
+  processor.py: |
+    from typing import List, Any, Optional, Callable
+    from dataclasses import dataclass
+
+    @dataclass
+    class ProcessorConfig:
+        batch_size: int = 100
+        max_retries: int = 3
+
+    class DataProcessor:
+        def __init__(self, config: ProcessorConfig):
+            self.config = config
+            self._results: List[Any] = []
+
+        def process_all(self) -> List[Any]:
+            return []
+
+        def transform(self, item: Any) -> Any:
+            return item
+  paginator.py: |
+    from typing import List, Any, Optional, TypeVar, Generic
+    from dataclasses import dataclass
+
+    T = TypeVar('T')
+
+    @dataclass
+    class Page(Generic[T]):
+        items: List[T]
+        page_number: int
+        page_size: int
+        total_items: int
+
+        @property
+        def total_pages(self) -> int:
+            return (self.total_items + self.page_size - 1) // self.page_size
+
+        @property
+        def has_next(self) -> bool:
+            return self.page_number < self.total_pages
+
+    class Paginator(Generic[T]):
+        def __init__(self, items: List[T], page_size: int = 20):
+            self._items = items
+            self._page_size = page_size
+
+        def get_page(self, page_number: int) -> Page[T]:
+            start = (page_number - 1) * self._page_size
+            end = start + self._page_size
+            return Page(
+                items=self._items[start:end],
+                page_number=page_number,
+                page_size=self._page_size,
+                total_items=len(self._items),
+            )
+
+        def iter_pages(self):
+            for i in range(1, self.get_page(1).total_pages + 1):
+                yield self.get_page(i)
+  stream_reader.py: |
+    from typing import Iterator, Optional, Any
+    from dataclasses import dataclass
+
+    @dataclass
+    class StreamConfig:
+        buffer_size: int = 8192
+        max_records: Optional[int] = None
+
+    class StreamReader:
+        def __init__(self, config: StreamConfig):
+            self._config = config
+            self._records_read = 0
+
+        def read_records(self, data: list) -> Iterator[Any]:
+            for item in data:
+                if self._config.max_records and self._records_read >= self._config.max_records:
+                    break
+                self._records_read += 1
+                yield item
+
+        def get_records_read(self) -> int:
+            return self._records_read
+changed:
+  batching.py: |
+    from typing import List, TypeVar, Iterator, Optional, Callable, Any
+    from dataclasses import dataclass
+    import logging
+
+    logger = logging.getLogger(__name__)
+    T = TypeVar('T')
+
+    @dataclass
+    class BatchStats:
+        total_items: int
+        batch_count: int
+        avg_batch_size: float
+
+    class BatchingError(Exception):
+        pass
+
+    def data_batches(records: List[T], batch_size: int = 100) -> Iterator[List[T]]:
+        if batch_size <= 0:
+            raise BatchingError("Batch size must be positive")
+        for i in range(0, len(records), batch_size):
+            batch = records[i:i + batch_size]
+            yield batch
+
+    def enumerated_batches(records: List[T], batch_size: int = 100) -> Iterator[tuple]:
+        for idx, batch in enumerate(data_batches(records, batch_size)):
+            yield idx, batch
+
+    def filtered_batches(records: List[T], batch_size: int = 100, predicate: Optional[Callable[[T], bool]] = None) -> Iterator[List[T]]:
+        if predicate is None:
+            yield from data_batches(records, batch_size)
+        else:
+            filtered = [r for r in records if predicate(r)]
+            yield from data_batches(filtered, batch_size)
+
+    def get_batch_stats(records: List[Any], batch_size: int = 100) -> BatchStats:
+        total = len(records)
+        batch_count = (total + batch_size - 1) // batch_size
+        avg_size = total / batch_count if batch_count > 0 else 0
+        return BatchStats(total_items=total, batch_count=batch_count, avg_batch_size=avg_size)
+
+    class BatchProcessor:
+        def __init__(self, batch_size: int = 100):
+            self.batch_size = batch_size
+            self._processed_batches = 0
+
+        def process_in_batches(self, records: List[T], processor: Callable[[List[T]], List[Any]]) -> Iterator[Any]:
+            for batch in data_batches(records, self.batch_size):
+                results = processor(batch)
+                self._processed_batches += 1
+                yield from results
+
+        def get_processed_count(self) -> int:
+            return self._processed_batches
+  processor.py: |
+    from typing import List, Any, Optional, Callable, Iterator
+    from dataclasses import dataclass
+    from batching import data_batches, BatchProcessor, BatchStats, get_batch_stats
+
+    @dataclass
+    class ProcessorConfig:
+        batch_size: int = 100
+        max_retries: int = 3
+
+    class DataProcessor:
+        def __init__(self, config: ProcessorConfig):
+            self.config = config
+            self._results: List[Any] = []
+            self._batch_processor = BatchProcessor(config.batch_size)
+
+        def process_all(self, records: List[str]) -> List[str]:
+            results = []
+            for batch in data_batches(records, self.config.batch_size):
+                batch_results = self._process_batch(batch)
+                results.extend(batch_results)
+            return results
+
+        def process_with_generator(self, records: List[str]) -> Iterator[str]:
+            for batch in data_batches(records, self.config.batch_size):
+                for item in self._process_batch(batch):
+                    yield item
+
+        def _process_batch(self, batch: List[str]) -> List[str]:
+            return [self.transform(item) for item in batch]
+
+        def transform(self, item: str) -> str:
+            return item.upper()
+
+        def get_stats(self, records: List[Any]) -> BatchStats:
+            return get_batch_stats(records, self.config.batch_size)
+  paginator.py: |
+    from typing import List, Any, Optional, TypeVar, Generic
+    from dataclasses import dataclass
+
+    T = TypeVar('T')
+
+    @dataclass
+    class Page(Generic[T]):
+        items: List[T]
+        page_number: int
+        page_size: int
+        total_items: int
+
+        @property
+        def total_pages(self) -> int:
+            return (self.total_items + self.page_size - 1) // self.page_size
+
+        @property
+        def has_next(self) -> bool:
+            return self.page_number < self.total_pages
+
+    class Paginator(Generic[T]):
+        def __init__(self, items: List[T], page_size: int = 20):
+            self._items = items
+            self._page_size = page_size
+
+        def get_page(self, page_number: int) -> Page[T]:
+            start = (page_number - 1) * self._page_size
+            end = start + self._page_size
+            return Page(
+                items=self._items[start:end],
+                page_number=page_number,
+                page_size=self._page_size,
+                total_items=len(self._items),
+            )
+
+        def iter_pages(self):
+            for i in range(1, self.get_page(1).total_pages + 1):
+                yield self.get_page(i)
+  stream_reader.py: |
+    from typing import Iterator, Optional, Any
+    from dataclasses import dataclass
+
+    @dataclass
+    class StreamConfig:
+        buffer_size: int = 8192
+        max_records: Optional[int] = None
+
+    class StreamReader:
+        def __init__(self, config: StreamConfig):
+            self._config = config
+            self._records_read = 0
+
+        def read_records(self, data: list) -> Iterator[Any]:
+            for item in data:
+                if self._config.max_records and self._records_read >= self._config.max_records:
+                    break
+                self._records_read += 1
+                yield item
+
+        def get_records_read(self) -> int:
+            return self._records_read
+must_include_files:
+- processor.py
+- batching.py
+must_include_content_from:
+  processor.py:
+  - from batching import data_batches, BatchProcessor, BatchStats, get_batch_stats
+  - self._batch_processor = BatchProcessor(config.batch_size)
+must_not_include:
+- Paginator
+- Page
+- iter_pages
+- StreamReader
+- StreamConfig
+- read_records
+must_not_include_files:
+- paginator.py
+- stream_reader.py
+add_garbage_files: false
+skip_garbage_check: true
+max_fragments: 10
+max_files: 4

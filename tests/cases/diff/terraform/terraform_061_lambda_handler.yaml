@@ -1,0 +1,95 @@
+# Scenario: Upgrading Lambda function configuration - new runtime, more memory,
+#   and renaming the function.
+# Reviewer questions:
+#   1. What does the Lambda handler code look like? (src/api.ts)
+#   2. What IAM role is attached? (iam.tf)
+# Traps:
+#   - worker/lambda.tf: another Lambda function in the same project (same resource type, different function)
+#   - monitoring/alarms.tf: CloudWatch alarm referencing Lambda metrics (mentions Lambda but not relevant)
+
+initial:
+  main.tf: |
+    resource "aws_lambda_function" "api" {
+      filename      = "lambda.zip"
+      function_name = "api-handler"
+      handler       = "src/api.handler"
+      runtime       = "nodejs18.x"
+      role          = aws_iam_role.lambda_exec.arn
+    }
+  src/api.ts: |
+    export const handler = async (event: any) => {
+      return { statusCode: 200, body: JSON.stringify({ ok: true }) };
+    };
+  iam.tf: |
+    resource "aws_iam_role" "lambda_exec" {
+      name = "api-lambda-role"
+      assume_role_policy = jsonencode({
+        Version = "2012-10-17"
+        Statement = [{
+          Action = "sts:AssumeRole"
+          Effect = "Allow"
+          Principal = { Service = "lambda.amazonaws.com" }
+        }]
+      })
+    }
+  worker/lambda.tf: |
+    resource "aws_lambda_function" "worker" {
+      filename      = "worker.zip"
+      function_name = "worker-handler"
+      handler       = "src/worker.handler"
+      runtime       = "nodejs18.x"
+      role          = aws_iam_role.worker_exec.arn
+      timeout       = 300
+    }
+  monitoring/alarms.tf: |
+    resource "aws_cloudwatch_metric_alarm" "lambda_errors" {
+      alarm_name          = "lambda-error-rate"
+      comparison_operator = "GreaterThanThreshold"
+      evaluation_periods  = 2
+      metric_name         = "Errors"
+      namespace           = "AWS/Lambda"
+      period              = 300
+      statistic           = "Sum"
+      threshold           = 5
+    }
+
+changed:
+  main.tf: |
+    resource "aws_lambda_function" "api" {
+      filename      = "lambda.zip"
+      function_name = "api-handler-v2"
+      handler       = "src/api.handler"
+      runtime       = "nodejs20.x"
+      memory_size   = 512
+      role          = aws_iam_role.lambda_exec.arn
+    }
+
+must_include_files:
+  - main.tf
+  - src/api.ts
+  - iam.tf
+
+must_include_content_from:
+  main.tf:
+    - function_name = "api-handler-v2"
+    - runtime       = "nodejs20.x"
+    - memory_size   = 512
+  src/api.ts:
+    - export const handler
+  iam.tf:
+    - resource "aws_iam_role" "lambda_exec" {
+
+must_not_include:
+  # Worker Lambda - same resource type but different function, unrelated to API handler changes
+  - worker-handler
+  # Lambda alarm - mentions Lambda metrics but does not affect the function config change
+  - lambda-error-rate
+
+must_not_include_files:
+  - worker/lambda.tf
+  - monitoring/alarms.tf
+
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

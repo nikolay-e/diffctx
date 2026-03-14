@@ -1,0 +1,334 @@
+# Test: Terraform S3 CORS — adding cross-origin access to a guarded bucket
+#
+# Scenario: A new CORS configuration and its input variable are added to an
+#   existing S3 bucket that already has a deny-unencrypted-transport policy.
+#   Only main.tf is changed.
+#
+# Diff shows:
+#   - NEW variable "allowed_origins" with HTTPS-only regex validation
+#   - NEW resource aws_s3_bucket_cors_configuration "data" referencing
+#     aws_s3_bucket.data.id and var.allowed_origins
+#
+# Reviewer questions:
+#   Q1: "What bucket is getting CORS? What are its properties?"
+#       -> Needs aws_s3_bucket.data in main.tf: the bucket name, tags.
+#
+#   Q2: "What access controls already exist on this bucket?"
+#       -> Needs policy.tf: the deny-unencrypted policy is attached to
+#         the SAME bucket (aws_s3_bucket.data). A reviewer evaluating
+#         the security posture of adding CORS must see what policy
+#         already guards this bucket. Without this, they cannot assess
+#         whether CORS opens a hole in an otherwise locked-down bucket.
+#
+#   Q3: "What exactly does the CORS rule allow?"
+#       -> Answerable directly from the diff: GET/PUT methods, wildcard
+#         headers, origins from var.allowed_origins, 3600s max age.
+#
+# Not needed for comprehension:
+#   - logs/bucket.tf: A DIFFERENT S3 bucket (aws_s3_bucket.logs) with
+#     its own regex validation. Shares the regex() function call and
+#     "aws_s3_bucket" resource type, but targets a completely separate
+#     bucket. Including it would mislead the reviewer into thinking
+#     the log bucket is also getting CORS.
+#
+#   - iam/roles.tf: IAM roles reference aws_s3_bucket.data.arn in their
+#     policy documents. This is the subtlest trap — it structurally
+#     references the SAME bucket being changed. But IAM role definitions
+#     do not help answer any of the three reviewer questions. Knowing
+#     "who can access this bucket" is a valid security question in
+#     general, but it is not what THIS diff changes. The diff adds CORS
+#     (browser-level cross-origin access), not IAM permissions.
+#
+#   - cloudfront/distribution.tf: A CloudFront distribution whose origin
+#     is the same S3 bucket. Shares a structural reference
+#     (aws_s3_bucket.data.bucket_regional_domain_name). But understanding
+#     CDN configuration does not help review a CORS change. CORS headers
+#     and CloudFront origins are different mechanisms. Including this
+#     would flood the reviewer with CDN config when they need to evaluate
+#     allowed_origins validation.
+#
+#   - monitoring/alarms.tf: CloudWatch alarms on S3 metrics. References
+#     the bucket by name variable. Pure operational concern, irrelevant
+#     to CORS review.
+#
+#   - codebuild/project.tf: CI/CD build project. No relationship to
+#     S3 whatsoever.
+
+initial:
+  main.tf: |
+    variable "bucket_name" {
+      type = string
+      validation {
+        condition     = can(regex("^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$", var.bucket_name))
+        error_message = "Bucket name must be valid S3 bucket name."
+      }
+    }
+
+    variable "environment" {
+      type    = string
+      default = "production"
+    }
+
+    resource "aws_s3_bucket" "data" {
+      bucket = var.bucket_name
+      tags = {
+        Name        = var.bucket_name
+        Environment = var.environment
+        ManagedBy   = "terraform"
+      }
+    }
+
+    resource "aws_s3_bucket_versioning" "data" {
+      bucket = aws_s3_bucket.data.id
+      versioning_configuration {
+        status = "Enabled"
+      }
+    }
+
+  policy.tf: |
+    resource "aws_s3_bucket_policy" "data" {
+      bucket = aws_s3_bucket.data.id
+      policy = jsonencode({
+        Version = "2012-10-17"
+        Statement = [{
+          Sid       = "DenyUnencryptedTransport"
+          Effect    = "Deny"
+          Principal = "*"
+          Action    = "s3:*"
+          Resource = [
+            aws_s3_bucket.data.arn,
+            "${aws_s3_bucket.data.arn}/*"
+          ]
+          Condition = {
+            Bool = { "aws:SecureTransport" = "false" }
+          }
+        }]
+      })
+    }
+
+  logs/bucket.tf: |
+    variable "log_bucket_name" {
+      type = string
+      validation {
+        condition     = can(regex("^logs-[a-z0-9-]+$", var.log_bucket_name))
+        error_message = "Log bucket name must start with logs-."
+      }
+    }
+
+    resource "aws_s3_bucket" "logs" {
+      bucket = var.log_bucket_name
+      tags = {
+        Name      = var.log_bucket_name
+        Purpose   = "access-logs"
+        ManagedBy = "terraform"
+      }
+    }
+
+    resource "aws_s3_bucket_lifecycle_configuration" "logs" {
+      bucket = aws_s3_bucket.logs.id
+      rule {
+        id     = "expire-old-logs"
+        status = "Enabled"
+        expiration {
+          days = 90
+        }
+      }
+    }
+
+  iam/roles.tf: |
+    resource "aws_iam_role" "data_reader" {
+      name = "s3-data-reader"
+      assume_role_policy = jsonencode({
+        Version = "2012-10-17"
+        Statement = [{
+          Effect    = "Allow"
+          Principal = { Service = "lambda.amazonaws.com" }
+          Action    = "sts:AssumeRole"
+        }]
+      })
+    }
+
+    resource "aws_iam_role_policy" "data_reader_access" {
+      name = "s3-data-reader-access"
+      role = aws_iam_role.data_reader.id
+      policy = jsonencode({
+        Version = "2012-10-17"
+        Statement = [{
+          Effect   = "Allow"
+          Action   = ["s3:GetObject", "s3:ListBucket"]
+          Resource = [
+            aws_s3_bucket.data.arn,
+            "${aws_s3_bucket.data.arn}/*"
+          ]
+        }]
+      })
+    }
+
+  cloudfront/distribution.tf: |
+    resource "aws_cloudfront_distribution" "cdn" {
+      origin {
+        domain_name = aws_s3_bucket.data.bucket_regional_domain_name
+        origin_id   = "s3-data"
+        s3_origin_config {
+          origin_access_identity = aws_cloudfront_origin_access_identity.oai.cloudfront_access_identity_path
+        }
+      }
+
+      enabled             = true
+      default_root_object = "index.html"
+
+      default_cache_behavior {
+        allowed_methods  = ["GET", "HEAD"]
+        cached_methods   = ["GET", "HEAD"]
+        target_origin_id = "s3-data"
+        viewer_protocol_policy = "redirect-to-https"
+        forwarded_values {
+          query_string = false
+          cookies { forward = "none" }
+        }
+      }
+
+      restrictions {
+        geo_restriction { restriction_type = "none" }
+      }
+
+      viewer_certificate {
+        cloudfront_default_certificate = true
+      }
+    }
+
+  monitoring/alarms.tf: |
+    resource "aws_cloudwatch_metric_alarm" "s3_4xx_errors" {
+      alarm_name          = "${var.bucket_name}-4xx-errors"
+      comparison_operator = "GreaterThanThreshold"
+      evaluation_periods  = 2
+      metric_name         = "4xxErrors"
+      namespace           = "AWS/S3"
+      period              = 300
+      statistic           = "Sum"
+      threshold           = 100
+      alarm_description   = "S3 4xx errors above threshold"
+      dimensions = {
+        BucketName = var.bucket_name
+      }
+    }
+
+  codebuild/project.tf: |
+    resource "aws_codebuild_project" "app" {
+      name         = "app-build"
+      service_role = aws_iam_role.build.arn
+      artifacts {
+        type = "NO_ARTIFACTS"
+      }
+      environment {
+        compute_type = "BUILD_GENERAL1_SMALL"
+        image        = "aws/codebuild/standard:7.0"
+        type         = "LINUX_CONTAINER"
+      }
+      source {
+        type     = "GITHUB"
+        location = "https://github.com/org/repo.git"
+      }
+    }
+
+changed:
+  main.tf: |
+    variable "bucket_name" {
+      type = string
+      validation {
+        condition     = can(regex("^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$", var.bucket_name))
+        error_message = "Bucket name must be valid S3 bucket name."
+      }
+    }
+
+    variable "environment" {
+      type    = string
+      default = "production"
+    }
+
+    variable "allowed_origins" {
+      type        = list(string)
+      default     = []
+      description = "Origins permitted for CORS requests. Must use HTTPS."
+      validation {
+        condition     = alltrue([for origin in var.allowed_origins : can(regex("^https://", origin))])
+        error_message = "All origins must use HTTPS."
+      }
+    }
+
+    resource "aws_s3_bucket" "data" {
+      bucket = var.bucket_name
+      tags = {
+        Name        = var.bucket_name
+        Environment = var.environment
+        ManagedBy   = "terraform"
+      }
+    }
+
+    resource "aws_s3_bucket_versioning" "data" {
+      bucket = aws_s3_bucket.data.id
+      versioning_configuration {
+        status = "Enabled"
+      }
+    }
+
+    resource "aws_s3_bucket_cors_configuration" "data" {
+      bucket = aws_s3_bucket.data.id
+      cors_rule {
+        allowed_headers = ["*"]
+        allowed_methods = ["GET", "PUT"]
+        allowed_origins = var.allowed_origins
+        max_age_seconds = 3600
+      }
+    }
+
+must_include_files:
+  - main.tf
+  # Q2: the deny-unencrypted policy on the SAME bucket. A reviewer must
+  # see this to evaluate the security posture change from adding CORS.
+  - policy.tf
+
+must_include_content_from:
+  main.tf:
+    - variable "allowed_origins" {
+    - 'resource "aws_s3_bucket_cors_configuration" "data"'
+    - 'allowed_methods = ["GET", "PUT"]'
+    - can(regex("^https://", origin))
+  policy.tf:
+    - resource "aws_s3_bucket_policy" "data" {
+    - DenyUnencryptedTransport
+
+must_not_include:
+  # --- logs/bucket.tf: different bucket, not getting CORS ---
+  - log_bucket_name
+  - must start with logs-
+  - expire-old-logs
+  # --- iam/roles.tf: references same bucket, but IAM != CORS ---
+  # This is the hardest trap. It has a real structural edge to
+  # aws_s3_bucket.data, but answering "what IAM roles exist" does
+  # not help review "what CORS origins are allowed."
+  - s3-data-reader
+  - sts:AssumeRole
+  - lambda.amazonaws.com
+  # --- cloudfront/distribution.tf: also references the same bucket ---
+  # CDN origin config is a different access mechanism from CORS.
+  - bucket_regional_domain_name
+  - cloudfront_default_certificate
+  - origin_access_identity
+  # --- monitoring/alarms.tf: operational, not CORS-related ---
+  - 4xxErrors
+  - alarm_description
+  # --- codebuild: CI/CD, no S3 relationship ---
+  - aws_codebuild_project
+
+must_not_include_files:
+  - logs/bucket.tf
+  - iam/roles.tf
+  - cloudfront/distribution.tf
+  - monitoring/alarms.tf
+  - codebuild/project.tf
+
+max_fragments: 5
+max_files: 2
+add_garbage_files: false
+skip_garbage_check: true

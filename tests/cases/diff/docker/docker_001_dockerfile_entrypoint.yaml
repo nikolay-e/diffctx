@@ -1,0 +1,207 @@
+# Test 001: Dockerfile rewritten to multi-stage build — reviewer needs entrypoint and deps
+#
+# Scenario: Dockerfile rewritten from naive single-stage to production multi-stage build.
+# The diff changes the Python base image, adds a builder stage, installs deps in isolation,
+# switches ENTRYPOINT from "python src/main.py" to "python -m src.main", and adds CMD.
+#
+# Reviewer questions:
+#   Q1: "What is src/main.py and does 'python -m src.main' make sense for its structure?"
+#       -> src/main.py has `if __name__ == "__main__": main()` and uses argparse with
+#       subcommands. Reviewer needs this to verify the module invocation is correct.
+#   Q2: "What deps does requirements.txt list — are they compatible with slim images?"
+#       -> requirements.txt has flask, gunicorn, redis, sqlalchemy. Reviewer needs
+#       this to verify `pip install --target=/deps` will work on slim.
+#
+# Not needed:
+#   - scripts/start.sh: shell script that also invokes `python src/main.py` —
+#     lexical overlap with ENTRYPOINT but is a local dev helper, not part of
+#     the Docker build.
+#   - tests/test_main.py: test file in same directory tree — sibling concern
+#     but does not inform Dockerfile review.
+#   - k8s/pod.yaml: references same image and command but is a different
+#     infrastructure layer entirely.
+
+initial:
+  src/main.py: |
+    import os
+    import sys
+    import logging
+
+    logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger(__name__)
+
+    def parse_arguments():
+        return {"mode": os.getenv("APP_MODE", "server")}
+
+    def run_server():
+        logger.info("Starting HTTP server on port 8080")
+
+    def run_worker():
+        logger.info("Starting background worker")
+
+    def main():
+        args = parse_arguments()
+        if args["mode"] == "server":
+            run_server()
+        else:
+            run_worker()
+
+    if __name__ == "__main__":
+        main()
+  src/config.py: |
+    import os
+
+    DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///app.db")
+    REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
+    LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
+  requirements.txt: |
+    flask==2.3.0
+    gunicorn==21.2.0
+    redis==5.0.0
+    sqlalchemy==2.0.0
+  Dockerfile: |
+    FROM python:3.11
+    WORKDIR /app
+    COPY . .
+    ENTRYPOINT ["python", "src/main.py"]
+  scripts/start.sh: |
+    #!/bin/bash
+    python src/main.py
+  tests/test_main.py: |
+    def test_main():
+        pass
+  k8s/pod.yaml: |
+    apiVersion: v1
+    kind: Pod
+    metadata:
+      name: app
+    spec:
+      containers:
+        - name: app
+          image: python:3.11
+          command: ["python", "src/main.py"]
+
+changed:
+  src/main.py: |
+    import os
+    import sys
+    import logging
+
+    logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger(__name__)
+
+    def parse_arguments():
+        return {"mode": os.getenv("APP_MODE", "server")}
+
+    def run_server():
+        logger.info("Starting HTTP server on port 8080")
+
+    def run_worker():
+        logger.info("Starting background worker")
+
+    def main():
+        args = parse_arguments()
+        if args["mode"] == "server":
+            run_server()
+        else:
+            run_worker()
+
+    if __name__ == "__main__":
+        main()
+  src/config.py: |
+    import os
+
+    DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///app.db")
+    REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
+    LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
+  requirements.txt: |
+    flask==2.3.0
+    gunicorn==21.2.0
+    redis==5.0.0
+    sqlalchemy==2.0.0
+  Dockerfile: |
+    # Build stage
+    FROM python:3.12-slim AS builder
+    WORKDIR /build
+    COPY requirements.txt .
+    RUN pip install --no-cache-dir --target=/deps -r requirements.txt
+
+    # Production stage
+    FROM python:3.12-slim AS production
+    WORKDIR /app
+
+    # Security: run as non-root user
+    RUN useradd --create-home --shell /bin/bash appuser
+
+    # Copy dependencies and source
+    COPY --from=builder /deps /usr/local/lib/python3.12/site-packages
+    COPY src/ ./src/
+    COPY requirements.txt .
+
+    # Set environment variables
+    ENV PYTHONUNBUFFERED=1
+    ENV PYTHONDONTWRITEBYTECODE=1
+    ENV APP_MODE=server
+
+    USER appuser
+    EXPOSE 8080
+
+    ENTRYPOINT ["python", "-m", "src.main"]
+    CMD ["--mode", "server"]
+  scripts/start.sh: |
+    #!/bin/bash
+    python src/main.py
+  tests/test_main.py: |
+    def test_main():
+        pass
+  k8s/pod.yaml: |
+    apiVersion: v1
+    kind: Pod
+    metadata:
+      name: app
+    spec:
+      containers:
+        - name: app
+          image: python:3.11
+          command: ["python", "src/main.py"]
+
+must_include_files:
+  - Dockerfile
+  # Q1: Does src/main.py support "python -m src.main"?
+  # Reviewer needs to see __name__ == "__main__" guard and the
+  # subcommand structure to verify ENTRYPOINT correctness.
+  - src/main.py
+  # Q2: What deps are installed in builder stage?
+  # Reviewer verifies flask/gunicorn/redis/sqlalchemy work on slim.
+  - requirements.txt
+
+must_include_content_from:
+  Dockerfile:
+    - ENTRYPOINT ["python", "-m", "src.main"]
+    - COPY --from=builder /deps /usr/local/lib/python3.12/site-packages
+    - COPY src/ ./src/
+  src/main.py:
+    - 'if __name__ == "__main__"'
+    - "def main():"
+  requirements.txt:
+    - flask==2.3.0
+    - gunicorn==21.2.0
+
+must_not_include:
+  # --- start.sh: lexical overlap ("python src/main.py") but local dev helper ---
+  - "#!/bin/bash"
+  # --- k8s/pod.yaml: different infrastructure layer ---
+  - "apiVersion: v1"
+  - 'kind: Pod'
+must_not_include_files:
+  # Startup script — lexical overlap ("python src/main.py") but not relevant to Dockerfile changes
+  - scripts/start.sh
+  # Test file — sibling directory, unrelated to build/deploy concern
+  - tests/test_main.py
+  # K8s config — same "deployment" domain but different infrastructure layer
+  - k8s/pod.yaml
+
+max_fragments: 8
+max_files: 4
+add_garbage_files: false
+skip_garbage_check: true

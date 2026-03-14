@@ -1,0 +1,144 @@
+# Scenario: Storage config migrates from local filesystem to S3
+#
+# Diff: storage.yaml changes backend local→s3, replaces path with
+# bucket and region fields.
+#
+# Reviewer questions:
+#   Q1: "Does the code support S3?"
+#       → src/storage.py (UNCHANGED) uses os.path.join and open() for
+#         local filesystem ops. No boto3, no S3 client. The s3 backend
+#         value is accepted but save()/exists() will crash because
+#         self.path no longer exists in config.
+#   Q2: "Will existing uploads break?"
+#       → storage.py.__init__ takes (backend, path). The new config
+#         has no `path` field — this will break at instantiation.
+#
+# Not needed:
+#   - config/backup.yaml: backup scheduling (Glacier vault), not upload storage.
+#   - src/image_processor.py: image resizing (PIL), doesn't handle storage.
+
+initial:
+  config/storage.yaml: |
+    storage:
+      backend: local
+      path: /data/uploads
+  src/storage.py: |
+    import os
+
+    class StorageBackend:
+        def __init__(self, backend: str, path: str):
+            self.backend = backend
+            self.path = path
+
+        def save(self, filename: str, data: bytes):
+            filepath = os.path.join(self.path, filename)
+            os.makedirs(os.path.dirname(filepath), exist_ok=True)
+            with open(filepath, "wb") as f:
+                f.write(data)
+
+        def exists(self, filename: str) -> bool:
+            return os.path.exists(os.path.join(self.path, filename))
+  config/backup.yaml: |
+    backup:
+      schedule: "0 3 * * *"
+      retention_days: 30
+      storage:
+        type: glacier
+        vault: my-backup-vault
+      notifications:
+        on_failure: ops@example.com
+  src/image_processor.py: |
+    from PIL import Image
+    from io import BytesIO
+
+    class ImageProcessor:
+        def __init__(self, max_width: int = 1920, quality: int = 85):
+            self.max_width = max_width
+            self.quality = quality
+
+        def resize(self, image_data: bytes) -> bytes:
+            img = Image.open(BytesIO(image_data))
+            if img.width > self.max_width:
+                ratio = self.max_width / img.width
+                new_size = (self.max_width, int(img.height * ratio))
+                img = img.resize(new_size, Image.LANCZOS)
+            output = BytesIO()
+            img.save(output, format="JPEG", quality=self.quality)
+            return output.getvalue()
+
+changed:
+  config/storage.yaml: |
+    storage:
+      backend: s3
+      bucket: my-bucket
+      region: us-east-1
+  src/storage.py: |
+    import os
+
+    class StorageBackend:
+        def __init__(self, backend: str, path: str):
+            self.backend = backend
+            self.path = path
+
+        def save(self, filename: str, data: bytes):
+            filepath = os.path.join(self.path, filename)
+            os.makedirs(os.path.dirname(filepath), exist_ok=True)
+            with open(filepath, "wb") as f:
+                f.write(data)
+
+        def exists(self, filename: str) -> bool:
+            return os.path.exists(os.path.join(self.path, filename))
+  config/backup.yaml: |
+    backup:
+      schedule: "0 3 * * *"
+      retention_days: 30
+      storage:
+        type: glacier
+        vault: my-backup-vault
+      notifications:
+        on_failure: ops@example.com
+  src/image_processor.py: |
+    from PIL import Image
+    from io import BytesIO
+
+    class ImageProcessor:
+        def __init__(self, max_width: int = 1920, quality: int = 85):
+            self.max_width = max_width
+            self.quality = quality
+
+        def resize(self, image_data: bytes) -> bytes:
+            img = Image.open(BytesIO(image_data))
+            if img.width > self.max_width:
+                ratio = self.max_width / img.width
+                new_size = (self.max_width, int(img.height * ratio))
+                img = img.resize(new_size, Image.LANCZOS)
+            output = BytesIO()
+            img.save(output, format="JPEG", quality=self.quality)
+            return output.getvalue()
+
+must_include_files:
+  # Q1+Q2: The code is local-filesystem-only (os.path.join, open()).
+  # Constructor requires `path` which no longer exists in config.
+  # Without storage.py, reviewer thinks S3 migration is clean.
+  - src/storage.py
+must_include_content_from:
+  src/storage.py:
+    # Constructor requires path — new config has bucket/region instead
+    - "def __init__(self, backend: str, path: str):"
+    # Local filesystem operations — incompatible with S3
+    - "os.path.join(self.path, filename)"
+must_not_include:
+  # backup.yaml: backup scheduling and Glacier vault, not upload storage
+  - glacier
+  - my-backup-vault
+  - retention_days
+  # image_processor.py: image resizing, doesn't handle storage backend
+  - ImageProcessor
+  - LANCZOS
+must_not_include_files:
+  - config/backup.yaml
+  - src/image_processor.py
+max_fragments: 5
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

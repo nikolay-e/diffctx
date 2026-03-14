@@ -1,0 +1,94 @@
+initial:
+  chart/Chart.yaml: |
+    apiVersion: v2
+    name: health-api
+    version: 1.5.0
+  chart/values.yaml: |
+    replicaCount: 2
+    image:
+      repository: health-api
+      tag: "1.5.0"
+    probes:
+      liveness:
+        path: /health
+        port: 8080
+  chart/templates/deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: {{ .Release.Name }}-{{ .Chart.Name }}
+    spec:
+      replicas: {{ .Values.replicaCount }}
+      template:
+        spec:
+          containers:
+            - name: {{ .Chart.Name }}
+              image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+              livenessProbe:
+                httpGet:
+                  path: {{ .Values.probes.liveness.path }}
+                  port: {{ .Values.probes.liveness.port }}
+                initialDelaySeconds: 15
+                periodSeconds: 10
+  chart/templates/canary-deploy.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+    spec:
+      template:
+        spec:
+          containers:
+  chart/scripts/healthcheck.sh: |
+    #!/bin/bash
+changed:
+  chart/Chart.yaml: |
+    apiVersion: v2
+    name: health-api
+    version: 1.5.0
+  chart/values.yaml: |
+    replicaCount: 2
+    image:
+      repository: health-api
+      tag: "1.5.0"
+    probes:
+      liveness:
+        path: /healthz
+        port: 8080
+        initialDelaySeconds: 30
+      readiness:
+        path: /ready
+        port: 8080
+  chart/templates/deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: {{ .Release.Name }}-{{ .Chart.Name }}
+    spec:
+      replicas: {{ .Values.replicaCount }}
+      template:
+        spec:
+          containers:
+            - name: {{ .Chart.Name }}
+              image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+              livenessProbe:
+                httpGet:
+                  path: {{ .Values.probes.liveness.path }}
+                  port: {{ .Values.probes.liveness.port }}
+                initialDelaySeconds: 15
+                periodSeconds: 10
+  chart/templates/canary-deploy.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+    spec:
+      template:
+        spec:
+          containers:
+  chart/scripts/healthcheck.sh: |
+    #!/bin/bash
+must_include_files:
+- chart/values.yaml
+must_include_content:
+- 'path: /healthz'
+add_garbage_files: false
+skip_garbage_check: true

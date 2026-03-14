@@ -1,0 +1,342 @@
+# Scenario: UserController gains showUser and getUserName methods that use
+# optional binding (if let) on the result of UserRepository.fetchUser(id:).
+#
+# Diff: Sources/Controllers/UserController.swift changes from a stub to
+# showUser(id:) and getUserName(id:) that call repository.fetchUser(id:)
+# and unwrap the result with if let.
+#
+# Reviewer questions:
+#   Q1: "What does fetchUser(id:) return? Is it actually Optional?"
+#       -> Sources/Models/UserRepository.swift: func fetchUser(id: String) -> User?
+#          Reviewer verifies the optional binding is correct.
+#
+#   Q2: "What fields does User have so I can verify user.name access?"
+#       -> Same file: struct User { let id: String, let name: String }.
+#          Reviewer confirms .name exists on User.
+#
+# Not needed for comprehension:
+#   - Sources/Services/SessionManager.swift: Service in nearby directory.
+#     STRUCTURAL TRAP: also has a method returning Optional and uses guard let.
+#     But manages sessions, not user lookups.
+#
+#   - Sources/Models/Preferences.swift: Sibling model in Models/ directory.
+#     STRUCTURAL TRAP: same directory as UserRepository, similar struct pattern.
+#     But user preferences, unrelated to User entity.
+#
+#   - Sources/Controllers/ProductController.swift: Sibling controller in the
+#     SAME directory. HARDEST TRAP: identical pattern — has fetchProduct(id:)
+#     returning Optional, uses if let to unwrap. Same directory, same class
+#     shape. But operates on Product, not User.
+#
+#   - Sources/Views/UserProfileView.swift: View that displays User data.
+#     STRUCTURAL TRAP: references User type, calls UserController.showUser().
+#     Direct consumer of changed code. But how the view displays data doesn't
+#     help review whether optional binding is correct.
+#
+#   - Sources/Models/ProductRepository.swift: Parallel repository with the
+#     SAME fetchProduct(id:) -> Product? pattern. STRUCTURAL TRAP: identical
+#     method signature pattern, same Optional return. Different entity.
+
+initial:
+  Sources/Models/UserRepository.swift: |
+    struct User {
+        let id: String
+        let name: String
+    }
+
+    class UserRepository {
+        private var users: [String: User] = [:]
+
+        func fetchUser(id: String) -> User? {
+            return users[id]
+        }
+
+        func save(user: User) {
+            users[user.id] = user
+        }
+
+        func deleteUser(id: String) {
+            users.removeValue(forKey: id)
+        }
+    }
+  Sources/Controllers/UserController.swift: |
+    class UserController {
+        let repository = UserRepository()
+
+        func placeholder() -> String { "" }
+    }
+  Sources/Services/SessionManager.swift: |
+    import Foundation
+
+    class SessionManager {
+        private var activeSessions: [String: Date] = [:]
+
+        func startSession(userId: String) {
+            activeSessions[userId] = Date()
+        }
+
+        func isSessionActive(userId: String) -> Bool {
+            guard let start = activeSessions[userId] else { return false }
+            return Date().timeIntervalSince(start) < 3600
+        }
+
+        func endSession(userId: String) {
+            activeSessions.removeValue(forKey: userId)
+        }
+    }
+  Sources/Models/Preferences.swift: |
+    struct Preferences {
+        let theme: String
+        let language: String
+        let notificationsEnabled: Bool
+        let fontSize: Int
+    }
+
+    class PreferencesStore {
+        private var store: [String: Preferences] = [:]
+
+        func get(userId: String) -> Preferences? {
+            return store[userId]
+        }
+
+        func save(userId: String, prefs: Preferences) {
+            store[userId] = prefs
+        }
+    }
+  Sources/Controllers/ProductController.swift: |
+    class ProductController {
+        let repository = ProductRepository()
+
+        func showProduct(id: String) -> String {
+            if let product = repository.fetchProduct(id: id) {
+                return "Product: \(product.title)"
+            } else {
+                return "Product not found"
+            }
+        }
+
+        func getProductPrice(id: String) -> Double? {
+            if let product = repository.fetchProduct(id: id) {
+                return product.price
+            }
+            return nil
+        }
+    }
+  Sources/Views/UserProfileView.swift: |
+    import SwiftUI
+
+    struct UserProfileView: View {
+        let controller: UserController
+        let userId: String
+
+        var body: some View {
+            VStack {
+                Text(controller.showUser(id: userId))
+                    .font(.title)
+                if let name = controller.getUserName(id: userId) {
+                    Text("Name: \(name)")
+                        .font(.subheadline)
+                }
+            }
+            .padding()
+        }
+    }
+  Sources/Models/ProductRepository.swift: |
+    struct Product {
+        let id: String
+        let title: String
+        let price: Double
+    }
+
+    class ProductRepository {
+        private var products: [String: Product] = [:]
+
+        func fetchProduct(id: String) -> Product? {
+            return products[id]
+        }
+
+        func save(product: Product) {
+            products[product.id] = product
+        }
+    }
+
+changed:
+  Sources/Models/UserRepository.swift: |
+    struct User {
+        let id: String
+        let name: String
+    }
+
+    class UserRepository {
+        private var users: [String: User] = [:]
+
+        func fetchUser(id: String) -> User? {
+            return users[id]
+        }
+
+        func save(user: User) {
+            users[user.id] = user
+        }
+
+        func deleteUser(id: String) {
+            users.removeValue(forKey: id)
+        }
+    }
+  Sources/Controllers/UserController.swift: |
+    class UserController {
+        let repository = UserRepository()
+
+        func showUser(id: String) -> String {
+            if let user = repository.fetchUser(id: id) {
+                return "User: \(user.name)"
+            } else {
+                return "User not found"
+            }
+        }
+
+        func getUserName(id: String) -> String? {
+            if let user = repository.fetchUser(id: id) {
+                return user.name
+            }
+            return nil
+        }
+    }
+  Sources/Services/SessionManager.swift: |
+    import Foundation
+
+    class SessionManager {
+        private var activeSessions: [String: Date] = [:]
+
+        func startSession(userId: String) {
+            activeSessions[userId] = Date()
+        }
+
+        func isSessionActive(userId: String) -> Bool {
+            guard let start = activeSessions[userId] else { return false }
+            return Date().timeIntervalSince(start) < 3600
+        }
+
+        func endSession(userId: String) {
+            activeSessions.removeValue(forKey: userId)
+        }
+    }
+  Sources/Models/Preferences.swift: |
+    struct Preferences {
+        let theme: String
+        let language: String
+        let notificationsEnabled: Bool
+        let fontSize: Int
+    }
+
+    class PreferencesStore {
+        private var store: [String: Preferences] = [:]
+
+        func get(userId: String) -> Preferences? {
+            return store[userId]
+        }
+
+        func save(userId: String, prefs: Preferences) {
+            store[userId] = prefs
+        }
+    }
+  Sources/Controllers/ProductController.swift: |
+    class ProductController {
+        let repository = ProductRepository()
+
+        func showProduct(id: String) -> String {
+            if let product = repository.fetchProduct(id: id) {
+                return "Product: \(product.title)"
+            } else {
+                return "Product not found"
+            }
+        }
+
+        func getProductPrice(id: String) -> Double? {
+            if let product = repository.fetchProduct(id: id) {
+                return product.price
+            }
+            return nil
+        }
+    }
+  Sources/Views/UserProfileView.swift: |
+    import SwiftUI
+
+    struct UserProfileView: View {
+        let controller: UserController
+        let userId: String
+
+        var body: some View {
+            VStack {
+                Text(controller.showUser(id: userId))
+                    .font(.title)
+                if let name = controller.getUserName(id: userId) {
+                    Text("Name: \(name)")
+                        .font(.subheadline)
+                }
+            }
+            .padding()
+        }
+    }
+  Sources/Models/ProductRepository.swift: |
+    struct Product {
+        let id: String
+        let title: String
+        let price: Double
+    }
+
+    class ProductRepository {
+        private var products: [String: Product] = [:]
+
+        func fetchProduct(id: String) -> Product? {
+            return products[id]
+        }
+
+        func save(product: Product) {
+            products[product.id] = product
+        }
+    }
+
+must_include_files:
+  - Sources/Controllers/UserController.swift
+  - Sources/Models/UserRepository.swift
+
+must_include_content_from:
+  Sources/Controllers/UserController.swift:
+    - "if let user = repository.fetchUser(id: id)"
+    - "user.name"
+  Sources/Models/UserRepository.swift:
+    - "func fetchUser(id: String) -> User?"
+    - "struct User"
+    - "let name: String"
+
+must_not_include:
+  # --- SessionManager.swift: uses guard let, similar Optional pattern ---
+  - SessionManager
+  - startSession
+  - isSessionActive
+  # --- Preferences.swift: sibling model in Models/ ---
+  - Preferences
+  - PreferencesStore
+  - notificationsEnabled
+  # --- ProductController.swift: HARDEST TRAP, identical if-let pattern ---
+  - ProductController
+  - showProduct
+  - getProductPrice
+  # --- UserProfileView.swift: consumer of changed code ---
+  - UserProfileView
+  - "controller.showUser"
+  # --- ProductRepository.swift: parallel repository, same Optional pattern ---
+  - ProductRepository
+  - fetchProduct
+
+must_not_include_files:
+  - Sources/Services/SessionManager.swift
+  - Sources/Models/Preferences.swift
+  - Sources/Controllers/ProductController.swift
+  - Sources/Views/UserProfileView.swift
+  - Sources/Models/ProductRepository.swift
+
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

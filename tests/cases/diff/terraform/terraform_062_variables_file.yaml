@@ -1,0 +1,99 @@
+# Scenario: Updating variable defaults (environment to prod, instance_type to large)
+#   and adding a new vpc_id variable.
+# Reviewer questions:
+#   1. What resources consume these variables? (main.tf references var.instance_type, var.environment)
+#   2. Where is vpc_id used or expected? (security.tf references var.vpc_id)
+# Traps:
+#   - modules/database/variables.tf: similar variable names but for database module (same file name, different scope)
+#   - outputs.tf: exports values but doesn't affect variable definitions
+
+initial:
+  variables.tf: |
+    variable "environment" {
+      type    = string
+      default = "dev"
+    }
+
+    variable "instance_type" {
+      type    = string
+      default = "t3.micro"
+    }
+  main.tf: |
+    resource "aws_instance" "web" {
+      ami           = "ami-12345678"
+      instance_type = var.instance_type
+      tags = {
+        Environment = var.environment
+      }
+    }
+  security.tf: |
+    resource "aws_security_group" "web" {
+      name   = "web-${var.environment}"
+      vpc_id = var.vpc_id
+
+      ingress {
+        from_port   = 443
+        to_port     = 443
+        protocol    = "tcp"
+        cidr_blocks = ["0.0.0.0/0"]
+      }
+    }
+  modules/database/variables.tf: |
+    variable "environment" {
+      type    = string
+      default = "dev"
+    }
+
+    variable "instance_class" {
+      type    = string
+      default = "db.t3.micro"
+    }
+  outputs.tf: |
+    output "instance_id" {
+      value = aws_instance.web.id
+    }
+
+changed:
+  variables.tf: |
+    variable "environment" {
+      type    = string
+      default = "prod"
+    }
+
+    variable "instance_type" {
+      type    = string
+      default = "t3.large"
+    }
+
+    variable "vpc_id" {
+      type = string
+    }
+
+must_include_files:
+  - variables.tf
+  - main.tf
+
+must_include_content_from:
+  variables.tf:
+    - default = "prod"
+    - default = "t3.large"
+    - variable "vpc_id" {
+  main.tf:
+    - instance_type = var.instance_type
+    - Environment = var.environment
+
+must_not_include:
+  # Database module variables - same variable names but scoped to a different module
+  - instance_class
+  - db.t3.micro
+  # Outputs - reads values but doesn't affect variable defaults
+  - output "instance_id" {
+
+must_not_include_files:
+  - modules/database/variables.tf
+  - outputs.tf
+
+max_fragments: 5
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

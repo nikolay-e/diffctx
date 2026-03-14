@@ -1,0 +1,85 @@
+# Reviewer sees: ActionButton.tsx wraps createClickHandler in useCallback.
+# Q: "What does createClickHandler return — is memoization appropriate?"
+#    -> handlers.ts: factory that returns () => console.log('Clicked:', id).
+#       Reviewer understands the memoization wraps a factory invocation.
+#
+# Not needed:
+#   - event-analytics.ts: click event tracking. Same click domain
+#     but different concern (analytics vs handling).
+#   - ActionButton.styles.ts: button styling. Visual concern only.
+
+initial:
+  src/handlers.ts: |
+    export function createClickHandler(id: string) {
+        return () => console.log('Clicked:', id);
+    }
+  src/ActionButton.tsx: |
+    export function ActionButton({ id }: { id: string }) {
+        return <button>Action</button>;
+    }
+  src/event-analytics.ts: |
+    export function trackClick(elementId: string, timestamp: number): void {
+        console.log(`Click tracked: ${elementId} at ${timestamp}`);
+    }
+
+    export function trackHover(elementId: string, durationMs: number): void {
+        console.log(`Hover tracked: ${elementId} for ${durationMs}ms`);
+    }
+  src/ActionButton.styles.ts: |
+    export const buttonStyles = {
+        primary: { backgroundColor: '#007bff', color: 'white', padding: '8px 16px' },
+        secondary: { backgroundColor: '#6c757d', color: 'white', padding: '8px 16px' },
+        disabled: { backgroundColor: '#ccc', color: '#666', cursor: 'not-allowed' },
+    };
+changed:
+  src/handlers.ts: |
+    export function createClickHandler(id: string) {
+        return () => console.log('Clicked:', id);
+    }
+  src/ActionButton.tsx: |
+    import { useCallback } from 'react';
+    import { createClickHandler } from './handlers';
+
+    export function ActionButton({ id }: { id: string }) {
+        const handleClick = useCallback(() => {
+            createClickHandler(id)();
+        }, [id]);
+
+        return <button onClick={handleClick}>Action</button>;
+    }
+  src/event-analytics.ts: |
+    export function trackClick(elementId: string, timestamp: number): void {
+        console.log(`Click tracked: ${elementId} at ${timestamp}`);
+    }
+
+    export function trackHover(elementId: string, durationMs: number): void {
+        console.log(`Hover tracked: ${elementId} for ${durationMs}ms`);
+    }
+  src/ActionButton.styles.ts: |
+    export const buttonStyles = {
+        primary: { backgroundColor: '#007bff', color: 'white', padding: '8px 16px' },
+        secondary: { backgroundColor: '#6c757d', color: 'white', padding: '8px 16px' },
+        disabled: { backgroundColor: '#ccc', color: '#666', cursor: 'not-allowed' },
+    };
+must_include_files:
+  # Unchanged file — the import target. Reviewer needs to see
+  # what createClickHandler returns to evaluate the useCallback.
+  - src/handlers.ts
+must_include_content_from:
+  src/handlers.ts:
+    - "createClickHandler"
+    - "console.log"
+must_not_include:
+  # event-analytics.ts: click tracking, different concern
+  - trackClick
+  - trackHover
+  # ActionButton.styles.ts: styling, not related to click handling
+  - buttonStyles
+  - backgroundColor
+must_not_include_files:
+  - src/event-analytics.ts
+  - src/ActionButton.styles.ts
+max_fragments: 5
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

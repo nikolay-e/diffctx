@@ -1,3 +1,0 @@
-schemas.ts: "import { z } from 'zod';\n\nexport const UserSchema = z.object({\n    id: z.string().uuid(),\n    name: z.string().min(1).max(100),\n    email: z.string().email(),\n    age: z.number().int().positive().optional(),\n\
-  \    role: z.enum(['admin', 'user', 'guest']),\n});\n\nexport type User = z.infer<typeof UserSchema>;\n\n// js_garbage_marker_008\n"
-validator.ts: "import { UserSchema, User } from './schemas';\n\nexport function validateUser(data: unknown): User {\n    return UserSchema.parse(data);\n}\n"

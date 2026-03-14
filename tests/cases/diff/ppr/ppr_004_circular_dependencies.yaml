@@ -1,0 +1,340 @@
+initial:
+  cycles/primary_cycle.py: |
+    def cycle_alpha():
+        return cycle_beta()
+
+    def cycle_beta():
+        return cycle_gamma()
+
+    def cycle_gamma():
+        return cycle_alpha()
+
+    def cycle_entry_point():
+        return cycle_alpha()
+
+    def cycle_helper_in_chain():
+        return cycle_beta()
+  cycles/secondary_cycle.py: |
+    def cycle_delta():
+        return cycle_epsilon()
+
+    def cycle_epsilon():
+        return cycle_delta()
+
+    def cycle_zeta():
+        return cycle_epsilon()
+
+    def secondary_entry():
+        return cycle_delta()
+  cycles/tertiary_cycle.py: |
+    def tertiary_cycle_one():
+        return tertiary_cycle_two()
+
+    def tertiary_cycle_two():
+        return tertiary_cycle_three()
+
+    def tertiary_cycle_three():
+        return tertiary_cycle_one()
+
+    def tertiary_entry():
+        return tertiary_cycle_one()
+  isolated_cycles/separate_cycle.py: |
+    def separate_cycle_a():
+        return separate_cycle_b()
+
+    def separate_cycle_b():
+        return separate_cycle_c()
+
+    def separate_cycle_c():
+        return separate_cycle_a()
+
+    def separate_cycle_entry():
+        return separate_cycle_a()
+  isolated_cycles/another_cycle.py: |
+    def another_cycle_x():
+        return another_cycle_y()
+
+    def another_cycle_y():
+        return another_cycle_x()
+
+    def another_cycle_orchestrator():
+        return another_cycle_x()
+  # --- Tricky garbage: same function names cycle_alpha/cycle_beta in different module ---
+  cycles/garbage_cycle_collision.py: |
+    GARBAGE_PPR_004_CYCLE_COLLISION_A = "cycle_collision"
+    GARBAGE_PPR_004_CYCLE_COLLISION_B = False
+
+    def cycle_alpha():
+        return "completely_different_cycle_alpha"
+
+    def cycle_beta():
+        return "completely_different_cycle_beta"
+
+    def cycle_collision_orchestrator():
+        return cycle_alpha() + cycle_beta()
+  # --- Tricky garbage: same directory sibling with circular pattern ---
+  cycles/garbage_cycle_sibling.py: |
+    GARBAGE_PPR_004_CYCLE_SIBLING_C = "cycle_sibling"
+    GARBAGE_PPR_004_CYCLE_SIBLING_D = 88
+
+    def sibling_cycle_x():
+        return sibling_cycle_y()
+
+    def sibling_cycle_y():
+        return sibling_cycle_x()
+
+    def sibling_cycle_entry():
+        return sibling_cycle_x()
+  # --- Tricky garbage: imports cycle_alpha (if it were importable) ---
+  cycles/garbage_cycle_consumer.py: |
+    GARBAGE_PPR_004_CYCLE_IMPORT_E = "cycle_import_consumer"
+    GARBAGE_PPR_004_CYCLE_IMPORT_F = True
+
+    def consume_cycle_output():
+        return "consumed_cycle_result"
+
+    def format_cycle_result(data):
+        return f"cycle_result={data}"
+  garbage/GARBAGE_PPR_b1c2d3_cycle_noise.py: |
+    GARBAGE_CYCLE_MARKER_PPR004 = "cycle_garbage"
+
+    def garbage_cycle_ppr004_one():
+        return garbage_cycle_ppr004_two()
+
+    def garbage_cycle_ppr004_two():
+        return garbage_cycle_ppr004_one()
+
+    def garbage_cycle_entry_ppr004():
+        return garbage_cycle_ppr004_one()
+  garbage/GARBAGE_PPR_e4f5g6_fake_cycle.py: |
+    FAKE_CYCLE_FLAG_PPR004 = True
+
+    def fake_cycle_alpha_ppr004():
+        return fake_cycle_beta_ppr004()
+
+    def fake_cycle_beta_ppr004():
+        return fake_cycle_gamma_ppr004()
+
+    def fake_cycle_gamma_ppr004():
+        return fake_cycle_alpha_ppr004()
+
+    class FakeCycleClassPPR004:
+        def cycle_method_a(self):
+            return self.cycle_method_b()
+
+        def cycle_method_b(self):
+            return self.cycle_method_a()
+  garbage/GARBAGE_PPR_h7i8j9_decoy_cycle.py: |
+    DECOY_CYCLE_CONST_PPR004 = 123
+
+    def decoy_cycle_main_ppr004():
+        return decoy_cycle_helper_ppr004()
+
+    def decoy_cycle_helper_ppr004():
+        return decoy_cycle_main_ppr004()
+
+    def decoy_cycle_wrapper_ppr004():
+        return decoy_cycle_main_ppr004() + DECOY_CYCLE_CONST_PPR004
+changed:
+  cycles/primary_cycle.py: |
+    def cycle_alpha():
+        result = cycle_beta()
+        return result + "_modified_cycle"
+
+    def cycle_beta():
+        return cycle_gamma()
+
+    def cycle_gamma():
+        return cycle_alpha()
+
+    def cycle_entry_point():
+        return cycle_alpha()
+
+    def cycle_helper_in_chain():
+        return cycle_beta()
+  cycles/secondary_cycle.py: |
+    def cycle_delta():
+        return cycle_epsilon()
+
+    def cycle_epsilon():
+        return cycle_delta()
+
+    def cycle_zeta():
+        return cycle_epsilon()
+
+    def secondary_entry():
+        return cycle_delta()
+  cycles/tertiary_cycle.py: |
+    def tertiary_cycle_one():
+        return tertiary_cycle_two()
+
+    def tertiary_cycle_two():
+        return tertiary_cycle_three()
+
+    def tertiary_cycle_three():
+        return tertiary_cycle_one()
+
+    def tertiary_entry():
+        return tertiary_cycle_one()
+  isolated_cycles/separate_cycle.py: |
+    def separate_cycle_a():
+        return separate_cycle_b()
+
+    def separate_cycle_b():
+        return separate_cycle_c()
+
+    def separate_cycle_c():
+        return separate_cycle_a()
+
+    def separate_cycle_entry():
+        return separate_cycle_a()
+  isolated_cycles/another_cycle.py: |
+    def another_cycle_x():
+        return another_cycle_y()
+
+    def another_cycle_y():
+        return another_cycle_x()
+
+    def another_cycle_orchestrator():
+        return another_cycle_x()
+  cycles/garbage_cycle_collision.py: |
+    GARBAGE_PPR_004_CYCLE_COLLISION_A = "cycle_collision"
+    GARBAGE_PPR_004_CYCLE_COLLISION_B = False
+
+    def cycle_alpha():
+        return "completely_different_cycle_alpha"
+
+    def cycle_beta():
+        return "completely_different_cycle_beta"
+
+    def cycle_collision_orchestrator():
+        return cycle_alpha() + cycle_beta()
+  cycles/garbage_cycle_sibling.py: |
+    GARBAGE_PPR_004_CYCLE_SIBLING_C = "cycle_sibling"
+    GARBAGE_PPR_004_CYCLE_SIBLING_D = 88
+
+    def sibling_cycle_x():
+        return sibling_cycle_y()
+
+    def sibling_cycle_y():
+        return sibling_cycle_x()
+
+    def sibling_cycle_entry():
+        return sibling_cycle_x()
+  cycles/garbage_cycle_consumer.py: |
+    GARBAGE_PPR_004_CYCLE_IMPORT_E = "cycle_import_consumer"
+    GARBAGE_PPR_004_CYCLE_IMPORT_F = True
+
+    def consume_cycle_output():
+        return "consumed_cycle_result"
+
+    def format_cycle_result(data):
+        return f"cycle_result={data}"
+  garbage/GARBAGE_PPR_b1c2d3_cycle_noise.py: |
+    GARBAGE_CYCLE_MARKER_PPR004 = "cycle_garbage"
+
+    def garbage_cycle_ppr004_one():
+        return garbage_cycle_ppr004_two()
+
+    def garbage_cycle_ppr004_two():
+        return garbage_cycle_ppr004_one()
+
+    def garbage_cycle_entry_ppr004():
+        return garbage_cycle_ppr004_one()
+  garbage/GARBAGE_PPR_e4f5g6_fake_cycle.py: |
+    FAKE_CYCLE_FLAG_PPR004 = True
+
+    def fake_cycle_alpha_ppr004():
+        return fake_cycle_beta_ppr004()
+
+    def fake_cycle_beta_ppr004():
+        return fake_cycle_gamma_ppr004()
+
+    def fake_cycle_gamma_ppr004():
+        return fake_cycle_alpha_ppr004()
+
+    class FakeCycleClassPPR004:
+        def cycle_method_a(self):
+            return self.cycle_method_b()
+
+        def cycle_method_b(self):
+            return self.cycle_method_a()
+  garbage/GARBAGE_PPR_h7i8j9_decoy_cycle.py: |
+    DECOY_CYCLE_CONST_PPR004 = 123
+
+    def decoy_cycle_main_ppr004():
+        return decoy_cycle_helper_ppr004()
+
+    def decoy_cycle_helper_ppr004():
+        return decoy_cycle_main_ppr004()
+
+    def decoy_cycle_wrapper_ppr004():
+        return decoy_cycle_main_ppr004() + DECOY_CYCLE_CONST_PPR004
+
+# === Assertions ===
+
+must_include_files:
+- cycles/primary_cycle.py
+
+must_include_content_from:
+  cycles/primary_cycle.py:
+    - 'def cycle_alpha():'
+    - result = cycle_beta()
+    - return result + "_modified_cycle"
+
+must_not_include:
+# Isolated cycles
+- separate_cycle_a
+- separate_cycle_b
+- separate_cycle_c
+- separate_cycle_entry
+- another_cycle_x
+- another_cycle_y
+- another_cycle_orchestrator
+# Unrelated cycles in same package
+- cycle_delta
+- cycle_epsilon
+- cycle_zeta
+- secondary_entry
+- tertiary_cycle_one
+- tertiary_cycle_two
+- tertiary_cycle_three
+- tertiary_entry
+# Plain garbage markers
+- GARBAGE_CYCLE_MARKER_PPR004
+- garbage_cycle_ppr004_one
+- garbage_cycle_ppr004_two
+- garbage_cycle_entry_ppr004
+- FAKE_CYCLE_FLAG_PPR004
+- fake_cycle_alpha_ppr004
+- fake_cycle_beta_ppr004
+- fake_cycle_gamma_ppr004
+- FakeCycleClassPPR004
+- DECOY_CYCLE_CONST_PPR004
+- decoy_cycle_main_ppr004
+- decoy_cycle_helper_ppr004
+- decoy_cycle_wrapper_ppr004
+# Tricky: name collision with cycle_alpha/cycle_beta
+- GARBAGE_PPR_004_CYCLE_COLLISION_A
+- GARBAGE_PPR_004_CYCLE_COLLISION_B
+# Tricky: same directory sibling with circular pattern
+- GARBAGE_PPR_004_CYCLE_SIBLING_C
+- GARBAGE_PPR_004_CYCLE_SIBLING_D
+# Tricky: consumer of cycle output
+- GARBAGE_PPR_004_CYCLE_IMPORT_E
+- GARBAGE_PPR_004_CYCLE_IMPORT_F
+
+must_not_include_files:
+- garbage/GARBAGE_PPR_b1c2d3_cycle_noise.py
+- garbage/GARBAGE_PPR_e4f5g6_fake_cycle.py
+- garbage/GARBAGE_PPR_h7i8j9_decoy_cycle.py
+- cycles/garbage_cycle_collision.py
+- cycles/garbage_cycle_sibling.py
+- cycles/garbage_cycle_consumer.py
+- isolated_cycles/separate_cycle.py
+- isolated_cycles/another_cycle.py
+
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

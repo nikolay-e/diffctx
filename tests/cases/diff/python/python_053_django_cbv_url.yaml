@@ -1,0 +1,192 @@
+# Scenario: Django urls.py wires up ArticleListView and ArticleDetailView
+#   from views.py using class-based view URL patterns.
+#
+# Reviewer questions:
+#   - Are the URL patterns correct for slug-based routing?
+#   - Do the view classes match the URL parameters?
+#
+# Trap files:
+#   - middleware/rate_limiter.py: Django middleware with __call__, mentions "request"
+#     but has no URL or view dependency
+#   - templates/template_engine.py: rendering vocabulary (render, cache) but
+#     completely independent
+
+initial:
+  models.py: |
+    from datetime import datetime
+
+    class Article:
+        def __init__(self, title: str, slug: str, content: str, published: bool = False):
+            self.title = title
+            self.slug = slug
+            self.content = content
+            self.published = published
+            self.created_at = datetime.now()
+
+        def get_absolute_url(self) -> str:
+            return f"/articles/{self.slug}/"
+
+        def is_published(self) -> bool:
+            return self.published
+
+        def summary(self, max_length: int = 200) -> str:
+            if len(self.content) <= max_length:
+                return self.content
+            return self.content[:max_length] + "..."
+  views.py: |
+    from django.views.generic import ListView, DetailView
+    from models import Article
+
+    class ArticleListView(ListView):
+        model = Article
+        template_name = "articles/list.html"
+        context_object_name = "articles"
+        paginate_by = 10
+        ordering = ["-created_at"]
+
+        def get_queryset(self):
+            return super().get_queryset().filter(published=True)
+
+    class ArticleDetailView(DetailView):
+        model = Article
+        template_name = "articles/detail.html"
+        slug_field = "slug"
+        slug_url_kwarg = "slug"
+  urls.py: |
+    from django.urls import path
+
+    urlpatterns = []
+  middleware/rate_limiter.py: |
+    from typing import Any
+    from collections import defaultdict
+
+    class RateLimitMiddleware:
+        def __init__(self, get_response, max_requests: int = 100):
+            self.get_response = get_response
+            self.max_requests = max_requests
+            self._request_counts: dict[str, int] = defaultdict(int)
+
+        def __call__(self, request: Any) -> Any:
+            client_ip = getattr(request, "META", {}).get("REMOTE_ADDR", "unknown")
+            self._request_counts[client_ip] += 1
+            if self._request_counts[client_ip] > self.max_requests:
+                return None
+            return self.get_response(request)
+  templates/template_engine.py: |
+    class TemplateEngine:
+        def __init__(self, template_dir: str = "templates"):
+            self.template_dir = template_dir
+            self._cache: dict[str, str] = {}
+
+        def render(self, template_name: str, context: dict) -> str:
+            return f"<html>{template_name}: {context}</html>"
+
+        def clear_cache(self) -> None:
+            self._cache.clear()
+
+        def precompile(self, template_name: str) -> None:
+            self._cache[template_name] = f"compiled:{template_name}"
+
+changed:
+  models.py: |
+    from datetime import datetime
+
+    class Article:
+        def __init__(self, title: str, slug: str, content: str, published: bool = False):
+            self.title = title
+            self.slug = slug
+            self.content = content
+            self.published = published
+            self.created_at = datetime.now()
+
+        def get_absolute_url(self) -> str:
+            return f"/articles/{self.slug}/"
+
+        def is_published(self) -> bool:
+            return self.published
+
+        def summary(self, max_length: int = 200) -> str:
+            if len(self.content) <= max_length:
+                return self.content
+            return self.content[:max_length] + "..."
+  views.py: |
+    from django.views.generic import ListView, DetailView
+    from models import Article
+
+    class ArticleListView(ListView):
+        model = Article
+        template_name = "articles/list.html"
+        context_object_name = "articles"
+        paginate_by = 10
+        ordering = ["-created_at"]
+
+        def get_queryset(self):
+            return super().get_queryset().filter(published=True)
+
+    class ArticleDetailView(DetailView):
+        model = Article
+        template_name = "articles/detail.html"
+        slug_field = "slug"
+        slug_url_kwarg = "slug"
+  urls.py: |
+    from django.urls import path
+    from views import ArticleListView, ArticleDetailView
+
+    urlpatterns = [
+        path("articles/", ArticleListView.as_view(), name="article-list"),
+        path("articles/<slug:slug>/", ArticleDetailView.as_view(), name="article-detail"),
+    ]
+  middleware/rate_limiter.py: |
+    from typing import Any
+    from collections import defaultdict
+
+    class RateLimitMiddleware:
+        def __init__(self, get_response, max_requests: int = 100):
+            self.get_response = get_response
+            self.max_requests = max_requests
+            self._request_counts: dict[str, int] = defaultdict(int)
+
+        def __call__(self, request: Any) -> Any:
+            client_ip = getattr(request, "META", {}).get("REMOTE_ADDR", "unknown")
+            self._request_counts[client_ip] += 1
+            if self._request_counts[client_ip] > self.max_requests:
+                return None
+            return self.get_response(request)
+  templates/template_engine.py: |
+    class TemplateEngine:
+        def __init__(self, template_dir: str = "templates"):
+            self.template_dir = template_dir
+            self._cache: dict[str, str] = {}
+
+        def render(self, template_name: str, context: dict) -> str:
+            return f"<html>{template_name}: {context}</html>"
+
+        def clear_cache(self) -> None:
+            self._cache.clear()
+
+        def precompile(self, template_name: str) -> None:
+            self._cache[template_name] = f"compiled:{template_name}"
+
+must_include_files:
+- urls.py
+must_include_content_from:
+  urls.py:
+    - "from views import ArticleListView, ArticleDetailView"
+    - "ArticleListView.as_view()"
+    - "<slug:slug>"
+  views.py:
+    - "class ArticleListView(ListView)"
+    - "class ArticleDetailView(DetailView)"
+    - "slug_url_kwarg"
+must_not_include:
+- RateLimitMiddleware
+- TemplateEngine
+- clear_cache
+- precompile
+must_not_include_files:
+- middleware/rate_limiter.py
+- templates/template_engine.py
+max_fragments: 6
+max_files: 4
+add_garbage_files: false
+skip_garbage_check: true

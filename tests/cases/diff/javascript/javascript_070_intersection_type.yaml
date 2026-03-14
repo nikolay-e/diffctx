@@ -1,0 +1,162 @@
+# Scenario: person.ts is rewritten from a stub to import Named and Aged from
+#   types.ts and create a Person intersection type.
+#   Only person.ts is changed; types.ts is unchanged.
+#
+# Diff shows:
+#   - console.log('initial')
+#   + import { Named, Aged } from './types'
+#   + type Person = Named & Aged
+#   + function createPerson(name: string, age: number): Person
+#
+# Reviewer questions:
+#   Q1: "What fields does the Person intersection include?"
+#       -> types.ts: Named = { name: string }, Aged = { age: number }.
+#          Person = Named & Aged = { name: string; age: number }.
+#
+#   Q2: "Does createPerson return an object that satisfies both types?"
+#       -> types.ts: Named requires name: string, Aged requires age: number.
+#          createPerson returns { name, age } which satisfies both. Without
+#          seeing the individual type shapes, reviewer can't verify this.
+#
+# Not needed for comprehension:
+#   - employee.ts: Creates Employee = Named & Aged & { role: string }.
+#     Same intersection pattern, same base types. HARD TRAP: extends the
+#     exact same types (Named & Aged) with one more field.
+#
+#   - person-service.ts: Service that creates and stores Person objects.
+#     Direct consumer edge — uses the Person type from this very module.
+#     But HOW persons are stored doesn't help review the type intersection.
+#
+#   - type-guards.ts: Type guard functions isNamed(x) and isAged(x).
+#     Same types, tests for the same fields. HARD TRAP: references Named
+#     and Aged by name, checks the same properties.
+
+initial:
+  types.ts: |
+    export type Named = { name: string };
+    export type Aged = { age: number };
+  person.ts: |
+    console.log('initial');
+  employee.ts: |
+    import { Named, Aged } from './types';
+
+    type Employee = Named & Aged & { role: string; department: string };
+
+    export function createEmployee(name: string, age: number, role: string, department: string): Employee {
+        return { name, age, role, department };
+    }
+  person-service.ts: |
+    import { Named, Aged } from './types';
+
+    type Person = Named & Aged;
+
+    const people: Person[] = [];
+
+    export function addPerson(name: string, age: number): Person {
+        const person: Person = { name, age };
+        people.push(person);
+        return person;
+    }
+
+    export function findByName(name: string): Person | undefined {
+        return people.find(p => p.name === name);
+    }
+  type-guards.ts: |
+    import { Named, Aged } from './types';
+
+    export function isNamed(value: unknown): value is Named {
+        return typeof value === 'object' && value !== null && 'name' in value;
+    }
+
+    export function isAged(value: unknown): value is Aged {
+        return typeof value === 'object' && value !== null && 'age' in value;
+    }
+
+changed:
+  types.ts: |
+    export type Named = { name: string };
+    export type Aged = { age: number };
+  person.ts: |
+    import { Named, Aged } from './types';
+
+    type Person = Named & Aged;
+
+    function createPerson(name: string, age: number): Person {
+        return { name, age };
+    }
+  employee.ts: |
+    import { Named, Aged } from './types';
+
+    type Employee = Named & Aged & { role: string; department: string };
+
+    export function createEmployee(name: string, age: number, role: string, department: string): Employee {
+        return { name, age, role, department };
+    }
+  person-service.ts: |
+    import { Named, Aged } from './types';
+
+    type Person = Named & Aged;
+
+    const people: Person[] = [];
+
+    export function addPerson(name: string, age: number): Person {
+        const person: Person = { name, age };
+        people.push(person);
+        return person;
+    }
+
+    export function findByName(name: string): Person | undefined {
+        return people.find(p => p.name === name);
+    }
+  type-guards.ts: |
+    import { Named, Aged } from './types';
+
+    export function isNamed(value: unknown): value is Named {
+        return typeof value === 'object' && value !== null && 'name' in value;
+    }
+
+    export function isAged(value: unknown): value is Aged {
+        return typeof value === 'object' && value !== null && 'age' in value;
+    }
+
+must_include_files:
+  - person.ts
+  # Q1+Q2: types.ts defines Named and Aged — reviewer needs to see the
+  # individual type shapes to understand the intersection.
+  - types.ts
+
+must_include_content_from:
+  person.ts:
+    - "import { Named, Aged } from './types'"
+    - "type Person = Named & Aged"
+    - "return { name, age }"
+  types.ts:
+    - "type Named = { name: string }"
+    - "type Aged = { age: number }"
+
+must_not_include:
+  # --- employee.ts: extends same Named & Aged with more fields ---
+  # HARD TRAP: same base types, same intersection operator, same import.
+  - Employee
+  - createEmployee
+  - department
+  # --- person-service.ts: stores Person objects ---
+  # Direct consumer: uses the exact Person = Named & Aged type.
+  - addPerson
+  - findByName
+  # --- type-guards.ts: type guards for Named and Aged ---
+  # HARD TRAP: imports same types, checks the same properties.
+  - isNamed
+  - isAged
+  - "'name' in value"
+  - "'age' in value"
+
+must_not_include_files:
+  - employee.ts
+  - person-service.ts
+  - type-guards.ts
+
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

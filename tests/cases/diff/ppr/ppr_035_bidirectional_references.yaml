@@ -1,0 +1,130 @@
+initial:
+  module_x.py: |
+    COMMON = "common"
+
+    def func_x():
+        return COMMON
+  module_y.py: |
+    COMMON = "common"
+
+    def func_y():
+        return COMMON
+
+  # --- Tricky garbage: same COMMON constant, same func_x name ---
+  garbage_common_consumer.py: |
+    GARBAGE_PPR035_CONSUMER_A = "common_consumer"
+    GARBAGE_PPR035_CONSUMER_B = True
+
+    COMMON = "common"
+
+    def func_x():
+        return COMMON + "_unrelated"
+
+    class CommonProcessor:
+        GARBAGE_PPR035_PROCESSOR_C = 99
+
+        def process(self):
+            return COMMON
+
+  # --- Tricky garbage: module_* naming, same directory sibling ---
+  garbage_module_z.py: |
+    GARBAGE_PPR035_MODZ_D = "module_z"
+    GARBAGE_PPR035_MODZ_E = False
+
+    COMMON = "common"
+
+    def func_z():
+        GARBAGE_PPR035_INNER_F = 42
+        return COMMON + "_z"
+
+  # --- Tricky garbage: uses "_x_modified" and "_y_modified" like diff ---
+  garbage_modifier.py: |
+    GARBAGE_PPR035_MOD_G = "modifier"
+    GARBAGE_PPR035_MOD_H = 0
+
+    def apply_x_modified():
+        return "_x_modified"
+
+    def apply_y_modified():
+        return "_y_modified"
+
+changed:
+  module_x.py: |
+    COMMON = "common"
+
+    def func_x():
+        return COMMON + "_x_modified"
+  module_y.py: |
+    COMMON = "common"
+
+    def func_y():
+        return COMMON + "_y_modified"
+  garbage_common_consumer.py: |
+    GARBAGE_PPR035_CONSUMER_A = "common_consumer"
+    GARBAGE_PPR035_CONSUMER_B = True
+
+    COMMON = "common"
+
+    def func_x():
+        return COMMON + "_unrelated"
+
+    class CommonProcessor:
+        GARBAGE_PPR035_PROCESSOR_C = 99
+
+        def process(self):
+            return COMMON
+  garbage_module_z.py: |
+    GARBAGE_PPR035_MODZ_D = "module_z"
+    GARBAGE_PPR035_MODZ_E = False
+
+    COMMON = "common"
+
+    def func_z():
+        GARBAGE_PPR035_INNER_F = 42
+        return COMMON + "_z"
+  garbage_modifier.py: |
+    GARBAGE_PPR035_MOD_G = "modifier"
+    GARBAGE_PPR035_MOD_H = 0
+
+    def apply_x_modified():
+        return "_x_modified"
+
+    def apply_y_modified():
+        return "_y_modified"
+
+# === Assertions ===
+
+must_include_files:
+- module_x.py
+- module_y.py
+
+must_include_content_from:
+  module_x.py:
+    - 'def func_x():'
+    - return COMMON + "_x_modified"
+  module_y.py:
+    - 'def func_y():'
+    - return COMMON + "_y_modified"
+
+must_not_include:
+# Tricky: same COMMON and func_x name
+- GARBAGE_PPR035_CONSUMER_A
+- GARBAGE_PPR035_CONSUMER_B
+- GARBAGE_PPR035_PROCESSOR_C
+# Tricky: module_* naming sibling with COMMON
+- GARBAGE_PPR035_MODZ_D
+- GARBAGE_PPR035_MODZ_E
+- GARBAGE_PPR035_INNER_F
+# Tricky: uses "_x_modified" and "_y_modified" strings
+- GARBAGE_PPR035_MOD_G
+- GARBAGE_PPR035_MOD_H
+
+must_not_include_files:
+- garbage_common_consumer.py
+- garbage_module_z.py
+- garbage_modifier.py
+
+max_fragments: 5
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

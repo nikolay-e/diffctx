@@ -1,0 +1,155 @@
+initial:
+  models/user.py: |
+    from django.db import models
+    from django.db.models.signals import post_save
+    from django.dispatch import receiver
+
+    class User(models.Model):
+        name = models.CharField(max_length=100)
+        email = models.EmailField()
+        created_at = models.DateTimeField(auto_now_add=True)
+
+        class Meta:
+            app_label = 'users'
+
+        def save(self, *args, **kwargs):
+            super().save(*args, **kwargs)
+  signals/user_signals.py: |
+    from django.db.models.signals import post_save
+    from django.dispatch import receiver
+    from models.user import User
+
+    @receiver(post_save, sender=User)
+    def send_welcome_email(sender, instance, created, **kwargs):
+        if created:
+            print(f"Sending welcome email to {instance.email}")
+
+    @receiver(post_save, sender=User)
+    def create_user_profile(sender, instance, created, **kwargs):
+        if created:
+            print(f"Creating profile for {instance.name}")
+
+  # --- Tricky: different Django model with similar fields (name collision, no User link) ---
+  inventory/product.py: |
+    from django.db import models
+    GARBAGE_DEP_027_PRODUCT_MODEL_A = "product_model"
+    GARBAGE_DEP_027_PRODUCT_STOCK_B = True
+
+    class Product(models.Model):
+        GARBAGE_DEP_027_PRODUCT_CLASS_C = "different_model"
+        title = models.CharField(max_length=200)
+        sku = models.CharField(max_length=50, unique=True)
+        price = models.DecimalField(max_digits=10, decimal_places=2)
+        updated_at = models.DateTimeField(auto_now=True)
+
+        class Meta:
+            app_label = 'inventory'
+
+  # --- Tricky: same signals/ directory sibling, no User sender ---
+  signals/order_signals.py: |
+    from django.db.models.signals import post_save
+    from django.dispatch import receiver
+    GARBAGE_DEP_027_ORDER_SIG_MOD_G = "order_signal_sibling"
+    GARBAGE_DEP_027_ORDER_SIG_TYPE_H = "fulfillment"
+
+    GARBAGE_DEP_027_ORDER_SIG_CLASS_I = True
+
+    def handle_order_save(sender, instance, **kwargs):
+        print(f"Order saved: {instance}")
+
+changed:
+  models/user.py: |
+    from django.db import models
+    from django.db.models.signals import post_save, pre_save
+    from django.dispatch import receiver
+
+    class User(models.Model):
+        name = models.CharField(max_length=100)
+        email = models.EmailField()
+        created_at = models.DateTimeField(auto_now_add=True)
+        updated_at = models.DateTimeField(auto_now=True)
+        is_verified = models.BooleanField(default=False)
+
+        class Meta:
+            app_label = 'users'
+
+        def save(self, *args, **kwargs):
+            self.email = self.email.lower()
+            super().save(*args, **kwargs)
+            post_save.send(
+                sender=self.__class__,
+                instance=self,
+                created=self._state.adding,
+                update_fields=kwargs.get('update_fields'),
+            )
+  signals/user_signals.py: |
+    from django.db.models.signals import post_save
+    from django.dispatch import receiver
+    from models.user import User
+
+    @receiver(post_save, sender=User)
+    def send_welcome_email(sender, instance, created, **kwargs):
+        if created:
+            print(f"Sending welcome email to {instance.email}")
+
+    @receiver(post_save, sender=User)
+    def create_user_profile(sender, instance, created, **kwargs):
+        if created:
+            print(f"Creating profile for {instance.name}")
+  inventory/product.py: |
+    from django.db import models
+    GARBAGE_DEP_027_PRODUCT_MODEL_A = "product_model"
+    GARBAGE_DEP_027_PRODUCT_STOCK_B = True
+
+    class Product(models.Model):
+        GARBAGE_DEP_027_PRODUCT_CLASS_C = "different_model"
+        title = models.CharField(max_length=200)
+        sku = models.CharField(max_length=50, unique=True)
+        price = models.DecimalField(max_digits=10, decimal_places=2)
+        updated_at = models.DateTimeField(auto_now=True)
+
+        class Meta:
+            app_label = 'inventory'
+  signals/order_signals.py: |
+    from django.db.models.signals import post_save
+    from django.dispatch import receiver
+    GARBAGE_DEP_027_ORDER_SIG_MOD_G = "order_signal_sibling"
+    GARBAGE_DEP_027_ORDER_SIG_TYPE_H = "fulfillment"
+
+    GARBAGE_DEP_027_ORDER_SIG_CLASS_I = True
+
+    def handle_order_save(sender, instance, **kwargs):
+        print(f"Order saved: {instance}")
+
+# === Assertions ===
+
+must_include_files:
+- models/user.py
+- signals/user_signals.py
+
+must_include_content_from:
+  models/user.py:
+    - updated_at = models.DateTimeField(auto_now=True)
+    - is_verified = models.BooleanField(default=False)
+    - 'class User(models.Model):'
+  signals/user_signals.py:
+    - '@receiver(post_save, sender=User)'
+
+must_not_include:
+# Tricky: different Django model with updated_at field, same models import
+- GARBAGE_DEP_027_PRODUCT_MODEL_A
+- GARBAGE_DEP_027_PRODUCT_STOCK_B
+- GARBAGE_DEP_027_PRODUCT_CLASS_C
+# Tricky: same signals/ directory sibling with post_save imports
+- GARBAGE_DEP_027_ORDER_SIG_MOD_G
+- GARBAGE_DEP_027_ORDER_SIG_TYPE_H
+- GARBAGE_DEP_027_ORDER_SIG_CLASS_I
+
+must_not_include_files:
+- inventory/product.py
+- signals/order_signals.py
+
+max_fragments: 8
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

@@ -1,0 +1,169 @@
+# Scenario: APIClient is implemented to fetch and decode a generic Codable
+# APIResponse wrapping User objects using URLSession and JSONDecoder.
+#
+# Diff: APIClient.swift goes from empty class to fetchUsers() with
+# URLSession dataTask, JSONDecoder with iso8601 date strategy, and
+# APIResponse<[User]> decoding.
+#
+# Reviewer questions:
+#   Q1: "What is the shape of the API response?"
+#       -> APIResponse.swift (UNCHANGED) defines generic APIResponse<T: Codable>
+#          with data, status, timestamp fields.
+#   Q2: "What Codable model is being decoded?"
+#       -> User.swift (UNCHANGED) defines User: Codable with id, name, email.
+#
+# Not needed:
+#   - LocalStorage.swift: persists Codable objects to UserDefaults.
+#     Codable-adjacent but no dependency from APIClient.
+#   - DateFormatter+Extensions.swift: date formatting utilities.
+#     Date-related vocabulary but APIClient uses JSONDecoder.dateDecodingStrategy.
+
+initial:
+  User.swift: |
+    struct User: Codable {
+        let id: String
+        let name: String
+        let email: String
+    }
+  APIResponse.swift: |
+    struct APIResponse<T: Codable>: Decodable {
+        let data: T
+        let status: String
+        let timestamp: Date
+    }
+  APIClient.swift: |
+    // Initial
+    class APIClient {}
+  LocalStorage.swift: |
+    import Foundation
+
+    class LocalStorage {
+        private let defaults = UserDefaults.standard
+
+        func save<T: Codable>(_ value: T, forKey key: String) {
+            if let data = try? JSONEncoder().encode(value) {
+                defaults.set(data, forKey: key)
+            }
+        }
+
+        func load<T: Codable>(forKey key: String, as type: T.Type) -> T? {
+            guard let data = defaults.data(forKey: key) else { return nil }
+            return try? JSONDecoder().decode(type, from: data)
+        }
+
+        func remove(forKey key: String) {
+            defaults.removeObject(forKey: key)
+        }
+    }
+  DateFormatterExtensions.swift: |
+    import Foundation
+
+    extension DateFormatter {
+        static let iso8601Full: DateFormatter = {
+            let formatter = DateFormatter()
+            formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSSZ"
+            return formatter
+        }()
+
+        static let shortDate: DateFormatter = {
+            let formatter = DateFormatter()
+            formatter.dateStyle = .short
+            return formatter
+        }()
+    }
+
+changed:
+  User.swift: |
+    struct User: Codable {
+        let id: String
+        let name: String
+        let email: String
+    }
+  APIResponse.swift: |
+    struct APIResponse<T: Codable>: Decodable {
+        let data: T
+        let status: String
+        let timestamp: Date
+    }
+  APIClient.swift: |
+    import Foundation
+
+    class APIClient {
+        func fetchUsers(completion: @escaping (Result<APIResponse<[User]>, Error>) -> Void) {
+            let url = URL(string: "https://api.example.com/users")!
+            URLSession.shared.dataTask(with: url) { data, _, error in
+                if let error = error {
+                    completion(.failure(error))
+                    return
+                }
+                guard let data = data else { return }
+                do {
+                    let decoder = JSONDecoder()
+                    decoder.dateDecodingStrategy = .iso8601
+                    let response = try decoder.decode(APIResponse<[User]>.self, from: data)
+                    completion(.success(response))
+                } catch {
+                    completion(.failure(error))
+                }
+            }.resume()
+        }
+    }
+  LocalStorage.swift: |
+    import Foundation
+
+    class LocalStorage {
+        private let defaults = UserDefaults.standard
+
+        func save<T: Codable>(_ value: T, forKey key: String) {
+            if let data = try? JSONEncoder().encode(value) {
+                defaults.set(data, forKey: key)
+            }
+        }
+
+        func load<T: Codable>(forKey key: String, as type: T.Type) -> T? {
+            guard let data = defaults.data(forKey: key) else { return nil }
+            return try? JSONDecoder().decode(type, from: data)
+        }
+
+        func remove(forKey key: String) {
+            defaults.removeObject(forKey: key)
+        }
+    }
+  DateFormatterExtensions.swift: |
+    import Foundation
+
+    extension DateFormatter {
+        static let iso8601Full: DateFormatter = {
+            let formatter = DateFormatter()
+            formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSSZ"
+            return formatter
+        }()
+
+        static let shortDate: DateFormatter = {
+            let formatter = DateFormatter()
+            formatter.dateStyle = .short
+            return formatter
+        }()
+    }
+
+must_include_files:
+  - APIClient.swift
+must_include_content_from:
+  APIClient.swift:
+    - "import Foundation"
+must_not_include:
+  # LocalStorage.swift: UserDefaults persistence, no dependency from APIClient
+  - LocalStorage
+  - UserDefaults
+  - removeObject
+  # DateFormatterExtensions.swift: date formatting, not used by APIClient
+  - DateFormatterExtensions
+  - iso8601Full
+  - shortDate
+must_not_include_files:
+  - LocalStorage.swift
+  - DateFormatterExtensions.swift
+max_fragments: 5
+max_files: 4
+add_garbage_files: false
+skip_garbage_check: true

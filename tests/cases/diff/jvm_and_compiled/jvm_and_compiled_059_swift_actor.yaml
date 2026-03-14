@@ -1,0 +1,132 @@
+# Scenario: DataStore is converted from a plain class to a Swift actor
+# for thread-safe item management.
+#
+# Diff: DataStore.swift changes from empty class to actor with private items
+# array and add(), remove(), getAll(), count methods.
+#
+# Reviewer questions:
+#   Q1: "What type does DataStore manage?"
+#       -> Item.swift (UNCHANGED) defines struct Item: Identifiable with id and name.
+#
+# Not needed:
+#   - DataCache.swift: generic in-memory cache class.
+#     Similar data-storage vocabulary but no dependency from DataStore actor.
+#   - ItemFormatter.swift: formats Item for display.
+#     Uses Item type but no reference from DataStore.
+
+initial:
+  Item.swift: |
+    struct Item: Identifiable {
+        let id: String
+        let name: String
+    }
+  DataStore.swift: |
+    // Initial
+    class DataStore {}
+  DataCache.swift: |
+    class DataCache<T> {
+        private var storage: [String: T] = [:]
+
+        func set(_ value: T, forKey key: String) {
+            storage[key] = value
+        }
+
+        func get(forKey key: String) -> T? {
+            return storage[key]
+        }
+
+        func remove(forKey key: String) {
+            storage.removeValue(forKey: key)
+        }
+
+        func clear() {
+            storage.removeAll()
+        }
+    }
+  ItemFormatter.swift: |
+    struct ItemFormatter {
+        static func format(_ item: Item) -> String {
+            return "[\(item.id)] \(item.name)"
+        }
+
+        static func formatList(_ items: [Item]) -> String {
+            return items.map { format($0) }.joined(separator: "\n")
+        }
+    }
+
+changed:
+  Item.swift: |
+    struct Item: Identifiable {
+        let id: String
+        let name: String
+    }
+  DataStore.swift: |
+    actor DataStore {
+        private var items: [Item] = []
+
+        func add(_ item: Item) {
+            items.append(item)
+        }
+
+        func remove(id: String) {
+            items.removeAll { $0.id == id }
+        }
+
+        func getAll() -> [Item] {
+            return items
+        }
+
+        var count: Int {
+            items.count
+        }
+    }
+  DataCache.swift: |
+    class DataCache<T> {
+        private var storage: [String: T] = [:]
+
+        func set(_ value: T, forKey key: String) {
+            storage[key] = value
+        }
+
+        func get(forKey key: String) -> T? {
+            return storage[key]
+        }
+
+        func remove(forKey key: String) {
+            storage.removeValue(forKey: key)
+        }
+
+        func clear() {
+            storage.removeAll()
+        }
+    }
+  ItemFormatter.swift: |
+    struct ItemFormatter {
+        static func format(_ item: Item) -> String {
+            return "[\(item.id)] \(item.name)"
+        }
+
+        static func formatList(_ items: [Item]) -> String {
+            return items.map { format($0) }.joined(separator: "\n")
+        }
+    }
+
+must_include_files:
+  - DataStore.swift
+must_include_content_from:
+  DataStore.swift:
+    - "actor DataStore {"
+must_not_include:
+  # DataCache.swift: generic cache, no dependency from DataStore
+  - DataCache
+  - storage
+  # ItemFormatter.swift: display utility, not referenced by DataStore
+  - ItemFormatter
+  - formatList
+must_not_include_files:
+  - DataCache.swift
+  - ItemFormatter.swift
+max_fragments: 4
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

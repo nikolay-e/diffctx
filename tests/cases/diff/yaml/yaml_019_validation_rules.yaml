@@ -1,0 +1,166 @@
+# Scenario: Validation rules tighten username/password constraints and add regex
+#
+# Diff: validation.yaml changes username min_length 3→4, max_length 20→30,
+# adds pattern regex; password min_length 8→12, adds require_special: true.
+#
+# Reviewer questions:
+#   Q1: "Does the code enforce the regex pattern?"
+#       → src/validators.py (UNCHANGED) only checks length — no regex
+#         validation for usernames. The pattern field is completely ignored.
+#   Q2: "Does the code check for special characters?"
+#       → validators.py password check is length-only. require_special
+#         is ignored. Without the code, reviewer thinks the new rules work.
+#
+# Not needed:
+#   - config/permissions.yaml: RBAC role definitions (admin, editor),
+#     not input validation rules.
+#   - src/sanitizer.py: HTML/XSS sanitization (strip_tags, escape),
+#     not field validation logic.
+
+initial:
+  config/validation.yaml: |
+    validation:
+      username:
+        min_length: 3
+        max_length: 20
+      password:
+        min_length: 8
+  src/validators.py: |
+    import re
+
+    def validate_username(username: str, min_len: int = 3, max_len: int = 20) -> bool:
+        return min_len <= len(username) <= max_len
+
+    def validate_password(password: str, min_len: int = 8) -> bool:
+        return len(password) >= min_len
+
+    def validate_email(email: str) -> bool:
+        pattern = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
+        return bool(re.match(pattern, email))
+  config/permissions.yaml: |
+    permissions:
+      roles:
+        admin:
+          - read
+          - write
+          - delete
+          - manage_users
+        editor:
+          - read
+          - write
+        viewer:
+          - read
+      default_role: viewer
+      super_admin: root
+  src/sanitizer.py: |
+    import html
+    import re
+
+    class InputSanitizer:
+        DANGEROUS_PATTERNS = [
+            r"<script.*?>.*?</script>",
+            r"javascript:",
+            r"on\w+\s*=",
+        ]
+
+        def sanitize_html(self, text: str) -> str:
+            return html.escape(text)
+
+        def strip_tags(self, text: str) -> str:
+            return re.sub(r"<[^>]+>", "", text)
+
+        def is_safe(self, text: str) -> bool:
+            for pattern in self.DANGEROUS_PATTERNS:
+                if re.search(pattern, text, re.IGNORECASE):
+                    return False
+            return True
+
+changed:
+  config/validation.yaml: |
+    validation:
+      username:
+        min_length: 4
+        max_length: 30
+        pattern: "^[a-zA-Z0-9_]+$"
+      password:
+        min_length: 12
+        require_special: true
+  src/validators.py: |
+    import re
+
+    def validate_username(username: str, min_len: int = 3, max_len: int = 20) -> bool:
+        return min_len <= len(username) <= max_len
+
+    def validate_password(password: str, min_len: int = 8) -> bool:
+        return len(password) >= min_len
+
+    def validate_email(email: str) -> bool:
+        pattern = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
+        return bool(re.match(pattern, email))
+  config/permissions.yaml: |
+    permissions:
+      roles:
+        admin:
+          - read
+          - write
+          - delete
+          - manage_users
+        editor:
+          - read
+          - write
+        viewer:
+          - read
+      default_role: viewer
+      super_admin: root
+  src/sanitizer.py: |
+    import html
+    import re
+
+    class InputSanitizer:
+        DANGEROUS_PATTERNS = [
+            r"<script.*?>.*?</script>",
+            r"javascript:",
+            r"on\w+\s*=",
+        ]
+
+        def sanitize_html(self, text: str) -> str:
+            return html.escape(text)
+
+        def strip_tags(self, text: str) -> str:
+            return re.sub(r"<[^>]+>", "", text)
+
+        def is_safe(self, text: str) -> bool:
+            for pattern in self.DANGEROUS_PATTERNS:
+                if re.search(pattern, text, re.IGNORECASE):
+                    return False
+            return True
+
+must_include_files:
+  # Q1+Q2: The code does length checks ONLY — no regex pattern, no
+  # special char check. Defaults match OLD config (3, 20, 8). The
+  # new pattern and require_special fields are completely inert.
+  - src/validators.py
+must_include_content_from:
+  src/validators.py:
+    # Length-only check — no regex pattern support
+    - "min_len <= len(username) <= max_len"
+    # Length-only check — no special char support
+    - "len(password) >= min_len"
+    # Defaults match old config, disagree with new values
+    - "min_len: int = 3, max_len: int = 20"
+must_not_include:
+  # permissions.yaml: RBAC role definitions, not input validation rules
+  - manage_users
+  - default_role
+  - super_admin
+  # sanitizer.py: HTML/XSS sanitization, not field validation
+  - InputSanitizer
+  - DANGEROUS_PATTERNS
+  - strip_tags
+must_not_include_files:
+  - config/permissions.yaml
+  - src/sanitizer.py
+max_fragments: 5
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

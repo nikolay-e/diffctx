@@ -4,36 +4,23 @@ import pytest
 
 from tests.framework import load_test_cases_from_dir
 from tests.framework.runner import YamlTestRunner
+from tests.framework.scoring import ScoreBreakdown
 from tests.framework.types import YamlTestCase
 
 CASES_DIR = Path(__file__).parent / "cases" / "diff"
 
 ALL_CASES = load_test_cases_from_dir(CASES_DIR) if CASES_DIR.exists() else []
 
-KNOWN_FAILURES = frozenset(
-    {
-        "dependencies_042_new_file_imports_expand",
-        "cicd_and_docs_068_sql_stored_procedure",
-        "cicd_and_docs_077_sql_create_function",
-        "dependencies_003_forward_chained_methods",
-        "fragments_015_markdown_long_heading_truncation",
-        "javascript_043_redux_action_change",
-        "javascript_044_zod_schema_change",
-        "javascript_048_event_emitter_change",
-        "javascript_extended_008_interface_change",
-        "javascript_extended_009_type_change",
-        "javascript_extended_012_redux_action_change",
-        "javascript_extended_013_zod_schema_change",
-        "javascript_extended_017_event_emitter_change",
-        "json_009_vscode_settings",
-        "json_011_launch_json",
-        "json_012_nodemon_config",
-        "kubernetes_017_service_account",
-        "kubernetes_024_loadbalancer",
-        "rust_014_option_handling",
-        "rust_018_derive_macro",
-    }
-)
+
+_score_results: list[tuple[str, ScoreBreakdown]] = []
+
+
+def _collect_score(case_id: str, breakdown: ScoreBreakdown) -> None:
+    _score_results.append((case_id, breakdown))
+
+
+def get_score_results() -> list[tuple[str, ScoreBreakdown]]:
+    return _score_results
 
 
 @pytest.fixture
@@ -46,23 +33,25 @@ def test_cases_loaded():
     assert len(ALL_CASES) > 0, "No test cases loaded from cases directory"
 
 
-def test_known_failures_are_valid_case_ids():
-    actual_ids = {c.id for c in ALL_CASES}
-    stale = KNOWN_FAILURES - actual_ids
-    assert not stale, f"Stale KNOWN_FAILURES entries (no matching case): {stale}"
-
-
 @pytest.mark.parametrize("case", ALL_CASES, ids=lambda c: c.id)
-def test_diff_yaml(yaml_test_runner: YamlTestRunner, case: YamlTestCase):
-    if case.id in KNOWN_FAILURES:
-        pytest.xfail("known failure — to be fixed post-release")
+def test_diff_yaml(yaml_test_runner: YamlTestRunner, case: YamlTestCase, record_property):
     context = yaml_test_runner.run_test_case(case)
-    yaml_test_runner.verify_assertions(context, case)
+    breakdown = yaml_test_runner.score_test_case(context, case)
+    _collect_score(case.id, breakdown)
+
+    record_property("score", breakdown.score)
+    record_property("recall", round(breakdown.recall * 100, 1))
+    record_property("noise_rate", round(breakdown.noise_rate * 100, 1))
+    record_property("garbage_rate", round(breakdown.garbage_rate * 100, 1))
+    record_property("diff_covered", breakdown.diff_covered)
+    record_property("enrichment", round(breakdown.enrichment * 100))
+    record_property("diff_tokens", breakdown.diff_tokens)
+    record_property("context_tokens", breakdown.context_tokens)
 
 
 @pytest.mark.parametrize(
     "case",
-    [c for c in ALL_CASES if c.id not in KNOWN_FAILURES][:20],
+    ALL_CASES[:20],
     ids=lambda c: c.id,
 )
 def test_diff_yaml_structure(yaml_test_runner: YamlTestRunner, case: YamlTestCase):

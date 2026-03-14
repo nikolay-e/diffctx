@@ -1,0 +1,214 @@
+# Scenario: UserController gains store() and show() actions, importing StoreUserRequest and User model
+# Changed: UserController now depends on StoreUserRequest and User
+# Reviewer needs: UserController (changed) + StoreUserRequest (unchanged) + User model (unchanged)
+# Trap: ProductController — similar controller structure with store/show, but unrelated domain
+# Trap: RoleValidator — has rules() and validated() like StoreUserRequest, but no dependency
+# Trap: OrderModel — has create() and toArray() like User model, no import edge
+
+initial:
+  app/Http/Requests/StoreUserRequest.php: |
+    <?php
+    namespace App\Http\Requests;
+
+    class StoreUserRequest {
+        public function rules(): array {
+            return [
+                'name' => 'required|string|max:255',
+                'email' => 'required|email|unique:users',
+                'password' => 'required|min:8',
+            ];
+        }
+
+        public function validated(): array {
+            return [
+                'name' => 'John Doe',
+                'email' => 'john@example.com',
+                'password' => 'hashed_password',
+            ];
+        }
+    }
+  app/Http/Controllers/UserController.php: |
+    <?php
+    namespace App\Http\Controllers;
+
+    class UserController {
+        public function index(): array {
+            return ['users' => []];
+        }
+    }
+  app/Models/User.php: |
+    <?php
+    namespace App\Models;
+
+    class User {
+        protected array $fillable = ['name', 'email', 'password'];
+        protected array $attributes = [];
+
+        public static function create(array $data): self {
+            $user = new self();
+            $user->attributes = $data;
+            return $user;
+        }
+
+        public function toArray(): array {
+            return $this->attributes;
+        }
+    }
+  app/Http/Controllers/ProductController.php: |
+    <?php
+    namespace App\Http\Controllers;
+
+    class ProductController {
+        public function index(): array {
+            return ['products' => []];
+        }
+
+        public function store(array $request): array {
+            return ['product' => $request, 'created' => true];
+        }
+
+        public function show(int $id): array {
+            return ['product' => ['id' => $id], 'found' => true];
+        }
+    }
+  app/Http/Requests/RoleValidator.php: |
+    <?php
+    namespace App\Http\Requests;
+
+    class RoleValidator {
+        public function rules(): array {
+            return [
+                'role' => 'required|string|in:admin,user,moderator',
+                'permissions' => 'array',
+            ];
+        }
+
+        public function validated(): array {
+            return ['role' => 'user', 'permissions' => []];
+        }
+    }
+
+changed:
+  app/Http/Requests/StoreUserRequest.php: |
+    <?php
+    namespace App\Http\Requests;
+
+    class StoreUserRequest {
+        public function rules(): array {
+            return [
+                'name' => 'required|string|max:255',
+                'email' => 'required|email|unique:users',
+                'password' => 'required|min:8',
+            ];
+        }
+
+        public function validated(): array {
+            return [
+                'name' => 'John Doe',
+                'email' => 'john@example.com',
+                'password' => 'hashed_password',
+            ];
+        }
+    }
+  app/Http/Controllers/UserController.php: |
+    <?php
+    namespace App\Http\Controllers;
+
+    use App\Http\Requests\StoreUserRequest;
+    use App\Models\User;
+
+    class UserController {
+        public function index(): array {
+            return ['users' => []];
+        }
+
+        public function store(StoreUserRequest $request): array {
+            $data = $request->validated();
+            $user = User::create($data);
+            return ['user' => $user->toArray(), 'created' => true];
+        }
+
+        public function show(int $id): array {
+            return ['user' => ['id' => $id], 'found' => true];
+        }
+    }
+  app/Models/User.php: |
+    <?php
+    namespace App\Models;
+
+    class User {
+        protected array $fillable = ['name', 'email', 'password'];
+        protected array $attributes = [];
+
+        public static function create(array $data): self {
+            $user = new self();
+            $user->attributes = $data;
+            return $user;
+        }
+
+        public function toArray(): array {
+            return $this->attributes;
+        }
+    }
+  app/Http/Controllers/ProductController.php: |
+    <?php
+    namespace App\Http\Controllers;
+
+    class ProductController {
+        public function index(): array {
+            return ['products' => []];
+        }
+
+        public function store(array $request): array {
+            return ['product' => $request, 'created' => true];
+        }
+
+        public function show(int $id): array {
+            return ['product' => ['id' => $id], 'found' => true];
+        }
+    }
+  app/Http/Requests/RoleValidator.php: |
+    <?php
+    namespace App\Http\Requests;
+
+    class RoleValidator {
+        public function rules(): array {
+            return [
+                'role' => 'required|string|in:admin,user,moderator',
+                'permissions' => 'array',
+            ];
+        }
+
+        public function validated(): array {
+            return ['role' => 'user', 'permissions' => []];
+        }
+    }
+
+must_include_files:
+- app/Http/Controllers/UserController.php
+- app/Http/Requests/StoreUserRequest.php
+- app/Models/User.php
+
+must_include_content_from:
+  app/Http/Controllers/UserController.php:
+    - 'public function store(StoreUserRequest $request): array'
+    - 'User::create($data)'
+  app/Http/Requests/StoreUserRequest.php:
+    - 'public function validated(): array'
+  app/Models/User.php:
+    - 'public static function create(array $data): self'
+
+must_not_include:
+- ProductController
+- RoleValidator
+- 'class ProductController'
+- 'class RoleValidator'
+
+must_not_include_files:
+- app/Http/Controllers/ProductController.php
+- app/Http/Requests/RoleValidator.php
+
+max_fragments: 8
+max_files: 4
+add_garbage_files: false
+skip_garbage_check: true

@@ -1,0 +1,226 @@
+# Scenario: app.rb starts using PaymentProcessor#execute, which internally
+# relies on private methods validate_amount and format_receipt.
+# payment_processor.rb defines the class with a public execute method that
+# delegates to private validate_amount and format_receipt.
+#
+# Diff: app.rb changes from a simple puts to creating a PaymentProcessor
+# instance and calling processor.execute(150.00).
+#
+# Reviewer questions:
+#   Q1: "What does PaymentProcessor#execute actually do with the amount?"
+#       -> payment_processor.rb (UNCHANGED) shows execute calls validate_amount
+#          then format_receipt, revealing the full processing pipeline.
+#   Q2: "Could execute raise an error?"
+#       -> payment_processor.rb shows the private validate_amount method raises
+#          'Invalid amount' if amount is nil or <= 0 — reviewer sees the error path.
+#
+# Not needed:
+#   - input_sanitizer.rb: cleans input strings by stripping HTML tags. Similar
+#     concept (input processing) but no require edge to PaymentProcessor.
+#   - currency_converter.rb: converts between currencies. Related domain but
+#     independent class — not referenced by app.rb.
+#   - refund_processor.rb: also has execute, validate_amount, and format_receipt
+#     methods. DIRECT structural trap (identical method names) but independent
+#     class — not imported by app.rb.
+#   - transaction_log.rb: logs PaymentProcessor transactions. References
+#     PaymentProcessor by name but doesn't define its methods.
+#   - lib/receipt_template.rb: generates receipt HTML. Same "receipt" domain
+#     but independent of format_receipt private method.
+
+initial:
+  payment_processor.rb: |
+    class PaymentProcessor
+      def execute(amount)
+        validated = validate_amount(amount)
+        format_receipt(validated)
+      end
+
+      private
+
+      def validate_amount(amount)
+        raise "Invalid amount" if amount.nil? || amount <= 0
+        amount
+      end
+
+      def format_receipt(amount)
+        "Receipt: $#{'%.2f' % amount}"
+      end
+
+      def log_transaction(amount)
+        puts "[#{Time.now}] Processed: $#{amount}"
+      end
+    end
+  app.rb: |
+    puts 'Application starting'
+  input_sanitizer.rb: |
+    module InputSanitizer
+      STRIP_TAGS = /<[^>]*>/
+      STRIP_WHITESPACE = /\s+/
+
+      def self.clean(input)
+        input.gsub(STRIP_TAGS, '').gsub(STRIP_WHITESPACE, ' ').strip
+      end
+
+      def self.escape_html(text)
+        text.gsub('&', '&amp;').gsub('<', '&lt;').gsub('>', '&gt;')
+      end
+
+      def self.truncate(text, length: 100)
+        text.length > length ? text[0...length] + '...' : text
+      end
+    end
+  currency_converter.rb: |
+    class CurrencyConverter
+      RATES = { usd_to_eur: 0.85, usd_to_gbp: 0.73, eur_to_usd: 1.18, gbp_to_usd: 1.37 }.freeze
+
+      def convert(amount, from_to)
+        rate = RATES.fetch(from_to) { raise "Unknown rate: #{from_to}" }
+        (amount * rate).round(2)
+      end
+
+      def available_conversions
+        RATES.keys
+      end
+
+      def rate_for(from_to)
+        RATES.fetch(from_to, nil)
+      end
+    end
+  refund_processor.rb: |
+    class RefundProcessor
+      def execute(amount)
+        validated = validate_amount(amount)
+        format_receipt(validated)
+      end
+
+      private
+
+      def validate_amount(amount)
+        raise "Invalid refund amount" if amount.nil? || amount <= 0
+        raise "Refund exceeds limit" if amount > 10000
+        amount
+      end
+
+      def format_receipt(amount)
+        "Refund Receipt: -$#{'%.2f' % amount}"
+      end
+
+      def notify_customer(amount)
+        puts "Refund of $#{amount} processed"
+      end
+    end
+  transaction_log.rb: |
+    class TransactionLog
+      def initialize(log_file = 'transactions.log')
+        @log_file = log_file
+        @entries = []
+      end
+
+      def record(processor_class, amount, status)
+        entry = {
+          processor: processor_class.name,
+          amount: amount,
+          status: status,
+          timestamp: Time.now
+        }
+        @entries << entry
+      end
+
+      def recent(count = 10)
+        @entries.last(count)
+      end
+
+      def total_processed
+        @entries.select { |e| e[:status] == :success }.sum { |e| e[:amount] }
+      end
+    end
+  lib/receipt_template.rb: |
+    module ReceiptTemplate
+      def self.html(amount, description: 'Payment')
+        <<~HTML
+          <div class="receipt">
+            <h2>#{description}</h2>
+            <p class="amount">$#{'%.2f' % amount}</p>
+            <p class="date">#{Time.now.strftime('%Y-%m-%d')}</p>
+          </div>
+        HTML
+      end
+
+      def self.text(amount, description: 'Payment')
+        "#{description}: $#{'%.2f' % amount} on #{Time.now.strftime('%Y-%m-%d')}"
+      end
+    end
+
+changed:
+  payment_processor.rb: |
+    class PaymentProcessor
+      def execute(amount)
+        validated = validate_amount(amount)
+        format_receipt(validated)
+      end
+
+      private
+
+      def validate_amount(amount)
+        raise "Invalid amount" if amount.nil? || amount <= 0
+        amount
+      end
+
+      def format_receipt(amount)
+        "Receipt: $#{'%.2f' % amount}"
+      end
+
+      def log_transaction(amount)
+        puts "[#{Time.now}] Processed: $#{amount}"
+      end
+    end
+  app.rb: |
+    require_relative 'payment_processor'
+
+    processor = PaymentProcessor.new
+    result = processor.execute(150.00)
+    puts result
+
+must_include_files:
+  # Q1: payment_processor.rb defines the processing pipeline called from app.rb
+  - payment_processor.rb
+must_include_content_from:
+  payment_processor.rb:
+    - "def execute(amount)"
+    - "validate_amount(amount)"
+    - "format_receipt(validated)"
+  app.rb:
+    - "PaymentProcessor.new"
+    - "processor.execute"
+must_not_include:
+  # input_sanitizer.rb: input cleaning utility, no require edge
+  - InputSanitizer
+  - STRIP_TAGS
+  - escape_html
+  # currency_converter.rb: independent currency conversion
+  - CurrencyConverter
+  - available_conversions
+  - rate_for
+  # refund_processor.rb: HARDEST TRAP — has execute, validate_amount, format_receipt
+  # Identical method names but completely independent class
+  - RefundProcessor
+  - "Refund Receipt"
+  - "Refund exceeds limit"
+  - notify_customer
+  # transaction_log.rb: references PaymentProcessor by name but doesn't define it
+  - TransactionLog
+  - total_processed
+  - "processor_class"
+  # lib/receipt_template.rb: receipt HTML generation, independent domain
+  - ReceiptTemplate
+  - "class=\"receipt\""
+must_not_include_files:
+  - input_sanitizer.rb
+  - currency_converter.rb
+  - refund_processor.rb
+  - transaction_log.rb
+  - lib/receipt_template.rb
+max_fragments: 5
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

@@ -1,0 +1,205 @@
+# Scenario: service.py adds lazy import of heavy.py inside get_heavy_data()
+#   to defer expensive_init(). heavy.py is unchanged but defines the module-
+#   level init and get_data() API.
+#
+# Diff shows:
+#   + def get_heavy_data() -> dict:
+#   +     import heavy
+#   +     return heavy.get_data()
+#   ~ def process() -> dict: now calls get_heavy_data()
+#
+# Reviewer questions:
+#   Q1: "Does the lazy import avoid triggering expensive_init() at import time?"
+#       -> heavy.py (UNCHANGED): _data = expensive_init() runs at module level.
+#          The lazy `import heavy` inside get_heavy_data() defers this until
+#          the function is first called. Reviewer verifies the pattern works.
+#
+#   Q2: "Is heavy.get_data() the correct API to call?"
+#       -> heavy.py: def get_data() -> dict: return _data. This returns the
+#          initialized data. Reviewer verifies service.py calls the right
+#          function name and it returns the expected dict type.
+#
+# Not needed for comprehension:
+#   - search/search_index.py: SearchIndex with index_document/search.
+#     Indexing vocabulary, no dependency on heavy or service.
+#
+#   - exports/data_exporter.py: DataExporter with json/csv export.
+#     Independent module, no dependency on heavy or service.
+
+initial:
+  heavy.py: |
+    import time
+    from typing import Any
+
+    _CACHE: dict[str, Any] = {}
+
+    def expensive_init() -> dict:
+        time.sleep(0.1)
+        return {"initialized": True, "version": "2.0"}
+
+    _data = expensive_init()
+
+    def get_data() -> dict:
+        return _data
+
+    def get_cached_value(key: str) -> Any:
+        return _CACHE.get(key)
+
+    def set_cached_value(key: str, value: Any) -> None:
+        _CACHE[key] = value
+  service.py: |
+    def process():
+        pass
+
+    def get_status() -> str:
+        return "idle"
+  search/search_index.py: |
+    from typing import Optional
+
+    class SearchIndex:
+        def __init__(self, index_name: str = "default"):
+            self._index: dict[str, list[str]] = {}
+
+        def index_document(self, doc_id: str, content: str) -> None:
+            tokens = content.lower().split()
+            for token in tokens:
+                if token not in self._index:
+                    self._index[token] = []
+                self._index[token].append(doc_id)
+
+        def search(self, query: str) -> list[str]:
+            tokens = query.lower().split()
+            if not tokens:
+                return []
+            results = set(self._index.get(tokens[0], []))
+            for token in tokens[1:]:
+                results &= set(self._index.get(token, []))
+            return list(results)
+  exports/data_exporter.py: |
+    import json
+    import csv
+    import io
+
+    class DataExporter:
+        def __init__(self, output_format: str = "json"):
+            self.output_format = output_format
+
+        def export(self, data: list[dict]) -> str:
+            if self.output_format == "json":
+                return json.dumps(data, indent=2)
+            elif self.output_format == "csv":
+                output = io.StringIO()
+                if data:
+                    writer = csv.DictWriter(output, fieldnames=data[0].keys())
+                    writer.writeheader()
+                    writer.writerows(data)
+                return output.getvalue()
+            return str(data)
+
+changed:
+  heavy.py: |
+    import time
+    from typing import Any
+
+    _CACHE: dict[str, Any] = {}
+
+    def expensive_init() -> dict:
+        time.sleep(0.1)
+        return {"initialized": True, "version": "2.0"}
+
+    _data = expensive_init()
+
+    def get_data() -> dict:
+        return _data
+
+    def get_cached_value(key: str) -> Any:
+        return _CACHE.get(key)
+
+    def set_cached_value(key: str, value: Any) -> None:
+        _CACHE[key] = value
+  service.py: |
+    def get_heavy_data() -> dict:
+        import heavy
+        return heavy.get_data()
+
+    def process() -> dict:
+        data = get_heavy_data()
+        return {"status": "processed", "source": data}
+
+    def get_status() -> str:
+        return "idle"
+  search/search_index.py: |
+    from typing import Optional
+
+    class SearchIndex:
+        def __init__(self, index_name: str = "default"):
+            self._index: dict[str, list[str]] = {}
+
+        def index_document(self, doc_id: str, content: str) -> None:
+            tokens = content.lower().split()
+            for token in tokens:
+                if token not in self._index:
+                    self._index[token] = []
+                self._index[token].append(doc_id)
+
+        def search(self, query: str) -> list[str]:
+            tokens = query.lower().split()
+            if not tokens:
+                return []
+            results = set(self._index.get(tokens[0], []))
+            for token in tokens[1:]:
+                results &= set(self._index.get(token, []))
+            return list(results)
+  exports/data_exporter.py: |
+    import json
+    import csv
+    import io
+
+    class DataExporter:
+        def __init__(self, output_format: str = "json"):
+            self.output_format = output_format
+
+        def export(self, data: list[dict]) -> str:
+            if self.output_format == "json":
+                return json.dumps(data, indent=2)
+            elif self.output_format == "csv":
+                output = io.StringIO()
+                if data:
+                    writer = csv.DictWriter(output, fieldnames=data[0].keys())
+                    writer.writeheader()
+                    writer.writerows(data)
+                return output.getvalue()
+            return str(data)
+
+must_include_files:
+  - service.py
+  # Q1/Q2: heavy.py defines expensive_init() and get_data() — import target
+  - heavy.py
+
+must_include_content_from:
+  service.py:
+    - "def get_heavy_data() -> dict:"
+    - "import heavy"
+    - "heavy.get_data()"
+    - "def process() -> dict:"
+  heavy.py:
+    - "def get_data() -> dict:"
+    - "_data = expensive_init()"
+
+must_not_include:
+  # --- search_index.py: indexing domain, no heavy/service dependency ---
+  - SearchIndex
+  - index_document
+  # --- data_exporter.py: export domain, no heavy/service dependency ---
+  - DataExporter
+  - DictWriter
+  - output_format
+
+must_not_include_files:
+  - search/search_index.py
+  - exports/data_exporter.py
+
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

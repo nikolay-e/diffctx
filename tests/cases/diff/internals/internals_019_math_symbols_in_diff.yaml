@@ -1,0 +1,14 @@
+initial:
+  math_diff.py: |
+    x = 1
+changed:
+  math_diff.py: |
+    ∑ = sum
+    ∏ = prod
+    result = calculate(α, β)
+must_include_files:
+- math_diff.py
+must_include_content:
+- result = calculate(α, β)
+add_garbage_files: false
+skip_garbage_check: true

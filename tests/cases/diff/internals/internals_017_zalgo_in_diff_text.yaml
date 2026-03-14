@@ -1,0 +1,15 @@
+initial:
+  zalgo_diff.py: |
+    def placeholder():
+        pass
+changed:
+  zalgo_diff.py: |
+    # H̸̡̪̯ͨ͊̽̅̾̎Ȩ̬̩̾͛ͪ̈́̀́͘ COMES
+    def process_data(items):
+        return items
+must_include_files:
+- zalgo_diff.py
+must_include_content:
+- 'def process_data(items):'
+add_garbage_files: false
+skip_garbage_check: true

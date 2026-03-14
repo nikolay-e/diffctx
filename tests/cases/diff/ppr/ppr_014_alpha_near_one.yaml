@@ -1,0 +1,162 @@
+# Scenario: func0 in a 10-function chain gets return value — tests alpha near 1.0 behavior
+# Changed: test.py — func0() returns 1, deep chain func0->func1->...->func9
+# Reviewer needs: test.py (changed, entire chain is in one file)
+# Trap: alt_processor.py — defines func0() with different implementation, name collision
+# Trap: deep_pipeline.py — similar deep chain structure (step0->step1->step2)
+# Trap: app_settings.py — completely unrelated configuration file
+
+initial:
+  test.py: |
+    def func0():
+        pass
+
+    def func1():
+        func0()
+
+    def func2():
+        func1()
+
+    def func3():
+        func2()
+
+    def func4():
+        func3()
+
+    def func5():
+        func4()
+
+    def func6():
+        func5()
+
+    def func7():
+        func6()
+
+    def func8():
+        func7()
+
+    def func9():
+        func8()
+
+  alt_processor.py: |
+    def func0():
+        return "alternate_implementation"
+
+    def process():
+        return func0()
+
+    class AltProcessor:
+        def run(self):
+            return func0()
+  deep_pipeline.py: |
+    def step0():
+        return 0
+
+    def step1():
+        return step0() + 1
+
+    def step2():
+        return step1() + 1
+
+    class DeepPipelineRunner:
+        def execute(self):
+            return step2()
+  app_settings.py: |
+    CONFIG_PATH = "/etc/config"
+    RUN_MODE = "production"
+
+    class AppConfig:
+        def load(self):
+            pass
+
+changed:
+  test.py: |
+    def func0():
+        return 1
+
+    def func1():
+        func0()
+
+    def func2():
+        func1()
+
+    def func3():
+        func2()
+
+    def func4():
+        func3()
+
+    def func5():
+        func4()
+
+    def func6():
+        func5()
+
+    def func7():
+        func6()
+
+    def func8():
+        func7()
+
+    def func9():
+        func8()
+
+  alt_processor.py: |
+    def func0():
+        return "alternate_implementation"
+
+    def process():
+        return func0()
+
+    class AltProcessor:
+        def run(self):
+            return func0()
+  deep_pipeline.py: |
+    def step0():
+        return 0
+
+    def step1():
+        return step0() + 1
+
+    def step2():
+        return step1() + 1
+
+    class DeepPipelineRunner:
+        def execute(self):
+            return step2()
+  app_settings.py: |
+    CONFIG_PATH = "/etc/config"
+    RUN_MODE = "production"
+
+    class AppConfig:
+        def load(self):
+            pass
+
+# === Assertions ===
+
+must_include:
+- func0
+
+must_include_files:
+- test.py
+
+must_include_content_from:
+  test.py:
+    - 'def func0():'
+    - return 1
+
+must_not_include:
+- AltProcessor
+- alternate_implementation
+- DeepPipelineRunner
+- CONFIG_PATH
+- RUN_MODE
+
+must_not_include_files:
+- alt_processor.py
+- deep_pipeline.py
+- app_settings.py
+
+max_fragments: 6
+max_files: 2
+add_garbage_files: false
+skip_garbage_check: true

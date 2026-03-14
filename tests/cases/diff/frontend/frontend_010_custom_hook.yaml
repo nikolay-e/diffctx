@@ -1,0 +1,230 @@
+# Scenario: React component starts using a custom hook for API calls.
+#
+# Diff: UserProfile.tsx changes from empty to consuming useApi<User> hook
+# with loading/error/refetch states.
+#
+# Reviewer questions:
+#   Q1: "What does useApi return?" → useApi.ts (UNCHANGED) defines UseApiResult<T>
+#        with data, loading, error, refetch.
+#   Q2: "How does useApi handle errors?" → useApi.ts shows try/catch with Error state.
+#
+# Not needed:
+#   - src/hooks/useLocalStorage.ts: another custom hook but for localStorage, not API.
+#   - src/components/UserAvatar.tsx: sibling component with "User" in name but
+#     just renders an avatar image, no API interaction.
+
+initial:
+  src/hooks/useApi.ts: |
+    import { useState, useEffect } from 'react';
+
+    export interface UseApiResult<T> {
+        data: T | null;
+        loading: boolean;
+        error: Error | null;
+        refetch: () => void;
+    }
+
+    export function useApi<T>(endpoint: string): UseApiResult<T> {
+        const [data, setData] = useState<T | null>(null);
+        const [loading, setLoading] = useState(true);
+        const [error, setError] = useState<Error | null>(null);
+
+        const fetchData = async () => {
+            setLoading(true);
+            try {
+                const response = await fetch(endpoint);
+                const result = await response.json();
+                setData(result);
+                setError(null);
+            } catch (e) {
+                setError(e as Error);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        useEffect(() => {
+            fetchData();
+        }, [endpoint]);
+
+        return { data, loading, error, refetch: fetchData };
+    }
+  src/components/UserProfile.tsx: |
+    import React from 'react';
+
+    export function UserProfile() {
+        return <div>TODO</div>;
+    }
+  src/hooks/useLocalStorage.ts: |
+    import { useState, useCallback } from 'react';
+
+    export function useLocalStorage<T>(key: string, initialValue: T): [T, (value: T) => void] {
+        const [storedValue, setStoredValue] = useState<T>(() => {
+            try {
+                const item = window.localStorage.getItem(key);
+                return item ? JSON.parse(item) : initialValue;
+            } catch {
+                return initialValue;
+            }
+        });
+
+        const setValue = useCallback((value: T) => {
+            setStoredValue(value);
+            window.localStorage.setItem(key, JSON.stringify(value));
+        }, [key]);
+
+        return [storedValue, setValue];
+    }
+  src/components/UserAvatar.tsx: |
+    import React from 'react';
+
+    interface UserAvatarProps {
+        src?: string;
+        name: string;
+        size?: number;
+    }
+
+    export function UserAvatar({ src, name, size = 40 }: UserAvatarProps) {
+        if (!src) {
+            const initials = name.split(' ').map(n => n[0]).join('').toUpperCase();
+            return (
+                <div style={{ width: size, height: size, borderRadius: '50%', background: '#4a90d9', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    {initials}
+                </div>
+            );
+        }
+        return <img src={src} alt={name} width={size} height={size} style={{ borderRadius: '50%' }} />;
+    }
+
+changed:
+  src/hooks/useApi.ts: |
+    import { useState, useEffect } from 'react';
+
+    export interface UseApiResult<T> {
+        data: T | null;
+        loading: boolean;
+        error: Error | null;
+        refetch: () => void;
+    }
+
+    export function useApi<T>(endpoint: string): UseApiResult<T> {
+        const [data, setData] = useState<T | null>(null);
+        const [loading, setLoading] = useState(true);
+        const [error, setError] = useState<Error | null>(null);
+
+        const fetchData = async () => {
+            setLoading(true);
+            try {
+                const response = await fetch(endpoint);
+                const result = await response.json();
+                setData(result);
+                setError(null);
+            } catch (e) {
+                setError(e as Error);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        useEffect(() => {
+            fetchData();
+        }, [endpoint]);
+
+        return { data, loading, error, refetch: fetchData };
+    }
+  src/components/UserProfile.tsx: |
+    import React from 'react';
+    import { useApi } from '../hooks/useApi';
+
+    interface User {
+        id: string;
+        name: string;
+        email: string;
+    }
+
+    export function UserProfile({ userId }: { userId: string }) {
+        const { data: user, loading, error, refetch } = useApi<User>(`/users/${userId}`);
+
+        if (loading) return <p>Loading...</p>;
+        if (error) return <p>Error: {error.message}</p>;
+        if (!user) return <p>User not found</p>;
+
+        return (
+            <div>
+                <h1>{user.name}</h1>
+                <p>{user.email}</p>
+                <button onClick={refetch}>Refresh</button>
+            </div>
+        );
+    }
+  src/hooks/useLocalStorage.ts: |
+    import { useState, useCallback } from 'react';
+
+    export function useLocalStorage<T>(key: string, initialValue: T): [T, (value: T) => void] {
+        const [storedValue, setStoredValue] = useState<T>(() => {
+            try {
+                const item = window.localStorage.getItem(key);
+                return item ? JSON.parse(item) : initialValue;
+            } catch {
+                return initialValue;
+            }
+        });
+
+        const setValue = useCallback((value: T) => {
+            setStoredValue(value);
+            window.localStorage.setItem(key, JSON.stringify(value));
+        }, [key]);
+
+        return [storedValue, setValue];
+    }
+  src/components/UserAvatar.tsx: |
+    import React from 'react';
+
+    interface UserAvatarProps {
+        src?: string;
+        name: string;
+        size?: number;
+    }
+
+    export function UserAvatar({ src, name, size = 40 }: UserAvatarProps) {
+        if (!src) {
+            const initials = name.split(' ').map(n => n[0]).join('').toUpperCase();
+            return (
+                <div style={{ width: size, height: size, borderRadius: '50%', background: '#4a90d9', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    {initials}
+                </div>
+            );
+        }
+        return <img src={src} alt={name} width={size} height={size} style={{ borderRadius: '50%' }} />;
+    }
+
+# === Assertions ===
+
+must_include_files:
+  - src/components/UserProfile.tsx
+
+must_include_content_from:
+  # Reviewer needs to see the hook's return type and error handling to understand the consumer
+  src/hooks/useApi.ts:
+    - "interface UseApiResult<T> {"
+    - "refetch: () => void"
+    - "setError(e as Error)"
+
+must_not_include:
+  # useLocalStorage.ts: custom hook sibling but for storage, not API
+  - useLocalStorage
+  - storedValue
+  - localStorage
+  # UserAvatar.tsx: "User" in name but purely presentational, no API
+  - UserAvatar
+  - UserAvatarProps
+  - initials
+
+must_not_include_files:
+  - src/hooks/useLocalStorage.ts
+  - src/components/UserAvatar.tsx
+
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

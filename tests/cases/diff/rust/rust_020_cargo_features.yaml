@@ -1,0 +1,290 @@
+# Scenario: Adding serde feature flag and serialization module to a Cargo project.
+# Both Cargo.toml and src/lib.rs change.
+#
+# Diff: Cargo.toml adds serde/serde_json optional deps, "serde" and "full"
+# feature flags, dev-deps, version bump. src/lib.rs adds #[cfg(feature = "serde")]
+# serialization module, fetch_with_timeout in async module, and features() function.
+#
+# Reviewer questions:
+#   Q1: "Are optional deps correctly gated?"
+#       -> Both Cargo.toml and src/lib.rs change — reviewer needs to see both
+#          to verify serde = ["dep:serde", "dep:serde_json"] matches the
+#          #[cfg(feature = "serde")] usage in lib.rs.
+#   Q2: "Does the 'full' feature compose correctly?"
+#       -> Cargo.toml: full = ["async", "serde"]. The features() function in
+#          lib.rs checks both feature flags. Reviewer must verify alignment.
+#
+# Not needed:
+#   - src/telemetry.rs: metrics collection using feature-gated pattern.
+#     Same "#[cfg(feature)]" vocabulary but independent features.
+#   - src/config.rs: configuration module that ALSO uses #[cfg(feature = "serde")]
+#     for optional serialization. HARDEST TRAP: same feature gate, same
+#     serde::{Serialize, Deserialize} imports. Sibling module with identical
+#     feature-gating pattern.
+#   - benches/benchmarks.rs: criterion benchmarks referenced in Cargo.toml's
+#     [[bench]] section. Referenced in changed file but no code dependency.
+#   - src/compat.rs: compatibility module checking feature combinations.
+#     Uses #[cfg(all(feature = "async", feature = "serde"))] — references
+#     both new features from the diff.
+#   - tests/feature_tests.rs: integration tests gated behind features.
+#     Same #[cfg(feature = "serde")] pattern.
+
+initial:
+  Cargo.toml: |
+    [package]
+    name = "myapp"
+    version = "0.1.0"
+    edition = "2021"
+    authors = ["Developer <dev@example.com>"]
+    description = "A sample application"
+
+    [features]
+    default = []
+    async = ["tokio"]
+
+    [dependencies]
+    tokio = { version = "1", optional = true }
+  src/lib.rs: |
+    #[cfg(feature = "async")]
+    pub mod async_utils {
+        pub async fn fetch() -> String {
+            "data".to_string()
+        }
+
+        pub async fn delay(ms: u64) {
+            tokio::time::sleep(tokio::time::Duration::from_millis(ms)).await;
+        }
+    }
+
+    pub fn sync_fetch() -> String {
+        "sync data".to_string()
+    }
+
+    pub fn version() -> &'static str {
+        env!("CARGO_PKG_VERSION")
+    }
+  src/telemetry.rs: |
+    use std::collections::HashMap;
+    use std::time::Instant;
+
+    pub struct MetricsCollector {
+        counters: HashMap<String, u64>,
+        start_time: Instant,
+    }
+
+    impl MetricsCollector {
+        pub fn new() -> Self {
+            Self {
+                counters: HashMap::new(),
+                start_time: Instant::now(),
+            }
+        }
+
+        pub fn increment(&mut self, name: &str) {
+            *self.counters.entry(name.to_string()).or_insert(0) += 1;
+        }
+
+        pub fn get(&self, name: &str) -> u64 {
+            *self.counters.get(name).unwrap_or(&0)
+        }
+
+        pub fn uptime_secs(&self) -> u64 {
+            self.start_time.elapsed().as_secs()
+        }
+    }
+  src/config.rs: |
+    use std::collections::HashMap;
+
+    pub struct AppConfig {
+        pub name: String,
+        pub settings: HashMap<String, String>,
+    }
+
+    impl AppConfig {
+        pub fn new(name: &str) -> Self {
+            Self {
+                name: name.to_string(),
+                settings: HashMap::new(),
+            }
+        }
+
+        pub fn set(&mut self, key: &str, value: &str) {
+            self.settings.insert(key.to_string(), value.to_string());
+        }
+    }
+
+    #[cfg(feature = "serde")]
+    mod serde_support {
+        use super::AppConfig;
+        use serde::{Deserialize, Serialize};
+
+        impl AppConfig {
+            pub fn to_json(&self) -> Result<String, serde_json::Error> {
+                serde_json::to_string(self)
+            }
+
+            pub fn from_json(json: &str) -> Result<AppConfig, serde_json::Error> {
+                serde_json::from_str(json)
+            }
+        }
+    }
+  benches/benchmarks.rs: |
+    fn main() {
+        println!("Benchmark placeholder");
+    }
+  src/compat.rs: |
+    #[cfg(all(feature = "async", feature = "serde"))]
+    pub async fn fetch_and_serialize() -> String {
+        let data = crate::async_utils::fetch().await;
+        format!("serialized: {}", data)
+    }
+
+    #[cfg(feature = "serde")]
+    pub fn serialize_version() -> String {
+        format!("v{}", crate::version())
+    }
+
+    pub fn check_features() -> Vec<&'static str> {
+        let mut features = Vec::new();
+        #[cfg(feature = "async")]
+        features.push("async");
+        #[cfg(feature = "serde")]
+        features.push("serde");
+        features
+    }
+  tests/feature_tests.rs: |
+    #[cfg(feature = "serde")]
+    #[test]
+    fn test_serialization() {
+        let config = myapp::serialization::Config {
+            name: "test".to_string(),
+            value: 42,
+        };
+        let json = myapp::serialization::to_json(&config).unwrap();
+        assert!(json.contains("test"));
+    }
+
+    #[cfg(feature = "async")]
+    #[tokio::test]
+    async fn test_fetch_with_timeout() {
+        let result = myapp::async_utils::fetch_with_timeout(1000).await;
+        assert!(result.is_some());
+    }
+changed:
+  Cargo.toml: |
+    [package]
+    name = "myapp"
+    version = "0.2.0"
+    edition = "2021"
+    authors = ["Developer <dev@example.com>"]
+    description = "A sample application with features"
+
+    [features]
+    default = []
+    async = ["tokio"]
+    serde = ["dep:serde", "dep:serde_json"]
+    full = ["async", "serde"]
+
+    [dependencies]
+    tokio = { version = "1", optional = true, features = ["rt-multi-thread", "macros"] }
+    serde = { version = "1", optional = true, features = ["derive"] }
+    serde_json = { version = "1", optional = true }
+
+    [dev-dependencies]
+    criterion = "0.5"
+
+    [[bench]]
+    name = "benchmarks"
+    harness = false
+  src/lib.rs: |
+    #[cfg(feature = "async")]
+    pub mod async_utils {
+        pub async fn fetch() -> String {
+            "data".to_string()
+        }
+
+        pub async fn delay(ms: u64) {
+            tokio::time::sleep(tokio::time::Duration::from_millis(ms)).await;
+        }
+
+        pub async fn fetch_with_timeout(timeout_ms: u64) -> Option<String> {
+            tokio::time::timeout(
+                tokio::time::Duration::from_millis(timeout_ms),
+                fetch(),
+            )
+            .await
+            .ok()
+        }
+    }
+
+    #[cfg(feature = "serde")]
+    pub mod serialization {
+        use serde::{Deserialize, Serialize};
+
+        #[derive(Debug, Clone, Serialize, Deserialize)]
+        pub struct Config {
+            pub name: String,
+            pub value: i64,
+        }
+
+        pub fn to_json<T: Serialize>(value: &T) -> Result<String, serde_json::Error> {
+            serde_json::to_string(value)
+        }
+
+        pub fn from_json<T: for<'de> Deserialize<'de>>(json: &str) -> Result<T, serde_json::Error> {
+            serde_json::from_str(json)
+        }
+    }
+
+    pub fn sync_fetch() -> String {
+        "sync data".to_string()
+    }
+
+    pub fn version() -> &'static str {
+        env!("CARGO_PKG_VERSION")
+    }
+
+    pub fn features() -> Vec<&'static str> {
+        let mut features = Vec::new();
+        #[cfg(feature = "async")]
+        features.push("async");
+        #[cfg(feature = "serde")]
+        features.push("serde");
+        features
+    }
+must_include_files:
+  - Cargo.toml
+  - src/lib.rs
+must_include_content_from:
+  Cargo.toml:
+    - 'serde = ["dep:serde", "dep:serde_json"]'
+    - 'full = ["async", "serde"]'
+  src/lib.rs:
+    - '#[cfg(feature = "serde")]'
+    - "pub mod serialization"
+must_not_include:
+  # telemetry.rs: metrics, no feature-gating relationship
+  - MetricsCollector
+  - uptime_secs
+  # config.rs: ALSO uses #[cfg(feature = "serde")] with same imports
+  - "struct AppConfig"
+  - "serde_support"
+  # benches/benchmarks.rs: referenced in Cargo.toml but no code dep
+  - "Benchmark placeholder"
+  # compat.rs: uses BOTH new features, same cfg patterns
+  - "fetch_and_serialize"
+  - "serialize_version"
+  - "check_features"
+  # tests/feature_tests.rs: same #[cfg(feature = "serde")] pattern
+  - "test_serialization"
+  - "test_fetch_with_timeout"
+must_not_include_files:
+  - src/telemetry.rs
+  - src/config.rs
+  - benches/benchmarks.rs
+  - src/compat.rs
+  - tests/feature_tests.rs
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

@@ -1,0 +1,26 @@
+initial:
+  exp1.py: |
+    pass
+  exp2.py: |
+    pass
+  exp3.py: |
+    pass
+changed:
+  exp1.py: |
+    def caller_a():
+        pass
+  exp2.py: |
+    def caller_b():
+        pass
+  exp3.py: |
+    def caller_c():
+        pass
+must_include_files:
+- exp1.py
+- exp2.py
+- exp3.py
+must_include_content:
+- 'def caller_a():'
+- 'def caller_b():'
+add_garbage_files: false
+skip_garbage_check: true

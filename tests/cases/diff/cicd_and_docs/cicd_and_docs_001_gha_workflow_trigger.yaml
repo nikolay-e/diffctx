@@ -1,0 +1,317 @@
+initial:
+  .github/workflows/ci.yml: |
+    name: CI
+    on: [push]
+    jobs:
+      build:
+        runs-on: ubuntu-latest
+        steps:
+          - uses: actions/checkout@v4
+          - name: Setup Node.js
+            uses: actions/setup-node@v4
+            with:
+              node-version: '20'
+          - run: npm ci
+          - run: npm run build
+          - run: npm test
+  src/index.ts: |
+    import { Application } from './app';
+    import { Config } from './config';
+    import { Logger } from './utils/logger';
+
+    const logger = new Logger('main');
+
+    async function main(): Promise<void> {
+      const config = Config.load();
+      const app = new Application(config);
+
+      await app.initialize();
+      await app.start();
+
+      logger.info(`Application started on port ${config.port}`);
+
+      process.on('SIGTERM', async () => {
+        logger.info('Shutting down...');
+        await app.stop();
+        process.exit(0);
+      });
+    }
+
+    main().catch((error) => {
+      logger.error('Failed to start', error);
+      process.exit(1);
+    });
+  src/app.ts: |
+    import express, { Express } from 'express';
+    import { Config } from './config';
+    import { setupRoutes } from './routes';
+
+    export class Application {
+      private app: Express;
+      private server: any;
+
+      constructor(private config: Config) {
+        this.app = express();
+        this.app.use(express.json());
+        setupRoutes(this.app);
+      }
+
+      async initialize(): Promise<void> {
+        // Initialize database, cache, etc.
+      }
+
+      async start(): Promise<void> {
+        return new Promise((resolve) => {
+          this.server = this.app.listen(this.config.port, resolve);
+        });
+      }
+
+      async stop(): Promise<void> {
+        return new Promise((resolve) => {
+          this.server?.close(resolve);
+        });
+      }
+    }
+
+  # --- Tricky: sibling workflow with same branch filters as the diff adds ---
+  .github/workflows/release.yml: |
+    name: Release
+    GARBAGE_CICD_DOCS_001_RELEASE_MARKER_G: true
+    on:
+      push:
+        branches: [main, develop]
+      pull_request:
+        branches: [main]
+    jobs:
+      release:
+        runs-on: ubuntu-latest
+        steps:
+          - uses: actions/checkout@v4
+          - name: Setup Node.js
+            uses: actions/setup-node@v4
+            with:
+              node-version: '20'
+          - run: npm ci
+          - run: npm run build
+          - name: GARBAGE_CICD_DOCS_001_PUBLISH_MARKER_H
+            run: npm publish
+
+  # --- Tricky: branch protection config mentioning same branch names ---
+  .github/branch-protection.json: |
+    {
+      "GARBAGE_CICD_DOCS_001_PROTECTION_MARKER_I": "branch_rules",
+      "branches": {
+        "main": {
+          "required_reviews": 2,
+          "require_ci": true,
+          "GARBAGE_CICD_DOCS_001_REVIEW_MARKER_J": true
+        },
+        "develop": {
+          "required_reviews": 1,
+          "require_ci": true
+        }
+      }
+    }
+
+  # --- Plain garbage ---
+  garbage_scheduler.ts: |
+    const GARBAGE_CICD_DOCS_001_SCHEDULE_MARKER_A = "cron";
+    const GARBAGE_CICD_DOCS_001_INTERVAL_MARKER_B = 3600;
+
+    class GarbageTaskScheduler {
+      static GARBAGE_CICD_DOCS_001_QUEUE_MARKER_C = "default";
+
+      schedule(): void {}
+    }
+
+    export { GarbageTaskScheduler };
+  garbage_webhook.ts: |
+    const GARBAGE_CICD_DOCS_001_WEBHOOK_MARKER_D = "github";
+    const GARBAGE_CICD_DOCS_001_SECRET_MARKER_E = "sha256";
+
+    class GarbageWebhookHandler {
+      static GARBAGE_CICD_DOCS_001_VERIFY_MARKER_F = true;
+
+      handle(): void {}
+    }
+
+    export { GarbageWebhookHandler };
+
+changed:
+  .github/workflows/ci.yml: |
+    name: CI
+    on:
+      push:
+        branches: [main, develop]
+      pull_request:
+        branches: [main]
+    jobs:
+      build:
+        runs-on: ubuntu-latest
+        steps:
+          - uses: actions/checkout@v4
+          - name: Setup Node.js
+            uses: actions/setup-node@v4
+            with:
+              node-version: '20'
+          - run: npm ci
+          - run: npm run build
+          - run: npm test
+  src/index.ts: |
+    import { Application } from './app';
+    import { Config } from './config';
+    import { Logger } from './utils/logger';
+
+    const logger = new Logger('main');
+
+    async function main(): Promise<void> {
+      const config = Config.load();
+      const app = new Application(config);
+
+      await app.initialize();
+      await app.start();
+
+      logger.info(`Application started on port ${config.port}`);
+
+      process.on('SIGTERM', async () => {
+        logger.info('Shutting down...');
+        await app.stop();
+        process.exit(0);
+      });
+    }
+
+    main().catch((error) => {
+      logger.error('Failed to start', error);
+      process.exit(1);
+    });
+  src/app.ts: |
+    import express, { Express } from 'express';
+    import { Config } from './config';
+    import { setupRoutes } from './routes';
+
+    export class Application {
+      private app: Express;
+      private server: any;
+
+      constructor(private config: Config) {
+        this.app = express();
+        this.app.use(express.json());
+        setupRoutes(this.app);
+      }
+
+      async initialize(): Promise<void> {
+        // Initialize database, cache, etc.
+      }
+
+      async start(): Promise<void> {
+        return new Promise((resolve) => {
+          this.server = this.app.listen(this.config.port, resolve);
+        });
+      }
+
+      async stop(): Promise<void> {
+        return new Promise((resolve) => {
+          this.server?.close(resolve);
+        });
+      }
+    }
+  .github/workflows/release.yml: |
+    name: Release
+    GARBAGE_CICD_DOCS_001_RELEASE_MARKER_G: true
+    on:
+      push:
+        branches: [main, develop]
+      pull_request:
+        branches: [main]
+    jobs:
+      release:
+        runs-on: ubuntu-latest
+        steps:
+          - uses: actions/checkout@v4
+          - name: Setup Node.js
+            uses: actions/setup-node@v4
+            with:
+              node-version: '20'
+          - run: npm ci
+          - run: npm run build
+          - name: GARBAGE_CICD_DOCS_001_PUBLISH_MARKER_H
+            run: npm publish
+  .github/branch-protection.json: |
+    {
+      "GARBAGE_CICD_DOCS_001_PROTECTION_MARKER_I": "branch_rules",
+      "branches": {
+        "main": {
+          "required_reviews": 2,
+          "require_ci": true,
+          "GARBAGE_CICD_DOCS_001_REVIEW_MARKER_J": true
+        },
+        "develop": {
+          "required_reviews": 1,
+          "require_ci": true
+        }
+      }
+    }
+  garbage_scheduler.ts: |
+    const GARBAGE_CICD_DOCS_001_SCHEDULE_MARKER_A = "cron";
+    const GARBAGE_CICD_DOCS_001_INTERVAL_MARKER_B = 3600;
+
+    class GarbageTaskScheduler {
+      static GARBAGE_CICD_DOCS_001_QUEUE_MARKER_C = "default";
+
+      schedule(): void {}
+    }
+
+    export { GarbageTaskScheduler };
+  garbage_webhook.ts: |
+    const GARBAGE_CICD_DOCS_001_WEBHOOK_MARKER_D = "github";
+    const GARBAGE_CICD_DOCS_001_SECRET_MARKER_E = "sha256";
+
+    class GarbageWebhookHandler {
+      static GARBAGE_CICD_DOCS_001_VERIFY_MARKER_F = true;
+
+      handle(): void {}
+    }
+
+    export { GarbageWebhookHandler };
+
+# === Assertions ===
+
+must_include_files:
+- .github/workflows/ci.yml
+
+must_include_content_from:
+  .github/workflows/ci.yml:
+    # All three changed blocks
+    - 'branches: [main, develop]'
+    - 'pull_request:'
+    - 'branches: [main]'
+    # Enough context for reviewer
+    - 'name: CI'
+
+must_not_include:
+# Plain garbage
+- GARBAGE_CICD_DOCS_001_SCHEDULE_MARKER_A
+- GARBAGE_CICD_DOCS_001_INTERVAL_MARKER_B
+- GARBAGE_CICD_DOCS_001_QUEUE_MARKER_C
+- GARBAGE_CICD_DOCS_001_WEBHOOK_MARKER_D
+- GARBAGE_CICD_DOCS_001_SECRET_MARKER_E
+- GARBAGE_CICD_DOCS_001_VERIFY_MARKER_F
+# Tricky: sibling workflow with identical branch filters
+- GARBAGE_CICD_DOCS_001_RELEASE_MARKER_G
+- GARBAGE_CICD_DOCS_001_PUBLISH_MARKER_H
+# Tricky: branch config mentioning same branch names
+- GARBAGE_CICD_DOCS_001_PROTECTION_MARKER_I
+- GARBAGE_CICD_DOCS_001_REVIEW_MARKER_J
+
+must_not_include_files:
+- .github/workflows/release.yml
+- .github/branch-protection.json
+- garbage_scheduler.ts
+- garbage_webhook.ts
+- src/index.ts
+- src/app.ts
+
+max_fragments: 3
+max_files: 1
+add_garbage_files: false
+skip_garbage_check: true

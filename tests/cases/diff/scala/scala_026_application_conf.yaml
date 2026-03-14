@@ -1,0 +1,315 @@
+# Scenario: Config.scala adds database and Kafka configuration readers
+#   that load from application.conf's app.database.* and app.kafka.* paths.
+#   Only src/main/scala/Config.scala is changed.
+#
+# Diff shows:
+#   + val dbUrl: String = config.getString("app.database.url")
+#   + val dbPoolSize: Int = config.getInt("app.database.pool-size")
+#   + val kafkaServers: String = config.getString("app.kafka.bootstrap-servers")
+#   + val kafkaTopic: String = config.getString("app.kafka.topic")
+#
+# Reviewer questions:
+#   Q1: "Do the config paths match actual keys in application.conf?"
+#       -> Needs application.conf: defines app.database.url,
+#         app.database.pool-size, app.kafka.bootstrap-servers, app.kafka.topic.
+#         Reviewer must cross-check each getString/getInt path against
+#         the actual HOCON structure. A typo in the path would cause a
+#         runtime ConfigException.Missing.
+#
+#   Q2: "What types does application.conf assign to these values?"
+#       -> pool-size = 10 (int), timeout = 30s (duration), url is string.
+#         Reviewer verifies getInt("app.database.pool-size") is correct
+#         (it is — value is 10) and that timeout isn't being read
+#         (it's a Duration, not int/string — would need getDuration).
+#
+# Not needed for comprehension:
+#   - src/main/scala/DatabaseService.scala: Uses Config.dbUrl and
+#     Config.dbPoolSize to create a connection pool. HARDEST TRAP:
+#     accesses the EXACT vals being added in the diff. Direct backward
+#     structural edge. But HOW the DB service uses the URL doesn't
+#     help verify that the config PATH matches the HOCON key.
+#
+#   - src/main/scala/KafkaProducer.scala: Uses Config.kafkaServers and
+#     Config.kafkaTopic to create a producer. Same pattern: accesses
+#     the new vals, direct backward edge. But producer setup doesn't
+#     help verify config path correctness.
+#
+#   - src/main/scala/ConfigValidator.scala: Validates that required
+#     config keys exist at startup by checking hasPath("app.database.url"),
+#     hasPath("app.kafka.bootstrap-servers"), etc. References the SAME
+#     config paths as the diff. But validation logic doesn't show the
+#     actual config structure — only application.conf does.
+#
+#   - src/test/scala/ConfigSpec.scala: Tests Config object — asserts
+#     Config.dbUrl, Config.dbPoolSize, Config.kafkaServers values.
+#     Imports Config, accesses the new vals. But test expectations
+#     verify runtime values, not whether paths match HOCON keys.
+#
+#   - src/main/scala/Main.scala: Entry point that references Config.
+#     Trivial consumer.
+#
+#   - src/test/resources/test.conf: Test config overrides. Different
+#     file, potentially different structure.
+
+initial:
+  src/main/resources/application.conf: |
+    app {
+      name = "myapp"
+      port = 8080
+
+      database {
+        url = "jdbc:postgresql://localhost/db"
+        pool-size = 10
+        timeout = 30s
+        driver = "org.postgresql.Driver"
+      }
+
+      kafka {
+        bootstrap-servers = "localhost:9092"
+        topic = "events"
+        group-id = "myapp-consumer"
+        auto-offset-reset = "earliest"
+      }
+
+      metrics {
+        enabled = true
+        port = 9090
+        path = "/metrics"
+      }
+    }
+
+  src/main/scala/Config.scala: |
+    package myapp
+
+    import com.typesafe.config.ConfigFactory
+
+    object Config {
+      private val config = ConfigFactory.load()
+      val appName: String = config.getString("app.name")
+      val port: Int = config.getInt("app.port")
+    }
+
+  src/main/scala/DatabaseService.scala: |
+    package myapp
+
+    import java.sql.{Connection, DriverManager}
+
+    class DatabaseService {
+      private val pool = new Array[Connection](Config.dbPoolSize)
+
+      def connect(): Connection = {
+        Class.forName("org.postgresql.Driver")
+        DriverManager.getConnection(Config.dbUrl)
+      }
+
+      def getPoolSize: Int = Config.dbPoolSize
+
+      def healthCheck(): Boolean = {
+        try {
+          val conn = connect()
+          val valid = conn.isValid(5)
+          conn.close()
+          valid
+        } catch {
+          case _: Exception => false
+        }
+      }
+    }
+
+  src/main/scala/KafkaProducer.scala: |
+    package myapp
+
+    import java.util.Properties
+
+    class KafkaProducer {
+      private val props = new Properties()
+      props.put("bootstrap.servers", Config.kafkaServers)
+      props.put("key.serializer", "org.apache.kafka.common.serialization.StringSerializer")
+      props.put("value.serializer", "org.apache.kafka.common.serialization.StringSerializer")
+
+      def send(key: String, value: String): Unit = {
+        println(s"Sending to ${Config.kafkaTopic}: $key -> $value")
+      }
+
+      def topic: String = Config.kafkaTopic
+
+      def close(): Unit = {
+        println("Closing Kafka producer")
+      }
+    }
+
+  src/main/scala/ConfigValidator.scala: |
+    package myapp
+
+    import com.typesafe.config.ConfigFactory
+
+    object ConfigValidator {
+      private val config = ConfigFactory.load()
+
+      private val requiredPaths = Seq(
+        "app.name",
+        "app.port",
+        "app.database.url",
+        "app.database.pool-size",
+        "app.kafka.bootstrap-servers",
+        "app.kafka.topic"
+      )
+
+      def validate(): Seq[String] = {
+        requiredPaths.filterNot(config.hasPath).map { path =>
+          s"Missing required config: $path"
+        }
+      }
+
+      def validateOrThrow(): Unit = {
+        val missing = validate()
+        if (missing.nonEmpty) {
+          throw new RuntimeException(s"Config validation failed: ${missing.mkString(", ")}")
+        }
+      }
+    }
+
+  src/test/scala/ConfigSpec.scala: |
+    package myapp
+
+    import org.scalatest.flatspec.AnyFlatSpec
+    import org.scalatest.matchers.should.Matchers
+
+    class ConfigSpec extends AnyFlatSpec with Matchers {
+      "Config" should "load app name" in {
+        Config.appName shouldBe "myapp"
+      }
+
+      it should "load port" in {
+        Config.port shouldBe 8080
+      }
+
+      it should "load database url" in {
+        Config.dbUrl should include("postgresql")
+      }
+
+      it should "load database pool size" in {
+        Config.dbPoolSize shouldBe 10
+      }
+
+      it should "load kafka servers" in {
+        Config.kafkaServers shouldBe "localhost:9092"
+      }
+
+      it should "load kafka topic" in {
+        Config.kafkaTopic shouldBe "events"
+      }
+    }
+
+  src/main/scala/Main.scala: |
+    package myapp
+
+    object Main extends App {
+      ConfigValidator.validateOrThrow()
+      println(s"Starting ${Config.appName} on port ${Config.port}")
+      val db = new DatabaseService()
+      val kafka = new KafkaProducer()
+      println(s"Database: ${Config.dbUrl} (pool=${Config.dbPoolSize})")
+      println(s"Kafka: ${Config.kafkaServers}/${Config.kafkaTopic}")
+    }
+
+  src/test/resources/test.conf: |
+    include "application"
+
+    app {
+      name = "myapp-test"
+      port = 9090
+      database {
+        url = "jdbc:h2:mem:test"
+        pool-size = 2
+      }
+      kafka {
+        bootstrap-servers = "localhost:9093"
+        topic = "test-events"
+      }
+    }
+
+changed:
+  src/main/scala/Config.scala: |
+    package myapp
+
+    import com.typesafe.config.ConfigFactory
+
+    object Config {
+      private val config = ConfigFactory.load()
+      val appName: String = config.getString("app.name")
+      val port: Int = config.getInt("app.port")
+      val dbUrl: String = config.getString("app.database.url")
+      val dbPoolSize: Int = config.getInt("app.database.pool-size")
+      val kafkaServers: String = config.getString("app.kafka.bootstrap-servers")
+      val kafkaTopic: String = config.getString("app.kafka.topic")
+    }
+
+must_include_files:
+  - src/main/scala/Config.scala
+  # Q1+Q2: application.conf defines the HOCON key hierarchy. Reviewer must
+  # cross-check every getString/getInt path against actual keys. A typo in
+  # "app.database.pool-size" vs "app.database.poolSize" would cause a
+  # runtime exception — only application.conf can confirm the paths.
+  - src/main/resources/application.conf
+
+must_include_content_from:
+  src/main/scala/Config.scala:
+    - 'config.getString("app.database.url")'
+    - 'config.getInt("app.database.pool-size")'
+    - 'config.getString("app.kafka.bootstrap-servers")'
+  src/main/resources/application.conf:
+    - 'url = "jdbc:postgresql://localhost/db"'
+    - "pool-size = 10"
+    - 'bootstrap-servers = "localhost:9092"'
+    - 'topic = "events"'
+
+must_not_include:
+  # --- DatabaseService.scala: accesses Config.dbUrl + Config.dbPoolSize ---
+  # HARDEST TRAP. Uses the EXACT vals being added. Direct backward edge.
+  # But how the DB service creates connections doesn't help verify that
+  # config.getString("app.database.url") matches the HOCON key structure.
+  - DatabaseService
+  - getPoolSize
+  - healthCheck
+  - DriverManager.getConnection
+  # --- KafkaProducer.scala: accesses Config.kafkaServers + Config.kafkaTopic ---
+  # Same pattern. Direct backward edge to the new vals.
+  - KafkaProducer
+  - "bootstrap.servers"
+  - StringSerializer
+  # --- ConfigValidator.scala: checks hasPath for the SAME config paths ---
+  # References "app.database.url", "app.kafka.bootstrap-servers" — the
+  # EXACT paths from the diff. But hasPath validation doesn't show the
+  # actual config STRUCTURE — only application.conf does.
+  - ConfigValidator
+  - requiredPaths
+  - validateOrThrow
+  - "Missing required config"
+  # --- ConfigSpec.scala: tests Config.dbUrl, Config.kafkaServers, etc. ---
+  # Imports Config, accesses the new vals, asserts values.
+  - ConfigSpec
+  - "should include"
+  - "shouldBe 10"
+  - 'shouldBe "events"'
+  # --- Main.scala: prints Config vals ---
+  - "Starting ${Config.appName}"
+  - "Database: ${Config.dbUrl}"
+  - "Kafka: ${Config.kafkaServers}"
+  # --- test.conf: test overrides, different environment ---
+  - "myapp-test"
+  - "jdbc:h2:mem:test"
+  - "test-events"
+
+must_not_include_files:
+  - src/main/scala/DatabaseService.scala
+  - src/main/scala/KafkaProducer.scala
+  - src/main/scala/ConfigValidator.scala
+  - src/test/scala/ConfigSpec.scala
+  - src/main/scala/Main.scala
+  - src/test/resources/test.conf
+
+max_fragments: 5
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

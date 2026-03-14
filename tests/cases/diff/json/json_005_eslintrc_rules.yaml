@@ -1,0 +1,178 @@
+# Scenario: .eslintrc.json changes quotes from "double" to "single" and adds
+#   no-unused-vars: "error" rule.
+#
+# Reviewer questions:
+#   Q1: "Will the quotes rule change break existing code using double quotes?"
+#       -> src/main.js: uses double quotes for strings ("Hello", "en-US",
+#          "currency", "USD"). All would need to change to single quotes.
+#          Large formatting diff across codebase.
+#
+#   Q2: "Will no-unused-vars flag any existing code?"
+#       -> src/main.js: exports hello, calculateTotal, formatCurrency,
+#          generateInvoice. hello() is exported but may not be used externally.
+#          src/utils.js: imports formatCurrency and uses it in formatPrice.
+#
+# Not needed:
+#   - .prettierrc: Formatting config. Could conflict with ESLint quotes rule.
+#     But prettier config doesn't help review ESLint rule changes.
+#
+#   - package.json: ESLint version. Same tool domain but version doesn't
+#     help review the rule changes.
+#
+#   - tests/main.test.js: Test files also affected by quotes change.
+#     But test code doesn't help review whether the rule is appropriate.
+
+initial:
+  .eslintrc.json: |
+    {
+      "env": {
+        "browser": true,
+        "es2021": true,
+        "node": true
+      },
+      "extends": ["eslint:recommended"],
+      "parserOptions": {
+        "ecmaVersion": "latest",
+        "sourceType": "module"
+      },
+      "rules": {
+        "semi": "error",
+        "quotes": ["error", "double"],
+        "indent": ["error", 2]
+      }
+    }
+
+  src/main.js: |
+    function hello() {
+        console.log("Hello");
+    }
+
+    function calculateTotal(items) {
+        let total = 0;
+        for (const item of items) {
+            total += item.price * item.quantity;
+        }
+        return total;
+    }
+
+    function formatCurrency(amount, currency) {
+        const formatter = new Intl.NumberFormat("en-US", {
+            style: "currency",
+            currency: currency || "USD",
+        });
+        return formatter.format(amount);
+    }
+
+    function generateInvoice(items, taxRate) {
+        const subtotal = calculateTotal(items);
+        const tax = subtotal * taxRate;
+        const total = subtotal + tax;
+        return {
+            items,
+            subtotal: formatCurrency(subtotal),
+            tax: formatCurrency(tax),
+            total: formatCurrency(total),
+        };
+    }
+
+    export { hello, calculateTotal, formatCurrency, generateInvoice };
+
+  src/utils.js: |
+    import { formatCurrency } from "./main";
+
+    function roundToDecimals(value, decimals) {
+        const factor = Math.pow(10, decimals);
+        return Math.round(value * factor) / factor;
+    }
+
+    function formatPrice(price) {
+        const rounded = roundToDecimals(price, 2);
+        return formatCurrency(rounded);
+    }
+
+    export { roundToDecimals, formatPrice };
+
+  .prettierrc: |
+    {
+      "semi": true,
+      "singleQuote": false,
+      "tabWidth": 2,
+      "trailingComma": "es5"
+    }
+
+  package.json: |
+    {
+      "name": "lint-app",
+      "version": "1.0.0",
+      "scripts": {
+        "lint": "eslint src/",
+        "lint:fix": "eslint src/ --fix"
+      },
+      "devDependencies": {
+        "eslint": "^8.45.0"
+      }
+    }
+
+  tests/main.test.js: |
+    import { calculateTotal, formatCurrency, generateInvoice } from "../src/main";
+
+    test("calculateTotal sums items", () => {
+        const items = [{ price: 10, quantity: 2 }, { price: 5, quantity: 3 }];
+        expect(calculateTotal(items)).toBe(35);
+    });
+
+    test("formatCurrency formats USD", () => {
+        expect(formatCurrency(42.5)).toMatch(/\$42\.50/);
+    });
+
+changed:
+  .eslintrc.json: |
+    {
+      "env": {
+        "browser": true,
+        "es2021": true,
+        "node": true
+      },
+      "extends": ["eslint:recommended"],
+      "parserOptions": {
+        "ecmaVersion": "latest",
+        "sourceType": "module"
+      },
+      "rules": {
+        "semi": "error",
+        "quotes": ["error", "single"],
+        "no-unused-vars": "error",
+        "indent": ["error", 2]
+      }
+    }
+
+must_include_files:
+  - .eslintrc.json
+
+must_include_content_from:
+  .eslintrc.json:
+    - '"quotes": ["error", "single"]'
+    - '"no-unused-vars": "error"'
+
+must_not_include:
+  # --- .prettierrc: different formatting tool, could conflict on quotes but separate ---
+  - "singleQuote"
+  - "trailingComma"
+  - '"tabWidth": 2'
+  # --- package.json: deps and scripts ---
+  - "lint:fix"
+  - "eslint src/ --fix"
+  - "lint-app"
+  # --- tests: test code affected by quotes change but doesn't help review rule ---
+  - "calculateTotal sums items"
+  - "formatCurrency formats USD"
+
+must_not_include_files:
+  - .prettierrc
+  - package.json
+  - tests/main.test.js
+
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

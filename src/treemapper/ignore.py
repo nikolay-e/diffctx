@@ -6,6 +6,12 @@ from pathlib import Path
 
 import pathspec
 
+logger = logging.getLogger(__name__)
+
+TREEMAPPER_CONFIG_DIR = ".treemapper"
+TREEMAPPER_DIR_IGNORE = "ignore"
+TREEMAPPER_DIR_WHITELIST = "whitelist"
+
 
 def read_ignore_file(file_path: Path) -> list[str]:
     ignore_patterns: list[str] = []
@@ -21,14 +27,14 @@ def read_ignore_file(file_path: Path) -> list[str]:
                 if stripped.startswith("#"):
                     continue
                 ignore_patterns.append(stripped.rstrip())
-        logging.info("Using ignore patterns from %s", file_path)
-        logging.debug("Read ignore patterns from %s: %s", file_path, ignore_patterns)
+        logger.info("Using ignore patterns from %s", file_path)
+        logger.debug("Read ignore patterns from %s: %s", file_path, ignore_patterns)
     except PermissionError:
-        logging.warning("Could not read ignore file %s: Permission denied", file_path)
+        logger.warning("Could not read ignore file %s: Permission denied", file_path)
     except OSError as e:
-        logging.warning("Could not read ignore file %s: %s", file_path, e)
+        logger.warning("Could not read ignore file %s: %s", file_path, e)
     except UnicodeDecodeError as e:
-        logging.warning("Could not decode ignore file %s as UTF-8: %s", file_path, e)
+        logger.warning("Could not decode ignore file %s as UTF-8: %s", file_path, e)
 
     return ignore_patterns
 
@@ -42,13 +48,13 @@ def _get_output_file_pattern(output_file: Path | None, root_dir: Path) -> str | 
         resolved_root = root_dir.resolve()
 
         if not resolved_output.is_relative_to(resolved_root):
-            logging.debug("Output file %s is outside root directory %s", output_file, root_dir)
+            logger.debug("Output file %s is outside root directory %s", output_file, root_dir)
             return None
 
         relative_path = resolved_output.relative_to(resolved_root).as_posix()
         return f"/{relative_path}"
     except (ValueError, OSError) as e:
-        logging.debug("Could not determine relative path for output file %s: %s", output_file, e)
+        logger.debug("Could not determine relative path for output file %s: %s", output_file, e)
         return None
 
 
@@ -57,6 +63,7 @@ PRUNE_DIRS = frozenset(
         ".git",
         ".svn",
         ".hg",
+        ".treemapper",
         "__pycache__",
         "node_modules",
         ".npm",
@@ -105,18 +112,20 @@ def _aggregate_all_ignore_patterns(root: Path, ignore_filenames: list[str]) -> l
     for dirpath, dirnames, filenames in os.walk(root, topdown=True):
         dirnames[:] = sorted(d for d in dirnames if d not in PRUNE_DIRS and not _is_cache_dir(d))
 
-        found_files = filenames_set & set(filenames)
-        if not found_files:
-            continue
-
         ignore_dir = Path(dirpath)
         rel = "" if ignore_dir == root else ignore_dir.relative_to(root).as_posix()
 
+        found_files = filenames_set & set(filenames)
         for ignore_filename in sorted(found_files):
             for line in read_ignore_file(ignore_dir / ignore_filename):
                 out.append(_process_ignore_line(line, rel))
 
-    logging.debug("Aggregated %d ignore patterns from %s", len(out), root)
+        config_ignore = ignore_dir / TREEMAPPER_CONFIG_DIR / TREEMAPPER_DIR_IGNORE
+        if config_ignore.is_file():
+            for line in read_ignore_file(config_ignore):
+                out.append(_process_ignore_line(line, rel))
+
+    logger.debug("Aggregated %d ignore patterns from %s", len(out), root)
     return out
 
 
@@ -184,13 +193,16 @@ def _collect_parent_ignore_patterns(root: Path, ignore_filenames: list[str]) -> 
         for filename in ignore_filenames:
             _process_parent_ignore_file(current / filename, resolved_root, current, out)
 
+        config_ignore = current / TREEMAPPER_CONFIG_DIR / TREEMAPPER_DIR_IGNORE
+        _process_parent_ignore_file(config_ignore, resolved_root, current, out)
+
         if is_git_root:
             break
 
         current = current.parent
 
     if out:
-        logging.debug("Collected %d patterns from parent directories", len(out))
+        logger.debug("Collected %d patterns from parent directories", len(out))
     return out
 
 
@@ -213,6 +225,15 @@ DEFAULT_IGNORE_PATTERNS = [
     # JavaScript/Node
     "**/node_modules/",
     "**/.npm/",
+    # Lock files (large, auto-generated, low signal for LLM analysis)
+    "**/package-lock.json",
+    "**/yarn.lock",
+    "**/pnpm-lock.yaml",
+    "**/Pipfile.lock",
+    "**/poetry.lock",
+    "**/Cargo.lock",
+    "**/composer.lock",
+    "**/Gemfile.lock",
     # Java/JVM
     "**/target/",
     "**/.gradle/",
@@ -232,9 +253,9 @@ DEFAULT_IGNORE_PATTERNS = [
     # OS files
     "**/.DS_Store",
     "**/Thumbs.db",
-    # TreeMapper default output files
+    # TreeMapper config and output files
+    "**/.treemapper/",
     "**/tree.yaml",
-    "**/tree.yml",
     "**/tree.json",
     "**/tree.md",
     "**/tree.txt",
@@ -251,8 +272,8 @@ def get_ignore_specs(
 
     if not no_default_ignores:
         patterns.extend(DEFAULT_IGNORE_PATTERNS)
-        patterns.extend(_collect_parent_ignore_patterns(root_dir, [".gitignore", ".treemapperignore"]))
-        patterns.extend(_aggregate_all_ignore_patterns(root_dir, [".gitignore", ".treemapperignore"]))
+        patterns.extend(_collect_parent_ignore_patterns(root_dir, [".gitignore"]))
+        patterns.extend(_aggregate_all_ignore_patterns(root_dir, [".gitignore"]))
 
     if custom_ignore_file:
         patterns.extend(read_ignore_file(custom_ignore_file))
@@ -260,29 +281,26 @@ def get_ignore_specs(
     output_pattern = _get_output_file_pattern(output_file, root_dir)
     if output_pattern and output_pattern not in patterns:
         patterns.append(output_pattern)
-        logging.debug("Adding output file to ignores: %s", output_pattern)
+        logger.debug("Adding output file to ignores: %s", output_pattern)
 
-    logging.debug("Combined ignore patterns: %s", patterns)
+    logger.debug("Combined ignore patterns: %s", patterns)
     spec: pathspec.PathSpec = pathspec.PathSpec.from_lines("gitignore", patterns)
     return spec
 
 
 def should_ignore(relative_path_str: str, combined_spec: pathspec.PathSpec) -> bool:
     is_ignored = combined_spec.match_file(relative_path_str)
-    if logging.getLogger().isEnabledFor(logging.DEBUG):
-        logging.debug("Checking ignore for '%s': %s", relative_path_str, is_ignored)
+    if logger.isEnabledFor(logging.DEBUG):
+        logger.debug("Checking ignore for '%s': %s", relative_path_str, is_ignored)
     return is_ignored
-
-
-DEFAULT_WHITELIST_FILENAME = ".treemapperwhitelist"
 
 
 def get_whitelist_spec(whitelist_file: Path | None, root_dir: Path | None = None) -> pathspec.PathSpec | None:
     effective_file = whitelist_file
     if not effective_file and root_dir:
-        default = root_dir / DEFAULT_WHITELIST_FILENAME
-        if default.is_file():
-            effective_file = default
+        config_whitelist = root_dir / TREEMAPPER_CONFIG_DIR / TREEMAPPER_DIR_WHITELIST
+        if config_whitelist.is_file():
+            effective_file = config_whitelist
     if not effective_file:
         return None
     patterns = read_ignore_file(effective_file)

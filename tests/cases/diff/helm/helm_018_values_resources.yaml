@@ -1,0 +1,90 @@
+initial:
+  chart/Chart.yaml: |
+    apiVersion: v2
+    name: resource-app
+    description: Application with resource management
+    type: application
+    version: 1.2.0
+  chart/values.yaml: |
+    replicaCount: 1
+    image:
+      repository: resource-app
+      tag: "1.2.0"
+    resources: {}
+  chart/templates/deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: {{ .Release.Name }}-{{ .Chart.Name }}
+    spec:
+      replicas: {{ .Values.replicaCount }}
+      template:
+        spec:
+          containers:
+            - name: {{ .Chart.Name }}
+              image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+              {{- with .Values.resources }}
+              resources:
+                {{- toYaml . | nindent 14 }}
+              {{- end }}
+  chart/templates/external-secret.yaml: |
+    apiVersion: external-secrets.io/v1beta1
+    kind: ExternalSecret
+    metadata:
+    spec:
+      secretStoreRef:
+      target:
+  chart/docs/resource-quotas.md: |
+    # Resource Quotas
+    ## Namespace Limits
+changed:
+  chart/Chart.yaml: |
+    apiVersion: v2
+    name: resource-app
+    description: Application with resource management
+    type: application
+    version: 1.2.0
+  chart/values.yaml: |
+    replicaCount: 1
+    image:
+      repository: resource-app
+      tag: "1.2.0"
+    resources:
+      limits:
+        cpu: 500m
+        memory: 512Mi
+      requests:
+        cpu: 250m
+        memory: 256Mi
+  chart/templates/deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: {{ .Release.Name }}-{{ .Chart.Name }}
+    spec:
+      replicas: {{ .Values.replicaCount }}
+      template:
+        spec:
+          containers:
+            - name: {{ .Chart.Name }}
+              image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+              {{- with .Values.resources }}
+              resources:
+                {{- toYaml . | nindent 14 }}
+              {{- end }}
+  chart/templates/external-secret.yaml: |
+    apiVersion: external-secrets.io/v1beta1
+    kind: ExternalSecret
+    metadata:
+    spec:
+      secretStoreRef:
+      target:
+  chart/docs/resource-quotas.md: |
+    # Resource Quotas
+    ## Namespace Limits
+must_include_files:
+- chart/values.yaml
+must_include_content:
+- 'memory: 512Mi'
+add_garbage_files: false
+skip_garbage_check: true

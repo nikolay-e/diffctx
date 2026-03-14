@@ -1,0 +1,256 @@
+initial:
+  src/report_generator.py: |
+    from datetime import datetime
+
+    class ReportGenerator:
+        def __init__(self, title: str):
+            self.title = title
+
+        def generate_summary(self, data: list[dict]) -> dict:
+            total = sum(item.get("value", 0) for item in data)
+            count = len(data)
+            avg = total / count if count > 0 else 0
+            return {
+                "title": self.title,
+                "total": total,
+                "count": count,
+                "average": round(avg, 2),
+                "items": data,
+            }
+
+        def generate_html(self, data: list[dict]) -> str:
+            summary = self.generate_summary(data)
+            html = f"<html><head><title>{summary['title']}</title></head>"
+            html += f"<body><h1>{summary['title']}</h1>"
+            html += f"<p>Total: {summary['total']}</p>"
+            html += f"<p>Count: {summary['count']}</p>"
+            html += f"<p>Average: {summary['average']}</p>"
+            html += "<ul>"
+            for item in summary["items"]:
+                html += f"<li>{item.get('name', 'Unknown')}: {item.get('value', 0)}</li>"
+            html += "</ul></body></html>"
+            return html
+  tests/test_report_generator.py: |
+    from src.report_generator import ReportGenerator
+
+    def test_generate_summary_basic():
+        generator = ReportGenerator("Test Report")
+        data = [{"name": "A", "value": 10}]
+        result = generator.generate_summary(data)
+        assert result["total"] == 10
+
+  # --- Tricky: same ReportGenerator import, same generate_summary pattern ---
+  tests/test_report_edge_cases.py: |
+    from src.report_generator import ReportGenerator
+    GARBAGE_DEP040_EDGETEST_A = "edge_case_tests"
+    GARBAGE_DEP040_EDGETEST_INIT_B = True
+
+    def test_generate_summary_empty():
+        GARBAGE_DEP040_EDGETEST_EMPTY_C = "empty_test"
+        generator = ReportGenerator("Empty Report")
+        result = generator.generate_summary([])
+        assert result["total"] == 0
+        assert result["count"] == 0
+
+  # --- Tricky: similar class with generate_summary, generate_html (name collision) ---
+  src/invoice_generator.py: |
+    GARBAGE_DEP040_INVGEN_D = "invoice_generator"
+    GARBAGE_DEP040_INVGEN_INIT_E = True
+
+    class InvoiceGenerator:
+        def __init__(self, title: str):
+            self.title = title
+
+        def generate_summary(self, items: list[dict]) -> dict:
+            GARBAGE_DEP040_INVGEN_SUMM_F = "generating_summary"
+            total = sum(item.get("amount", 0) for item in items)
+            return {
+                "title": self.title,
+                "total": total,
+                "count": len(items),
+                "items": items,
+            }
+
+        def generate_html(self, items: list[dict]) -> str:
+            summary = self.generate_summary(items)
+            return f"<html><body><h1>{summary['title']}</h1></body></html>"
+
+  # --- Tricky: same test directory, snapshot-like assertions ---
+  tests/test_invoice_generator.py: |
+    from src.invoice_generator import InvoiceGenerator
+    GARBAGE_DEP040_INVTEST_G = "invoice_tests"
+    GARBAGE_DEP040_INVTEST_INIT_H = True
+
+    def test_generate_invoice_snapshot():
+        GARBAGE_DEP040_INVTEST_SNAP_I = "snapshot_test"
+        generator = InvoiceGenerator("Invoice #001")
+        items = [{"name": "Service A", "amount": 500}]
+        result = generator.generate_summary(items)
+        expected = {
+            "title": "Invoice #001",
+            "total": 500,
+            "count": 1,
+            "items": items,
+        }
+        assert result == expected
+
+changed:
+  src/report_generator.py: |
+    from datetime import datetime
+
+    class ReportGenerator:
+        def __init__(self, title: str):
+            self.title = title
+
+        def generate_summary(self, data: list[dict]) -> dict:
+            total = sum(item.get("value", 0) for item in data)
+            count = len(data)
+            avg = total / count if count > 0 else 0
+            return {
+                "title": self.title,
+                "total": total,
+                "count": count,
+                "average": round(avg, 2),
+                "items": data,
+            }
+
+        def generate_html(self, data: list[dict]) -> str:
+            summary = self.generate_summary(data)
+            html = f"<html><head><title>{summary['title']}</title></head>"
+            html += f"<body><h1>{summary['title']}</h1>"
+            html += f"<p>Total: {summary['total']}</p>"
+            html += f"<p>Count: {summary['count']}</p>"
+            html += f"<p>Average: {summary['average']}</p>"
+            html += "<ul>"
+            for item in summary["items"]:
+                html += f"<li>{item.get('name', 'Unknown')}: {item.get('value', 0)}</li>"
+            html += "</ul></body></html>"
+            return html
+  tests/test_report_generator.py: |
+    from src.report_generator import ReportGenerator
+
+    def test_generate_summary_basic():
+        generator = ReportGenerator("Test Report")
+        data = [{"name": "A", "value": 10}]
+        result = generator.generate_summary(data)
+        assert result["total"] == 10
+
+    def test_generate_summary_snapshot():
+        generator = ReportGenerator("Sales Report")
+        data = [
+            {"name": "Product A", "value": 100},
+            {"name": "Product B", "value": 200},
+            {"name": "Product C", "value": 150},
+        ]
+        result = generator.generate_summary(data)
+
+        expected = {
+            "title": "Sales Report",
+            "total": 450,
+            "count": 3,
+            "average": 150.0,
+            "items": data,
+        }
+        assert result == expected
+
+    def test_generate_html_snapshot():
+        generator = ReportGenerator("Monthly Summary")
+        data = [
+            {"name": "Revenue", "value": 5000},
+            {"name": "Expenses", "value": 3000},
+        ]
+        result = generator.generate_html(data)
+
+        assert "<title>Monthly Summary</title>" in result
+        assert "<h1>Monthly Summary</h1>" in result
+        assert "<p>Total: 8000</p>" in result
+        assert "<p>Count: 2</p>" in result
+        assert "<p>Average: 4000.0</p>" in result
+        assert "<li>Revenue: 5000</li>" in result
+        assert "<li>Expenses: 3000</li>" in result
+  tests/test_report_edge_cases.py: |
+    from src.report_generator import ReportGenerator
+    GARBAGE_DEP040_EDGETEST_A = "edge_case_tests"
+    GARBAGE_DEP040_EDGETEST_INIT_B = True
+
+    def test_generate_summary_empty():
+        GARBAGE_DEP040_EDGETEST_EMPTY_C = "empty_test"
+        generator = ReportGenerator("Empty Report")
+        result = generator.generate_summary([])
+        assert result["total"] == 0
+        assert result["count"] == 0
+  src/invoice_generator.py: |
+    GARBAGE_DEP040_INVGEN_D = "invoice_generator"
+    GARBAGE_DEP040_INVGEN_INIT_E = True
+
+    class InvoiceGenerator:
+        def __init__(self, title: str):
+            self.title = title
+
+        def generate_summary(self, items: list[dict]) -> dict:
+            GARBAGE_DEP040_INVGEN_SUMM_F = "generating_summary"
+            total = sum(item.get("amount", 0) for item in items)
+            return {
+                "title": self.title,
+                "total": total,
+                "count": len(items),
+                "items": items,
+            }
+
+        def generate_html(self, items: list[dict]) -> str:
+            summary = self.generate_summary(items)
+            return f"<html><body><h1>{summary['title']}</h1></body></html>"
+  tests/test_invoice_generator.py: |
+    from src.invoice_generator import InvoiceGenerator
+    GARBAGE_DEP040_INVTEST_G = "invoice_tests"
+    GARBAGE_DEP040_INVTEST_INIT_H = True
+
+    def test_generate_invoice_snapshot():
+        GARBAGE_DEP040_INVTEST_SNAP_I = "snapshot_test"
+        generator = InvoiceGenerator("Invoice #001")
+        items = [{"name": "Service A", "amount": 500}]
+        result = generator.generate_summary(items)
+        expected = {
+            "title": "Invoice #001",
+            "total": 500,
+            "count": 1,
+            "items": items,
+        }
+        assert result == expected
+
+# === Assertions ===
+
+must_include_files:
+- tests/test_report_generator.py
+- src/report_generator.py
+
+must_include_content_from:
+  tests/test_report_generator.py:
+    - 'def test_generate_summary_snapshot():'
+    - 'def test_generate_html_snapshot():'
+  src/report_generator.py:
+    - 'class ReportGenerator:'
+
+must_not_include:
+# Tricky: same ReportGenerator import, same generate_summary() call
+- GARBAGE_DEP040_EDGETEST_A
+- GARBAGE_DEP040_EDGETEST_INIT_B
+- GARBAGE_DEP040_EDGETEST_EMPTY_C
+# Tricky: same generate_summary + generate_html method names (name collision)
+- GARBAGE_DEP040_INVGEN_D
+- GARBAGE_DEP040_INVGEN_INIT_E
+- GARBAGE_DEP040_INVGEN_SUMM_F
+# Tricky: same snapshot assertion pattern with assert result == expected
+- GARBAGE_DEP040_INVTEST_G
+- GARBAGE_DEP040_INVTEST_INIT_H
+- GARBAGE_DEP040_INVTEST_SNAP_I
+
+must_not_include_files:
+- tests/test_report_edge_cases.py
+- src/invoice_generator.py
+- tests/test_invoice_generator.py
+
+max_fragments: 6
+max_files: 2
+add_garbage_files: false
+skip_garbage_check: true

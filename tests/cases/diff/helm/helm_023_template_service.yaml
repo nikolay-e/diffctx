@@ -1,0 +1,60 @@
+initial:
+  chart/Chart.yaml: |
+    apiVersion: v2
+    name: svc-app
+    version: 1.0.0
+  chart/values.yaml: |
+    service:
+      type: ClusterIP
+      port: 80
+  chart/templates/service.yaml: |
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: myapp-service
+    spec:
+      type: ClusterIP
+      ports:
+        - port: 80
+  chart/templates/gatekeeper-constraint.yaml: |
+    apiVersion: constraints.gatekeeper.sh/v1beta1
+    metadata:
+    spec:
+      match:
+        kinds:
+  chart/docs/service-mesh.md: |
+    # Service Mesh Configuration
+    ## Traffic Routing
+changed:
+  chart/Chart.yaml: |
+    apiVersion: v2
+    name: svc-app
+    version: 1.0.0
+  chart/values.yaml: |
+    service:
+      type: ClusterIP
+      port: 80
+  chart/templates/service.yaml: |
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: {{ .Release.Name }}-service
+    spec:
+      type: {{ .Values.service.type }}
+      ports:
+        - port: {{ .Values.service.port }}
+  chart/templates/gatekeeper-constraint.yaml: |
+    apiVersion: constraints.gatekeeper.sh/v1beta1
+    metadata:
+    spec:
+      match:
+        kinds:
+  chart/docs/service-mesh.md: |
+    # Service Mesh Configuration
+    ## Traffic Routing
+must_include_files:
+- chart/templates/service.yaml
+must_include_content:
+- 'name: {{ .Release.Name }}-service'
+add_garbage_files: false
+skip_garbage_check: true

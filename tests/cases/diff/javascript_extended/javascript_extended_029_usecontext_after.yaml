@@ -1,4 +1,0 @@
-ThemeContext.tsx: "import { createContext } from 'react';\n\nexport interface Theme {\n    primary: string;\n    secondary: string;\n}\n\nexport const ThemeContext = createContext<Theme>({ primary: '#000',\
-  \ secondary: '#fff' });\n\n// react_adv_garbage_marker_003\n"
-Button.tsx: "import { useContext } from 'react';\nimport { ThemeContext } from './ThemeContext';\n\nexport function Button({ children }: { children: React.ReactNode }) {\n    const theme = useContext(ThemeContext);\n\
-  \    return <button style={{ backgroundColor: theme.primary }}>{children}</button>;\n}\n"

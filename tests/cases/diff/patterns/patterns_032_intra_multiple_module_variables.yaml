@@ -1,0 +1,134 @@
+# Test 032: VERSION bumped from 1.0.0 to 2.0.0
+#           — reviewer needs functions that reference VERSION
+#
+# Scenario: constants.py changes VERSION = "1.0.0" to VERSION = "2.0.0".
+# get_app_info() uses VERSION (and APP_NAME, AUTHOR), get_version() returns
+# VERSION directly. _cache dict and cache_get/cache_set are unrelated.
+#
+# Reviewer questions:
+#   Q1: "Which functions use VERSION?"
+#       -> get_app_info() and get_version() both reference it.
+#   Q2: "Are cache functions affected?"
+#       -> No, _cache/cache_get/cache_set don't use VERSION.
+#
+# Trap files (plausible but unrelated):
+#   - version_checker.py: checks version compatibility, uses "version"
+#     vocabulary heavily but doesn't import from constants.py.
+#   - changelog.py: version history parser with similar VERSION strings
+#     but completely independent.
+
+initial:
+  constants.py: |
+    APP_NAME = "MyApp"
+    VERSION = "1.0.0"
+    AUTHOR = "Developer"
+
+    _cache = {}
+
+    def get_app_info():
+        return f"{APP_NAME} v{VERSION} by {AUTHOR}"
+
+    def get_version():
+        return VERSION
+
+    def cache_get(key):
+        return _cache.get(key)
+
+    def cache_set(key, value):
+        _cache[key] = value
+  version_checker.py: |
+    def parse_version(version_str):
+        parts = version_str.split('.')
+        return tuple(int(p) for p in parts)
+
+    def is_compatible(current, required):
+        cur = parse_version(current)
+        req = parse_version(required)
+        return cur[0] == req[0] and cur >= req
+
+    def get_latest_version(versions):
+        return max(versions, key=parse_version)
+  changelog.py: |
+    CHANGELOG = {
+        "2.0.0": "Major rewrite with new API",
+        "1.1.0": "Added caching support",
+        "1.0.0": "Initial release",
+    }
+
+    def get_changes(version):
+        return CHANGELOG.get(version, "No changes recorded")
+
+    def list_versions():
+        return sorted(CHANGELOG.keys(), reverse=True)
+
+changed:
+  constants.py: |
+    APP_NAME = "MyApp"
+    VERSION = "2.0.0"
+    AUTHOR = "Developer"
+
+    _cache = {}
+
+    def get_app_info():
+        return f"{APP_NAME} v{VERSION} by {AUTHOR}"
+
+    def get_version():
+        return VERSION
+
+    def cache_get(key):
+        return _cache.get(key)
+
+    def cache_set(key, value):
+        _cache[key] = value
+  version_checker.py: |
+    def parse_version(version_str):
+        parts = version_str.split('.')
+        return tuple(int(p) for p in parts)
+
+    def is_compatible(current, required):
+        cur = parse_version(current)
+        req = parse_version(required)
+        return cur[0] == req[0] and cur >= req
+
+    def get_latest_version(versions):
+        return max(versions, key=parse_version)
+  changelog.py: |
+    CHANGELOG = {
+        "2.0.0": "Major rewrite with new API",
+        "1.1.0": "Added caching support",
+        "1.0.0": "Initial release",
+    }
+
+    def get_changes(version):
+        return CHANGELOG.get(version, "No changes recorded")
+
+    def list_versions():
+        return sorted(CHANGELOG.keys(), reverse=True)
+
+must_include_files:
+  - constants.py
+
+must_include_content_from:
+  constants.py:
+    - 'VERSION = "2.0.0"'
+    - "def get_version():"
+    - "def get_app_info():"
+
+must_not_include:
+  # --- version_checker.py: version vocabulary overlap but independent ---
+  - "parse_version"
+  - "is_compatible"
+  - "get_latest_version"
+  # --- changelog.py: has version strings like "2.0.0" but independent ---
+  - "CHANGELOG"
+  - "get_changes"
+  - "list_versions"
+
+must_not_include_files:
+  - version_checker.py
+  - changelog.py
+
+max_fragments: 4
+max_files: 1
+add_garbage_files: false
+skip_garbage_check: true

@@ -1,0 +1,15 @@
+initial:
+  unicode_diff.py: |
+    def placeholder():
+        pass
+changed:
+  unicode_diff.py: |
+    def greet_user():
+        greeting_text = "Привет мир"
+        return greeting_text
+must_include_files:
+- unicode_diff.py
+must_include_content:
+- 'def greet_user():'
+add_garbage_files: false
+skip_garbage_check: true

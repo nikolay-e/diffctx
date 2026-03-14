@@ -1,0 +1,13 @@
+initial:
+  single.py: |
+    pass
+changed:
+  single.py: |
+    def only_function():
+        pass
+must_include_files:
+- single.py
+must_include_content:
+- 'def only_function():'
+add_garbage_files: false
+skip_garbage_check: true

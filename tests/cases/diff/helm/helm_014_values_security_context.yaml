@@ -1,0 +1,93 @@
+initial:
+  chart/Chart.yaml: |
+    apiVersion: v2
+    name: secure-api
+    description: Security-hardened API service
+    type: application
+    version: 2.5.0
+  chart/values.yaml: |
+    replicaCount: 2
+    image:
+      repository: secure-api
+      tag: "2.5.0"
+    securityContext:
+      runAsNonRoot: true
+    service:
+      type: ClusterIP
+      port: 443
+  chart/templates/deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: {{ .Release.Name }}-{{ .Chart.Name }}
+    spec:
+      replicas: {{ .Values.replicaCount }}
+      template:
+        spec:
+          securityContext:
+            runAsNonRoot: {{ .Values.securityContext.runAsNonRoot }}
+          containers:
+            - name: {{ .Chart.Name }}
+              image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+              ports:
+                - containerPort: 8443
+  chart/templates/cert-manager-issuer.yaml: |
+    apiVersion: cert-manager.io/v1
+    kind: ClusterIssuer
+    metadata:
+    spec:
+      acme:
+  chart/docs/security-hardening.md: |
+    # Security Hardening
+    ## Container Policies
+changed:
+  chart/Chart.yaml: |
+    apiVersion: v2
+    name: secure-api
+    description: Security-hardened API service
+    type: application
+    version: 2.5.0
+  chart/values.yaml: |
+    replicaCount: 2
+    image:
+      repository: secure-api
+      tag: "2.5.0"
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 1000
+      fsGroup: 1000
+      readOnlyRootFilesystem: true
+    service:
+      type: ClusterIP
+      port: 443
+  chart/templates/deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: {{ .Release.Name }}-{{ .Chart.Name }}
+    spec:
+      replicas: {{ .Values.replicaCount }}
+      template:
+        spec:
+          securityContext:
+            runAsNonRoot: {{ .Values.securityContext.runAsNonRoot }}
+          containers:
+            - name: {{ .Chart.Name }}
+              image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+              ports:
+                - containerPort: 8443
+  chart/templates/cert-manager-issuer.yaml: |
+    apiVersion: cert-manager.io/v1
+    kind: ClusterIssuer
+    metadata:
+    spec:
+      acme:
+  chart/docs/security-hardening.md: |
+    # Security Hardening
+    ## Container Policies
+must_include_files:
+- chart/values.yaml
+must_include_content:
+- 'runAsUser: 1000'
+add_garbage_files: false
+skip_garbage_check: true

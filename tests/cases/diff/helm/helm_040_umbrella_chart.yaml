@@ -1,0 +1,217 @@
+# Scenario: Adding subchart dependencies (frontend, backend, redis) to an
+#   umbrella chart's Chart.yaml. Only Chart.yaml is changed.
+#
+# Reviewer questions:
+#   Q1: "Do the frontend and backend subcharts actually exist at the
+#        referenced file:// paths?"
+#       -> Needs charts/frontend/Chart.yaml and charts/backend/Chart.yaml
+#         to verify they exist and their versions match the dependency spec.
+#
+#   Q2: "Are the subchart versions compatible with the parent chart?"
+#       -> Same files: frontend Chart.yaml says version: 1.0.0, backend
+#         says version: 1.0.0 — matches the dependency declarations.
+#
+# Not needed for comprehension:
+#   - charts/frontend/values.yaml: Default values for the frontend subchart.
+#     The diff adds the dependency reference, not subchart configuration.
+#     Values are consumed by the subchart's templates, not by Chart.yaml.
+#
+#   - charts/backend/templates/deployment.yaml: Template inside the backend
+#     subchart. Has structural edge: it's WHAT gets deployed when the
+#     dependency is added. But the reviewer needs to verify the dependency
+#     DECLARATION is correct (versions, paths), not the subchart internals.
+#
+#   - charts/frontend/templates/service.yaml: Same reasoning — internal
+#     template of a subchart. Not relevant to the dependency declaration.
+#
+#   - values.yaml: Parent chart values. Will eventually configure subcharts
+#     via frontend.* and backend.* keys. But the diff only adds dependencies
+#     — no values configuration yet. Including values.yaml is premature.
+#
+#   - charts/redis/: External dependency from Bitnami. Not a local file path,
+#     so there's nothing to verify locally.
+
+initial:
+  Chart.yaml: |
+    apiVersion: v2
+    name: myapp
+    version: 1.0.0
+  charts/frontend/Chart.yaml: |
+    apiVersion: v2
+    name: frontend
+    version: 1.0.0
+    description: Frontend web application
+  charts/backend/Chart.yaml: |
+    apiVersion: v2
+    name: backend
+    version: 1.0.0
+    description: Backend API service
+  charts/frontend/values.yaml: |
+    replicaCount: 2
+    image:
+      repository: frontend-app
+      tag: "1.0.0"
+    service:
+      type: ClusterIP
+      port: 3000
+  charts/backend/values.yaml: |
+    replicaCount: 3
+    image:
+      repository: backend-api
+      tag: "1.0.0"
+    service:
+      type: ClusterIP
+      port: 8080
+  charts/frontend/templates/service.yaml: |
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: {{ include "frontend.fullname" . }}
+    spec:
+      type: {{ .Values.service.type }}
+      ports:
+        - port: {{ .Values.service.port }}
+  charts/backend/templates/deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: {{ include "backend.fullname" . }}
+    spec:
+      replicas: {{ .Values.replicaCount }}
+      template:
+        spec:
+          containers:
+            - name: backend
+              image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+  values.yaml: |
+    frontend:
+      replicaCount: 2
+    backend:
+      replicaCount: 3
+    redis:
+      auth:
+        enabled: false
+
+changed:
+  Chart.yaml: |
+    apiVersion: v2
+    name: myapp
+    version: 1.0.0
+    dependencies:
+      - name: frontend
+        version: 1.0.0
+        repository: file://./charts/frontend
+      - name: backend
+        version: 1.0.0
+        repository: file://./charts/backend
+      - name: redis
+        version: 17.0.0
+        repository: https://charts.bitnami.com/bitnami
+  charts/frontend/Chart.yaml: |
+    apiVersion: v2
+    name: frontend
+    version: 1.0.0
+    description: Frontend web application
+  charts/backend/Chart.yaml: |
+    apiVersion: v2
+    name: backend
+    version: 1.0.0
+    description: Backend API service
+  charts/frontend/values.yaml: |
+    replicaCount: 2
+    image:
+      repository: frontend-app
+      tag: "1.0.0"
+    service:
+      type: ClusterIP
+      port: 3000
+  charts/backend/values.yaml: |
+    replicaCount: 3
+    image:
+      repository: backend-api
+      tag: "1.0.0"
+    service:
+      type: ClusterIP
+      port: 8080
+  charts/frontend/templates/service.yaml: |
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: {{ include "frontend.fullname" . }}
+    spec:
+      type: {{ .Values.service.type }}
+      ports:
+        - port: {{ .Values.service.port }}
+  charts/backend/templates/deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: {{ include "backend.fullname" . }}
+    spec:
+      replicas: {{ .Values.replicaCount }}
+      template:
+        spec:
+          containers:
+            - name: backend
+              image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+  values.yaml: |
+    frontend:
+      replicaCount: 2
+    backend:
+      replicaCount: 3
+    redis:
+      auth:
+        enabled: false
+
+must_include_files:
+  - Chart.yaml
+  # Q1+Q2: Dependency declares frontend version: 1.0.0 at file://./charts/frontend.
+  # Reviewer must verify subchart exists and version matches.
+  - charts/frontend/Chart.yaml
+  # Q1+Q2: Same for backend — verify version: 1.0.0 matches dependency declaration.
+  - charts/backend/Chart.yaml
+
+must_include_content_from:
+  Chart.yaml:
+    - "dependencies:"
+    - "repository: file://./charts/frontend"
+    - "repository: file://./charts/backend"
+  charts/frontend/Chart.yaml:
+    - "name: frontend"
+    - "version: 1.0.0"
+  charts/backend/Chart.yaml:
+    - "name: backend"
+    - "version: 1.0.0"
+
+must_not_include:
+  # --- charts/frontend/values.yaml: subchart default values ---
+  # Contains replicaCount and image config for frontend. Same keys
+  # pattern as the parent values.yaml. But dependency declaration
+  # doesn't reference subchart values — only Chart.yaml versions.
+  - "repository: frontend-app"
+  - "port: 3000"
+  # --- charts/backend/templates/deployment.yaml: subchart template ---
+  # Deploys the backend using .Values.replicaCount and .Values.image.
+  # The dependency ENABLES this template, but reviewing what the template
+  # does is separate from verifying the dependency declaration.
+  - "backend.fullname"
+  - "backend-api"
+  # --- charts/frontend/templates/service.yaml: subchart template ---
+  - "frontend.fullname"
+  # --- values.yaml: parent chart values for subcharts ---
+  # Configures subcharts via frontend.replicaCount, backend.replicaCount.
+  # But the diff only adds dependencies, not configuration.
+  - "auth:"
+  - "enabled: false"
+
+must_not_include_files:
+  - charts/frontend/values.yaml
+  - charts/backend/values.yaml
+  - charts/frontend/templates/service.yaml
+  - charts/backend/templates/deployment.yaml
+  - values.yaml
+
+max_fragments: 8
+max_files: 4
+add_garbage_files: false
+skip_garbage_check: true

@@ -1,0 +1,60 @@
+initial:
+  utils/math.py: |
+    def add(a: float, b: float) -> float:
+        return a + b
+
+    def subtract(a: float, b: float) -> float:
+        return a - b
+
+    def multiply(a: float, b: float) -> float:
+        return a * b
+  garbage_int068_analytics.py: |
+    GARBAGE_INT068_ANALYTICS_MARKER_A = "analytics_garbage_a"
+    def track_event():
+        return "GARBAGE_INT068_ANALYTICS_MARKER_B"
+    class Reporter:
+        GARBAGE_INT068_ANALYTICS_MARKER_C = "analytics_garbage_c"
+  garbage_int068_export.py: |
+    GARBAGE_INT068_EXPORT_MARKER_A = "export_garbage_a"
+    def export_data():
+        return "GARBAGE_INT068_EXPORT_MARKER_B"
+changed:
+  utils/math.py: |
+    def add(a: float, b: float) -> float:
+        return a + b
+
+    def subtract(a: float, b: float) -> float:
+        return a - b
+
+    def multiply(a: float, b: float) -> float:
+        return a * b
+
+    def divide(a: float, b: float) -> float:
+        if b == 0:
+            raise ValueError("division by zero")
+        return a / b
+  garbage_int068_analytics.py: |
+    GARBAGE_INT068_ANALYTICS_MARKER_A = "analytics_garbage_a"
+    def track_event():
+        return "GARBAGE_INT068_ANALYTICS_MARKER_B"
+    class Reporter:
+        GARBAGE_INT068_ANALYTICS_MARKER_C = "analytics_garbage_c"
+  garbage_int068_export.py: |
+    GARBAGE_INT068_EXPORT_MARKER_A = "export_garbage_a"
+    def export_data():
+        return "GARBAGE_INT068_EXPORT_MARKER_B"
+must_include_files:
+- utils/math.py
+must_include_content:
+- 'def divide(a: float, b: float) -> float:'
+- raise ValueError("division by zero")
+must_not_include:
+- GARBAGE_INT068_ANALYTICS_MARKER_A
+- GARBAGE_INT068_ANALYTICS_MARKER_B
+- GARBAGE_INT068_ANALYTICS_MARKER_C
+- GARBAGE_INT068_EXPORT_MARKER_A
+- GARBAGE_INT068_EXPORT_MARKER_B
+max_fragments: 15
+max_files: 5
+add_garbage_files: false
+skip_garbage_check: true

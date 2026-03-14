@@ -1,0 +1,173 @@
+# Scenario: worker.rb includes Logging module and calls log() in its perform method.
+# logging.rb defines the Logging module with log and log_error methods.
+#
+# Diff: worker.rb changes from empty class to including Logging and adding
+# a perform method that calls log("Starting work") and log("Work completed").
+#
+# Reviewer questions:
+#   Q1: "What does log() do — where does output go?"
+#       -> logging.rb (UNCHANGED) shows log(message) outputs to stdout via puts
+#          with "[LOG]" prefix. Reviewer understands the logging format.
+#   Q2: "Are there other logging methods available via the mixin?"
+#       -> logging.rb also provides log_error(message) which uses "[ERROR]" prefix.
+#          Worker only uses log(), not log_error(). Reviewer can assess if error
+#          logging should be added.
+#
+# Not needed:
+#   - metrics.rb: collects performance metrics. Similar observability concern
+#     but doesn't reference Logging module — no edge.
+#   - notifier.rb: sends notifications via external channels. Different output
+#     mechanism, independent of the Logging module.
+
+initial:
+  lib/logging.rb: |
+    module Logging
+      def log(message)
+        puts "[LOG] #{message}"
+      end
+
+      def log_error(message)
+        puts "[ERROR] #{message}"
+      end
+
+      def log_warning(message)
+        puts "[WARNING] #{message}"
+      end
+    end
+  lib/worker.rb: |
+    class Worker
+    end
+  lib/metrics.rb: |
+    class Metrics
+      def initialize
+        @counters = {}
+        @timings = {}
+      end
+
+      def increment(name, amount = 1)
+        @counters[name] = (@counters[name] || 0) + amount
+      end
+
+      def time(name)
+        start = Time.now
+        result = yield
+        @timings[name] = Time.now - start
+        result
+      end
+
+      def report
+        { counters: @counters, timings: @timings }
+      end
+    end
+  lib/notifier.rb: |
+    class Notifier
+      def initialize(channel)
+        @channel = channel
+      end
+
+      def send_alert(subject, body)
+        dispatch(@channel, subject, body)
+      end
+
+      def send_info(subject, body)
+        dispatch(@channel, subject, body)
+      end
+
+      private
+
+      def dispatch(channel, subject, body)
+        puts "Sending to #{channel}: [#{subject}] #{body}"
+      end
+    end
+changed:
+  lib/logging.rb: |
+    module Logging
+      def log(message)
+        puts "[LOG] #{message}"
+      end
+
+      def log_error(message)
+        puts "[ERROR] #{message}"
+      end
+
+      def log_warning(message)
+        puts "[WARNING] #{message}"
+      end
+    end
+  lib/worker.rb: |
+    require_relative 'logging'
+
+    class Worker
+      include Logging
+
+      def perform
+        log("Starting work")
+        log("Work completed")
+      end
+    end
+  lib/metrics.rb: |
+    class Metrics
+      def initialize
+        @counters = {}
+        @timings = {}
+      end
+
+      def increment(name, amount = 1)
+        @counters[name] = (@counters[name] || 0) + amount
+      end
+
+      def time(name)
+        start = Time.now
+        result = yield
+        @timings[name] = Time.now - start
+        result
+      end
+
+      def report
+        { counters: @counters, timings: @timings }
+      end
+    end
+  lib/notifier.rb: |
+    class Notifier
+      def initialize(channel)
+        @channel = channel
+      end
+
+      def send_alert(subject, body)
+        dispatch(@channel, subject, body)
+      end
+
+      def send_info(subject, body)
+        dispatch(@channel, subject, body)
+      end
+
+      private
+
+      def dispatch(channel, subject, body)
+        puts "Sending to #{channel}: [#{subject}] #{body}"
+      end
+    end
+must_include_files:
+  # Q1: logging.rb defines the Logging module that worker.rb includes
+  - lib/logging.rb
+must_include_content_from:
+  lib/logging.rb:
+    - "module Logging"
+    - "def log(message)"
+    - "puts \"[LOG] #{message}\""
+must_not_include:
+  # metrics.rb: performance tracking, no reference to Logging module
+  - Metrics
+  - increment
+  - "@counters"
+  # notifier.rb: alert sending, independent notification mechanism
+  - Notifier
+  - send_alert
+  - dispatch
+must_not_include_files:
+  - lib/metrics.rb
+  - lib/notifier.rb
+max_fragments: 5
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

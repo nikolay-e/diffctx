@@ -1,0 +1,108 @@
+# Scenario: handler.ts is rewritten to import createResponse from service.ts
+# and use it to wrap data before sending res.json().
+#
+# Diff: handler.ts adds `import { createResponse } from './service'` and calls
+# `res.json(createResponse(data))` in the getDataHandler function.
+#
+# Reviewer questions:
+#   Q1: "What does createResponse add to the data?"
+#       -> service.ts (UNCHANGED) wraps data in { data, success: true, timestamp }.
+#          Reviewer verifies the API response envelope structure is correct.
+#
+# Not needed:
+#   - error-response.ts: creates error response objects with { error, code, timestamp }.
+#     Same response pattern but for error paths, not success responses.
+#   - response-logger.ts: logs API responses for debugging. Middleware concern,
+#     not part of response creation.
+
+initial:
+  service.ts: |
+    export interface ApiResponse<T> {
+        data: T;
+        success: boolean;
+        timestamp: number;
+    }
+
+    export function createResponse<T>(data: T): ApiResponse<T> {
+        return { data, success: true, timestamp: Date.now() };
+    }
+  handler.ts: |
+    console.log('initial');
+  error-response.ts: |
+    export interface ErrorResponse {
+        error: string;
+        code: number;
+        timestamp: number;
+    }
+
+    export function createErrorResponse(error: string, code: number): ErrorResponse {
+        return { error, code, timestamp: Date.now() };
+    }
+  response-logger.ts: |
+    export function logResponse(method: string, path: string, statusCode: number, durationMs: number): void {
+        console.log(`${method} ${path} → ${statusCode} (${durationMs}ms)`);
+    }
+
+    export function createResponseTimer() {
+        const start = Date.now();
+        return { elapsed: () => Date.now() - start };
+    }
+changed:
+  service.ts: |
+    export interface ApiResponse<T> {
+        data: T;
+        success: boolean;
+        timestamp: number;
+    }
+
+    export function createResponse<T>(data: T): ApiResponse<T> {
+        return { data, success: true, timestamp: Date.now() };
+    }
+  handler.ts: |
+    import { Request, Response } from 'express';
+    import { createResponse } from './service';
+
+    export function getDataHandler(req: Request, res: Response) {
+        const data = { message: 'Hello' };
+        res.json(createResponse(data));
+    }
+  error-response.ts: |
+    export interface ErrorResponse {
+        error: string;
+        code: number;
+        timestamp: number;
+    }
+
+    export function createErrorResponse(error: string, code: number): ErrorResponse {
+        return { error, code, timestamp: Date.now() };
+    }
+  response-logger.ts: |
+    export function logResponse(method: string, path: string, statusCode: number, durationMs: number): void {
+        console.log(`${method} ${path} → ${statusCode} (${durationMs}ms)`);
+    }
+
+    export function createResponseTimer() {
+        const start = Date.now();
+        return { elapsed: () => Date.now() - start };
+    }
+must_include_files:
+  # Q1: service.ts defines createResponse that handler.ts imports
+  - service.ts
+must_include_content_from:
+  service.ts:
+    - "function createResponse"
+    - "success: true"
+must_not_include:
+  # error-response.ts: error envelope, different response type
+  - ErrorResponse
+  - createErrorResponse
+  # response-logger.ts: response logging, middleware concern
+  - logResponse
+  - createResponseTimer
+must_not_include_files:
+  - error-response.ts
+  - response-logger.ts
+max_fragments: 5
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

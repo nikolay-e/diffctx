@@ -1,0 +1,326 @@
+# Scenario: test_service.py goes from placeholder to real tests using pytest
+#   fixtures (db_session, test_user, test_project) from conftest.py.
+#   Only test_service.py is changed.
+#
+# Diff shows:
+#   - Removes test_placeholder
+#   + test_create_user(db_session, test_user): asserts name, email, queries session
+#   + test_create_project(db_session, test_project, test_user): asserts name, owner
+#   + test_user_is_active(test_user): asserts is_active is True
+#
+# Reviewer questions:
+#   Q1: "Do the test functions reference valid fixture names? What does
+#        each fixture provide?"
+#       -> Needs conftest.py: defines db_session (yields Session, closes
+#         after), test_user (creates User "Alice", adds to session), and
+#         test_project (creates Project, depends on test_user). Reviewer
+#         must verify fixture param names in tests match fixture function
+#         names, and that the fixture chain is correct (test_project
+#         depends on both db_session and test_user).
+#
+#   Q2: "The tests assert test_user.name == 'Alice', test_user.is_active,
+#        test_project.owner is test_user. Do these properties exist on
+#        the model classes?"
+#       -> Needs models.py: User has name, email, is_active (default True).
+#         Project has name and owner. Without this, the reviewer cannot
+#         verify that the asserted attributes actually exist — they could
+#         be typos or removed fields.
+#
+#   Q3: "test_create_user calls db_session.query(type(test_user)).
+#        What does query() return?"
+#       -> Needs database.py: Session.query() returns the list of objects
+#         stored under that class name. The test asserts len(users) == 1,
+#         which only makes sense if query() returns the stored objects.
+#
+# Not needed for comprehension:
+#   - tests/test_api.py: Another test file that uses the SAME fixtures
+#     (db_session, test_user) from the SAME conftest.py. Strongest
+#     structural trap: identical fixture dependencies, same conftest.
+#     But seeing how ANOTHER test file uses these fixtures doesn't help
+#     review whether THIS test file uses them correctly.
+#
+#   - services/user_service.py: A service layer that imports User from
+#     models and Session from database — the same modules the fixtures
+#     use. Structural edges to both models.py and database.py. But the
+#     test file tests model properties directly via fixtures, not through
+#     a service layer. The service is the "subject under test" conceptually,
+#     but the tests don't import or call it.
+#
+#   - tests/integration/conftest.py: A DIFFERENT conftest.py in a
+#     subdirectory. Defines fixtures named integration_db and
+#     integration_user — similar fixture pattern but different scope
+#     and different fixture names. Confusing if included: reviewer
+#     might think tests use these instead.
+#
+#   - utils/test_factories.py: A factory utility that creates User and
+#     Project objects for testing. Shares "test" + "User" + "Project"
+#     vocabulary, creates the same model types. But it's a manual
+#     factory, not a pytest fixture — the tests use conftest fixtures.
+#
+#   - utils/migration_runner.py: Database migration tool. "db" and
+#     "session" vocabulary overlap, but no pytest or fixture relationship.
+
+initial:
+  test_service.py: |
+    def test_placeholder():
+        assert True
+
+  conftest.py: |
+    import pytest
+    from database import Session
+    from models import User, Project
+
+    @pytest.fixture
+    def db_session():
+        session = Session()
+        yield session
+        session.close()
+
+    @pytest.fixture
+    def test_user(db_session):
+        user = User(name="Alice", email="alice@example.com")
+        db_session.add(user)
+        db_session.commit()
+        return user
+
+    @pytest.fixture
+    def test_project(db_session, test_user):
+        project = Project(name="Test Project", owner=test_user)
+        db_session.add(project)
+        db_session.commit()
+        return project
+
+  models.py: |
+    class User:
+        def __init__(self, name: str, email: str, is_active: bool = True):
+            self.name = name
+            self.email = email
+            self.is_active = is_active
+
+        def __repr__(self):
+            return f"User(name={self.name!r}, email={self.email!r})"
+
+    class Project:
+        def __init__(self, name: str, owner: User):
+            self.name = name
+            self.owner = owner
+            self.is_archived = False
+
+        def __repr__(self):
+            return f"Project(name={self.name!r}, owner={self.owner.name!r})"
+
+  database.py: |
+    class Session:
+        def __init__(self, url: str = "sqlite:///test.db"):
+            self.url = url
+            self._data: dict[str, list] = {}
+
+        def add(self, obj: object) -> None:
+            table = type(obj).__name__
+            if table not in self._data:
+                self._data[table] = []
+            self._data[table].append(obj)
+
+        def commit(self) -> None:
+            pass
+
+        def rollback(self) -> None:
+            self._data.clear()
+
+        def close(self) -> None:
+            self._data.clear()
+
+        def query(self, model_class: type) -> list:
+            return self._data.get(model_class.__name__, [])
+
+  tests/test_api.py: |
+    def test_api_user_creation(db_session, test_user):
+        """Verify user fixture is usable in API-level tests."""
+        assert test_user.name == "Alice"
+        db_session.add(test_user)
+
+    def test_api_project_access(db_session, test_project):
+        """Verify project fixture is accessible."""
+        assert test_project.name == "Test Project"
+
+    def test_api_list_users(db_session, test_user):
+        """Verify user appears in session query."""
+        users = db_session.query(type(test_user))
+        assert len(users) >= 1
+
+  services/user_service.py: |
+    from database import Session
+    from models import User
+
+    class UserService:
+        def __init__(self, session: Session):
+            self.session = session
+
+        def create_user(self, name: str, email: str) -> User:
+            user = User(name=name, email=email)
+            self.session.add(user)
+            self.session.commit()
+            return user
+
+        def get_users(self) -> list:
+            return self.session.query(User)
+
+        def deactivate_user(self, user: User) -> None:
+            user.is_active = False
+            self.session.commit()
+
+  tests/integration/conftest.py: |
+    import pytest
+    from database import Session
+    from models import User
+
+    @pytest.fixture(scope="session")
+    def integration_db():
+        session = Session(url="sqlite:///integration_test.db")
+        yield session
+        session.close()
+
+    @pytest.fixture
+    def integration_user(integration_db):
+        user = User(name="IntegrationUser", email="integration@test.com")
+        integration_db.add(user)
+        integration_db.commit()
+        return user
+
+  utils/test_factories.py: |
+    from models import User, Project
+
+    class UserFactory:
+        _counter = 0
+
+        @classmethod
+        def create(cls, name: str = None, email: str = None) -> User:
+            cls._counter += 1
+            return User(
+                name=name or f"TestUser_{cls._counter}",
+                email=email or f"user{cls._counter}@test.com",
+            )
+
+    class ProjectFactory:
+        _counter = 0
+
+        @classmethod
+        def create(cls, name: str = None, owner: User = None) -> Project:
+            cls._counter += 1
+            if owner is None:
+                owner = UserFactory.create()
+            return Project(
+                name=name or f"TestProject_{cls._counter}",
+                owner=owner,
+            )
+
+  utils/migration_runner.py: |
+    from typing import Optional
+
+    class MigrationRunner:
+        def __init__(self, db_url: str = ""):
+            self.db_url = db_url
+            self._applied: list[str] = []
+
+        def apply(self, migration_id: str) -> None:
+            self._applied.append(migration_id)
+
+        def rollback(self, migration_id: str) -> bool:
+            if migration_id in self._applied:
+                self._applied.remove(migration_id)
+                return True
+            return False
+
+        def get_current_version(self) -> Optional[str]:
+            return self._applied[-1] if self._applied else None
+
+changed:
+  test_service.py: |
+    def test_create_user(db_session, test_user):
+        assert test_user.name == "Alice"
+        assert test_user.email == "alice@example.com"
+        users = db_session.query(type(test_user))
+        assert len(users) == 1
+
+    def test_create_project(db_session, test_project, test_user):
+        assert test_project.name == "Test Project"
+        assert test_project.owner is test_user
+
+    def test_user_is_active(test_user):
+        assert test_user.is_active is True
+
+must_include_files:
+  - test_service.py
+  # Q1: Reviewer must verify fixture names match. conftest.py defines
+  # db_session, test_user (depends on db_session), test_project (depends
+  # on db_session + test_user). Tests reference these by name as params.
+  - conftest.py
+  # Q2: Tests assert .name, .email, .is_active on User and .name, .owner
+  # on Project. Reviewer must see model definitions to verify these
+  # attributes exist and have the expected types/defaults.
+  - models.py
+  # Q3: test_create_user calls db_session.query(type(test_user)) and
+  # asserts len == 1. Reviewer needs to see that Session.query() returns
+  # the list of stored objects for that class.
+  - database.py
+
+must_include_content_from:
+  test_service.py:
+    - "def test_create_user(db_session, test_user):"
+    - "def test_create_project(db_session, test_project, test_user):"
+    - "assert test_user.is_active is True"
+  conftest.py:
+    - "def db_session():"
+    - "def test_user(db_session):"
+    - "def test_project(db_session, test_user):"
+  models.py:
+    - "def __init__(self, name: str, email: str, is_active: bool = True):"
+    - "def __init__(self, name: str, owner: User):"
+  database.py:
+    - "def query(self, model_class: type) -> list:"
+
+must_not_include:
+  # --- tests/test_api.py: SAME fixtures from SAME conftest ---
+  # Strongest trap. Uses db_session, test_user, test_project — identical
+  # fixture dependencies. But another test file's assertions don't help
+  # review whether THIS test file references fixtures correctly.
+  - test_api_user_creation
+  - test_api_project_access
+  - test_api_list_users
+  # --- services/user_service.py: imports User + Session ---
+  # Structural edges to both models.py and database.py. Creates users,
+  # queries session — same operations as the fixtures. But the tests
+  # don't import or call UserService; they test model properties directly.
+  - UserService
+  - create_user
+  - deactivate_user
+  - get_users
+  # --- tests/integration/conftest.py: different conftest, similar pattern ---
+  # Defines fixtures (integration_db, integration_user) with similar
+  # structure but different names and scope. Including this would confuse
+  # the reviewer about which fixtures the tests actually use.
+  - integration_db
+  - integration_user
+  - "sqlite:///integration_test.db"
+  # --- utils/test_factories.py: creates same model types ---
+  # UserFactory.create() and ProjectFactory.create() — same models,
+  # "test" in name, creates objects for testing. But tests use pytest
+  # fixtures from conftest, not factory classes.
+  - UserFactory
+  - ProjectFactory
+  - "_counter"
+  # --- utils/migration_runner.py: db vocabulary, no pytest relationship ---
+  - MigrationRunner
+  - get_current_version
+
+must_not_include_files:
+  - tests/test_api.py
+  - services/user_service.py
+  - tests/integration/conftest.py
+  - utils/test_factories.py
+  - utils/migration_runner.py
+
+max_fragments: 6
+max_files: 4
+add_garbage_files: false
+skip_garbage_check: true

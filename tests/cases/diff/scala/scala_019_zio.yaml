@@ -1,0 +1,140 @@
+# Test: DataFetcher gains ZIO-based fetch methods that depend on Client layer
+#
+# Scenario: DataFetcher.scala is updated from an empty object to a full
+# ZIO service that requires the Client layer. It imports zio._, defines
+# a Data case class, and implements fetch/fetchMultiple using for-comprehension
+# with ZIO.service[Client].
+#
+# Reviewer questions:
+#   Q1: "What is the Client trait? What does client.fetch return?"
+#       -> Client.scala (UNCHANGED) defines trait Client with
+#          fetch(url: String): Task[String]. The companion object provides
+#          a live ZLayer. Reviewer verifies DataFetcher's usage matches.
+#   Q2: "Does ZIO.foreach preserve ordering?"
+#       -> DataFetcher calls ZIO.foreach(urls)(fetch) — reviewer needs
+#          Client.scala to understand the effect type but may also want
+#          to confirm the Client layer is available in the environment.
+#
+# Not needed:
+#   - HttpConfig.scala: configuration case class for HTTP settings (timeout,
+#     retries, base URL). Same domain (HTTP) but DataFetcher doesn't import
+#     or reference it — no dependency edge.
+#   - MetricsCollector.scala: ZIO-based metrics service that also uses ZLayer.
+#     Same ZIO patterns but completely independent service — no import edge.
+
+initial:
+  Client.scala: |
+    import zio._
+
+    trait Client {
+      def fetch(url: String): Task[String]
+    }
+
+    object Client {
+      val live: ULayer[Client] = ZLayer.succeed(new Client {
+        def fetch(url: String): Task[String] = ZIO.succeed(s"Response from $url")
+      })
+    }
+  DataFetcher.scala: |
+    object DataFetcher {}
+  # --- Not needed: HTTP config, no import from DataFetcher ---
+  HttpConfig.scala: |
+    case class HttpConfig(
+      baseUrl: String = "http://localhost:8080",
+      timeoutMillis: Int = 5000,
+      maxRetries: Int = 3
+    ) {
+      def withBaseUrl(url: String): HttpConfig = copy(baseUrl = url)
+      def withTimeout(millis: Int): HttpConfig = copy(timeoutMillis = millis)
+    }
+  # --- Not needed: independent ZIO service, no relation to DataFetcher ---
+  MetricsCollector.scala: |
+    import zio._
+
+    trait MetricsCollector {
+      def recordLatency(endpoint: String, millis: Long): UIO[Unit]
+      def incrementCounter(name: String): UIO[Unit]
+    }
+
+    object MetricsCollector {
+      val live: ULayer[MetricsCollector] = ZLayer.succeed(new MetricsCollector {
+        def recordLatency(endpoint: String, millis: Long): UIO[Unit] = ZIO.unit
+        def incrementCounter(name: String): UIO[Unit] = ZIO.unit
+      })
+    }
+changed:
+  Client.scala: |
+    import zio._
+
+    trait Client {
+      def fetch(url: String): Task[String]
+    }
+
+    object Client {
+      val live: ULayer[Client] = ZLayer.succeed(new Client {
+        def fetch(url: String): Task[String] = ZIO.succeed(s"Response from $url")
+      })
+    }
+  DataFetcher.scala: |
+    import zio._
+
+    case class Data(content: String)
+
+    object DataFetcher {
+      def fetch(url: String): ZIO[Client, Throwable, Data] = {
+        for {
+          client <- ZIO.service[Client]
+          response <- client.fetch(url)
+        } yield Data(response)
+      }
+
+      def fetchMultiple(urls: List[String]): ZIO[Client, Throwable, List[Data]] = {
+        ZIO.foreach(urls)(fetch)
+      }
+    }
+  HttpConfig.scala: |
+    case class HttpConfig(
+      baseUrl: String = "http://localhost:8080",
+      timeoutMillis: Int = 5000,
+      maxRetries: Int = 3
+    ) {
+      def withBaseUrl(url: String): HttpConfig = copy(baseUrl = url)
+      def withTimeout(millis: Int): HttpConfig = copy(timeoutMillis = millis)
+    }
+  MetricsCollector.scala: |
+    import zio._
+
+    trait MetricsCollector {
+      def recordLatency(endpoint: String, millis: Long): UIO[Unit]
+      def incrementCounter(name: String): UIO[Unit]
+    }
+
+    object MetricsCollector {
+      val live: ULayer[MetricsCollector] = ZLayer.succeed(new MetricsCollector {
+        def recordLatency(endpoint: String, millis: Long): UIO[Unit] = ZIO.unit
+        def incrementCounter(name: String): UIO[Unit] = ZIO.unit
+      })
+    }
+must_include_files:
+  # Q1: Client.scala defines the trait and layer that DataFetcher depends on
+  - Client.scala
+must_include_content_from:
+  Client.scala:
+    - "def fetch(url: String): Task[String]"
+    - "trait Client"
+must_not_include:
+  # HttpConfig.scala: HTTP config, not imported by DataFetcher
+  - HttpConfig
+  - baseUrl
+  - maxRetries
+  # MetricsCollector.scala: independent ZIO service
+  - MetricsCollector
+  - recordLatency
+  - incrementCounter
+must_not_include_files:
+  - HttpConfig.scala
+  - MetricsCollector.scala
+max_fragments: 5
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

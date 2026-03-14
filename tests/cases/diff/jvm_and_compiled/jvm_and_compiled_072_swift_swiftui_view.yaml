@@ -1,0 +1,139 @@
+# Scenario: UserView builds a SwiftUI layout that renders User model properties with styled text
+# Changed: UserView.swift gains a user property, VStack layout with .headline/.subheadline fonts
+# Reviewer questions: Should user be @Binding or just a let? Is .gray foreground accessible enough?
+# Trap 1: AvatarView.swift — another SwiftUI view rendering user avatars, shares "user" vocabulary but no dep
+# Trap 2: ColorPalette.swift — defines app color constants, shares .foregroundColor styling patterns but unrelated
+initial:
+  User.swift: |
+    struct User: Identifiable {
+        let id: String
+        let name: String
+        let email: String
+    }
+  UserView.swift: |
+    import SwiftUI
+    struct UserView: View {
+        var body: some View { Text("") }
+    }
+  AvatarView.swift: |
+    import SwiftUI
+
+    struct AvatarView: View {
+        let initials: String
+        let size: CGFloat
+
+        var body: some View {
+            ZStack {
+                Circle()
+                    .fill(Color.blue)
+                    .frame(width: size, height: size)
+                Text(initials)
+                    .font(.system(size: size * 0.4))
+                    .foregroundColor(.white)
+            }
+        }
+    }
+  ColorPalette.swift: |
+    import SwiftUI
+
+    struct ColorPalette {
+        static let primaryText = Color.black
+        static let secondaryText = Color.gray
+        static let accent = Color.blue
+        static let background = Color(.systemBackground)
+        static let separator = Color(.separator)
+
+        static func textColor(for style: TextStyle) -> Color {
+            switch style {
+            case .headline: return primaryText
+            case .subheadline: return secondaryText
+            case .caption: return secondaryText.opacity(0.8)
+            }
+        }
+
+        enum TextStyle {
+            case headline, subheadline, caption
+        }
+    }
+changed:
+  User.swift: |
+    struct User: Identifiable {
+        let id: String
+        let name: String
+        let email: String
+    }
+  UserView.swift: |
+    import SwiftUI
+
+    struct UserView: View {
+        let user: User
+
+        var body: some View {
+            VStack(alignment: .leading) {
+                Text(user.name)
+                    .font(.headline)
+                Text(user.email)
+                    .font(.subheadline)
+                    .foregroundColor(.gray)
+            }
+        }
+    }
+  AvatarView.swift: |
+    import SwiftUI
+
+    struct AvatarView: View {
+        let initials: String
+        let size: CGFloat
+
+        var body: some View {
+            ZStack {
+                Circle()
+                    .fill(Color.blue)
+                    .frame(width: size, height: size)
+                Text(initials)
+                    .font(.system(size: size * 0.4))
+                    .foregroundColor(.white)
+            }
+        }
+    }
+  ColorPalette.swift: |
+    import SwiftUI
+
+    struct ColorPalette {
+        static let primaryText = Color.black
+        static let secondaryText = Color.gray
+        static let accent = Color.blue
+        static let background = Color(.systemBackground)
+        static let separator = Color(.separator)
+
+        static func textColor(for style: TextStyle) -> Color {
+            switch style {
+            case .headline: return primaryText
+            case .subheadline: return secondaryText
+            case .caption: return secondaryText.opacity(0.8)
+            }
+        }
+
+        enum TextStyle {
+            case headline, subheadline, caption
+        }
+    }
+must_include_files:
+- UserView.swift
+must_include_content_from:
+  UserView.swift:
+  - 'let user: User'
+  - 'Text(user.name)'
+must_not_include:
+- AvatarView
+- ColorPalette
+- primaryText
+- secondaryText
+- textColor
+must_not_include_files:
+- AvatarView.swift
+- ColorPalette.swift
+add_garbage_files: false
+skip_garbage_check: true
+max_fragments: 8
+max_files: 4

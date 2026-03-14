@@ -1,0 +1,167 @@
+# Scenario: Retry config increases attempts, lowers backoff, adds jitter
+#
+# Diff: resilience.yaml changes max_attempts 3→5, backoff_factor 2→1.5,
+# adds jitter: true.
+#
+# Reviewer questions:
+#   Q1: "Does the code support jitter?"
+#       → src/retry.py (UNCHANGED) calculates sleep as backoff**attempt
+#         with NO jitter logic. The new jitter: true field is inert.
+#   Q2: "What's the retry behavior with the new values?"
+#       → retry.py defaults to max_attempts=3 and backoff=2.0 matching
+#         the OLD config. With max_attempts=5 and backoff=1.5:
+#         sleeps would be 1, 1.5, 2.25, 3.375 = ~8s total backoff.
+#         Without jitter, retries will thundering-herd.
+#
+# Not needed:
+#   - config/circuit_breaker.yaml: circuit breaking config (failure
+#     threshold, half-open), different resilience pattern.
+#   - src/timeout.py: request timeout handling (SIGALRM), not retry logic.
+
+initial:
+  config/resilience.yaml: |
+    retry:
+      max_attempts: 3
+      backoff_factor: 2
+  src/retry.py: |
+    import time
+    import random
+
+    def with_retry(func, max_attempts: int = 3, backoff: float = 2.0):
+        def wrapper(*args, **kwargs):
+            for attempt in range(max_attempts):
+                try:
+                    return func(*args, **kwargs)
+                except Exception:
+                    if attempt < max_attempts - 1:
+                        time.sleep(backoff ** attempt)
+                    else:
+                        raise
+        return wrapper
+
+    def retry_with_result(func, max_attempts: int = 3, predicate=None):
+        for attempt in range(max_attempts):
+            result = func()
+            if predicate is None or predicate(result):
+                return result
+        return None
+  config/circuit_breaker.yaml: |
+    circuit_breaker:
+      failure_threshold: 5
+      reset_timeout_seconds: 30
+      half_open_max_requests: 3
+      monitored_exceptions:
+        - ConnectionError
+        - TimeoutError
+  src/timeout.py: |
+    import signal
+    from contextlib import contextmanager
+
+    class TimeoutError(Exception):
+        pass
+
+    @contextmanager
+    def timeout(seconds: int):
+        def handler(signum, frame):
+            raise TimeoutError(f"Operation timed out after {seconds}s")
+        old_handler = signal.signal(signal.SIGALRM, handler)
+        signal.alarm(seconds)
+        try:
+            yield
+        finally:
+            signal.alarm(0)
+            signal.signal(signal.SIGALRM, old_handler)
+
+    def with_timeout(func, seconds: int = 30):
+        def wrapper(*args, **kwargs):
+            with timeout(seconds):
+                return func(*args, **kwargs)
+        return wrapper
+
+changed:
+  config/resilience.yaml: |
+    retry:
+      max_attempts: 5
+      backoff_factor: 1.5
+      jitter: true
+  src/retry.py: |
+    import time
+    import random
+
+    def with_retry(func, max_attempts: int = 3, backoff: float = 2.0):
+        def wrapper(*args, **kwargs):
+            for attempt in range(max_attempts):
+                try:
+                    return func(*args, **kwargs)
+                except Exception:
+                    if attempt < max_attempts - 1:
+                        time.sleep(backoff ** attempt)
+                    else:
+                        raise
+        return wrapper
+
+    def retry_with_result(func, max_attempts: int = 3, predicate=None):
+        for attempt in range(max_attempts):
+            result = func()
+            if predicate is None or predicate(result):
+                return result
+        return None
+  config/circuit_breaker.yaml: |
+    circuit_breaker:
+      failure_threshold: 5
+      reset_timeout_seconds: 30
+      half_open_max_requests: 3
+      monitored_exceptions:
+        - ConnectionError
+        - TimeoutError
+  src/timeout.py: |
+    import signal
+    from contextlib import contextmanager
+
+    class TimeoutError(Exception):
+        pass
+
+    @contextmanager
+    def timeout(seconds: int):
+        def handler(signum, frame):
+            raise TimeoutError(f"Operation timed out after {seconds}s")
+        old_handler = signal.signal(signal.SIGALRM, handler)
+        signal.alarm(seconds)
+        try:
+            yield
+        finally:
+            signal.alarm(0)
+            signal.signal(signal.SIGALRM, old_handler)
+
+    def with_timeout(func, seconds: int = 30):
+        def wrapper(*args, **kwargs):
+            with timeout(seconds):
+                return func(*args, **kwargs)
+        return wrapper
+
+must_include_files:
+  # Q1+Q2: The code has NO jitter logic — just backoff**attempt.
+  # Defaults match old config (3 attempts, 2.0 backoff). The
+  # jitter: true field is inert. Without retry.py, reviewer
+  # thinks jitter is functional.
+  - src/retry.py
+must_include_content_from:
+  src/retry.py:
+    # No jitter — just exponential backoff
+    - "time.sleep(backoff ** attempt)"
+    # Defaults match old config, disagree with new values
+    - "max_attempts: int = 3, backoff: float = 2.0"
+must_not_include:
+  # circuit_breaker.yaml: different resilience pattern, not retry
+  - failure_threshold
+  - half_open_max_requests
+  # timeout.py: request timeout handling, not retry logic
+  - with_timeout
+  - SIGALRM
+must_not_include_files:
+  - config/circuit_breaker.yaml
+  - src/timeout.py
+max_fragments: 5
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

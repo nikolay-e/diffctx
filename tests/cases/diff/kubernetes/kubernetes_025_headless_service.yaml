@@ -1,0 +1,269 @@
+# Scenario: PostgreSQL service converted to headless (clusterIP: None) with
+#   publishNotReadyAddresses for StatefulSet DNS. Only k8s/database/service.yaml
+#   is changed.
+#
+# Diff shows:
+#   + clusterIP: None (headless service for StatefulSet DNS)
+#   + port name: postgres
+#   + labels: app: postgres
+#   + publishNotReadyAddresses: true
+#
+# Reviewer questions:
+#   Q1: "Does the StatefulSet serviceName match the headless service name?"
+#       -> Needs k8s/database/statefulset.yaml: serviceName: postgres matches
+#          the service metadata.name: postgres. Without this, the reviewer
+#          cannot verify that pod DNS records (postgres-0.postgres.database.svc)
+#          will be created correctly.
+#
+#   Q2: "Will publishNotReadyAddresses cause routing to unready pods?"
+#       -> Pure config review: publishNotReadyAddresses: true means DNS will
+#          resolve to pods before they pass readiness checks. Needed for
+#          StatefulSet peer discovery but risky if clients use DNS for routing.
+#
+# Not needed for comprehension:
+#   - k8s/database/backup-cronjob.yaml: CronJob running pg_dump against
+#     host "postgres". Direct structural edge: connects to the same service
+#     name being changed. But the CronJob uses postgres DNS name for
+#     connectivity — making the service headless doesn't change DNS resolution
+#     for the service name itself, only adds pod-specific DNS records.
+#     The backup job doesn't help review the headless conversion.
+#
+#   - k8s/database/pgbouncer.yaml: Connection pooler in same namespace with
+#     DATABASE_URL pointing to "postgres://postgres:5432". Shares same
+#     namespace and port vocabulary. But pgbouncer connects via service DNS
+#     which still works with headless services. Its config doesn't help
+#     review whether clusterIP: None is correctly configured.
+initial:
+  k8s/database/statefulset.yaml: |
+    apiVersion: apps/v1
+    kind: StatefulSet
+    metadata:
+      name: postgres
+      namespace: database
+      labels:
+        app: postgres
+    spec:
+      serviceName: postgres
+      replicas: 3
+      selector:
+        matchLabels:
+          app: postgres
+      template:
+        metadata:
+          labels:
+            app: postgres
+        spec:
+          containers:
+          - name: postgres
+            image: postgres:15-alpine
+            ports:
+            - containerPort: 5432
+              name: postgres
+            env:
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: password
+            volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+      volumeClaimTemplates:
+      - metadata:
+          name: data
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 10Gi
+  k8s/database/service.yaml: |
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: postgres
+      namespace: database
+    spec:
+      selector:
+        app: postgres
+      ports:
+      - port: 5432
+        targetPort: 5432
+  k8s/database/backup-cronjob.yaml: |
+    apiVersion: batch/v1
+    kind: CronJob
+    metadata:
+      name: postgres-backup
+      namespace: database
+    spec:
+      schedule: "0 2 * * *"
+      jobTemplate:
+        spec:
+          template:
+            spec:
+              containers:
+              - name: backup
+                image: postgres:15-alpine
+                command:
+                - /bin/sh
+                - -c
+                - pg_dump -h postgres -U postgres > /backups/dump-$(date +%Y%m%d).sql
+              restartPolicy: Never
+  k8s/database/pgbouncer.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: pgbouncer
+      namespace: database
+    spec:
+      replicas: 2
+      selector:
+        matchLabels:
+          app: pgbouncer
+      template:
+        spec:
+          containers:
+          - name: pgbouncer
+            image: edoburu/pgbouncer:1.21.0
+            ports:
+            - containerPort: 5432
+            env:
+            - name: DATABASE_URL
+              value: "postgres://postgres:5432/production"
+            - name: POOL_MODE
+              value: "transaction"
+            - name: MAX_CLIENT_CONN
+              value: "200"
+changed:
+  k8s/database/statefulset.yaml: |
+    apiVersion: apps/v1
+    kind: StatefulSet
+    metadata:
+      name: postgres
+      namespace: database
+      labels:
+        app: postgres
+    spec:
+      serviceName: postgres
+      replicas: 3
+      selector:
+        matchLabels:
+          app: postgres
+      template:
+        metadata:
+          labels:
+            app: postgres
+        spec:
+          containers:
+          - name: postgres
+            image: postgres:15-alpine
+            ports:
+            - containerPort: 5432
+              name: postgres
+            env:
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: password
+            volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+      volumeClaimTemplates:
+      - metadata:
+          name: data
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 10Gi
+  k8s/database/service.yaml: |
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: postgres
+      namespace: database
+      labels:
+        app: postgres
+    spec:
+      clusterIP: None
+      selector:
+        app: postgres
+      ports:
+      - name: postgres
+        port: 5432
+        targetPort: 5432
+      publishNotReadyAddresses: true
+  k8s/database/backup-cronjob.yaml: |
+    apiVersion: batch/v1
+    kind: CronJob
+    metadata:
+      name: postgres-backup
+      namespace: database
+    spec:
+      schedule: "0 2 * * *"
+      jobTemplate:
+        spec:
+          template:
+            spec:
+              containers:
+              - name: backup
+                image: postgres:15-alpine
+                command:
+                - /bin/sh
+                - -c
+                - pg_dump -h postgres -U postgres > /backups/dump-$(date +%Y%m%d).sql
+              restartPolicy: Never
+  k8s/database/pgbouncer.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: pgbouncer
+      namespace: database
+    spec:
+      replicas: 2
+      selector:
+        matchLabels:
+          app: pgbouncer
+      template:
+        spec:
+          containers:
+          - name: pgbouncer
+            image: edoburu/pgbouncer:1.21.0
+            ports:
+            - containerPort: 5432
+            env:
+            - name: DATABASE_URL
+              value: "postgres://postgres:5432/production"
+            - name: POOL_MODE
+              value: "transaction"
+            - name: MAX_CLIENT_CONN
+              value: "200"
+must_include_files:
+  - k8s/database/service.yaml
+  # Q1: StatefulSet serviceName must match the headless service name.
+  # The reviewer must verify serviceName: postgres matches the service.
+  - k8s/database/statefulset.yaml
+must_include_content_from:
+  k8s/database/service.yaml:
+    - 'clusterIP: None'
+    - 'publishNotReadyAddresses: true'
+    - 'name: postgres'
+  k8s/database/statefulset.yaml:
+    - 'serviceName: postgres'
+must_not_include:
+  # --- backup-cronjob.yaml: connects to same service name, different concern ---
+  - postgres-backup
+  - pg_dump
+  - "0 2 * * *"
+  # --- pgbouncer.yaml: connection pooler, same namespace/port vocabulary ---
+  - pgbouncer
+  - edoburu/pgbouncer
+  - POOL_MODE
+  - MAX_CLIENT_CONN
+must_not_include_files:
+  - k8s/database/backup-cronjob.yaml
+  - k8s/database/pgbouncer.yaml
+add_garbage_files: false
+skip_garbage_check: true
+max_fragments: 8
+max_files: 5

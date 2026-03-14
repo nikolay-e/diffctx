@@ -1,9 +1,0 @@
-must_include_files:
-- network.tf
-- outputs.tf
-must_include_content:
-- data "aws_availability_zones" "available" {
-- tags = var.common_tags
-must_not_include:
-- GARBAGE_TF_vpc459a
-- legacy_network_GARBAGE_TF_vpc459a.tf

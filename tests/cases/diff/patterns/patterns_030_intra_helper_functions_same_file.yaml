@@ -1,0 +1,124 @@
+# Test 030: main_function wraps helper_format result in "Result: " prefix
+#           — reviewer needs helper chain in same file for context
+#
+# Scenario: main_function changes final return from `helper_format(transformed)`
+# to `formatted = helper_format(transformed); return f"Result: {formatted}"`.
+# The helpers (validate, transform, format) are unchanged same-file functions.
+#
+# Reviewer questions:
+#   Q1: "What does helper_format return that gets wrapped?"
+#       -> Returns f"[{data}]", so result becomes "Result: [lowered_text]".
+#   Q2: "Does the validate->transform->format chain still hold?"
+#       -> Yes, only the final wrapping changes.
+#
+# Trap files (plausible but unrelated):
+#   - sanitizer.py: similar helper_validate/helper_clean pattern but
+#     for HTML sanitization, not text processing.
+#   - encoder.py: text encoding with format_output function name
+#     overlap but no dependency on processor.py helpers.
+
+initial:
+  processor.py: |
+    def helper_validate(data):
+        return data is not None and len(data) > 0
+
+    def helper_transform(data):
+        return data.strip().lower()
+
+    def helper_format(data):
+        return f"[{data}]"
+
+    def main_function(data):
+        if not helper_validate(data):
+            return None
+        transformed = helper_transform(data)
+        return helper_format(transformed)
+  sanitizer.py: |
+    def helper_validate(html):
+        return html is not None and '<' in html
+
+    def helper_clean(html):
+        import re
+        return re.sub(r'<script.*?</script>', '', html)
+
+    def sanitize(html):
+        if not helper_validate(html):
+            return ''
+        return helper_clean(html)
+  encoder.py: |
+    def format_output(data, encoding='utf-8'):
+        return data.encode(encoding)
+
+    def decode_input(raw, encoding='utf-8'):
+        return raw.decode(encoding)
+
+    def process_text(text):
+        encoded = format_output(text)
+        return decode_input(encoded)
+
+changed:
+  processor.py: |
+    def helper_validate(data):
+        return data is not None and len(data) > 0
+
+    def helper_transform(data):
+        return data.strip().lower()
+
+    def helper_format(data):
+        return f"[{data}]"
+
+    def main_function(data):
+        if not helper_validate(data):
+            return None
+        transformed = helper_transform(data)
+        formatted = helper_format(transformed)
+        return f"Result: {formatted}"
+  sanitizer.py: |
+    def helper_validate(html):
+        return html is not None and '<' in html
+
+    def helper_clean(html):
+        import re
+        return re.sub(r'<script.*?</script>', '', html)
+
+    def sanitize(html):
+        if not helper_validate(html):
+            return ''
+        return helper_clean(html)
+  encoder.py: |
+    def format_output(data, encoding='utf-8'):
+        return data.encode(encoding)
+
+    def decode_input(raw, encoding='utf-8'):
+        return raw.decode(encoding)
+
+    def process_text(text):
+        encoded = format_output(text)
+        return decode_input(encoded)
+
+must_include_files:
+  - processor.py
+
+must_include_content_from:
+  processor.py:
+    - "formatted = helper_format(transformed)"
+    - 'return f"Result: {formatted}"'
+
+must_not_include:
+  # --- sanitizer.py: has helper_validate too but for HTML, independent ---
+  - "helper_clean"
+  - "sanitize(html)"
+  - "<script"
+  # --- encoder.py: has format_output but text encoding, not related ---
+  - "format_output"
+  - "decode_input"
+  - "process_text"
+
+must_not_include_files:
+  - sanitizer.py
+  - encoder.py
+
+max_fragments: 4
+max_files: 1
+add_garbage_files: false
+skip_garbage_check: true

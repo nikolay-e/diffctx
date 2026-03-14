@@ -1,0 +1,29 @@
+initial:
+  core1.py: |
+    pass
+  core2.py: |
+    pass
+  core3.py: |
+    pass
+changed:
+  core1.py: |
+    def core_function_1():
+        concept_1_helper()
+        return "result_1"
+  core2.py: |
+    def core_function_2():
+        concept_2_helper()
+        return "result_2"
+  core3.py: |
+    def core_function_3():
+        concept_3_helper()
+        return "result_3"
+must_include_files:
+- core1.py
+- core2.py
+- core3.py
+must_include_content:
+- 'def core_function_1():'
+- 'def core_function_2():'
+add_garbage_files: false
+skip_garbage_check: true

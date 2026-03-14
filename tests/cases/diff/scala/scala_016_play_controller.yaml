@@ -1,0 +1,164 @@
+# Scenario: UserController implements Play Framework HTTP endpoints matching
+# route definitions, with JSON serialization and async actions.
+#
+# Diff: UserController.scala adds Play MVC implementation with getUser, createUser,
+# deleteUser actions.
+#
+# Reviewer questions:
+#   Q1: "What routes map to these actions?" -> routes (UNCHANGED) defines
+#        GET /users/:id, POST /users, DELETE /users/:id.
+#   Q2: "How is JSON handled?" -> implicit userFormat with Json.format[User].
+#
+# Trap files (plausible but no dependency on UserController or routes):
+#   - ProductController.scala: another Play controller for product CRUD.
+#     Same "controller" pattern but different routes and model.
+#   - UserForm.scala: Play form definition for user input validation.
+#     Shares "User" domain but no controller dependency.
+
+initial:
+  routes: |
+    GET     /users/:id        controllers.UserController.getUser(id: Long)
+    POST    /users            controllers.UserController.createUser()
+    DELETE  /users/:id        controllers.UserController.deleteUser(id: Long)
+  UserController.scala: |
+    class UserController {}
+  ProductController.scala: |
+    import play.api.mvc._
+    import play.api.libs.json._
+    import scala.concurrent.{ExecutionContext, Future}
+
+    case class Product(id: Long, name: String, price: Double)
+
+    class ProductController(cc: ControllerComponents)(implicit ec: ExecutionContext)
+        extends AbstractController(cc) {
+
+      implicit val productFormat: Format[Product] = Json.format[Product]
+
+      def getProduct(id: Long): Action[AnyContent] = Action.async {
+        Future.successful(Ok(Json.toJson(Product(id, "Widget", 9.99))))
+      }
+
+      def listProducts(): Action[AnyContent] = Action.async {
+        Future.successful(Ok(Json.toJson(List(Product(1, "A", 1.0), Product(2, "B", 2.0)))))
+      }
+    }
+  UserForm.scala: |
+    import play.api.data._
+    import play.api.data.Forms._
+
+    case class UserFormData(name: String, email: String)
+
+    object UserForm {
+      val form: Form[UserFormData] = Form(
+        mapping(
+          "name" -> nonEmptyText(minLength = 2, maxLength = 100),
+          "email" -> email
+        )(UserFormData.apply)(UserFormData.unapply)
+      )
+
+      def validate(data: UserFormData): Either[String, UserFormData] = {
+        if (data.name.trim.isEmpty) Left("Name required")
+        else Right(data)
+      }
+    }
+
+changed:
+  routes: |
+    GET     /users/:id        controllers.UserController.getUser(id: Long)
+    POST    /users            controllers.UserController.createUser()
+    DELETE  /users/:id        controllers.UserController.deleteUser(id: Long)
+  UserController.scala: |
+    import play.api.mvc._
+    import play.api.libs.json._
+    import scala.concurrent.{ExecutionContext, Future}
+
+    case class User(id: Long, name: String)
+
+    class UserController(cc: ControllerComponents)(implicit ec: ExecutionContext)
+        extends AbstractController(cc) {
+
+      implicit val userFormat: Format[User] = Json.format[User]
+
+      def getUser(id: Long): Action[AnyContent] = Action.async {
+        Future.successful(Ok(Json.toJson(User(id, "John"))))
+      }
+
+      def createUser(): Action[JsValue] = Action.async(parse.json) { request =>
+        request.body.validate[User].fold(
+          errors => Future.successful(BadRequest(Json.obj("error" -> "Invalid JSON"))),
+          user => Future.successful(Created(Json.toJson(user)))
+        )
+      }
+
+      def deleteUser(id: Long): Action[AnyContent] = Action.async {
+        Future.successful(NoContent)
+      }
+    }
+  ProductController.scala: |
+    import play.api.mvc._
+    import play.api.libs.json._
+    import scala.concurrent.{ExecutionContext, Future}
+
+    case class Product(id: Long, name: String, price: Double)
+
+    class ProductController(cc: ControllerComponents)(implicit ec: ExecutionContext)
+        extends AbstractController(cc) {
+
+      implicit val productFormat: Format[Product] = Json.format[Product]
+
+      def getProduct(id: Long): Action[AnyContent] = Action.async {
+        Future.successful(Ok(Json.toJson(Product(id, "Widget", 9.99))))
+      }
+
+      def listProducts(): Action[AnyContent] = Action.async {
+        Future.successful(Ok(Json.toJson(List(Product(1, "A", 1.0), Product(2, "B", 2.0)))))
+      }
+    }
+  UserForm.scala: |
+    import play.api.data._
+    import play.api.data.Forms._
+
+    case class UserFormData(name: String, email: String)
+
+    object UserForm {
+      val form: Form[UserFormData] = Form(
+        mapping(
+          "name" -> nonEmptyText(minLength = 2, maxLength = 100),
+          "email" -> email
+        )(UserFormData.apply)(UserFormData.unapply)
+      )
+
+      def validate(data: UserFormData): Either[String, UserFormData] = {
+        if (data.name.trim.isEmpty) Left("Name required")
+        else Right(data)
+      }
+    }
+
+must_include_files:
+  # Changed: implements Play controller endpoints
+  - UserController.scala
+  # Unchanged but essential: route definitions mapping URLs to actions
+  - routes
+must_include_content_from:
+  UserController.scala:
+    - "import play.api.mvc._"
+    - "def getUser(id: Long): Action[AnyContent]"
+  routes:
+    - "controllers.UserController.getUser"
+must_not_include:
+  # ProductController.scala: another controller, different routes
+  - ProductController
+  - getProduct
+  - listProducts
+  - productFormat
+  # UserForm.scala: form validation, no controller dependency
+  - UserForm
+  - UserFormData
+  - nonEmptyText
+must_not_include_files:
+  - ProductController.scala
+  - UserForm.scala
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

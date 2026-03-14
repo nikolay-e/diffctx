@@ -1,6 +1,0 @@
-Button.tsx: "export interface ButtonProps {\n    label: string;\n    variant?: 'primary' | 'secondary';\n    size?: 'small' | 'medium' | 'large';\n    onClick?: () => void;\n}\n\nexport function Button({\
-  \ label, variant = 'primary', size = 'medium', onClick }: ButtonProps) {\n    return (\n        <button className={`btn btn-${variant} btn-${size}`} onClick={onClick}>\n            {label}\n        </button>\n\
-  \    );\n}\n\n// storybook_garbage_marker_001\n"
-Button.stories.tsx: 'console.log(''initial'');
-
-  '

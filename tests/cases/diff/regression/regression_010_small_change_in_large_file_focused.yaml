@@ -1,0 +1,816 @@
+# Scenario: handleTrendFilter in large StatisticsPage.tsx gains null check,
+#   date ordering, and empty-result guard. Only one function in a ~200-line
+#   component changes.
+#
+# Diff shows:
+#   + if (!startDate || !endDate) return;
+#   + date swap if startDate > endDate
+#   + if (filtered.length === 0) return;
+#
+# Reviewer questions:
+#   Q1: "What does handleTrendFilter do with the validated dates?"
+#       -> StatisticsPage filters trendData state and calls setTrendData.
+#         Reviewer needs to see the function and its TrendDataPoint type.
+#
+#   Q2: "Where is handleTrendFilter called from?"
+#       -> Passed as onFilter prop to <TrendChart>. Reviewer needs to see
+#         the JSX to understand the callback wiring.
+#
+#   Q3: "What is TrendDataPoint — does .date exist as a string?"
+#       -> Interface defined at top of StatisticsPage.tsx: date: string.
+#
+# Not needed for comprehension:
+#   - src/hooks/useStatistics.ts: Provides fetchStatistics/fetchTrends hooks.
+#     StatisticsPage imports and calls these, but handleTrendFilter only
+#     filters existing trendData state — it doesn't call any hook.
+#     Understanding the fetch API doesn't help review the filter change.
+#
+#   - src/components/DataTable.tsx: Receives trendData as prop and renders
+#     a paginated table. Direct consumer of the filtered data. But HOW the
+#     table paginates/sorts doesn't help review the filter validation logic.
+#
+#   - src/utils/chartHelpers.ts: Chart dimension calculations and color
+#     interpolation. NOT imported by StatisticsPage at all. Same "chart"
+#     domain but zero dependency.
+#
+#   - src/components/FilterPanel.tsx: Filter controls used by StatisticsPage
+#     for metric/date/granularity selection. But FilterPanel triggers
+#     handleDateRangeChange, not handleTrendFilter. Different callback.
+#
+#   - src/services/statisticsApi.ts: Backend API client for statistics.
+#     Low-level fetch wrapper. No connection to handleTrendFilter.
+
+initial:
+  src/pages/StatisticsPage.tsx: |
+    import React, { useState, useEffect, useCallback, useMemo } from 'react';
+    import { useStatistics } from '../hooks/useStatistics';
+    import { TrendChart } from '../components/TrendChart';
+    import { DataTable } from '../components/DataTable';
+    import { FilterPanel } from '../components/FilterPanel';
+
+    interface StatisticsPageProps {
+      userId: string;
+      initialMetric?: string;
+    }
+
+    interface MetricSummary {
+      name: string;
+      current: number;
+      previous: number;
+      changePercent: number;
+    }
+
+    interface TrendDataPoint {
+      date: string;
+      value: number;
+      label: string;
+    }
+
+    interface FilterState {
+      metric: string;
+      dateRange: [string, string];
+      granularity: 'daily' | 'weekly' | 'monthly';
+      smoothing: boolean;
+    }
+
+    const DEFAULT_METRIC = 'steps';
+    const MAX_DATA_POINTS = 365;
+    const REFRESH_INTERVAL_MS = 60000;
+
+    export const StatisticsPage: React.FC<StatisticsPageProps> = ({ userId, initialMetric }) => {
+      const { fetchStatistics, fetchTrends, fetchSummary } = useStatistics();
+      const [metrics, setMetrics] = useState<MetricSummary[]>([]);
+      const [trendData, setTrendData] = useState<TrendDataPoint[]>([]);
+      const [loading, setLoading] = useState(true);
+      const [error, setError] = useState<string | null>(null);
+      const [activeTab, setActiveTab] = useState<'overview' | 'trends' | 'details'>('overview');
+
+      const [filters, setFilters] = useState<FilterState>({
+        metric: initialMetric ?? DEFAULT_METRIC,
+        dateRange: ['2025-01-01', '2025-12-31'],
+        granularity: 'daily',
+        smoothing: false,
+      });
+
+      useEffect(() => {
+        setLoading(true);
+        setError(null);
+        fetchStatistics(userId, filters.metric)
+          .then((data) => {
+            setMetrics(data.summaries);
+            setLoading(false);
+          })
+          .catch((err) => {
+            setError(err.message);
+            setLoading(false);
+          });
+      }, [userId, filters.metric]);
+
+      useEffect(() => {
+        fetchTrends(userId, filters.metric, filters.dateRange, filters.granularity)
+          .then((points) => {
+            const limited = points.slice(-MAX_DATA_POINTS);
+            setTrendData(limited);
+          })
+          .catch(() => setTrendData([]));
+      }, [userId, filters]);
+
+      useEffect(() => {
+        const interval = setInterval(() => {
+          fetchSummary(userId).then((fresh) => {
+            setMetrics((prev) =>
+              prev.map((m) => {
+                const updated = fresh.find((f: MetricSummary) => f.name === m.name);
+                return updated ?? m;
+              })
+            );
+          });
+        }, REFRESH_INTERVAL_MS);
+        return () => clearInterval(interval);
+      }, [userId]);
+
+      const handleMetricChange = useCallback((metric: string) => {
+        setFilters((prev) => ({ ...prev, metric }));
+      }, []);
+
+      const handleDateRangeChange = useCallback((range: [string, string]) => {
+        setFilters((prev) => ({ ...prev, dateRange: range }));
+      }, []);
+
+      const handleGranularityChange = useCallback((granularity: 'daily' | 'weekly' | 'monthly') => {
+        setFilters((prev) => ({ ...prev, granularity }));
+      }, []);
+
+      const handleSmoothingToggle = useCallback(() => {
+        setFilters((prev) => ({ ...prev, smoothing: !prev.smoothing }));
+      }, []);
+
+      const handleTrendFilter = useCallback((startDate: string, endDate: string) => {
+        const filtered = trendData.filter((point) => {
+          return point.date >= startDate && point.date <= endDate;
+        });
+        setTrendData(filtered);
+      }, [trendData]);
+
+      const handleExportCsv = useCallback(() => {
+        const headers = ['Date', 'Value', 'Label'];
+        const rows = trendData.map((p) => [p.date, String(p.value), p.label]);
+        const csvContent = [headers, ...rows].map((r) => r.join(',')).join('\n');
+        const blob = new Blob([csvContent], { type: 'text/csv' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `statistics_${filters.metric}.csv`;
+        link.click();
+        URL.revokeObjectURL(url);
+      }, [trendData, filters.metric]);
+
+      const handleResetFilters = useCallback(() => {
+        setFilters({
+          metric: DEFAULT_METRIC,
+          dateRange: ['2025-01-01', '2025-12-31'],
+          granularity: 'daily',
+          smoothing: false,
+        });
+      }, []);
+
+      const handleRefreshData = useCallback(async () => {
+        setLoading(true);
+        const data = await fetchStatistics(userId, filters.metric);
+        setMetrics(data.summaries);
+        const points = await fetchTrends(userId, filters.metric, filters.dateRange, filters.granularity);
+        setTrendData(points.slice(-MAX_DATA_POINTS));
+        setLoading(false);
+      }, [userId, filters]);
+
+      const sortedMetrics = useMemo(() => {
+        return [...metrics].sort((a, b) => Math.abs(b.changePercent) - Math.abs(a.changePercent));
+      }, [metrics]);
+
+      const averageValue = useMemo(() => {
+        if (trendData.length === 0) return 0;
+        const total = trendData.reduce((sum, p) => sum + p.value, 0);
+        return Math.round(total / trendData.length);
+      }, [trendData]);
+
+      if (loading) {
+        return <div className="stats-loading"><div className="spinner" /><p>Loading...</p></div>;
+      }
+
+      return (
+        <div className="statistics-page">
+          <header className="stats-header">
+            <h1>Statistics</h1>
+            <div className="stats-actions">
+              <button onClick={handleExportCsv}>Export CSV</button>
+              <button onClick={handleRefreshData}>Refresh</button>
+              <button onClick={handleResetFilters}>Reset Filters</button>
+            </div>
+          </header>
+          <FilterPanel
+            metric={filters.metric}
+            dateRange={filters.dateRange}
+            granularity={filters.granularity}
+            smoothing={filters.smoothing}
+            onMetricChange={handleMetricChange}
+            onDateRangeChange={handleDateRangeChange}
+            onGranularityChange={handleGranularityChange}
+            onSmoothingToggle={handleSmoothingToggle}
+          />
+          {activeTab === 'trends' && (
+            <TrendChart data={trendData} smoothing={filters.smoothing} onFilter={handleTrendFilter} />
+          )}
+          {activeTab === 'details' && (
+            <DataTable metrics={metrics} trendData={trendData} granularity={filters.granularity} />
+          )}
+        </div>
+      );
+    };
+  src/hooks/useStatistics.ts: |
+    import { useState, useCallback } from 'react';
+
+    interface StatisticsResponse {
+      summaries: Array<{
+        name: string;
+        current: number;
+        previous: number;
+        changePercent: number;
+      }>;
+    }
+
+    interface TrendPoint {
+      date: string;
+      value: number;
+      label: string;
+    }
+
+    export function useStatistics() {
+      const [isLoading, setIsLoading] = useState(false);
+
+      const fetchStatistics = useCallback(async (userId: string, metric: string): Promise<StatisticsResponse> => {
+        setIsLoading(true);
+        const response = await fetch(`/api/statistics/${userId}?metric=${metric}`);
+        if (!response.ok) throw new Error(`Failed: ${response.statusText}`);
+        const data = await response.json();
+        setIsLoading(false);
+        return data;
+      }, []);
+
+      const fetchTrends = useCallback(async (
+        userId: string, metric: string, dateRange: [string, string], granularity: string,
+      ): Promise<TrendPoint[]> => {
+        const params = new URLSearchParams({ metric, start: dateRange[0], end: dateRange[1], granularity });
+        const response = await fetch(`/api/statistics/${userId}/trends?${params}`);
+        if (!response.ok) return [];
+        return response.json();
+      }, []);
+
+      const fetchSummary = useCallback(async (userId: string) => {
+        const response = await fetch(`/api/statistics/${userId}/summary`);
+        if (!response.ok) return [];
+        return response.json();
+      }, []);
+
+      return { fetchStatistics, fetchTrends, fetchSummary, isLoading };
+    }
+  src/components/DataTable.tsx: |
+    import React, { useState, useMemo } from 'react';
+
+    interface DataTableProps {
+      metrics: Array<{ name: string; current: number; previous: number; changePercent: number }>;
+      trendData: Array<{ date: string; value: number; label: string }>;
+      granularity: string;
+    }
+
+    const PAGE_SIZE = 25;
+    type SortDirection = 'asc' | 'desc';
+
+    export const DataTable: React.FC<DataTableProps> = ({ metrics, trendData, granularity }) => {
+      const [currentPage, setCurrentPage] = useState(0);
+      const [sortDir, setSortDir] = useState<SortDirection>('desc');
+
+      const paginatedData = useMemo(() => {
+        const sorted = [...trendData].sort((a, b) =>
+          sortDir === 'asc' ? a.date.localeCompare(b.date) : b.date.localeCompare(a.date)
+        );
+        const start = currentPage * PAGE_SIZE;
+        return sorted.slice(start, start + PAGE_SIZE);
+      }, [trendData, currentPage, sortDir]);
+
+      const totalPages = Math.ceil(trendData.length / PAGE_SIZE);
+
+      const formatCellValue = (value: number): string => {
+        if (granularity === 'weekly') return value.toFixed(1);
+        if (granularity === 'monthly') return value.toFixed(0);
+        return String(value);
+      };
+
+      return (
+        <div className="data-table">
+          <table>
+            <thead>
+              <tr>
+                <th onClick={() => setSortDir(p => p === 'asc' ? 'desc' : 'asc')}>Date</th>
+                <th>Value</th>
+                <th>Label</th>
+              </tr>
+            </thead>
+            <tbody>
+              {paginatedData.map((row) => (
+                <tr key={row.date}>
+                  <td>{row.date}</td>
+                  <td>{formatCellValue(row.value)}</td>
+                  <td>{row.label}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div className="pagination">
+            <button disabled={currentPage === 0} onClick={() => setCurrentPage(p => p - 1)}>Previous</button>
+            <span>Page {currentPage + 1} of {totalPages}</span>
+            <button disabled={currentPage >= totalPages - 1} onClick={() => setCurrentPage(p => p + 1)}>Next</button>
+          </div>
+        </div>
+      );
+    };
+  src/utils/chartHelpers.ts: |
+    interface ChartDimensions {
+      width: number;
+      height: number;
+      padding: { top: number; right: number; bottom: number; left: number };
+    }
+
+    export function createChartDimensions(containerWidth: number, containerHeight: number): ChartDimensions {
+      return {
+        width: containerWidth,
+        height: containerHeight,
+        padding: {
+          top: containerHeight * 0.1,
+          right: containerWidth * 0.05,
+          bottom: containerHeight * 0.15,
+          left: containerWidth * 0.1,
+        },
+      };
+    }
+
+    export function interpolateColor(startHex: string, endHex: string, factor: number): string {
+      const clampedFactor = Math.max(0, Math.min(1, factor));
+      const start = parseInt(startHex.slice(1), 16);
+      const end = parseInt(endHex.slice(1), 16);
+      const r = Math.round(((start >> 16) & 0xff) + clampedFactor * (((end >> 16) & 0xff) - ((start >> 16) & 0xff)));
+      const g = Math.round(((start >> 8) & 0xff) + clampedFactor * (((end >> 8) & 0xff) - ((start >> 8) & 0xff)));
+      const b = Math.round((start & 0xff) + clampedFactor * ((end & 0xff) - (start & 0xff)));
+      return `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)}`;
+    }
+
+    export function formatTickLabel(value: number, maxValue: number): string {
+      if (maxValue >= 1000000) return `${(value / 1000000).toFixed(1)}M`;
+      if (maxValue >= 10000) return `${(value / 1000).toFixed(1)}K`;
+      return value.toFixed(0);
+    }
+
+    export function generateGridLines(min: number, max: number, count: number): number[] {
+      const step = (max - min) / count;
+      const lines: number[] = [];
+      for (let i = 0; i <= count; i++) {
+        lines.push(min + step * i);
+      }
+      return lines;
+    }
+  src/services/statisticsApi.ts: |
+    const BASE_URL = '/api/statistics';
+
+    export async function fetchUserStatistics(userId: string, metric: string) {
+      const response = await fetch(`${BASE_URL}/${userId}?metric=${metric}`);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      return response.json();
+    }
+
+    export async function fetchUserTrends(
+      userId: string,
+      metric: string,
+      startDate: string,
+      endDate: string,
+      granularity: string
+    ) {
+      const params = new URLSearchParams({ metric, start: startDate, end: endDate, granularity });
+      const response = await fetch(`${BASE_URL}/${userId}/trends?${params}`);
+      if (!response.ok) return [];
+      return response.json();
+    }
+
+    export async function fetchUserSummary(userId: string) {
+      const response = await fetch(`${BASE_URL}/${userId}/summary`);
+      if (!response.ok) return [];
+      return response.json();
+    }
+changed:
+  src/pages/StatisticsPage.tsx: |
+    import React, { useState, useEffect, useCallback, useMemo } from 'react';
+    import { useStatistics } from '../hooks/useStatistics';
+    import { TrendChart } from '../components/TrendChart';
+    import { DataTable } from '../components/DataTable';
+    import { FilterPanel } from '../components/FilterPanel';
+
+    interface StatisticsPageProps {
+      userId: string;
+      initialMetric?: string;
+    }
+
+    interface MetricSummary {
+      name: string;
+      current: number;
+      previous: number;
+      changePercent: number;
+    }
+
+    interface TrendDataPoint {
+      date: string;
+      value: number;
+      label: string;
+    }
+
+    interface FilterState {
+      metric: string;
+      dateRange: [string, string];
+      granularity: 'daily' | 'weekly' | 'monthly';
+      smoothing: boolean;
+    }
+
+    const DEFAULT_METRIC = 'steps';
+    const MAX_DATA_POINTS = 365;
+    const REFRESH_INTERVAL_MS = 60000;
+
+    export const StatisticsPage: React.FC<StatisticsPageProps> = ({ userId, initialMetric }) => {
+      const { fetchStatistics, fetchTrends, fetchSummary } = useStatistics();
+      const [metrics, setMetrics] = useState<MetricSummary[]>([]);
+      const [trendData, setTrendData] = useState<TrendDataPoint[]>([]);
+      const [loading, setLoading] = useState(true);
+      const [error, setError] = useState<string | null>(null);
+      const [activeTab, setActiveTab] = useState<'overview' | 'trends' | 'details'>('overview');
+
+      const [filters, setFilters] = useState<FilterState>({
+        metric: initialMetric ?? DEFAULT_METRIC,
+        dateRange: ['2025-01-01', '2025-12-31'],
+        granularity: 'daily',
+        smoothing: false,
+      });
+
+      useEffect(() => {
+        setLoading(true);
+        setError(null);
+        fetchStatistics(userId, filters.metric)
+          .then((data) => {
+            setMetrics(data.summaries);
+            setLoading(false);
+          })
+          .catch((err) => {
+            setError(err.message);
+            setLoading(false);
+          });
+      }, [userId, filters.metric]);
+
+      useEffect(() => {
+        fetchTrends(userId, filters.metric, filters.dateRange, filters.granularity)
+          .then((points) => {
+            const limited = points.slice(-MAX_DATA_POINTS);
+            setTrendData(limited);
+          })
+          .catch(() => setTrendData([]));
+      }, [userId, filters]);
+
+      useEffect(() => {
+        const interval = setInterval(() => {
+          fetchSummary(userId).then((fresh) => {
+            setMetrics((prev) =>
+              prev.map((m) => {
+                const updated = fresh.find((f: MetricSummary) => f.name === m.name);
+                return updated ?? m;
+              })
+            );
+          });
+        }, REFRESH_INTERVAL_MS);
+        return () => clearInterval(interval);
+      }, [userId]);
+
+      const handleMetricChange = useCallback((metric: string) => {
+        setFilters((prev) => ({ ...prev, metric }));
+      }, []);
+
+      const handleDateRangeChange = useCallback((range: [string, string]) => {
+        setFilters((prev) => ({ ...prev, dateRange: range }));
+      }, []);
+
+      const handleGranularityChange = useCallback((granularity: 'daily' | 'weekly' | 'monthly') => {
+        setFilters((prev) => ({ ...prev, granularity }));
+      }, []);
+
+      const handleSmoothingToggle = useCallback(() => {
+        setFilters((prev) => ({ ...prev, smoothing: !prev.smoothing }));
+      }, []);
+
+      const handleTrendFilter = useCallback((startDate: string, endDate: string) => {
+        if (!startDate || !endDate) {
+          return;
+        }
+        if (new Date(startDate) > new Date(endDate)) {
+          const temp = startDate;
+          startDate = endDate;
+          endDate = temp;
+        }
+        const filtered = trendData.filter((point) => {
+          return point.date >= startDate && point.date <= endDate;
+        });
+        if (filtered.length === 0) {
+          return;
+        }
+        setTrendData(filtered);
+      }, [trendData]);
+
+      const handleExportCsv = useCallback(() => {
+        const headers = ['Date', 'Value', 'Label'];
+        const rows = trendData.map((p) => [p.date, String(p.value), p.label]);
+        const csvContent = [headers, ...rows].map((r) => r.join(',')).join('\n');
+        const blob = new Blob([csvContent], { type: 'text/csv' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `statistics_${filters.metric}.csv`;
+        link.click();
+        URL.revokeObjectURL(url);
+      }, [trendData, filters.metric]);
+
+      const handleResetFilters = useCallback(() => {
+        setFilters({
+          metric: DEFAULT_METRIC,
+          dateRange: ['2025-01-01', '2025-12-31'],
+          granularity: 'daily',
+          smoothing: false,
+        });
+      }, []);
+
+      const handleRefreshData = useCallback(async () => {
+        setLoading(true);
+        const data = await fetchStatistics(userId, filters.metric);
+        setMetrics(data.summaries);
+        const points = await fetchTrends(userId, filters.metric, filters.dateRange, filters.granularity);
+        setTrendData(points.slice(-MAX_DATA_POINTS));
+        setLoading(false);
+      }, [userId, filters]);
+
+      const sortedMetrics = useMemo(() => {
+        return [...metrics].sort((a, b) => Math.abs(b.changePercent) - Math.abs(a.changePercent));
+      }, [metrics]);
+
+      const averageValue = useMemo(() => {
+        if (trendData.length === 0) return 0;
+        const total = trendData.reduce((sum, p) => sum + p.value, 0);
+        return Math.round(total / trendData.length);
+      }, [trendData]);
+
+      if (loading) {
+        return <div className="stats-loading"><div className="spinner" /><p>Loading...</p></div>;
+      }
+
+      return (
+        <div className="statistics-page">
+          <header className="stats-header">
+            <h1>Statistics</h1>
+            <div className="stats-actions">
+              <button onClick={handleExportCsv}>Export CSV</button>
+              <button onClick={handleRefreshData}>Refresh</button>
+              <button onClick={handleResetFilters}>Reset Filters</button>
+            </div>
+          </header>
+          <FilterPanel
+            metric={filters.metric}
+            dateRange={filters.dateRange}
+            granularity={filters.granularity}
+            smoothing={filters.smoothing}
+            onMetricChange={handleMetricChange}
+            onDateRangeChange={handleDateRangeChange}
+            onGranularityChange={handleGranularityChange}
+            onSmoothingToggle={handleSmoothingToggle}
+          />
+          {activeTab === 'trends' && (
+            <TrendChart data={trendData} smoothing={filters.smoothing} onFilter={handleTrendFilter} />
+          )}
+          {activeTab === 'details' && (
+            <DataTable metrics={metrics} trendData={trendData} granularity={filters.granularity} />
+          )}
+        </div>
+      );
+    };
+  src/hooks/useStatistics.ts: |
+    import { useState, useCallback } from 'react';
+
+    interface StatisticsResponse {
+      summaries: Array<{
+        name: string;
+        current: number;
+        previous: number;
+        changePercent: number;
+      }>;
+    }
+
+    interface TrendPoint {
+      date: string;
+      value: number;
+      label: string;
+    }
+
+    export function useStatistics() {
+      const [isLoading, setIsLoading] = useState(false);
+
+      const fetchStatistics = useCallback(async (userId: string, metric: string): Promise<StatisticsResponse> => {
+        setIsLoading(true);
+        const response = await fetch(`/api/statistics/${userId}?metric=${metric}`);
+        if (!response.ok) throw new Error(`Failed: ${response.statusText}`);
+        const data = await response.json();
+        setIsLoading(false);
+        return data;
+      }, []);
+
+      const fetchTrends = useCallback(async (
+        userId: string, metric: string, dateRange: [string, string], granularity: string,
+      ): Promise<TrendPoint[]> => {
+        const params = new URLSearchParams({ metric, start: dateRange[0], end: dateRange[1], granularity });
+        const response = await fetch(`/api/statistics/${userId}/trends?${params}`);
+        if (!response.ok) return [];
+        return response.json();
+      }, []);
+
+      const fetchSummary = useCallback(async (userId: string) => {
+        const response = await fetch(`/api/statistics/${userId}/summary`);
+        if (!response.ok) return [];
+        return response.json();
+      }, []);
+
+      return { fetchStatistics, fetchTrends, fetchSummary, isLoading };
+    }
+  src/components/DataTable.tsx: |
+    import React, { useState, useMemo } from 'react';
+
+    interface DataTableProps {
+      metrics: Array<{ name: string; current: number; previous: number; changePercent: number }>;
+      trendData: Array<{ date: string; value: number; label: string }>;
+      granularity: string;
+    }
+
+    const PAGE_SIZE = 25;
+    type SortDirection = 'asc' | 'desc';
+
+    export const DataTable: React.FC<DataTableProps> = ({ metrics, trendData, granularity }) => {
+      const [currentPage, setCurrentPage] = useState(0);
+      const [sortDir, setSortDir] = useState<SortDirection>('desc');
+
+      const paginatedData = useMemo(() => {
+        const sorted = [...trendData].sort((a, b) =>
+          sortDir === 'asc' ? a.date.localeCompare(b.date) : b.date.localeCompare(a.date)
+        );
+        const start = currentPage * PAGE_SIZE;
+        return sorted.slice(start, start + PAGE_SIZE);
+      }, [trendData, currentPage, sortDir]);
+
+      const totalPages = Math.ceil(trendData.length / PAGE_SIZE);
+
+      const formatCellValue = (value: number): string => {
+        if (granularity === 'weekly') return value.toFixed(1);
+        if (granularity === 'monthly') return value.toFixed(0);
+        return String(value);
+      };
+
+      return (
+        <div className="data-table">
+          <table>
+            <thead>
+              <tr>
+                <th onClick={() => setSortDir(p => p === 'asc' ? 'desc' : 'asc')}>Date</th>
+                <th>Value</th>
+                <th>Label</th>
+              </tr>
+            </thead>
+            <tbody>
+              {paginatedData.map((row) => (
+                <tr key={row.date}>
+                  <td>{row.date}</td>
+                  <td>{formatCellValue(row.value)}</td>
+                  <td>{row.label}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div className="pagination">
+            <button disabled={currentPage === 0} onClick={() => setCurrentPage(p => p - 1)}>Previous</button>
+            <span>Page {currentPage + 1} of {totalPages}</span>
+            <button disabled={currentPage >= totalPages - 1} onClick={() => setCurrentPage(p => p + 1)}>Next</button>
+          </div>
+        </div>
+      );
+    };
+  src/utils/chartHelpers.ts: |
+    interface ChartDimensions {
+      width: number;
+      height: number;
+      padding: { top: number; right: number; bottom: number; left: number };
+    }
+
+    export function createChartDimensions(containerWidth: number, containerHeight: number): ChartDimensions {
+      return {
+        width: containerWidth,
+        height: containerHeight,
+        padding: {
+          top: containerHeight * 0.1,
+          right: containerWidth * 0.05,
+          bottom: containerHeight * 0.15,
+          left: containerWidth * 0.1,
+        },
+      };
+    }
+
+    export function interpolateColor(startHex: string, endHex: string, factor: number): string {
+      const clampedFactor = Math.max(0, Math.min(1, factor));
+      const start = parseInt(startHex.slice(1), 16);
+      const end = parseInt(endHex.slice(1), 16);
+      const r = Math.round(((start >> 16) & 0xff) + clampedFactor * (((end >> 16) & 0xff) - ((start >> 16) & 0xff)));
+      const g = Math.round(((start >> 8) & 0xff) + clampedFactor * (((end >> 8) & 0xff) - ((start >> 8) & 0xff)));
+      const b = Math.round((start & 0xff) + clampedFactor * ((end & 0xff) - (start & 0xff)));
+      return `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)}`;
+    }
+
+    export function formatTickLabel(value: number, maxValue: number): string {
+      if (maxValue >= 1000000) return `${(value / 1000000).toFixed(1)}M`;
+      if (maxValue >= 10000) return `${(value / 1000).toFixed(1)}K`;
+      return value.toFixed(0);
+    }
+
+    export function generateGridLines(min: number, max: number, count: number): number[] {
+      const step = (max - min) / count;
+      const lines: number[] = [];
+      for (let i = 0; i <= count; i++) {
+        lines.push(min + step * i);
+      }
+      return lines;
+    }
+  src/services/statisticsApi.ts: |
+    const BASE_URL = '/api/statistics';
+
+    export async function fetchUserStatistics(userId: string, metric: string) {
+      const response = await fetch(`${BASE_URL}/${userId}?metric=${metric}`);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      return response.json();
+    }
+
+    export async function fetchUserTrends(
+      userId: string,
+      metric: string,
+      startDate: string,
+      endDate: string,
+      granularity: string
+    ) {
+      const params = new URLSearchParams({ metric, start: startDate, end: endDate, granularity });
+      const response = await fetch(`${BASE_URL}/${userId}/trends?${params}`);
+      if (!response.ok) return [];
+      return response.json();
+    }
+
+    export async function fetchUserSummary(userId: string) {
+      const response = await fetch(`${BASE_URL}/${userId}/summary`);
+      if (!response.ok) return [];
+      return response.json();
+    }
+
+must_include_files:
+  - src/pages/StatisticsPage.tsx
+
+must_include_content_from:
+  src/pages/StatisticsPage.tsx:
+    - handleTrendFilter
+    - "if (!startDate || !endDate)"
+    - "filtered.length === 0"
+
+must_not_include:
+  # --- DataTable.tsx: leaf component, not affected by handleTrendFilter change ---
+  - PAGE_SIZE
+  - formatCellValue
+  - paginatedData
+  - SortDirection
+  # --- chartHelpers.ts: chart utilities, NOT imported by StatisticsPage ---
+  - createChartDimensions
+  - interpolateColor
+  - formatTickLabel
+  - generateGridLines
+  # --- statisticsApi.ts: backend API client, no relation to filter logic ---
+  - fetchUserStatistics
+  - fetchUserTrends
+  - fetchUserSummary
+
+must_not_include_files:
+  - src/components/DataTable.tsx
+  - src/utils/chartHelpers.ts
+  - src/services/statisticsApi.ts
+
+max_fragments: 6
+max_files: 2
+add_garbage_files: false
+skip_garbage_check: true

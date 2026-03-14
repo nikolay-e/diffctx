@@ -1,0 +1,200 @@
+# Scenario: interfaces.ts is changed to add findAll() and delete() methods to
+#   the Repository<T> interface. user_repo.ts implements Repository<User>.
+#   Only interfaces.ts is changed; user_repo.ts is unchanged.
+#
+# Diff shows:
+#   - Repository<T> { findById(id): Promise<T|null>; save(entity): Promise<T>; }
+#   + Repository<T> { findById; findAll(): Promise<T[]>; save; delete(id): Promise<boolean>; }
+#
+# Reviewer questions:
+#   Q1: "Does UserRepository implement the new methods?"
+#       -> user_repo.ts (UNCHANGED): only implements findById and save.
+#          findAll() and delete() are missing. This will cause a TypeScript
+#          compilation error — reviewer must flag this.
+#
+#   Q2: "What does UserRepository currently look like?"
+#       -> user_repo.ts: implements Repository<User> with User = { id, name }.
+#          Returns hardcoded test data. Reviewer can assess the gap between
+#          the interface and the implementation.
+#
+# Not needed for comprehension:
+#   - product_repo.ts: Another Repository<Product> implementation. Same
+#     interface, same implements clause. HARD TRAP: identical structural
+#     relationship — would also fail to compile with the new methods.
+#
+#   - repository-factory.ts: Factory that constructs Repository instances.
+#     Direct type edge — uses Repository<T> as return type. But HOW repos
+#     are constructed doesn't help review the interface change.
+#
+#   - cacheable-repository.ts: Decorator that wraps Repository<T> with caching.
+#     Uses Repository<T> in constructor and delegates to it. Same interface
+#     reference. HARD TRAP: implements Repository<T> through delegation.
+
+initial:
+  interfaces.ts: |
+    export interface Repository<T> {
+        findById(id: string): Promise<T | null>;
+        save(entity: T): Promise<T>;
+    }
+  user_repo.ts: |
+    import { Repository } from './interfaces';
+
+    interface User { id: string; name: string; }
+
+    export class UserRepository implements Repository<User> {
+        async findById(id: string) {
+            return { id, name: 'Test' };
+        }
+        async save(entity: User) {
+            return entity;
+        }
+    }
+  product_repo.ts: |
+    import { Repository } from './interfaces';
+
+    interface Product { id: string; name: string; price: number; }
+
+    export class ProductRepository implements Repository<Product> {
+        private products: Product[] = [];
+
+        async findById(id: string) {
+            return this.products.find(p => p.id === id) ?? null;
+        }
+        async save(entity: Product) {
+            this.products.push(entity);
+            return entity;
+        }
+    }
+  repository-factory.ts: |
+    import { Repository } from './interfaces';
+    import { UserRepository } from './user_repo';
+
+    export function createRepository<T>(type: string): Repository<T> {
+        if (type === 'user') return new UserRepository() as unknown as Repository<T>;
+        throw new Error(`Unknown repository type: ${type}`);
+    }
+  cacheable-repository.ts: |
+    import { Repository } from './interfaces';
+
+    export class CacheableRepository<T> implements Repository<T> {
+        private cache = new Map<string, T>();
+
+        constructor(private delegate: Repository<T>) {}
+
+        async findById(id: string): Promise<T | null> {
+            if (this.cache.has(id)) return this.cache.get(id)!;
+            const result = await this.delegate.findById(id);
+            if (result) this.cache.set(id, result);
+            return result;
+        }
+
+        async save(entity: T): Promise<T> {
+            return this.delegate.save(entity);
+        }
+    }
+
+changed:
+  interfaces.ts: |
+    export interface Repository<T> {
+        findById(id: string): Promise<T | null>;
+        findAll(): Promise<T[]>;
+        save(entity: T): Promise<T>;
+        delete(id: string): Promise<boolean>;
+    }
+  user_repo.ts: |
+    import { Repository } from './interfaces';
+
+    interface User { id: string; name: string; }
+
+    export class UserRepository implements Repository<User> {
+        async findById(id: string) {
+            return { id, name: 'Test' };
+        }
+        async save(entity: User) {
+            return entity;
+        }
+    }
+  product_repo.ts: |
+    import { Repository } from './interfaces';
+
+    interface Product { id: string; name: string; price: number; }
+
+    export class ProductRepository implements Repository<Product> {
+        private products: Product[] = [];
+
+        async findById(id: string) {
+            return this.products.find(p => p.id === id) ?? null;
+        }
+        async save(entity: Product) {
+            this.products.push(entity);
+            return entity;
+        }
+    }
+  repository-factory.ts: |
+    import { Repository } from './interfaces';
+    import { UserRepository } from './user_repo';
+
+    export function createRepository<T>(type: string): Repository<T> {
+        if (type === 'user') return new UserRepository() as unknown as Repository<T>;
+        throw new Error(`Unknown repository type: ${type}`);
+    }
+  cacheable-repository.ts: |
+    import { Repository } from './interfaces';
+
+    export class CacheableRepository<T> implements Repository<T> {
+        private cache = new Map<string, T>();
+
+        constructor(private delegate: Repository<T>) {}
+
+        async findById(id: string): Promise<T | null> {
+            if (this.cache.has(id)) return this.cache.get(id)!;
+            const result = await this.delegate.findById(id);
+            if (result) this.cache.set(id, result);
+            return result;
+        }
+
+        async save(entity: T): Promise<T> {
+            return this.delegate.save(entity);
+        }
+    }
+
+must_include_files:
+  - interfaces.ts
+  # Q1+Q2: user_repo.ts implements Repository<User> — reviewer needs to see
+  # that findAll() and delete() are missing, causing a compile error.
+  - user_repo.ts
+
+must_include_content_from:
+  interfaces.ts:
+    - "interface Repository<T> {"
+    - "findAll(): Promise<T[]>"
+    - "delete(id: string): Promise<boolean>"
+  user_repo.ts:
+    - "import { Repository } from './interfaces'"
+    - "class UserRepository implements Repository<User>"
+    - "async findById(id: string)"
+    - "async save(entity: User)"
+
+must_not_include:
+  # --- product_repo.ts: parallel implementer of Repository<Product> ---
+  # HARD TRAP: identical structural relationship, also missing new methods.
+  - ProductRepository
+  - "price: number"
+  # --- repository-factory.ts: constructs Repository instances ---
+  # Direct type edge: uses Repository<T>, imports UserRepository.
+  - createRepository
+  - "Unknown repository type"
+  # --- cacheable-repository.ts: Repository<T> decorator ---
+  # HARD TRAP: also implements Repository<T>, would also break.
+  - CacheableRepository
+  - delegate
+
+must_not_include_files:
+  - product_repo.ts
+  - repository-factory.ts
+  - cacheable-repository.ts
+
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

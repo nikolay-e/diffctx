@@ -1,0 +1,94 @@
+# Scenario: Adding key rotation and deletion window to a KMS encryption key.
+# Reviewer questions:
+#   1. What resources are encrypted with this key? (main.tf shows S3 and RDS using the key)
+#   2. What alias is mapped to this key? (aliases.tf)
+# Traps:
+#   - s3_encryption/kms.tf: another KMS key specifically for S3 (same resource type, different purpose)
+#   - src/encrypt.py: encryption code using boto3 (application code, not infrastructure)
+
+initial:
+  kms.tf: |
+    resource "aws_kms_key" "main" {
+      description = "Main encryption key"
+    }
+  main.tf: |
+    resource "aws_s3_bucket" "data" {
+      bucket = "app-data"
+    }
+
+    resource "aws_s3_bucket_server_side_encryption_configuration" "data" {
+      bucket = aws_s3_bucket.data.id
+
+      rule {
+        apply_server_side_encryption_by_default {
+          sse_algorithm     = "aws:kms"
+          kms_master_key_id = aws_kms_key.main.arn
+        }
+      }
+    }
+
+    resource "aws_db_instance" "main" {
+      identifier     = "app-db"
+      engine         = "postgres"
+      instance_class = "db.t3.micro"
+      kms_key_id     = aws_kms_key.main.arn
+    }
+  aliases.tf: |
+    resource "aws_kms_alias" "main" {
+      name          = "alias/app-encryption"
+      target_key_id = aws_kms_key.main.key_id
+    }
+  s3_encryption/kms.tf: |
+    resource "aws_kms_key" "s3_encryption" {
+      description             = "S3 bucket encryption key"
+      deletion_window_in_days = 30
+      enable_key_rotation     = true
+    }
+
+    resource "aws_kms_alias" "s3_encryption" {
+      name          = "alias/s3-encryption"
+      target_key_id = aws_kms_key.s3_encryption.key_id
+    }
+  src/encrypt.py: |
+    import boto3
+
+    def encrypt_data(key_id: str, plaintext: bytes) -> bytes:
+        kms = boto3.client("kms")
+        response = kms.encrypt(KeyId=key_id, Plaintext=plaintext)
+        return response["CiphertextBlob"]
+
+changed:
+  kms.tf: |
+    resource "aws_kms_key" "main" {
+      description             = "Main encryption key"
+      deletion_window_in_days = 7
+      enable_key_rotation     = true
+    }
+
+must_include_files:
+  - kms.tf
+  - main.tf
+
+must_include_content_from:
+  kms.tf:
+    - deletion_window_in_days = 7
+    - enable_key_rotation     = true
+    - 'resource "aws_kms_key" "main"'
+  main.tf:
+    - kms_master_key_id = aws_kms_key.main.arn
+
+must_not_include:
+  # S3-specific KMS key - same resource type but dedicated to S3, different key
+  - S3 bucket encryption key
+  - alias/s3-encryption
+  # Encryption code - application-level crypto, not infrastructure key management
+  - CiphertextBlob
+
+must_not_include_files:
+  - s3_encryption/kms.tf
+  - src/encrypt.py
+
+max_fragments: 4
+max_files: 2
+add_garbage_files: false
+skip_garbage_check: true

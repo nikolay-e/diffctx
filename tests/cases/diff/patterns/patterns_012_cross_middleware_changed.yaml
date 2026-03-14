@@ -1,0 +1,497 @@
+# Scenario: AuthMiddleware now timestamps authenticated requests and validates
+#   token format before checking authentication. Only middleware/auth.py is changed.
+#
+# Diff shows:
+#   + import time
+#   + import re
+#   + TOKEN_PATTERN = re.compile(r"^Bearer [A-Za-z0-9._-]+$")
+#   + def _validate_token_format(self, token): if not TOKEN_PATTERN.match(token): raise
+#   + self._validate_token_format(request["token"])
+#   + request["authenticated_at"] = time.time()
+#
+# Reviewer questions:
+#   Q1: "Which middleware pipeline registers AuthMiddleware, and what runs before/after it?"
+#       -> settings.py (UNCHANGED) lists MIDDLEWARE with RateLimitMiddleware first,
+#          then AuthMiddleware, then LoggingMiddleware. The reviewer needs to see
+#          the pipeline order to understand that rate limiting happens BEFORE auth
+#          (so unauthenticated requests are rate-limited) and logging happens
+#          AFTER auth (so logs will include authenticated_at).
+#
+#   Q2: "What does the request dict look like when it reaches AuthMiddleware?"
+#       -> middleware/rate_limit.py (UNCHANGED) processes requests first and adds
+#          request["rate_limit_remaining"]. Understanding what RateLimitMiddleware
+#          does helps confirm that the request dict AuthMiddleware receives has
+#          the expected "token" key from the original request, not something
+#          transformed by the prior middleware.
+#
+#   Q3: "Does downstream middleware or handlers consume the new authenticated_at field?"
+#       -> middleware/logging_mw.py (UNCHANGED) runs after auth and logs
+#          request metadata. If it accesses request["authenticated_at"],
+#          the reviewer needs to verify the field exists. But logging_mw
+#          only logs request["path"] and request["method"] — it doesn't
+#          use authenticated_at. This is a subtlety the reviewer can only
+#          verify by seeing the logging middleware.
+#
+# Not needed for comprehension:
+#   - middleware/cors.py: CORS middleware that adds Access-Control headers to
+#     responses. Same middleware/ directory, same process_request pattern,
+#     same class structure. HARDEST TRAP: structurally identical middleware
+#     in the same pipeline. But CORS handling is orthogonal to auth —
+#     it doesn't read or write auth-related request fields.
+#
+#   - services/auth_service.py: Contains token verification logic — verifies
+#     JWT tokens, checks expiry, decodes payloads. Direct semantic edge:
+#     AuthMiddleware validates token FORMAT, AuthService verifies token
+#     VALIDITY. But the diff only adds format validation and timestamping,
+#     not calls to AuthService.
+#
+#   - tests/test_auth_middleware.py: Tests AuthMiddleware behavior with
+#     valid/invalid tokens. Imports AuthMiddleware, constructs it, calls
+#     process_request with mock request dicts. Direct import edge. But
+#     test assertions verify behavior, not pipeline integration.
+#
+#   - config/security.py: Defines security constants — TOKEN_EXPIRY_SECONDS,
+#     ALLOWED_ORIGINS, MAX_TOKEN_LENGTH. Same "security" and "token" vocabulary.
+#     But these constants are not imported by middleware/auth.py.
+#
+#   - middleware/session.py: Session middleware that reads/writes session
+#     cookies. Same middleware directory, same pipeline. Creates
+#     request["session_id"] — similar pattern to request["authenticated_at"].
+#     But session management is independent of auth timestamping.
+
+initial:
+  middleware/auth.py: |
+    class AuthMiddleware:
+        def __init__(self, secret_key: str = "default-secret"):
+            self.secret_key = secret_key
+
+        def process_request(self, request):
+            if not request.get("token"):
+                raise ValueError("Unauthorized: missing token")
+            return request
+
+  settings.py: |
+    MIDDLEWARE = [
+        "middleware.rate_limit.RateLimitMiddleware",
+        "middleware.auth.AuthMiddleware",
+        "middleware.logging_mw.LoggingMiddleware",
+    ]
+
+    AUTH_SECRET_KEY = "production-secret-key"
+    RATE_LIMIT_PER_MINUTE = 60
+    LOG_REQUESTS = True
+
+    INSTALLED_APPS = [
+        "services.user_service",
+        "services.order_service",
+        "services.payment_service",
+    ]
+
+  middleware/rate_limit.py: |
+    import time
+    from collections import defaultdict
+
+    WINDOW_SECONDS = 60
+    DEFAULT_LIMIT = 100
+
+    class RateLimitMiddleware:
+        def __init__(self, limit: int = DEFAULT_LIMIT):
+            self.limit = limit
+            self._requests: dict[str, list[float]] = defaultdict(list)
+
+        def process_request(self, request):
+            client_ip = request.get("client_ip", "unknown")
+            now = time.time()
+            window = [t for t in self._requests[client_ip] if now - t < WINDOW_SECONDS]
+            self._requests[client_ip] = window
+            if len(window) >= self.limit:
+                raise ValueError("Rate limit exceeded")
+            self._requests[client_ip].append(now)
+            request["rate_limit_remaining"] = self.limit - len(window) - 1
+            return request
+
+  middleware/logging_mw.py: |
+    import logging
+
+    logger = logging.getLogger("middleware.logging")
+
+    class LoggingMiddleware:
+        def __init__(self, log_body: bool = False):
+            self.log_body = log_body
+
+        def process_request(self, request):
+            path = request.get("path", "/")
+            method = request.get("method", "GET")
+            logger.info(f"{method} {path}")
+            if self.log_body and request.get("body"):
+                logger.debug(f"Body: {request['body']}")
+            return request
+
+  middleware/cors.py: |
+    ALLOWED_ORIGINS = ["https://example.com", "https://app.example.com"]
+    ALLOWED_METHODS = ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+    ALLOWED_HEADERS = ["Content-Type", "Authorization", "X-Request-ID"]
+
+    class CorsMiddleware:
+        def __init__(self, origins: list[str] = None):
+            self.origins = origins or ALLOWED_ORIGINS
+
+        def process_request(self, request):
+            origin = request.get("origin", "")
+            if origin in self.origins:
+                request["cors_allowed"] = True
+            else:
+                request["cors_allowed"] = False
+            return request
+
+        def process_response(self, request, response):
+            if request.get("cors_allowed"):
+                response["headers"] = response.get("headers", {})
+                response["headers"]["Access-Control-Allow-Origin"] = request["origin"]
+                response["headers"]["Access-Control-Allow-Methods"] = ", ".join(ALLOWED_METHODS)
+            return response
+
+  services/auth_service.py: |
+    import hashlib
+    import time
+
+    TOKEN_EXPIRY_SECONDS = 3600
+    TOKEN_ALGORITHM = "sha256"
+
+    class AuthService:
+        def __init__(self, secret_key: str):
+            self.secret_key = secret_key
+
+        def generate_token(self, user_id: str) -> str:
+            payload = f"{user_id}:{time.time()}:{self.secret_key}"
+            return hashlib.sha256(payload.encode()).hexdigest()
+
+        def verify_token(self, token: str, user_id: str) -> bool:
+            expected = self.generate_token(user_id)
+            return hashlib.sha256(token.encode()).hexdigest() == hashlib.sha256(expected.encode()).hexdigest()
+
+        def is_expired(self, issued_at: float) -> bool:
+            return time.time() - issued_at > TOKEN_EXPIRY_SECONDS
+
+  tests/test_auth_middleware.py: |
+    import pytest
+    from middleware.auth import AuthMiddleware
+
+    def test_auth_middleware_passes_with_token():
+        mw = AuthMiddleware()
+        request = {"token": "Bearer valid-token-123", "path": "/api/users"}
+        result = mw.process_request(request)
+        assert result is not None
+
+    def test_auth_middleware_rejects_missing_token():
+        mw = AuthMiddleware()
+        request = {"path": "/api/users"}
+        with pytest.raises(ValueError, match="Unauthorized"):
+            mw.process_request(request)
+
+    def test_auth_middleware_rejects_empty_token():
+        mw = AuthMiddleware()
+        request = {"token": "", "path": "/api/users"}
+        with pytest.raises(ValueError, match="Unauthorized"):
+            mw.process_request(request)
+
+  config/security.py: |
+    TOKEN_EXPIRY_SECONDS = 3600
+    MAX_TOKEN_LENGTH = 512
+    ALLOWED_TOKEN_CHARACTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-"
+    BCRYPT_ROUNDS = 12
+    SESSION_COOKIE_NAME = "session_id"
+    SESSION_COOKIE_HTTPONLY = True
+    CSRF_ENABLED = True
+
+    class SecurityConfig:
+        def __init__(self):
+            self.token_expiry = TOKEN_EXPIRY_SECONDS
+            self.max_token_length = MAX_TOKEN_LENGTH
+            self.bcrypt_rounds = BCRYPT_ROUNDS
+
+        def is_valid_token_length(self, token: str) -> bool:
+            return len(token) <= self.max_token_length
+
+  middleware/session.py: |
+    import uuid
+    import time
+
+    SESSION_COOKIE_NAME = "session_id"
+    SESSION_TTL_SECONDS = 86400
+
+    class SessionMiddleware:
+        def __init__(self):
+            self._sessions: dict[str, dict] = {}
+
+        def process_request(self, request):
+            session_id = request.get("cookies", {}).get(SESSION_COOKIE_NAME)
+            if session_id and session_id in self._sessions:
+                request["session"] = self._sessions[session_id]
+                request["session_id"] = session_id
+            else:
+                session_id = str(uuid.uuid4())
+                self._sessions[session_id] = {"created_at": time.time()}
+                request["session"] = self._sessions[session_id]
+                request["session_id"] = session_id
+            return request
+
+        def process_response(self, request, response):
+            response["cookies"] = response.get("cookies", {})
+            response["cookies"][SESSION_COOKIE_NAME] = request.get("session_id", "")
+            return response
+
+changed:
+  middleware/auth.py: |
+    import time
+    import re
+
+    TOKEN_PATTERN = re.compile(r"^Bearer [A-Za-z0-9._-]+$")
+
+    class AuthMiddleware:
+        def __init__(self, secret_key: str = "default-secret"):
+            self.secret_key = secret_key
+
+        def process_request(self, request):
+            if not request.get("token"):
+                raise ValueError("Unauthorized: missing token")
+            self._validate_token_format(request["token"])
+            request["authenticated_at"] = time.time()
+            return request
+
+        def _validate_token_format(self, token: str):
+            if not TOKEN_PATTERN.match(token):
+                raise ValueError("Unauthorized: invalid token format")
+
+  settings.py: |
+    MIDDLEWARE = [
+        "middleware.rate_limit.RateLimitMiddleware",
+        "middleware.auth.AuthMiddleware",
+        "middleware.logging_mw.LoggingMiddleware",
+    ]
+
+    AUTH_SECRET_KEY = "production-secret-key"
+    RATE_LIMIT_PER_MINUTE = 60
+    LOG_REQUESTS = True
+
+    INSTALLED_APPS = [
+        "services.user_service",
+        "services.order_service",
+        "services.payment_service",
+    ]
+
+  middleware/rate_limit.py: |
+    import time
+    from collections import defaultdict
+
+    WINDOW_SECONDS = 60
+    DEFAULT_LIMIT = 100
+
+    class RateLimitMiddleware:
+        def __init__(self, limit: int = DEFAULT_LIMIT):
+            self.limit = limit
+            self._requests: dict[str, list[float]] = defaultdict(list)
+
+        def process_request(self, request):
+            client_ip = request.get("client_ip", "unknown")
+            now = time.time()
+            window = [t for t in self._requests[client_ip] if now - t < WINDOW_SECONDS]
+            self._requests[client_ip] = window
+            if len(window) >= self.limit:
+                raise ValueError("Rate limit exceeded")
+            self._requests[client_ip].append(now)
+            request["rate_limit_remaining"] = self.limit - len(window) - 1
+            return request
+
+  middleware/logging_mw.py: |
+    import logging
+
+    logger = logging.getLogger("middleware.logging")
+
+    class LoggingMiddleware:
+        def __init__(self, log_body: bool = False):
+            self.log_body = log_body
+
+        def process_request(self, request):
+            path = request.get("path", "/")
+            method = request.get("method", "GET")
+            logger.info(f"{method} {path}")
+            if self.log_body and request.get("body"):
+                logger.debug(f"Body: {request['body']}")
+            return request
+
+  middleware/cors.py: |
+    ALLOWED_ORIGINS = ["https://example.com", "https://app.example.com"]
+    ALLOWED_METHODS = ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+    ALLOWED_HEADERS = ["Content-Type", "Authorization", "X-Request-ID"]
+
+    class CorsMiddleware:
+        def __init__(self, origins: list[str] = None):
+            self.origins = origins or ALLOWED_ORIGINS
+
+        def process_request(self, request):
+            origin = request.get("origin", "")
+            if origin in self.origins:
+                request["cors_allowed"] = True
+            else:
+                request["cors_allowed"] = False
+            return request
+
+        def process_response(self, request, response):
+            if request.get("cors_allowed"):
+                response["headers"] = response.get("headers", {})
+                response["headers"]["Access-Control-Allow-Origin"] = request["origin"]
+                response["headers"]["Access-Control-Allow-Methods"] = ", ".join(ALLOWED_METHODS)
+            return response
+
+  services/auth_service.py: |
+    import hashlib
+    import time
+
+    TOKEN_EXPIRY_SECONDS = 3600
+    TOKEN_ALGORITHM = "sha256"
+
+    class AuthService:
+        def __init__(self, secret_key: str):
+            self.secret_key = secret_key
+
+        def generate_token(self, user_id: str) -> str:
+            payload = f"{user_id}:{time.time()}:{self.secret_key}"
+            return hashlib.sha256(payload.encode()).hexdigest()
+
+        def verify_token(self, token: str, user_id: str) -> bool:
+            expected = self.generate_token(user_id)
+            return hashlib.sha256(token.encode()).hexdigest() == hashlib.sha256(expected.encode()).hexdigest()
+
+        def is_expired(self, issued_at: float) -> bool:
+            return time.time() - issued_at > TOKEN_EXPIRY_SECONDS
+
+  tests/test_auth_middleware.py: |
+    import pytest
+    from middleware.auth import AuthMiddleware
+
+    def test_auth_middleware_passes_with_token():
+        mw = AuthMiddleware()
+        request = {"token": "Bearer valid-token-123", "path": "/api/users"}
+        result = mw.process_request(request)
+        assert result is not None
+
+    def test_auth_middleware_rejects_missing_token():
+        mw = AuthMiddleware()
+        request = {"path": "/api/users"}
+        with pytest.raises(ValueError, match="Unauthorized"):
+            mw.process_request(request)
+
+    def test_auth_middleware_rejects_empty_token():
+        mw = AuthMiddleware()
+        request = {"token": "", "path": "/api/users"}
+        with pytest.raises(ValueError, match="Unauthorized"):
+            mw.process_request(request)
+
+  config/security.py: |
+    TOKEN_EXPIRY_SECONDS = 3600
+    MAX_TOKEN_LENGTH = 512
+    ALLOWED_TOKEN_CHARACTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-"
+    BCRYPT_ROUNDS = 12
+    SESSION_COOKIE_NAME = "session_id"
+    SESSION_COOKIE_HTTPONLY = True
+    CSRF_ENABLED = True
+
+    class SecurityConfig:
+        def __init__(self):
+            self.token_expiry = TOKEN_EXPIRY_SECONDS
+            self.max_token_length = MAX_TOKEN_LENGTH
+            self.bcrypt_rounds = BCRYPT_ROUNDS
+
+        def is_valid_token_length(self, token: str) -> bool:
+            return len(token) <= self.max_token_length
+
+  middleware/session.py: |
+    import uuid
+    import time
+
+    SESSION_COOKIE_NAME = "session_id"
+    SESSION_TTL_SECONDS = 86400
+
+    class SessionMiddleware:
+        def __init__(self):
+            self._sessions: dict[str, dict] = {}
+
+        def process_request(self, request):
+            session_id = request.get("cookies", {}).get(SESSION_COOKIE_NAME)
+            if session_id and session_id in self._sessions:
+                request["session"] = self._sessions[session_id]
+                request["session_id"] = session_id
+            else:
+                session_id = str(uuid.uuid4())
+                self._sessions[session_id] = {"created_at": time.time()}
+                request["session"] = self._sessions[session_id]
+                request["session_id"] = session_id
+            return request
+
+        def process_response(self, request, response):
+            response["cookies"] = response.get("cookies", {})
+            response["cookies"][SESSION_COOKIE_NAME] = request.get("session_id", "")
+            return response
+
+must_include_files:
+  - middleware/auth.py
+  # Q1: Shows the full middleware pipeline order — rate_limit -> auth -> logging
+  - settings.py
+
+must_include_content_from:
+  middleware/auth.py:
+    - 'request["authenticated_at"] = time.time()'
+    - "TOKEN_PATTERN = re.compile"
+    - "def _validate_token_format(self, token: str):"
+  settings.py:
+    - "middleware.rate_limit.RateLimitMiddleware"
+    - "middleware.auth.AuthMiddleware"
+    - "middleware.logging_mw.LoggingMiddleware"
+
+must_not_include:
+  # --- middleware/cors.py: STRUCTURALLY IDENTICAL middleware ---
+  # HARDEST TRAP. Same directory, same process_request pattern, same class
+  # structure. Even listed in the same MIDDLEWARE setting. But CORS header
+  # logic is orthogonal to auth/timestamping.
+  - CorsMiddleware
+  - ALLOWED_ORIGINS
+  - ALLOWED_METHODS
+  - process_response
+  # --- services/auth_service.py: Token verification logic ---
+  # Semantic overlap: "auth" + "token" + "verify". But AuthMiddleware
+  # validates FORMAT, AuthService verifies VALIDITY. No import edge.
+  - AuthService
+  - generate_token
+  - verify_token
+  - TOKEN_ALGORITHM
+  # --- tests/test_auth_middleware.py: Direct tests of AuthMiddleware ---
+  # Imports AuthMiddleware, constructs it, calls process_request.
+  # Direct import edge. But tests verify behavior, not pipeline.
+  - test_auth_middleware_passes_with_token
+  - test_auth_middleware_rejects_missing_token
+  - test_auth_middleware_rejects_empty_token
+  # --- config/security.py: Security constants ---
+  # "token" vocabulary overlap. But constants are not imported by auth.py.
+  - SecurityConfig
+  - MAX_TOKEN_LENGTH
+  - BCRYPT_ROUNDS
+  - CSRF_ENABLED
+  # --- middleware/session.py: Session middleware adding request fields ---
+  # Same pattern: adds request["session_id"] like auth adds
+  # request["authenticated_at"]. Same directory, same pipeline.
+  - SessionMiddleware
+  - SESSION_COOKIE_NAME
+  - SESSION_TTL_SECONDS
+
+must_not_include_files:
+  - middleware/cors.py
+  - services/auth_service.py
+  - tests/test_auth_middleware.py
+  - config/security.py
+  - middleware/session.py
+
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

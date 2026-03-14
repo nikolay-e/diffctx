@@ -1,0 +1,147 @@
+# Test 027: make_counter gains configurable step parameter used by closures
+#           — reviewer needs all closures that capture the new `step` variable
+#
+# Scenario: make_counter(start=0) becomes make_counter(start=0, step=1).
+# The inner closures increment() and decrement() now use `step` instead of
+# hardcoded 1. get_value() is unchanged but still captures `count`.
+#
+# Reviewer questions:
+#   Q1: "Which closures use the new `step` parameter?"
+#       -> increment() and decrement() both use `nonlocal count` and `step`.
+#   Q2: "Does get_value() need to change?"
+#       -> No, it only reads `count`, not `step`.
+#
+# Trap files (plausible but unrelated):
+#   - accumulator.py: another closure-based counter pattern with similar
+#     nonlocal usage, but completely independent function.
+#   - timer.py: uses closures to track elapsed time with start/step
+#     vocabulary overlap, but no dependency on make_counter.
+
+initial:
+  counter.py: |
+    def make_counter(start=0):
+        count = start
+
+        def increment():
+            nonlocal count
+            count += 1
+            return count
+
+        def decrement():
+            nonlocal count
+            count -= 1
+            return count
+
+        def get_value():
+            return count
+
+        return increment, decrement, get_value
+  accumulator.py: |
+    def make_accumulator(initial=0.0):
+        total = initial
+
+        def add(value):
+            nonlocal total
+            total += value
+            return total
+
+        def reset():
+            nonlocal total
+            total = 0.0
+            return total
+
+        return add, reset
+  timer.py: |
+    import time
+
+    def make_timer(step=1.0):
+        start_time = time.time()
+        elapsed = 0.0
+
+        def tick():
+            nonlocal elapsed
+            elapsed += step
+            return elapsed
+
+        def get_elapsed():
+            return time.time() - start_time
+
+        return tick, get_elapsed
+
+changed:
+  counter.py: |
+    def make_counter(start=0, step=1):
+        count = start
+
+        def increment():
+            nonlocal count
+            count += step
+            return count
+
+        def decrement():
+            nonlocal count
+            count -= step
+            return count
+
+        def get_value():
+            return count
+
+        return increment, decrement, get_value
+  accumulator.py: |
+    def make_accumulator(initial=0.0):
+        total = initial
+
+        def add(value):
+            nonlocal total
+            total += value
+            return total
+
+        def reset():
+            nonlocal total
+            total = 0.0
+            return total
+
+        return add, reset
+  timer.py: |
+    import time
+
+    def make_timer(step=1.0):
+        start_time = time.time()
+        elapsed = 0.0
+
+        def tick():
+            nonlocal elapsed
+            elapsed += step
+            return elapsed
+
+        def get_elapsed():
+            return time.time() - start_time
+
+        return tick, get_elapsed
+
+must_include_files:
+  - counter.py
+
+must_include_content_from:
+  counter.py:
+    - "def make_counter(start=0, step=1):"
+    - "count += step"
+    - "count -= step"
+
+must_not_include:
+  # --- accumulator.py: similar nonlocal pattern but independent ---
+  - "make_accumulator"
+  - "total += value"
+  # --- timer.py: shares "step" parameter name but unrelated ---
+  - "make_timer"
+  - "time.time()"
+  - "get_elapsed"
+
+must_not_include_files:
+  - accumulator.py
+  - timer.py
+
+max_fragments: 4
+max_files: 1
+add_garbage_files: false
+skip_garbage_check: true

@@ -1,0 +1,13 @@
+initial:
+  binary_escape.py: |
+    x = 0
+changed:
+  binary_escape.py: |
+    binary = b"\x00\x01\x02"
+    valid_name = "test"
+must_include_files:
+- binary_escape.py
+must_include_content:
+- binary = b"\x00\x01\x02"
+add_garbage_files: false
+skip_garbage_check: true

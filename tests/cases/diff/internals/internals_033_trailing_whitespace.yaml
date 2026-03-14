@@ -1,0 +1,15 @@
+initial:
+  whitespace.py: |
+    def placeholder():
+        pass
+changed:
+  whitespace.py: |
+    def process_data():
+        result = calculate()
+        return result
+must_include_files:
+- whitespace.py
+must_include_content:
+- 'def process_data():'
+add_garbage_files: false
+skip_garbage_check: true

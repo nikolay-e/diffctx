@@ -1,0 +1,182 @@
+# Scenario: HTML template gains Go template directives; reviewer needs embed and handler.
+#
+# Diff: templates/index.html changes from static HTML to Go template with dynamic
+# fields ({{.Title}}, {{.Username}}, etc.) and a new templates/about.html is added.
+#
+# Reviewer questions:
+#   Q1: "Does the handler pass the required template data?" -> handler.go (UNCHANGED)
+#        shows ServeIndex reads templateFS directly with ReadFile — it does NOT
+#        call Execute with data. The reviewer spots the bug: the new template
+#        fields will render empty.
+#   Q2: "Is about.html included in the embed?" -> assets.go (UNCHANGED) declares
+#        //go:embed templates/* so about.html is automatically included.
+#
+# Not needed:
+#   - templates/error.html: unchanged sibling template with its own {{.Message}}.
+#     Not linked from the new navigation, reviewing it adds nothing.
+#   - static/css/main.css: stylesheet. CSS layout is orthogonal to template data.
+#   - internal/database/migrations.go: same internal/ level but database schema,
+#     zero template or embed dependency.
+#   - internal/config/settings.go: app config loader, unrelated to rendering.
+
+initial:
+  templates/index.html: |
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="UTF-8">
+        <title>Application</title>
+        <link rel="stylesheet" href="/static/css/main.css">
+    </head>
+    <body>
+        <div id="app">
+            <h1>Welcome</h1>
+            <p>Hello, World!</p>
+        </div>
+    </body>
+    </html>
+  templates/error.html: |
+    <!DOCTYPE html>
+    <html>
+    <head><title>Error</title></head>
+    <body>
+        <h1>Error Occurred</h1>
+        <p>{{.Message}}</p>
+    </body>
+    </html>
+  static/css/main.css: |
+    body { font-family: sans-serif; margin: 0; padding: 20px; }
+    h1 { color: #333; }
+  internal/server/assets.go: |
+    package server
+
+    import (
+        "embed"
+        "io/fs"
+        "net/http"
+    )
+
+    //go:embed templates/*
+    var templateFS embed.FS
+
+    //go:embed static/*
+    var staticFS embed.FS
+
+    func GetStaticHandler() http.Handler {
+        sub, _ := fs.Sub(staticFS, "static")
+        return http.FileServer(http.FS(sub))
+    }
+  internal/server/handler.go: |
+    package server
+
+    import (
+        "html/template"
+        "net/http"
+    )
+
+    type Handler struct {
+        templates *template.Template
+    }
+
+    func NewHandler() (*Handler, error) {
+        tmpl, err := template.ParseFS(templateFS, "templates/*.html")
+        if err != nil {
+            return nil, err
+        }
+        return &Handler{templates: tmpl}, nil
+    }
+
+    func (h *Handler) ServeIndex(w http.ResponseWriter, r *http.Request) {
+        data, _ := templateFS.ReadFile("templates/index.html")
+        w.Write(data)
+    }
+  internal/database/migrations.go: |
+    package database
+
+    import "database/sql"
+
+    func RunMigrations(db *sql.DB) error {
+        _, err := db.Exec("CREATE TABLE IF NOT EXISTS users (id SERIAL PRIMARY KEY, name TEXT)")
+        return err
+    }
+  internal/config/settings.go: |
+    package config
+
+    import "os"
+
+    type Settings struct {
+        Port        int
+        DatabaseURL string
+    }
+
+    func LoadSettings() Settings {
+        return Settings{DatabaseURL: os.Getenv("DATABASE_URL")}
+    }
+
+changed:
+  templates/index.html: |
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="UTF-8">
+        <title>{{.Title}} - Application</title>
+        <link rel="stylesheet" href="/static/css/main.css">
+    </head>
+    <body>
+        <header>
+            <nav>
+                <a href="/">Home</a>
+                <a href="/about">About</a>
+            </nav>
+        </header>
+        <main id="app">
+            <h1>{{.Heading}}</h1>
+            <p>Hello, {{.Username}}!</p>
+        </main>
+        <footer>
+            <p>Version {{.Version}}</p>
+        </footer>
+    </body>
+    </html>
+  templates/about.html: |
+    <!DOCTYPE html>
+    <html>
+    <head><title>About - Application</title></head>
+    <body>
+        <h1>About Us</h1>
+        <p>This is the about page.</p>
+    </body>
+    </html>
+
+must_include_files:
+  # Q1: handler.go shows how templates are served — reviewer checks if data is passed
+  - internal/server/handler.go
+  # Q2: assets.go has //go:embed templates/* — reviewer verifies about.html is covered
+  - internal/server/assets.go
+must_include_content_from:
+  internal/server/handler.go:
+    - "ServeIndex"
+    - "template.ParseFS"
+  internal/server/assets.go:
+    - "//go:embed templates/*"
+    - "var templateFS embed.FS"
+must_not_include:
+  # error.html: unchanged sibling template, not linked from new nav
+  - "Error Occurred"
+  # main.css: styling is orthogonal to template data binding
+  - "font-family"
+  # migrations.go: database layer, no template dependency
+  - RunMigrations
+  - "CREATE TABLE"
+  # settings.go: config loader, no template dependency
+  - LoadSettings
+  - DATABASE_URL
+must_not_include_files:
+  - templates/error.html
+  - static/css/main.css
+  - internal/database/migrations.go
+  - internal/config/settings.go
+max_fragments: 8
+max_files: 4
+add_garbage_files: false
+skip_garbage_check: true

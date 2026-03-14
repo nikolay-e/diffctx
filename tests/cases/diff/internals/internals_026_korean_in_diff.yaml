@@ -1,0 +1,14 @@
+initial:
+  korean_diff.py: |
+    x = 0
+changed:
+  korean_diff.py: |
+    # 한국어 주석
+    message = "안녕하세요"
+    result = process_data(value)
+must_include_files:
+- korean_diff.py
+must_include_content:
+- message = "안녕하세요"
+add_garbage_files: false
+skip_garbage_check: true

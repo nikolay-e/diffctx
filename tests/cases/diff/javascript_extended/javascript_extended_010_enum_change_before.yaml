@@ -1,2 +1,0 @@
-enums.ts: "export enum Status {\n    Pending = 'PENDING',\n    Active = 'ACTIVE',\n    Completed = 'COMPLETED',\n}\n\n// js_garbage_marker_005\n"
-task.ts: "import { Status } from './enums';\n\nexport class Task {\n    status: Status = Status.Pending;\n\n    complete() {\n        this.status = Status.Completed;\n    }\n}\n"

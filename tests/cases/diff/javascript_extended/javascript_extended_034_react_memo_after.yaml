@@ -1,6 +1,0 @@
-ExpensiveList.tsx: "import { memo } from 'react';\n\ninterface Item {\n    id: string;\n    name: string;\n}\n\ninterface ExpensiveListProps {\n    items: Item[];\n}\n\nfunction ExpensiveListComponent({\
-  \ items }: ExpensiveListProps) {\n    return (\n        <ul>\n            {items.map(item => (\n                <li key={item.id}>{item.name}</li>\n            ))}\n        </ul>\n    );\n}\n\nexport\
-  \ const ExpensiveList = memo(ExpensiveListComponent);\n\n// react_adv_garbage_marker_008\n"
-Dashboard.tsx: "import { useState } from 'react';\nimport { ExpensiveList } from './ExpensiveList';\n\nexport function Dashboard() {\n    const [items] = useState([{ id: '1', name: 'Item 1' }]);\n    const\
-  \ [count, setCount] = useState(0);\n\n    return (\n        <div>\n            <button onClick={() => setCount(c => c + 1)}>Count: {count}</button>\n            <ExpensiveList items={items} />\n     \
-  \   </div>\n    );\n}\n"

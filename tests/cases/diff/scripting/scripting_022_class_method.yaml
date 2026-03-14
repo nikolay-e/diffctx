@@ -1,0 +1,227 @@
+# Scenario: inventory_controller.rb adds methods that call ProductCatalog.find_by_sku
+# and ProductCatalog.list_all. product_catalog.rb defines these class methods.
+#
+# Diff: inventory_controller.rb changes from an empty class to one with `show`
+# and `index` actions that call ProductCatalog.find_by_sku(sku) and
+# ProductCatalog.list_all respectively.
+#
+# Reviewer questions:
+#   Q1: "What does ProductCatalog.find_by_sku(sku) return?"
+#       -> product_catalog.rb (UNCHANGED) shows `self.find_by_sku` calls
+#          `new(sku: sku, title: 'Product')`, returning a ProductCatalog instance.
+#   Q2: "What does ProductCatalog.list_all return?"
+#       -> product_catalog.rb shows `self.list_all` returns `[]` — an empty
+#          array. Reviewer may note this is a stub implementation.
+#
+# Not needed:
+#   - storage_backend.rb: data access layer with fetch_record and scan_table.
+#     Similar API but doesn't reference ProductCatalog — separate class.
+#   - result_paginator.rb: paginator for collections. Could be used with
+#     list_all results but has no import edge to ProductCatalog.
+#   - order_controller.rb: also requires product_catalog.rb and calls
+#     find_by_sku. DIRECT structural edge (same source, same method) but
+#     handles orders, not inventory — different consumer.
+#   - product_search.rb: searches products by title. Same "product" domain
+#     and similar API (find_by_*) but independent class.
+#   - lib/base_controller.rb: parent controller with show/index patterns.
+#     Same controller structure but no ProductCatalog dependency.
+
+initial:
+  product_catalog.rb: |
+    class ProductCatalog
+      def self.find_by_sku(sku)
+        new(sku: sku, title: "Product")
+      end
+
+      def self.list_all
+        []
+      end
+
+      def self.count
+        0
+      end
+
+      attr_reader :sku, :title
+
+      def initialize(sku:, title:)
+        @sku = sku
+        @title = title
+      end
+    end
+  inventory_controller.rb: |
+    class InventoryController
+    end
+  storage_backend.rb: |
+    class StorageBackend
+      def initialize(connection)
+        @connection = connection
+      end
+
+      def fetch_record(table, id)
+        @connection.execute("SELECT * FROM #{table} WHERE id = ?", id).first
+      end
+
+      def scan_table(table)
+        @connection.execute("SELECT * FROM #{table}")
+      end
+
+      def insert_record(table, attributes)
+        cols = attributes.keys.join(', ')
+        vals = attributes.values.map { |v| "'#{v}'" }.join(', ')
+        @connection.execute("INSERT INTO #{table} (#{cols}) VALUES (#{vals})")
+      end
+    end
+  result_paginator.rb: |
+    class ResultPaginator
+      attr_reader :page, :per_page
+
+      def initialize(collection, page: 1, per_page: 25)
+        @collection = collection
+        @page = page
+        @per_page = per_page
+      end
+
+      def results
+        offset = (page - 1) * per_page
+        @collection[offset, per_page] || []
+      end
+
+      def total_pages
+        (@collection.size.to_f / per_page).ceil
+      end
+
+      def has_next?
+        page < total_pages
+      end
+    end
+  order_controller.rb: |
+    require_relative 'product_catalog'
+
+    class OrderController
+      def create(sku, quantity)
+        product = ProductCatalog.find_by_sku(sku)
+        { product: product.title, quantity: quantity, total: 0 }
+      end
+
+      def list_products
+        ProductCatalog.list_all
+      end
+
+      def product_count
+        ProductCatalog.count
+      end
+    end
+  product_search.rb: |
+    class ProductSearch
+      def initialize(products)
+        @products = products
+      end
+
+      def find_by_title(query)
+        @products.select { |p| p.title.downcase.include?(query.downcase) }
+      end
+
+      def find_by_sku_prefix(prefix)
+        @products.select { |p| p.sku.start_with?(prefix) }
+      end
+
+      def sort_by_title
+        @products.sort_by(&:title)
+      end
+    end
+  lib/base_controller.rb: |
+    class BaseController
+      def show(id)
+        raise NotImplementedError, "#{self.class}#show not implemented"
+      end
+
+      def index
+        raise NotImplementedError, "#{self.class}#index not implemented"
+      end
+
+      def create(params)
+        raise NotImplementedError, "#{self.class}#create not implemented"
+      end
+
+      def destroy(id)
+        raise NotImplementedError, "#{self.class}#destroy not implemented"
+      end
+    end
+
+changed:
+  product_catalog.rb: |
+    class ProductCatalog
+      def self.find_by_sku(sku)
+        new(sku: sku, title: "Product")
+      end
+
+      def self.list_all
+        []
+      end
+
+      def self.count
+        0
+      end
+
+      attr_reader :sku, :title
+
+      def initialize(sku:, title:)
+        @sku = sku
+        @title = title
+      end
+    end
+  inventory_controller.rb: |
+    require_relative 'product_catalog'
+
+    class InventoryController
+      def show(sku)
+        @product = ProductCatalog.find_by_sku(sku)
+      end
+
+      def index
+        @products = ProductCatalog.list_all
+      end
+    end
+
+must_include_files:
+  # Q1: product_catalog.rb defines the class methods called from inventory_controller.rb
+  - product_catalog.rb
+must_include_content_from:
+  product_catalog.rb:
+    - "def self.find_by_sku(sku)"
+    - "def self.list_all"
+  inventory_controller.rb:
+    - "ProductCatalog.find_by_sku"
+    - "ProductCatalog.list_all"
+must_not_include:
+  # storage_backend.rb: generic data access, no require edge
+  - StorageBackend
+  - fetch_record
+  - scan_table
+  - insert_record
+  # result_paginator.rb: collection paginator, not imported
+  - ResultPaginator
+  - total_pages
+  - has_next?
+  # order_controller.rb: HARDEST TRAP — requires product_catalog.rb,
+  # calls find_by_sku and list_all — same source, same methods, diff consumer
+  - OrderController
+  - "product: product.title"
+  - product_count
+  # product_search.rb: product domain but independent class
+  - ProductSearch
+  - find_by_title
+  - find_by_sku_prefix
+  # lib/base_controller.rb: controller structure but no ProductCatalog dep
+  - BaseController
+  - NotImplementedError
+must_not_include_files:
+  - storage_backend.rb
+  - result_paginator.rb
+  - order_controller.rb
+  - product_search.rb
+  - lib/base_controller.rb
+max_fragments: 8
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

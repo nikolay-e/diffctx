@@ -5,19 +5,46 @@ from collections import defaultdict
 from pathlib import Path
 
 from ...config.weights import LANG_WEIGHTS
-from ...javascript_semantics import JsFragmentInfo, analyze_javascript_fragment
+from ...javascript_semantics import JsFragmentInfo, analyze_javascript_fragment, extract_import_sources
 from ...types import Fragment, FragmentId
 from ..base import EdgeBuilder, EdgeDict, add_semantic_edges
 
 _JS_EXTS = {".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".mts", ".cts"}
 _TS_EXTS = {".ts", ".tsx", ".mts", ".cts"}
 
+_EXPORT_DECL_RE = re.compile(
+    r"export\s+(?:const|let|var|function\*?|class|async\s+function|interface|type|enum|abstract\s+class)\s+(\w+)",
+    re.MULTILINE,
+)
+_EXPORT_DEFAULT_NAME_RE = re.compile(
+    r"export\s+default\s+(?:(?:class|function\*?|async\s+function)\s+)?(\w+)",
+    re.MULTILINE,
+)
+_EXPORT_LIST_RE = re.compile(r"export\s*\{([^}]+)\}", re.MULTILINE)
+_NAMED_IMPORT_NAMES_RE = re.compile(
+    r"import\s*(?:type\s*)?\{([^}]+)\}\s*from\s*['\"]",
+    re.MULTILINE,
+)
+
+
+def _add_name_if_valid(name: str, target: set[str]) -> None:
+    if name and len(name) >= 2:
+        target.add(name.lower())
+
+
+def _extract_exports_from_content(content: str, exported: set[str]) -> None:
+    for m in _EXPORT_DECL_RE.finditer(content):
+        _add_name_if_valid(m.group(1), exported)
+    for m in _EXPORT_DEFAULT_NAME_RE.finditer(content):
+        _add_name_if_valid(m.group(1), exported)
+    for m in _EXPORT_LIST_RE.finditer(content):
+        for part in m.group(1).split(","):
+            part = part.strip().split(" as ")[0].strip()
+            _add_name_if_valid(part, exported)
+
+
 _JS_WEIGHTS = LANG_WEIGHTS["javascript"]
 _TS_WEIGHTS = LANG_WEIGHTS["typescript"]
-
-_JS_IMPORT_STATIC_RE = re.compile(r"""import\s{1,10}[^'"]{0,500}['"]([^'"]{1,500})['"]""")
-_JS_REQUIRE_RE = re.compile(r"""require\s{0,10}\(\s{0,10}['"]([^'"]{1,500})['"]\s{0,10}\)""")
-_JS_EXPORT_FROM_RE = re.compile(r"""export\s{1,10}[^'"]{0,500}\s{1,10}from\s{1,10}['"]([^'"]{1,500})['"]""")
 
 
 def _is_js_file(path: Path) -> bool:
@@ -53,21 +80,43 @@ def _normalize_import(imp: str, source_path: Path) -> set[str]:
 
 
 def _extract_imports_from_content(content: str, source_path: Path) -> set[str]:
-    imports: set[str] = set()
+    raw_sources = extract_import_sources(content)
+    normalized: set[str] = set()
+    for source in raw_sources:
+        normalized.update(_normalize_import(source, source_path))
+    return normalized
 
-    for match in _JS_IMPORT_STATIC_RE.finditer(content):
-        if match.group(1):
-            imports.update(_normalize_import(match.group(1), source_path))
 
-    for match in _JS_REQUIRE_RE.finditer(content):
-        if match.group(1):
-            imports.update(_normalize_import(match.group(1), source_path))
+def _resolve_relative_import(
+    source_file: Path,
+    import_source: str,
+    candidate_set: set[Path],
+) -> Path | None:
+    base_dir = source_file.parent
+    parts = import_source.split("/")
+    resolved = base_dir
+    for part in parts:
+        if part == ".":
+            continue
+        elif part == "..":
+            resolved = resolved.parent
+        else:
+            resolved = resolved / part
 
-    for match in _JS_EXPORT_FROM_RE.finditer(content):
-        if match.group(1):
-            imports.update(_normalize_import(match.group(1), source_path))
+    for ext in (".ts", ".tsx", ".js", ".jsx", ".mts", ".cts", ".mjs", ".cjs"):
+        candidate = resolved.parent / (resolved.name + ext)
+        if candidate in candidate_set:
+            return candidate
 
-    return imports
+    for index_name in ("index.ts", "index.tsx", "index.js", "index.jsx"):
+        candidate = resolved / index_name
+        if candidate in candidate_set:
+            return candidate
+
+    if resolved in candidate_set:
+        return resolved
+
+    return None
 
 
 class JavaScriptEdgeBuilder(EdgeBuilder):
@@ -84,11 +133,20 @@ class JavaScriptEdgeBuilder(EdgeBuilder):
         if not js_changed:
             return []
 
-        changed_names = self._collect_changed_names(js_changed, repo_root)
-        if not changed_names:
-            return []
+        changed_set = set(changed_files)
+        discovered: set[Path] = set()
 
-        return self._find_importing_files(all_candidate_files, set(changed_files), changed_names)
+        changed_names = self._collect_changed_names(js_changed, repo_root)
+        if changed_names:
+            discovered.update(self._find_importing_files(all_candidate_files, changed_set, changed_names))
+
+        exported_names = self._collect_exported_names(js_changed)
+        if exported_names:
+            discovered.update(self._find_files_importing_names(exported_names, all_candidate_files, changed_set))
+
+        discovered.update(self._discover_forward_imports(js_changed, all_candidate_files, changed_set))
+
+        return list(discovered)
 
     def _collect_changed_names(self, js_changed: list[Path], repo_root: Path | None) -> set[str]:
         changed_names: set[str] = set()
@@ -182,3 +240,56 @@ class JavaScriptEdgeBuilder(EdgeBuilder):
             )
 
         return edges
+
+    def _discover_forward_imports(
+        self,
+        js_changed: list[Path],
+        all_candidate_files: list[Path],
+        changed_set: set[Path],
+    ) -> list[Path]:
+        candidate_set = set(all_candidate_files)
+        discovered: list[Path] = []
+        for f in js_changed:
+            try:
+                content = f.read_text(encoding="utf-8")
+            except (OSError, UnicodeDecodeError):
+                continue
+            sources = extract_import_sources(content)
+            for source in sources:
+                if not source.startswith("."):
+                    continue
+                resolved = _resolve_relative_import(f, source, candidate_set)
+                if resolved and resolved not in changed_set and resolved not in discovered:
+                    discovered.append(resolved)
+        return discovered
+
+    def _collect_exported_names(self, js_changed: list[Path]) -> set[str]:
+        exported: set[str] = set()
+        for f in js_changed:
+            try:
+                content = f.read_text(encoding="utf-8")
+            except (OSError, UnicodeDecodeError):
+                continue
+            _extract_exports_from_content(content, exported)
+        return exported
+
+    def _find_files_importing_names(
+        self,
+        exported_names: set[str],
+        all_candidate_files: list[Path],
+        changed_set: set[Path],
+    ) -> list[Path]:
+        discovered: list[Path] = []
+        for candidate in all_candidate_files:
+            if candidate in changed_set or not _is_js_file(candidate):
+                continue
+            try:
+                content = candidate.read_text(encoding="utf-8")
+            except (OSError, UnicodeDecodeError):
+                continue
+            for m in _NAMED_IMPORT_NAMES_RE.finditer(content):
+                names = {n.strip().split(" as ")[0].strip().lower() for n in m.group(1).split(",") if n.strip()}
+                if names & exported_names:
+                    discovered.append(candidate)
+                    break
+        return discovered

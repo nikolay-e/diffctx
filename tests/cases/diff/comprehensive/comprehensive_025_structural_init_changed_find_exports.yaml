@@ -1,0 +1,27 @@
+initial:
+  mypackage/__init__.py: |
+    from .old_module import OldClass
+  mypackage/old_module.py: |
+    class OldClass:
+        pass
+  mypackage/new_module.py: |
+    class NewClass:
+        def __init__(self):
+            self.value = 42
+changed:
+  mypackage/__init__.py: |
+    from .old_module import OldClass
+    from .new_module import NewClass
+  mypackage/old_module.py: |
+    class OldClass:
+        pass
+  mypackage/new_module.py: |
+    class NewClass:
+        def __init__(self):
+            self.value = 42
+must_include_files:
+- mypackage/__init__.py
+must_include_content:
+- from .new_module import NewClass
+add_garbage_files: false
+skip_garbage_check: true

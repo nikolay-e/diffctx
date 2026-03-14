@@ -1,0 +1,137 @@
+initial:
+  cycle_a.py: |
+    from cycle_b import func_b
+
+    def func_a():
+        return func_b()
+  cycle_b.py: |
+    from cycle_c import func_c
+
+    def func_b():
+        return func_c()
+  cycle_c.py: |
+    from cycle_a import func_a
+
+    def func_c():
+        return func_a()
+
+  # --- Tricky garbage: imports func_b just like cycle_a ---
+  garbage_cycle_consumer.py: |
+    from cycle_b import func_b
+    GARBAGE_PPR029_CONSUMER_A = "consumer"
+    GARBAGE_PPR029_CONSUMER_B = True
+
+    def consume_cycle():
+        return func_b()
+
+    class CycleWatcher:
+        GARBAGE_PPR029_WATCHER_C = 99
+
+        def watch(self):
+            return func_b()
+
+  # --- Tricky garbage: same func_a name, circular-looking structure ---
+  garbage_fake_cycle.py: |
+    GARBAGE_PPR029_FAKE_D = "fake_cycle"
+    GARBAGE_PPR029_FAKE_E = False
+
+    def func_a():
+        return func_z()
+
+    def func_z():
+        GARBAGE_PPR029_INNER_F = 42
+        return func_a()
+
+  # --- Tricky garbage: cycle_* naming pattern, structural sibling ---
+  garbage_cycle_util.py: |
+    GARBAGE_PPR029_UTIL_G = "cycle_util"
+    GARBAGE_PPR029_UTIL_H = 0
+
+    def cycle_reset():
+        return None
+
+    def cycle_validate():
+        return True
+
+changed:
+  cycle_a.py: |
+    from cycle_b import func_b
+
+    def func_a():
+        return func_b() + 1
+  cycle_b.py: |
+    from cycle_c import func_c
+
+    def func_b():
+        return func_c()
+  cycle_c.py: |
+    from cycle_a import func_a
+
+    def func_c():
+        return func_a()
+  garbage_cycle_consumer.py: |
+    from cycle_b import func_b
+    GARBAGE_PPR029_CONSUMER_A = "consumer"
+    GARBAGE_PPR029_CONSUMER_B = True
+
+    def consume_cycle():
+        return func_b()
+
+    class CycleWatcher:
+        GARBAGE_PPR029_WATCHER_C = 99
+
+        def watch(self):
+            return func_b()
+  garbage_fake_cycle.py: |
+    GARBAGE_PPR029_FAKE_D = "fake_cycle"
+    GARBAGE_PPR029_FAKE_E = False
+
+    def func_a():
+        return func_z()
+
+    def func_z():
+        GARBAGE_PPR029_INNER_F = 42
+        return func_a()
+  garbage_cycle_util.py: |
+    GARBAGE_PPR029_UTIL_G = "cycle_util"
+    GARBAGE_PPR029_UTIL_H = 0
+
+    def cycle_reset():
+        return None
+
+    def cycle_validate():
+        return True
+
+# === Assertions ===
+
+must_include_files:
+- cycle_a.py
+
+must_include_content_from:
+  cycle_a.py:
+    - 'def func_a():'
+    - return func_b() + 1
+    - from cycle_b import func_b
+
+must_not_include:
+# Tricky: imports func_b just like cycle_a
+- GARBAGE_PPR029_CONSUMER_A
+- GARBAGE_PPR029_CONSUMER_B
+- GARBAGE_PPR029_WATCHER_C
+# Tricky: same func_a name, circular-looking
+- GARBAGE_PPR029_FAKE_D
+- GARBAGE_PPR029_FAKE_E
+- GARBAGE_PPR029_INNER_F
+# Tricky: cycle_* naming pattern sibling
+- GARBAGE_PPR029_UTIL_G
+- GARBAGE_PPR029_UTIL_H
+
+must_not_include_files:
+- garbage_cycle_consumer.py
+- garbage_fake_cycle.py
+- garbage_cycle_util.py
+
+max_fragments: 5
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

@@ -1,0 +1,217 @@
+# Scenario: main.rs adds use statements for HashMap, HashSet, BTreeMap and
+#   populates/iterates them. Only src/main.rs is changed.
+#
+# Diff shows:
+#   + use std::collections::HashMap;
+#   + use std::collections::HashSet;
+#   + use std::collections::BTreeMap;
+#   + HashMap/HashSet/BTreeMap instantiation, insertion, iteration
+#
+# Reviewer questions:
+#   Q1: "Are all three imported collection types actually used?"
+#       -> Same file: HashMap used for map, HashSet for set, BTreeMap for
+#          btree. All three are instantiated, populated, and printed.
+#
+#   Q2: "Is the HashMap iteration idiomatic Rust?"
+#       -> Same file: for (key, value) in &map { ... }. Reviewer verifies
+#          the borrow pattern is correct.
+#
+# Not needed for comprehension:
+#   - src/sorted_set.rs: Custom SortedSet<T> wrapping BTreeSet<T>.
+#     HARDEST TRAP: uses std::collections::BTreeSet — the diff adds
+#     std::collections::BTreeMap. Same collections module, similar
+#     sorted-container concept. But SortedSet is a wrapper in a
+#     separate module. main.rs doesn't import or use SortedSet.
+#
+#   - src/deque.rs: Deque<T> wrapping VecDeque<T>. Same collections
+#     domain (std::collections::VecDeque). But main.rs doesn't import
+#     Deque or VecDeque. No dependency edge.
+initial:
+  src/main.rs: |
+    fn main() {
+        let map = std::collections::HashMap::new();
+        println!("{:?}", map);
+    }
+  src/lib.rs: |
+    pub mod sorted_set;
+    pub mod deque;
+  src/sorted_set.rs: |
+    use std::collections::BTreeSet;
+
+    pub struct SortedSet<T: Ord> {
+        inner: BTreeSet<T>,
+    }
+
+    impl<T: Ord> SortedSet<T> {
+        pub fn new() -> Self {
+            Self { inner: BTreeSet::new() }
+        }
+
+        pub fn insert(&mut self, value: T) -> bool {
+            self.inner.insert(value)
+        }
+
+        pub fn contains(&self, value: &T) -> bool {
+            self.inner.contains(value)
+        }
+
+        pub fn len(&self) -> usize {
+            self.inner.len()
+        }
+
+        pub fn is_empty(&self) -> bool {
+            self.inner.is_empty()
+        }
+    }
+  src/deque.rs: |
+    use std::collections::VecDeque;
+
+    pub struct Deque<T> {
+        inner: VecDeque<T>,
+        max_size: usize,
+    }
+
+    impl<T> Deque<T> {
+        pub fn new(max_size: usize) -> Self {
+            Self {
+                inner: VecDeque::with_capacity(max_size),
+                max_size,
+            }
+        }
+
+        pub fn push_back(&mut self, value: T) {
+            if self.inner.len() >= self.max_size {
+                self.inner.pop_front();
+            }
+            self.inner.push_back(value);
+        }
+
+        pub fn pop_front(&mut self) -> Option<T> {
+            self.inner.pop_front()
+        }
+
+        pub fn len(&self) -> usize {
+            self.inner.len()
+        }
+    }
+changed:
+  src/main.rs: |
+    use std::collections::HashMap;
+    use std::collections::HashSet;
+    use std::collections::BTreeMap;
+
+    fn main() {
+        let mut map: HashMap<String, i32> = HashMap::new();
+        map.insert("one".to_string(), 1);
+        map.insert("two".to_string(), 2);
+
+        let mut set: HashSet<i32> = HashSet::new();
+        set.insert(1);
+        set.insert(2);
+        set.insert(3);
+
+        let mut btree: BTreeMap<String, i32> = BTreeMap::new();
+        btree.insert("alpha".to_string(), 100);
+        btree.insert("beta".to_string(), 200);
+
+        println!("HashMap: {:?}", map);
+        println!("HashSet: {:?}", set);
+        println!("BTreeMap: {:?}", btree);
+
+        for (key, value) in &map {
+            println!("{}: {}", key, value);
+        }
+    }
+  src/lib.rs: |
+    pub mod sorted_set;
+    pub mod deque;
+  src/sorted_set.rs: |
+    use std::collections::BTreeSet;
+
+    pub struct SortedSet<T: Ord> {
+        inner: BTreeSet<T>,
+    }
+
+    impl<T: Ord> SortedSet<T> {
+        pub fn new() -> Self {
+            Self { inner: BTreeSet::new() }
+        }
+
+        pub fn insert(&mut self, value: T) -> bool {
+            self.inner.insert(value)
+        }
+
+        pub fn contains(&self, value: &T) -> bool {
+            self.inner.contains(value)
+        }
+
+        pub fn len(&self) -> usize {
+            self.inner.len()
+        }
+
+        pub fn is_empty(&self) -> bool {
+            self.inner.is_empty()
+        }
+    }
+  src/deque.rs: |
+    use std::collections::VecDeque;
+
+    pub struct Deque<T> {
+        inner: VecDeque<T>,
+        max_size: usize,
+    }
+
+    impl<T> Deque<T> {
+        pub fn new(max_size: usize) -> Self {
+            Self {
+                inner: VecDeque::with_capacity(max_size),
+                max_size,
+            }
+        }
+
+        pub fn push_back(&mut self, value: T) {
+            if self.inner.len() >= self.max_size {
+                self.inner.pop_front();
+            }
+            self.inner.push_back(value);
+        }
+
+        pub fn pop_front(&mut self) -> Option<T> {
+            self.inner.pop_front()
+        }
+
+        pub fn len(&self) -> usize {
+            self.inner.len()
+        }
+    }
+must_include_files:
+  - src/main.rs
+
+must_include_content_from:
+  src/main.rs:
+    - "use std::collections::HashMap;"
+    - "use std::collections::HashSet;"
+    - "use std::collections::BTreeMap;"
+    - 'let mut map: HashMap<String, i32> = HashMap::new();'
+
+must_not_include:
+  # --- src/sorted_set.rs: BTreeSet wrapper, same collections module ---
+  # Uses std::collections::BTreeSet — same parent module as BTreeMap in
+  # the diff. Similar sorted-container concept. But main.rs doesn't
+  # import or reference SortedSet anywhere.
+  - SortedSet
+  - BTreeSet
+  - is_empty
+  # --- src/deque.rs: VecDeque wrapper, collection vocabulary overlap ---
+  # Another std::collections wrapper. But main.rs has no dependency.
+  - VecDeque
+  - push_back
+  - pop_front
+
+must_not_include_files:
+  - src/sorted_set.rs
+  - src/deque.rs
+
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

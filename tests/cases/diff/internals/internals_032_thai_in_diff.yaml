@@ -1,0 +1,14 @@
+initial:
+  thai_diff.py: |
+    x = 0
+changed:
+  thai_diff.py: |
+    # ภาษาไทยไม่มีช่องว่าง
+    result = calculate_sum(values)
+    output = format_result(result)
+must_include_files:
+- thai_diff.py
+must_include_content:
+- result = calculate_sum(values)
+add_garbage_files: false
+skip_garbage_check: true

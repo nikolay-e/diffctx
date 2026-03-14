@@ -1,0 +1,38 @@
+initial:
+  file0.py: |
+    pass
+  file1.py: |
+    pass
+  file2.py: |
+    pass
+  file3.py: |
+    pass
+  file4.py: |
+    pass
+changed:
+  file0.py: |
+    def unique_func0():
+        pass
+  file1.py: |
+    def unique_func1():
+        pass
+  file2.py: |
+    def unique_func2():
+        pass
+  file3.py: |
+    def unique_func3():
+        pass
+  file4.py: |
+    def unique_func4():
+        pass
+must_include_files:
+- file0.py
+- file1.py
+- file2.py
+- file3.py
+- file4.py
+must_include_content:
+- 'def unique_func0():'
+- 'def unique_func1():'
+add_garbage_files: false
+skip_garbage_check: true

@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 from collections import defaultdict
 from pathlib import Path
 
-from ..parsers.base import CODE_EXTENSIONS
+from ..config.extensions import CODE_EXTENSIONS
 from ..types import Fragment, FragmentId
 
 EdgeDict = dict[tuple[FragmentId, FragmentId], float]

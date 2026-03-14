@@ -1,0 +1,149 @@
+initial:
+  chart/Chart.yaml: |
+    apiVersion: v2
+    name: storefront
+    version: 1.0.0
+    appVersion: "2.5.0"
+  chart/values.yaml: |
+    replicaCount: 2
+    image:
+      repository: storefront-app
+      tag: "2.5.0"
+    service:
+      type: ClusterIP
+      port: 80
+    ingress:
+      enabled: false
+  chart/templates/_helpers.tpl: |
+    {{- define "storefront.fullname" -}}
+    {{- printf "%s-%s" .Release.Name .Chart.Name | trunc 63 | trimSuffix "-" }}
+    {{- end }}
+
+    {{- define "storefront.labels" -}}
+    app.kubernetes.io/name: {{ .Chart.Name }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    {{- end }}
+  chart/templates/ingress.yaml: |
+    {{- if .Values.ingress.enabled }}
+    apiVersion: networking.k8s.io/v1
+    kind: Ingress
+    metadata:
+      name: {{ include "storefront.fullname" . }}
+      labels:
+        {{- include "storefront.labels" . | nindent 4 }}
+    spec:
+      rules:
+        - host: {{ .Values.ingress.host }}
+          http:
+            paths:
+              - path: /
+                pathType: Prefix
+                backend:
+                  service:
+                    name: {{ include "storefront.fullname" . }}
+                    port:
+                      number: {{ .Values.service.port }}
+    {{- end }}
+  chart/templates/deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: {{ include "storefront.fullname" . }}
+    spec:
+      replicas: {{ .Values.replicaCount }}
+      template:
+        spec:
+          containers:
+            - name: {{ .Chart.Name }}
+              image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+              ports:
+                - containerPort: 3000
+  chart/templates/pdb.yaml: |
+    apiVersion: policy/v1
+    kind: PodDisruptionBudget
+    metadata:
+    spec:
+      selector:
+        matchLabels:
+  chart/scripts/seed-data.sh: |
+    #!/bin/bash
+    echo "Seeding database with test data"
+changed:
+  chart/Chart.yaml: |
+    apiVersion: v2
+    name: storefront
+    version: 1.0.0
+    appVersion: "2.5.0"
+  chart/values.yaml: |
+    replicaCount: 2
+    image:
+      repository: storefront-app
+      tag: "2.5.0"
+    service:
+      type: ClusterIP
+      port: 80
+    ingress:
+      enabled: true
+      host: app.example.com
+      tls:
+        secretName: app-tls
+  chart/templates/_helpers.tpl: |
+    {{- define "storefront.fullname" -}}
+    {{- printf "%s-%s" .Release.Name .Chart.Name | trunc 63 | trimSuffix "-" }}
+    {{- end }}
+
+    {{- define "storefront.labels" -}}
+    app.kubernetes.io/name: {{ .Chart.Name }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    {{- end }}
+  chart/templates/ingress.yaml: |
+    {{- if .Values.ingress.enabled }}
+    apiVersion: networking.k8s.io/v1
+    kind: Ingress
+    metadata:
+      name: {{ include "storefront.fullname" . }}
+      labels:
+        {{- include "storefront.labels" . | nindent 4 }}
+    spec:
+      rules:
+        - host: {{ .Values.ingress.host }}
+          http:
+            paths:
+              - path: /
+                pathType: Prefix
+                backend:
+                  service:
+                    name: {{ include "storefront.fullname" . }}
+                    port:
+                      number: {{ .Values.service.port }}
+    {{- end }}
+  chart/templates/deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: {{ include "storefront.fullname" . }}
+    spec:
+      replicas: {{ .Values.replicaCount }}
+      template:
+        spec:
+          containers:
+            - name: {{ .Chart.Name }}
+              image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+              ports:
+                - containerPort: 3000
+  chart/templates/pdb.yaml: |
+    apiVersion: policy/v1
+    kind: PodDisruptionBudget
+    metadata:
+    spec:
+      selector:
+        matchLabels:
+  chart/scripts/seed-data.sh: |
+    #!/bin/bash
+    echo "Seeding database with test data"
+must_include_files:
+- chart/values.yaml
+must_include_content:
+- 'enabled: true'
+add_garbage_files: false
+skip_garbage_check: true

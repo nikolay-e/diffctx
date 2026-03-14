@@ -1,0 +1,223 @@
+# Scenario: build.rs switches from simple tonic_build::compile_protos to a
+# fully-configured tonic_build::configure() with multi-proto compilation and
+# custom output directory.
+#
+# Diff: build.rs gains .build_server(true), .build_client(true), .out_dir(),
+# and compiles two proto files instead of one.
+#
+# Reviewer questions:
+#   Q1: "Which module consumes the generated code?"
+#       -> src/service.rs (UNCHANGED) uses tonic::include_proto!("service")
+#          and re-exports the server trait. Reviewer must verify the proto
+#          name matches and the include path still resolves.
+#   Q2: "Do we need to update the include path for out_dir change?"
+#       -> src/service.rs still uses include_proto! macro which auto-resolves,
+#          but reviewer should verify out_dir("src/generated") is compatible.
+#
+# Not needed:
+#   - src/telemetry.rs: uses tracing crate for request instrumentation, shares
+#     "service" vocabulary but has zero proto/tonic dependency.
+#   - src/health.rs: health check endpoint returning JSON; same gRPC project but
+#     implemented as plain HTTP, no generated proto code involved.
+#   - src/client.rs: gRPC client that ALSO uses include_proto! for client stubs.
+#     HARDEST TRAP: same include_proto! macro, same proto file dependency.
+#     Direct structural edge — build_client(true) enables its generation.
+#     But understanding client.rs doesn't help verify build.rs correctness.
+#   - src/interceptor.rs: gRPC interceptor/middleware. Uses tonic types
+#     (Request, Response) but not generated proto code.
+#   - Cargo.toml: lists tonic-build as build-dependency. Related to the build
+#     pipeline but the dependency declaration doesn't help review the
+#     tonic_build::configure() API usage.
+
+initial:
+  build.rs: |
+    fn main() {
+        println!("cargo:rerun-if-changed=proto/");
+        tonic_build::compile_protos("proto/service.proto").unwrap();
+    }
+  src/lib.rs: |
+    pub mod service;
+    pub mod telemetry;
+    pub mod health;
+    pub mod client;
+    pub mod interceptor;
+  src/service.rs: |
+    pub mod proto {
+        tonic::include_proto!("service");
+    }
+
+    pub use proto::service_server::Service;
+
+    pub struct ServiceImpl {
+        name: String,
+    }
+
+    impl ServiceImpl {
+        pub fn new(name: &str) -> Self {
+            Self { name: name.to_string() }
+        }
+
+        pub fn service_name(&self) -> &str {
+            &self.name
+        }
+    }
+  src/telemetry.rs: |
+    use tracing::{info, instrument};
+
+    pub struct RequestTracer {
+        service_name: String,
+        sample_rate: f64,
+    }
+
+    impl RequestTracer {
+        pub fn new(service_name: &str, sample_rate: f64) -> Self {
+            Self {
+                service_name: service_name.to_string(),
+                sample_rate,
+            }
+        }
+
+        #[instrument(skip(self))]
+        pub fn trace_request(&self, method: &str, path: &str) {
+            info!(service = %self.service_name, method, path, "incoming request");
+        }
+
+        pub fn set_sample_rate(&mut self, rate: f64) {
+            self.sample_rate = rate.clamp(0.0, 1.0);
+        }
+    }
+  src/health.rs: |
+    use serde::Serialize;
+
+    #[derive(Serialize)]
+    pub struct HealthResponse {
+        pub status: String,
+        pub uptime_seconds: u64,
+    }
+
+    pub fn check_health(start_time: std::time::Instant) -> HealthResponse {
+        HealthResponse {
+            status: "ok".to_string(),
+            uptime_seconds: start_time.elapsed().as_secs(),
+        }
+    }
+
+    pub fn liveness_probe() -> bool {
+        true
+    }
+  src/client.rs: |
+    pub mod proto {
+        tonic::include_proto!("service");
+    }
+
+    pub use proto::service_client::ServiceClient;
+
+    pub struct ClientConfig {
+        endpoint: String,
+        timeout_ms: u64,
+    }
+
+    impl ClientConfig {
+        pub fn new(endpoint: &str) -> Self {
+            Self {
+                endpoint: endpoint.to_string(),
+                timeout_ms: 5000,
+            }
+        }
+
+        pub fn with_timeout(mut self, ms: u64) -> Self {
+            self.timeout_ms = ms;
+            self
+        }
+
+        pub fn endpoint(&self) -> &str {
+            &self.endpoint
+        }
+    }
+  src/interceptor.rs: |
+    use tonic::{Request, Status};
+
+    pub fn auth_interceptor(req: Request<()>) -> Result<Request<()>, Status> {
+        let token = req
+            .metadata()
+            .get("authorization")
+            .and_then(|v| v.to_str().ok());
+
+        match token {
+            Some(t) if t.starts_with("Bearer ") => Ok(req),
+            _ => Err(Status::unauthenticated("Missing or invalid token")),
+        }
+    }
+
+    pub fn logging_interceptor(req: Request<()>) -> Result<Request<()>, Status> {
+        println!("Request to: {:?}", req.uri());
+        Ok(req)
+    }
+  Cargo.toml: |
+    [package]
+    name = "grpc-service"
+    version = "0.1.0"
+    edition = "2021"
+
+    [dependencies]
+    tonic = "0.11"
+    prost = "0.12"
+    tokio = { version = "1", features = ["full"] }
+    serde = { version = "1", features = ["derive"] }
+    tracing = "0.1"
+
+    [build-dependencies]
+    tonic-build = "0.11"
+
+changed:
+  build.rs: |
+    fn main() {
+        println!("cargo:rerun-if-changed=proto/");
+
+        tonic_build::configure()
+            .build_server(true)
+            .build_client(true)
+            .out_dir("src/generated")
+            .compile(
+                &["proto/service.proto", "proto/types.proto"],
+                &["proto/"],
+            )
+            .unwrap();
+    }
+must_include_files:
+  # Q1/Q2: service.rs consumes generated proto code via include_proto!
+  - src/service.rs
+must_include_content_from:
+  src/service.rs:
+    - 'tonic::include_proto!("service")'
+    - "service_server::Service"
+must_not_include:
+  # telemetry.rs: tracing instrumentation, no proto dependency
+  - RequestTracer
+  - trace_request
+  - "sample_rate"
+  # health.rs: plain HTTP health check, no generated code
+  - HealthResponse
+  - check_health
+  - liveness_probe
+  # client.rs: ALSO uses include_proto! — same macro, same proto file
+  - "service_client::ServiceClient"
+  - "ClientConfig"
+  - "with_timeout"
+  # interceptor.rs: tonic types but not generated proto code
+  - "auth_interceptor"
+  - "logging_interceptor"
+  - "unauthenticated"
+  # Cargo.toml: lists tonic-build but doesn't help review API usage
+  - "tonic-build"
+  - "[build-dependencies]"
+must_not_include_files:
+  - src/telemetry.rs
+  - src/health.rs
+  - src/client.rs
+  - src/interceptor.rs
+  - Cargo.toml
+max_fragments: 5
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

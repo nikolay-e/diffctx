@@ -1,0 +1,207 @@
+# Scenario: batch.sh adds while-read and until loops alongside the existing for
+# loop. It sources utils.sh which defines process_file() and MAX_RETRIES.
+#
+# Reviewer questions:
+#   Q1: "What does process_file() do with each input?"
+#       -> utils.sh: validates file exists, computes checksum, logs result.
+#   Q2: "What is MAX_RETRIES?"
+#       -> utils.sh: MAX_RETRIES=5. The until loop retries up to this limit.
+#
+# Not needed:
+#   - scripts/archive.sh: post-processing step, doesn't define process_file.
+#   - scripts/report.sh: reads batch output logs, not sourced by batch.sh.
+#   - scripts/parallel_batch.sh: HARDEST TRAP — sources utils.sh, calls
+#     process_file in background jobs. Same function, same source edge.
+#     But parallel execution concern, not function definition.
+#   - scripts/dry_run.sh: sources utils.sh, calls process_file with --dry-run.
+#     Same structural edge. But simulation mode, not definition.
+#   - lib/checksum.sh: provides sha256sum wrapper used by process_file.
+#     Indirect dependency, but reviewer needs process_file, not its internals.
+
+initial:
+  batch.sh: |
+    #!/bin/bash
+    source ./utils.sh
+
+    for file in *.log; do
+        process_file "$file"
+    done
+  utils.sh: |
+    #!/bin/bash
+    MAX_RETRIES=5
+    CHECKSUM_CMD="sha256sum"
+
+    process_file() {
+        local file=$1
+        if [[ ! -f "$file" ]]; then
+            echo "SKIP: $file not found"
+            return 1
+        fi
+        local sum=$($CHECKSUM_CMD "$file" | cut -d' ' -f1)
+        echo "OK: $file ($sum)"
+        return 0
+    }
+  scripts/archive.sh: |
+    #!/bin/bash
+    ARCHIVE_DIR="/data/archive"
+    for f in /data/processed/*.log; do
+        mv "$f" "$ARCHIVE_DIR/"
+    done
+    echo "Archived $(ls "$ARCHIVE_DIR" | wc -l) files"
+  scripts/report.sh: |
+    #!/bin/bash
+    echo "file,status,checksum" > report.csv
+    grep "^OK:" /var/log/batch.log | while read -r line; do
+        echo "$line" >> report.csv
+    done
+  scripts/parallel_batch.sh: |
+    #!/bin/bash
+    source ./utils.sh
+
+    for file in *.log; do
+        process_file "$file" &
+    done
+    wait
+    echo "All parallel jobs complete"
+  scripts/dry_run.sh: |
+    #!/bin/bash
+    source ./utils.sh
+
+    DRY_RUN=1
+    for file in *.log; do
+        if [[ $DRY_RUN -eq 1 ]]; then
+            echo "DRY: would process $file"
+        else
+            process_file "$file"
+        fi
+    done
+  lib/checksum.sh: |
+    #!/bin/bash
+    compute_checksum() {
+        local file=$1
+        local algo=${2:-sha256}
+        case $algo in
+            sha256) sha256sum "$file" | cut -d' ' -f1 ;;
+            md5)    md5sum "$file" | cut -d' ' -f1 ;;
+            *)      echo "Unknown algorithm: $algo" >&2; return 1 ;;
+        esac
+    }
+
+changed:
+  batch.sh: |
+    #!/bin/bash
+    source ./utils.sh
+
+    for file in *.log; do
+        process_file "$file"
+    done
+
+    while read -r line; do
+        process_file "$line"
+    done < input.txt
+
+    counter=0
+    until [[ $counter -ge $MAX_RETRIES ]]; do
+        echo "Retry attempt: $counter"
+        process_file "pending.dat" && break
+        ((counter++))
+    done
+  utils.sh: |
+    #!/bin/bash
+    MAX_RETRIES=5
+    CHECKSUM_CMD="sha256sum"
+
+    process_file() {
+        local file=$1
+        if [[ ! -f "$file" ]]; then
+            echo "SKIP: $file not found"
+            return 1
+        fi
+        local sum=$($CHECKSUM_CMD "$file" | cut -d' ' -f1)
+        echo "OK: $file ($sum)"
+        return 0
+    }
+  scripts/archive.sh: |
+    #!/bin/bash
+    ARCHIVE_DIR="/data/archive"
+    for f in /data/processed/*.log; do
+        mv "$f" "$ARCHIVE_DIR/"
+    done
+    echo "Archived $(ls "$ARCHIVE_DIR" | wc -l) files"
+  scripts/report.sh: |
+    #!/bin/bash
+    echo "file,status,checksum" > report.csv
+    grep "^OK:" /var/log/batch.log | while read -r line; do
+        echo "$line" >> report.csv
+    done
+  scripts/parallel_batch.sh: |
+    #!/bin/bash
+    source ./utils.sh
+
+    for file in *.log; do
+        process_file "$file" &
+    done
+    wait
+    echo "All parallel jobs complete"
+  scripts/dry_run.sh: |
+    #!/bin/bash
+    source ./utils.sh
+
+    DRY_RUN=1
+    for file in *.log; do
+        if [[ $DRY_RUN -eq 1 ]]; then
+            echo "DRY: would process $file"
+        else
+            process_file "$file"
+        fi
+    done
+  lib/checksum.sh: |
+    #!/bin/bash
+    compute_checksum() {
+        local file=$1
+        local algo=${2:-sha256}
+        case $algo in
+            sha256) sha256sum "$file" | cut -d' ' -f1 ;;
+            md5)    md5sum "$file" | cut -d' ' -f1 ;;
+            *)      echo "Unknown algorithm: $algo" >&2; return 1 ;;
+        esac
+    }
+
+must_include_files:
+  - batch.sh
+  - utils.sh
+
+must_include_content_from:
+  utils.sh:
+    - process_file()
+    - MAX_RETRIES=5
+  batch.sh:
+    - "process_file"
+    - "$MAX_RETRIES"
+
+must_not_include:
+  # --- archive.sh: post-processing ---
+  - ARCHIVE_DIR
+  - "Archived"
+  # --- report.sh: reads logs ---
+  - "report.csv"
+  # --- parallel_batch.sh: HARDEST TRAP, sources utils.sh ---
+  - "All parallel jobs complete"
+  # --- dry_run.sh: sources utils.sh ---
+  - DRY_RUN
+  - "DRY: would process"
+  # --- checksum.sh: indirect dependency ---
+  - compute_checksum
+  - "Unknown algorithm"
+
+must_not_include_files:
+  - scripts/archive.sh
+  - scripts/report.sh
+  - scripts/parallel_batch.sh
+  - scripts/dry_run.sh
+  - lib/checksum.sh
+
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

@@ -1,0 +1,211 @@
+# Scenario: UserFactory gains methods that use User companion object methods —
+# fromJson, admin, anonymous, and the primary apply constructor.
+#
+# Diff: src/services/UserFactory.scala adds createFromJson, createAdmin,
+# getAnonymous, createBatch, createWithRole — all using User companion methods.
+#
+# Reviewer questions:
+#   Q1: "What companion methods are available?" -> src/models/User.scala (UNCHANGED)
+#        shows apply, fromJson, anonymous, admin in object User.
+#   Q2: "Does createBatch use the right constructor?" -> User(_) calls the
+#        single-arg apply from the companion object.
+#
+# Trap files (plausible but no dependency on User or UserFactory):
+#   - src/models/Role.scala: defines a Role enum/sealed trait used alongside users.
+#     Shares "role" vocabulary but UserFactory doesn't import it.
+#   - src/services/AuthService.scala: authentication service. Same "services"
+#     package and deals with user concepts but no UserFactory dependency.
+
+initial:
+  src/models/User.scala: |
+    package models
+
+    case class User(id: String, name: String, role: String)
+
+    object User {
+      def apply(name: String): User =
+        User(java.util.UUID.randomUUID().toString, name, "user")
+
+      def fromJson(json: String): User = User("parsed-id", json, "user")
+
+      val anonymous: User = User("anon", "Anonymous", "guest")
+
+      def admin(name: String): User =
+        User(java.util.UUID.randomUUID().toString, name, "admin")
+    }
+  src/services/UserFactory.scala: |
+    package services
+
+    import models.User
+
+    class UserFactory {
+      def createBasicUser(name: String): User = User(name)
+    }
+  src/models/Role.scala: |
+    package models
+
+    sealed trait Role {
+      def name: String
+      def permissions: Set[String]
+    }
+
+    object Role {
+      case object Admin extends Role {
+        val name = "admin"
+        val permissions = Set("read", "write", "delete", "manage")
+      }
+
+      case object User extends Role {
+        val name = "user"
+        val permissions = Set("read", "write")
+      }
+
+      case object Guest extends Role {
+        val name = "guest"
+        val permissions = Set("read")
+      }
+
+      def fromString(s: String): Option[Role] = s match {
+        case "admin" => Some(Admin)
+        case "user"  => Some(User)
+        case "guest" => Some(Guest)
+        case _       => None
+      }
+    }
+  src/services/AuthService.scala: |
+    package services
+
+    class AuthService {
+      private var tokens: Map[String, String] = Map.empty
+
+      def login(username: String, password: String): Option[String] = {
+        if (password.nonEmpty) {
+          val token = java.util.UUID.randomUUID().toString
+          tokens = tokens + (token -> username)
+          Some(token)
+        } else None
+      }
+
+      def validate(token: String): Option[String] = tokens.get(token)
+
+      def logout(token: String): Unit = {
+        tokens = tokens - token
+      }
+    }
+
+changed:
+  src/models/User.scala: |
+    package models
+
+    case class User(id: String, name: String, role: String)
+
+    object User {
+      def apply(name: String): User =
+        User(java.util.UUID.randomUUID().toString, name, "user")
+
+      def fromJson(json: String): User = User("parsed-id", json, "user")
+
+      val anonymous: User = User("anon", "Anonymous", "guest")
+
+      def admin(name: String): User =
+        User(java.util.UUID.randomUUID().toString, name, "admin")
+    }
+  src/services/UserFactory.scala: |
+    package services
+
+    import models.User
+
+    class UserFactory {
+      def createBasicUser(name: String): User = User(name)
+
+      def createFromJson(json: String): User = User.fromJson(json)
+
+      def createAdmin(name: String): User = User.admin(name)
+
+      def getAnonymous: User = User.anonymous
+
+      def createBatch(names: List[String]): List[User] =
+        names.map(User(_))
+
+      def createWithRole(name: String, role: String): User =
+        User(java.util.UUID.randomUUID().toString, name, role)
+    }
+  src/models/Role.scala: |
+    package models
+
+    sealed trait Role {
+      def name: String
+      def permissions: Set[String]
+    }
+
+    object Role {
+      case object Admin extends Role {
+        val name = "admin"
+        val permissions = Set("read", "write", "delete", "manage")
+      }
+
+      case object User extends Role {
+        val name = "user"
+        val permissions = Set("read", "write")
+      }
+
+      case object Guest extends Role {
+        val name = "guest"
+        val permissions = Set("read")
+      }
+
+      def fromString(s: String): Option[Role] = s match {
+        case "admin" => Some(Admin)
+        case "user"  => Some(User)
+        case "guest" => Some(Guest)
+        case _       => None
+      }
+    }
+  src/services/AuthService.scala: |
+    package services
+
+    class AuthService {
+      private var tokens: Map[String, String] = Map.empty
+
+      def login(username: String, password: String): Option[String] = {
+        if (password.nonEmpty) {
+          val token = java.util.UUID.randomUUID().toString
+          tokens = tokens + (token -> username)
+          Some(token)
+        } else None
+      }
+
+      def validate(token: String): Option[String] = tokens.get(token)
+
+      def logout(token: String): Unit = {
+        tokens = tokens - token
+      }
+    }
+
+must_include_files:
+  # Changed: UserFactory adds companion object method calls
+  - src/services/UserFactory.scala
+  # Unchanged but essential: User companion provides fromJson, admin, anonymous
+  - src/models/User.scala
+must_include_content_from:
+  src/services/UserFactory.scala:
+    - "def createFromJson(json: String): User = User.fromJson(json)"
+    - "def createAdmin(name: String): User = User.admin(name)"
+  src/models/User.scala:
+    - "object User {"
+must_not_include:
+  # Role.scala: models package sibling but not imported by UserFactory
+  - "sealed trait Role"
+  - fromString
+  - permissions
+  # AuthService.scala: services package sibling but no UserFactory dependency
+  - AuthService
+  - validate
+  - logout
+must_not_include_files:
+  - src/models/Role.scala
+  - src/services/AuthService.scala
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

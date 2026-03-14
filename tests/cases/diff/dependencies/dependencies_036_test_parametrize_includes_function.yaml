@@ -1,0 +1,189 @@
+initial:
+  src/calculator.py: |
+    def add(a: int, b: int) -> int:
+        return a + b
+
+    def subtract(a: int, b: int) -> int:
+        return a - b
+
+    def multiply(a: int, b: int) -> int:
+        return a * b
+
+    def divide(a: int, b: int) -> float:
+        if b == 0:
+            raise ValueError("Cannot divide by zero")
+        return a / b
+  tests/test_calculator.py: |
+    import pytest
+    from src.calculator import add
+
+    def test_add_basic():
+        assert add(1, 2) == 3
+
+  # --- Tricky: same import, same parametrize pattern (same-import consumer) ---
+  tests/test_calculator_extended.py: |
+    import pytest
+    from src.calculator import divide
+    GARBAGE_DEP036_EXTTEST_A = "extended_calc_tests"
+    GARBAGE_DEP036_EXTTEST_INIT_B = True
+
+    @pytest.mark.parametrize("a,b,expected", [
+        (10, 2, 5.0),
+        (9, 3, 3.0),
+        (7, 2, 3.5),
+    ])
+    def test_divide_parametrized(a, b, expected):
+        GARBAGE_DEP036_EXTTEST_RUN_C = "running"
+        assert divide(a, b) == expected
+
+  # --- Tricky: different calculator with same function names (name collision) ---
+  src/scientific_calculator.py: |
+    GARBAGE_DEP036_SCICALC_D = "scientific_calculator"
+    GARBAGE_DEP036_SCICALC_INIT_E = True
+
+    def add(a: int, b: int) -> int:
+        GARBAGE_DEP036_SCICALC_ADD_F = "scientific_add"
+        return a + b
+
+    def subtract(a: int, b: int) -> int:
+        return a - b
+
+    def multiply(a: int, b: int) -> int:
+        return a * b
+
+  # --- Tricky: same test directory, similar parametrize structure ---
+  tests/test_string_math.py: |
+    import pytest
+    GARBAGE_DEP036_STRMATH_G = "string_math_tests"
+    GARBAGE_DEP036_STRMATH_INIT_H = True
+
+    def add(a, b):
+        return str(int(a) + int(b))
+
+    @pytest.mark.parametrize("a,b,expected", [
+        ("1", "2", "3"),
+        ("0", "0", "0"),
+    ])
+    def test_string_add_parametrized(a, b, expected):
+        GARBAGE_DEP036_STRMATH_RUN_I = "running"
+        assert add(a, b) == expected
+
+changed:
+  src/calculator.py: |
+    def add(a: int, b: int) -> int:
+        return a + b
+
+    def subtract(a: int, b: int) -> int:
+        return a - b
+
+    def multiply(a: int, b: int) -> int:
+        return a * b
+
+    def divide(a: int, b: int) -> float:
+        if b == 0:
+            raise ValueError("Cannot divide by zero")
+        return a / b
+  tests/test_calculator.py: |
+    import pytest
+    from src.calculator import add, subtract, multiply
+
+    @pytest.mark.parametrize("a,b,expected", [
+        (1, 2, 3),
+        (0, 0, 0),
+        (-1, 1, 0),
+        (100, 200, 300),
+        (-5, -3, -8),
+    ])
+    def test_add_parametrized(a, b, expected):
+        assert add(a, b) == expected
+
+    @pytest.mark.parametrize("a,b,expected", [
+        (5, 3, 2),
+        (0, 0, 0),
+        (-1, -1, 0),
+    ])
+    def test_subtract_parametrized(a, b, expected):
+        assert subtract(a, b) == expected
+
+    def test_multiply_basic():
+        assert multiply(2, 3) == 6
+  tests/test_calculator_extended.py: |
+    import pytest
+    from src.calculator import divide
+    GARBAGE_DEP036_EXTTEST_A = "extended_calc_tests"
+    GARBAGE_DEP036_EXTTEST_INIT_B = True
+
+    @pytest.mark.parametrize("a,b,expected", [
+        (10, 2, 5.0),
+        (9, 3, 3.0),
+        (7, 2, 3.5),
+    ])
+    def test_divide_parametrized(a, b, expected):
+        GARBAGE_DEP036_EXTTEST_RUN_C = "running"
+        assert divide(a, b) == expected
+  src/scientific_calculator.py: |
+    GARBAGE_DEP036_SCICALC_D = "scientific_calculator"
+    GARBAGE_DEP036_SCICALC_INIT_E = True
+
+    def add(a: int, b: int) -> int:
+        GARBAGE_DEP036_SCICALC_ADD_F = "scientific_add"
+        return a + b
+
+    def subtract(a: int, b: int) -> int:
+        return a - b
+
+    def multiply(a: int, b: int) -> int:
+        return a * b
+  tests/test_string_math.py: |
+    import pytest
+    GARBAGE_DEP036_STRMATH_G = "string_math_tests"
+    GARBAGE_DEP036_STRMATH_INIT_H = True
+
+    def add(a, b):
+        return str(int(a) + int(b))
+
+    @pytest.mark.parametrize("a,b,expected", [
+        ("1", "2", "3"),
+        ("0", "0", "0"),
+    ])
+    def test_string_add_parametrized(a, b, expected):
+        GARBAGE_DEP036_STRMATH_RUN_I = "running"
+        assert add(a, b) == expected
+
+# === Assertions ===
+
+must_include_files:
+- tests/test_calculator.py
+- src/calculator.py
+
+must_include_content_from:
+  tests/test_calculator.py:
+    - from src.calculator import add, subtract, multiply
+    - '@pytest.mark.parametrize("a,b,expected", ['
+    - 'def test_add_parametrized(a, b, expected):'
+  src/calculator.py:
+    - 'def add(a: int, b: int) -> int:'
+
+must_not_include:
+# Tricky: same import from src.calculator, same parametrize decorator
+- GARBAGE_DEP036_EXTTEST_A
+- GARBAGE_DEP036_EXTTEST_INIT_B
+- GARBAGE_DEP036_EXTTEST_RUN_C
+# Tricky: same function names add/subtract/multiply (name collision)
+- GARBAGE_DEP036_SCICALC_D
+- GARBAGE_DEP036_SCICALC_INIT_E
+- GARBAGE_DEP036_SCICALC_ADD_F
+# Tricky: same parametrize pattern, same "add" function name
+- GARBAGE_DEP036_STRMATH_G
+- GARBAGE_DEP036_STRMATH_INIT_H
+- GARBAGE_DEP036_STRMATH_RUN_I
+
+must_not_include_files:
+- tests/test_calculator_extended.py
+- src/scientific_calculator.py
+- tests/test_string_math.py
+
+max_fragments: 6
+max_files: 2
+add_garbage_files: false
+skip_garbage_check: true

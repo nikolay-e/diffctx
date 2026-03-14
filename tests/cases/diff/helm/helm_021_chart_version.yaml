@@ -1,0 +1,71 @@
+initial:
+  chart/Chart.yaml: |
+    apiVersion: v2
+    name: myapp
+    description: Web application
+    type: application
+    version: 1.0.0
+  chart/CHANGELOG.md: |
+    # Changelog
+
+    ## 2.0.0
+    - Breaking: Changed API endpoint format
+    - Added new authentication method
+  chart/values.yaml: |
+    replicaCount: 1
+    image:
+      repository: myapp
+      tag: "1.0.0"
+  chart/templates/argo-rollout.yaml: |
+    apiVersion: argoproj.io/v1alpha1
+    kind: Rollout
+    metadata:
+    spec:
+      strategy:
+        canary:
+          steps:
+      selector:
+        matchLabels:
+  chart/docs/versioning.md: |
+    # Versioning Policy
+    ## Release Process
+changed:
+  chart/Chart.yaml: |
+    apiVersion: v2
+    name: myapp
+    description: Web application
+    type: application
+    version: 2.0.0
+    appVersion: "2.0.0"
+  chart/CHANGELOG.md: |
+    # Changelog
+
+    ## 2.0.0
+    - Breaking: Changed API endpoint format
+    - Added new authentication method
+  chart/values.yaml: |
+    replicaCount: 1
+    image:
+      repository: myapp
+      tag: "2.0.0"
+  chart/templates/argo-rollout.yaml: |
+    apiVersion: argoproj.io/v1alpha1
+    kind: Rollout
+    metadata:
+    spec:
+      strategy:
+        canary:
+          steps:
+      selector:
+        matchLabels:
+  chart/docs/versioning.md: |
+    # Versioning Policy
+    ## Release Process
+must_include_files:
+- chart/Chart.yaml
+- chart/values.yaml
+must_include_content:
+- 'version: 2.0.0'
+- 'appVersion: "2.0.0"'
+add_garbage_files: false
+skip_garbage_check: true

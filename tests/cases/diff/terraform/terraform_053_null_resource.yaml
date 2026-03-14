@@ -1,0 +1,114 @@
+# Scenario: Adding a null_resource to run a deployment script triggered by
+#   build version changes and config hash.
+# Reviewer questions:
+#   1. What does the deploy script do? (scripts/deploy.sh)
+#   2. What instance does this depend on? (compute.tf defines aws_instance.web)
+# Traps:
+#   - healthcheck.tf: another null_resource but for health checking (same resource type, different purpose)
+#   - networking/subnet.tf: subnet definition (no relation to deployment)
+
+initial:
+  scripts/deploy.sh: |
+    #!/bin/bash
+    ENV=$1
+    echo "Deploying application to ${ENV}..."
+    aws ecs update-service --cluster main --service app-${ENV} --force-new-deployment
+  main.tf: |
+    variable "build_version" {
+      type = string
+    }
+
+    variable "environment" {
+      type    = string
+      default = "production"
+    }
+  compute.tf: |
+    resource "aws_instance" "web" {
+      ami           = var.ami_id
+      instance_type = "t3.micro"
+
+      tags = {
+        Name    = "web-server"
+        Version = var.build_version
+      }
+    }
+  config.json: |
+    {
+      "app_name": "webapp",
+      "port": 8080,
+      "workers": 4
+    }
+  healthcheck.tf: |
+    resource "null_resource" "healthcheck" {
+      triggers = {
+        endpoint = "https://api.example.com/health"
+      }
+
+      provisioner "local-exec" {
+        command = "curl -f https://api.example.com/health"
+      }
+    }
+  networking/subnet.tf: |
+    resource "aws_subnet" "private" {
+      vpc_id     = aws_vpc.main.id
+      cidr_block = "10.0.1.0/24"
+
+      tags = {
+        Name = "private-subnet"
+      }
+    }
+
+changed:
+  main.tf: |
+    variable "build_version" {
+      type = string
+    }
+
+    variable "environment" {
+      type    = string
+      default = "production"
+    }
+
+    resource "null_resource" "deploy" {
+      triggers = {
+        build_version = var.build_version
+        config_hash   = md5(file("config.json"))
+      }
+
+      provisioner "local-exec" {
+        command = "./scripts/deploy.sh ${var.environment}"
+      }
+
+      depends_on = [aws_instance.web]
+    }
+
+must_include_files:
+  - main.tf
+  - scripts/deploy.sh
+  - compute.tf
+
+must_include_content_from:
+  main.tf:
+    - resource "null_resource" "deploy" {
+    - build_version = var.build_version
+    - config_hash   = md5(file("config.json"))
+    - depends_on = [aws_instance.web]
+  scripts/deploy.sh:
+    - Deploying application
+  compute.tf:
+    - resource "aws_instance" "web" {
+
+must_not_include:
+  # Healthcheck null_resource - same resource type but for health monitoring, not deployment
+  - api.example.com/health
+  # Subnet - networking infrastructure unrelated to deployment
+  - 10.0.1.0/24
+
+must_not_include_files:
+  - healthcheck.tf
+  - networking/subnet.tf
+
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

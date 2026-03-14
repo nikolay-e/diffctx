@@ -1,0 +1,127 @@
+# Scenario: UserService adds Codable encode/decode methods that depend on User's Codable conformance
+# Changed: UserService.swift implements encode(user:) and decode(data:) using JSONEncoder/JSONDecoder
+# Reviewer questions: Should encoding errors bubble up or be caught? Is User.self the right decode target?
+# Trap 1: LoggerService.swift — another service class in the project, shares "service" naming but no dep
+# Trap 2: DateFormatHelper.swift — uses JSONEncoder/Foundation patterns, overlapping API but unrelated
+initial:
+  User.swift: |
+    struct User: Codable, Equatable {
+        let id: String
+        let name: String
+        let email: String
+    }
+  UserService.swift: |
+    class UserService {}
+  LoggerService.swift: |
+    import Foundation
+
+    class LoggerService {
+        enum Level: String {
+            case debug, info, warning, error
+        }
+
+        private let dateFormatter: DateFormatter
+
+        init() {
+            dateFormatter = DateFormatter()
+            dateFormatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        }
+
+        func log(_ message: String, level: Level = .info) {
+            let timestamp = dateFormatter.string(from: Date())
+            print("[\(timestamp)] [\(level.rawValue.uppercased())] \(message)")
+        }
+    }
+  DateFormatHelper.swift: |
+    import Foundation
+
+    struct DateFormatHelper {
+        static let iso8601: DateFormatter = {
+            let formatter = DateFormatter()
+            formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ssZ"
+            formatter.locale = Locale(identifier: "en_US_POSIX")
+            return formatter
+        }()
+
+        static func format(_ date: Date, style: DateFormatter.Style = .medium) -> String {
+            let formatter = DateFormatter()
+            formatter.dateStyle = style
+            return formatter.string(from: date)
+        }
+    }
+changed:
+  User.swift: |
+    struct User: Codable, Equatable {
+        let id: String
+        let name: String
+        let email: String
+    }
+  UserService.swift: |
+    import Foundation
+
+    class UserService {
+        func encode(user: User) throws -> Data {
+            let encoder = JSONEncoder()
+            return try encoder.encode(user)
+        }
+
+        func decode(data: Data) throws -> User {
+            let decoder = JSONDecoder()
+            return try decoder.decode(User.self, from: data)
+        }
+    }
+  LoggerService.swift: |
+    import Foundation
+
+    class LoggerService {
+        enum Level: String {
+            case debug, info, warning, error
+        }
+
+        private let dateFormatter: DateFormatter
+
+        init() {
+            dateFormatter = DateFormatter()
+            dateFormatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        }
+
+        func log(_ message: String, level: Level = .info) {
+            let timestamp = dateFormatter.string(from: Date())
+            print("[\(timestamp)] [\(level.rawValue.uppercased())] \(message)")
+        }
+    }
+  DateFormatHelper.swift: |
+    import Foundation
+
+    struct DateFormatHelper {
+        static let iso8601: DateFormatter = {
+            let formatter = DateFormatter()
+            formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ssZ"
+            formatter.locale = Locale(identifier: "en_US_POSIX")
+            return formatter
+        }()
+
+        static func format(_ date: Date, style: DateFormatter.Style = .medium) -> String {
+            let formatter = DateFormatter()
+            formatter.dateStyle = style
+            return formatter.string(from: date)
+        }
+    }
+must_include_files:
+- UserService.swift
+must_include_content_from:
+  UserService.swift:
+  - 'func encode(user: User) throws -> Data'
+  - 'try decoder.decode(User.self, from: data)'
+must_not_include:
+- LoggerService
+- DateFormatHelper
+- iso8601
+- dateFormatter
+must_not_include_files:
+- LoggerService.swift
+- DateFormatHelper.swift
+add_garbage_files: false
+skip_garbage_check: true
+max_fragments: 8
+max_files: 4

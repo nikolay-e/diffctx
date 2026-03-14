@@ -1,0 +1,98 @@
+# Scenario: Upgrading an RDS instance - adding engine version, scaling up instance
+#   class and storage.
+# Reviewer questions:
+#   1. What application connects to this database? (src/db.py connects via endpoint)
+#   2. What parameter group governs the DB config? (parameters.tf)
+# Traps:
+#   - replicas/read_replica.tf: RDS read replica (same resource type, different role)
+#   - monitoring/alarms.tf: CloudWatch alarms for RDS (mentions RDS metrics but doesn't affect config)
+
+initial:
+  rds.tf: |
+    resource "aws_db_instance" "main" {
+      identifier        = "mydb"
+      engine            = "postgres"
+      instance_class    = "db.t3.micro"
+      allocated_storage = 20
+      storage_encrypted = true
+      username          = "admin"
+      password          = var.db_password
+    }
+  src/db.py: |
+    import psycopg2
+
+    def connect():
+        return psycopg2.connect(host="mydb.example.com", database="mydb")
+  parameters.tf: |
+    resource "aws_db_parameter_group" "main" {
+      name   = "mydb-params"
+      family = "postgres15"
+
+      parameter {
+        name  = "log_connections"
+        value = "1"
+      }
+
+      parameter {
+        name  = "log_disconnections"
+        value = "1"
+      }
+    }
+  replicas/read_replica.tf: |
+    resource "aws_db_instance" "read_replica" {
+      identifier          = "mydb-replica"
+      replicate_source_db = aws_db_instance.main.identifier
+      instance_class      = "db.t3.micro"
+    }
+  monitoring/alarms.tf: |
+    resource "aws_cloudwatch_metric_alarm" "db_cpu" {
+      alarm_name          = "rds-high-cpu"
+      comparison_operator = "GreaterThanThreshold"
+      evaluation_periods  = 2
+      metric_name         = "CPUUtilization"
+      namespace           = "AWS/RDS"
+      period              = 300
+      statistic           = "Average"
+      threshold           = 80
+    }
+
+changed:
+  rds.tf: |
+    resource "aws_db_instance" "main" {
+      identifier        = "mydb"
+      engine            = "postgres"
+      engine_version    = "15.4"
+      instance_class    = "db.t3.medium"
+      allocated_storage = 50
+      storage_encrypted = true
+      username          = "admin"
+      password          = var.db_password
+    }
+
+must_include_files:
+  - rds.tf
+  - src/db.py
+
+must_include_content_from:
+  rds.tf:
+    - engine_version    = "15.4"
+    - instance_class    = "db.t3.medium"
+    - allocated_storage = 50
+  src/db.py:
+    - psycopg2.connect
+
+must_not_include:
+  # Read replica - same resource type but a dependent replica, not the primary being changed
+  - mydb-replica
+  - replicate_source_db
+  # CloudWatch alarms - monitors RDS metrics but doesn't affect DB config changes
+  - rds-high-cpu
+
+must_not_include_files:
+  - replicas/read_replica.tf
+  - monitoring/alarms.tf
+
+max_fragments: 4
+max_files: 2
+add_garbage_files: false
+skip_garbage_check: true

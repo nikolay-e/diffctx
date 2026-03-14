@@ -1,0 +1,146 @@
+# Test 031: Module-level DEBUG changes from True to False
+#           — reviewer needs functions that reference DEBUG
+#
+# Scenario: settings.py has DEBUG = True changed to DEBUG = False. Multiple
+# functions reference module-level variables: is_debug() uses DEBUG,
+# get_log_level() uses LOG_LEVEL, get_db_connection() uses DATABASE_URL,
+# configure_logging() uses LOG_LEVEL.
+#
+# Reviewer questions:
+#   Q1: "Which functions are affected by DEBUG = False?"
+#       -> is_debug() directly returns DEBUG.
+#   Q2: "Are LOG_LEVEL and DATABASE_URL functions affected?"
+#       -> No, those variables didn't change.
+#
+# Trap files (plausible but unrelated):
+#   - config.py: similar module-level variables (DEBUG, LOG_LEVEL) but
+#     for a different application module.
+#   - env_loader.py: loads environment variables including DEBUG from
+#     .env files but doesn't import from settings.py.
+
+initial:
+  settings.py: |
+    DEBUG = True
+    LOG_LEVEL = "INFO"
+    DATABASE_URL = "sqlite:///app.db"
+
+    def get_log_level():
+        return LOG_LEVEL
+
+    def is_debug():
+        return DEBUG
+
+    def get_db_connection():
+        from sqlalchemy import create_engine
+        return create_engine(DATABASE_URL)
+
+    def configure_logging():
+        import logging
+        level = getattr(logging, LOG_LEVEL)
+        logging.basicConfig(level=level)
+  config.py: |
+    DEBUG = False
+    LOG_LEVEL = "WARNING"
+    SECRET_KEY = "changeme"
+
+    def get_config():
+        return {
+            'debug': DEBUG,
+            'log_level': LOG_LEVEL,
+            'secret': SECRET_KEY,
+        }
+
+    def is_production():
+        return not DEBUG
+  env_loader.py: |
+    import os
+
+    def load_env(path='.env'):
+        if not os.path.exists(path):
+            return {}
+        result = {}
+        with open(path) as f:
+            for line in f:
+                key, _, value = line.strip().partition('=')
+                result[key] = value
+        return result
+
+    def get_debug_flag():
+        return os.getenv('DEBUG', 'false').lower() == 'true'
+
+changed:
+  settings.py: |
+    DEBUG = False
+    LOG_LEVEL = "INFO"
+    DATABASE_URL = "sqlite:///app.db"
+
+    def get_log_level():
+        return LOG_LEVEL
+
+    def is_debug():
+        return DEBUG
+
+    def get_db_connection():
+        from sqlalchemy import create_engine
+        return create_engine(DATABASE_URL)
+
+    def configure_logging():
+        import logging
+        level = getattr(logging, LOG_LEVEL)
+        logging.basicConfig(level=level)
+  config.py: |
+    DEBUG = False
+    LOG_LEVEL = "WARNING"
+    SECRET_KEY = "changeme"
+
+    def get_config():
+        return {
+            'debug': DEBUG,
+            'log_level': LOG_LEVEL,
+            'secret': SECRET_KEY,
+        }
+
+    def is_production():
+        return not DEBUG
+  env_loader.py: |
+    import os
+
+    def load_env(path='.env'):
+        if not os.path.exists(path):
+            return {}
+        result = {}
+        with open(path) as f:
+            for line in f:
+                key, _, value = line.strip().partition('=')
+                result[key] = value
+        return result
+
+    def get_debug_flag():
+        return os.getenv('DEBUG', 'false').lower() == 'true'
+
+must_include_files:
+  - settings.py
+
+must_include_content_from:
+  settings.py:
+    - "DEBUG = False"
+    - "def is_debug():"
+
+must_not_include:
+  # --- config.py: also has DEBUG variable but different module ---
+  - "SECRET_KEY"
+  - "is_production"
+  - "get_config"
+  # --- env_loader.py: loads DEBUG from env but doesn't use settings.py ---
+  - "load_env"
+  - "get_debug_flag"
+  - "os.getenv"
+
+must_not_include_files:
+  - config.py
+  - env_loader.py
+
+max_fragments: 4
+max_files: 1
+add_garbage_files: false
+skip_garbage_check: true

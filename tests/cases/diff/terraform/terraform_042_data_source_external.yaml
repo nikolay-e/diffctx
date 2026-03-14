@@ -1,0 +1,189 @@
+# Scenario: Replacing a hardcoded AMI with an external data source that
+#   runs a shell script to fetch the latest AMI dynamically.
+#
+# Reviewer questions:
+#   Q1: "What does the get_ami.sh script return?"
+#       -> scripts/get_ami.sh returns JSON with ami_id key. The diff
+#         references .result.ami_id which must match the script output.
+#   Q2: "What format does the external program output?"
+#       -> scripts/get_ami.sh produces {"ami_id": "..."} JSON.
+#   Q3: "What other resources depend on this AMI?"
+#       -> asg.tf (UNCHANGED) has a launch template using the same AMI.
+#         If the data source is used, the ASG should reference it too.
+#
+# Not needed:
+#   - networking/dns_lookup.tf: Also uses data "external" but for DNS.
+#     HARD TRAP: same data source type (external), same program pattern.
+#     But resolves DNS records, not AMIs.
+#
+#   - scripts/get_certificate.sh: Another shell script returning JSON.
+#     HARD TRAP: same script pattern, same JSON output format. But
+#     fetches certificate ARNs, not AMI IDs.
+#
+#   - storage/lifecycle.tf: S3 lifecycle rules. Unrelated to AMI.
+#
+#   - ci/build_ami.sh: Script that builds AMIs with Packer. Contains
+#     "ami" and AWS CLI commands. HARDEST TRAP: same AMI domain, same
+#     AWS CLI usage. But builds AMIs, doesn't look them up.
+
+initial:
+  scripts/get_ami.sh: |
+    #!/bin/bash
+    REGION="${1:-us-east-1}"
+    AMI_ID=$(aws ec2 describe-images \
+      --owners amazon \
+      --filters "Name=name,Values=amzn2-ami-hvm-*" \
+      --query "Images | sort_by(@, &CreationDate) | [-1].ImageId" \
+      --output text --region "$REGION")
+    echo "{\"ami_id\": \"${AMI_ID}\"}"
+  main.tf: |
+    resource "aws_instance" "web" {
+      ami           = "ami-0abcdef1234567890"
+      instance_type = "t3.micro"
+      key_name      = var.key_name
+
+      tags = {
+        Name = "web-server"
+      }
+    }
+  asg.tf: |
+    resource "aws_launch_template" "web_fleet" {
+      name_prefix   = "web-fleet-"
+      image_id      = "ami-0abcdef1234567890"
+      instance_type = "t3.small"
+      key_name      = var.key_name
+
+      tag_specifications {
+        resource_type = "instance"
+        tags = {
+          Name = "web-fleet-instance"
+        }
+      }
+    }
+
+    resource "aws_autoscaling_group" "web" {
+      name                = "web-asg"
+      min_size            = 1
+      max_size            = 5
+      desired_capacity    = 2
+      vpc_zone_identifier = var.subnet_ids
+
+      launch_template {
+        id      = aws_launch_template.web_fleet.id
+        version = "$Latest"
+      }
+    }
+  networking/dns_lookup.tf: |
+    data "external" "dns_resolver" {
+      program = ["${path.module}/scripts/resolve_dns.sh"]
+
+      query = {
+        domain = "api.internal.example.com"
+      }
+    }
+
+    resource "aws_route53_record" "resolved" {
+      name    = "app.internal"
+      type    = "A"
+      records = [data.external.dns_resolver.result.ip]
+      zone_id = aws_route53_zone.internal.zone_id
+      ttl     = 300
+    }
+  scripts/get_certificate.sh: |
+    #!/bin/bash
+    DOMAIN="${1:-example.com}"
+    CERT_ARN=$(aws acm list-certificates \
+      --query "CertificateSummaryList[?DomainName=='${DOMAIN}'].CertificateArn | [0]" \
+      --output text)
+    echo "{\"certificate_arn\": \"${CERT_ARN}\"}"
+  storage/lifecycle.tf: |
+    resource "aws_s3_bucket_lifecycle_configuration" "archive" {
+      bucket = aws_s3_bucket.data.id
+
+      rule {
+        id     = "archive-rule"
+        status = "Enabled"
+
+        transition {
+          days          = 90
+          storage_class = "GLACIER"
+        }
+
+        expiration {
+          days = 365
+        }
+      }
+    }
+  ci/build_ami.sh: |
+    #!/bin/bash
+    set -euo pipefail
+    echo "Building AMI with Packer..."
+    packer build \
+      -var "region=us-east-1" \
+      -var "source_ami=$(aws ec2 describe-images \
+        --owners amazon \
+        --filters 'Name=name,Values=amzn2-ami-hvm-*' \
+        --query 'Images | sort_by(@, &CreationDate) | [-1].ImageId' \
+        --output text)" \
+      template.pkr.hcl
+    echo "AMI build complete"
+
+changed:
+  main.tf: |
+    data "external" "ami" {
+      program = ["${path.module}/scripts/get_ami.sh"]
+    }
+
+    resource "aws_instance" "web" {
+      ami           = data.external.ami.result.ami_id
+      instance_type = "t3.micro"
+      key_name      = var.key_name
+
+      tags = {
+        Name = "web-server"
+      }
+    }
+
+# scripts/get_ami.sh is unchanged but the reviewer needs to see the script
+# body to understand what the external data source returns and verify the
+# .result.ami_id reference matches the script's JSON output
+must_include_files:
+  # Q1+Q2: Script that the data source invokes
+  - scripts/get_ami.sh
+  # Q3: Launch template using same hardcoded AMI that should be updated
+  - asg.tf
+
+must_include_content_from:
+  scripts/get_ami.sh:
+    - ami_id
+    - amzn2-ami-hvm
+  asg.tf:
+    - image_id      = "ami-0abcdef1234567890"
+    - resource "aws_launch_template" "web_fleet"
+
+must_not_include:
+  # --- dns_lookup.tf: same data "external" but for DNS ---
+  - resolve_dns.sh
+  - dns_resolver
+  - app.internal
+  # --- get_certificate.sh: same script pattern but for certs ---
+  - certificate_arn
+  - acm list-certificates
+  # --- storage/lifecycle.tf: S3 lifecycle, unrelated ---
+  - GLACIER
+  - archive-rule
+  # --- ci/build_ami.sh: builds AMIs with same AWS CLI but is CI ---
+  - packer build
+  - template.pkr.hcl
+  - "AMI build complete"
+
+must_not_include_files:
+  - networking/dns_lookup.tf
+  - scripts/get_certificate.sh
+  - storage/lifecycle.tf
+  - ci/build_ami.sh
+
+max_fragments: 5
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

@@ -1,0 +1,210 @@
+# Reviewer sees: api.ts changes fetchData() — return type gains metadata field,
+# adds error handling (.then with res.ok check), and enriches response with timestamp.
+#
+# Reviewer questions:
+#   Q1: "Who calls fetchData() — will callers break with the new return shape?"
+#       -> src/consumer.ts imports fetchData and destructures data.data.
+#          The return type changed from { data: string } to
+#          { data: string; metadata: { timestamp: number } }. The consumer
+#          only accesses data.data, so it still works. But the reviewer needs
+#          to verify this — without seeing the call site, you can't judge impact.
+#
+# Not needed:
+#   - src/utils/retry.ts: generic retry logic with backoff. No import
+#     relationship with api.ts, different error-recovery mechanism.
+#   - src/utils/cache.ts: response caching layer. Caches by URL key,
+#     doesn't interact with fetchData's promise chain or return shape.
+
+initial:
+  src/api.ts: |
+    export interface ApiResponse<T> {
+        data: T;
+        status: number;
+    }
+
+    export function fetchData(): Promise<{ data: string }> {
+        return fetch('/api/data').then(res => res.json());
+    }
+
+    export function fetchConfig(): Promise<Record<string, string>> {
+        return fetch('/api/config').then(res => res.json());
+    }
+
+    export function handleApiError(error: Error): never {
+        console.error('API Error:', error.message);
+        throw error;
+    }
+  src/consumer.ts: |
+    import { fetchData, fetchConfig } from './api';
+
+    export async function loadDashboard() {
+        const data = await fetchData();
+        const config = await fetchConfig();
+        return { data: data.data, config };
+    }
+  # --- Not needed: generic retry, no import of api.ts ---
+  src/utils/retry.ts: |
+    interface RetryOptions {
+        maxAttempts: number;
+        delayMs: number;
+        backoffFactor: number;
+    }
+
+    const DEFAULT_RETRY: RetryOptions = { maxAttempts: 3, delayMs: 500, backoffFactor: 2 };
+
+    export async function withRetry<T>(
+        fn: () => Promise<T>,
+        options: RetryOptions = DEFAULT_RETRY
+    ): Promise<T> {
+        let lastError: Error | undefined;
+        for (let attempt = 0; attempt < options.maxAttempts; attempt++) {
+            try {
+                return await fn();
+            } catch (err) {
+                lastError = err as Error;
+                await new Promise(r => setTimeout(r, options.delayMs * Math.pow(options.backoffFactor, attempt)));
+            }
+        }
+        throw lastError;
+    }
+  # --- Not needed: URL-keyed cache, no relationship with fetchData ---
+  src/utils/cache.ts: |
+    interface CacheEntry<T> {
+        value: T;
+        expiresAt: number;
+    }
+
+    export class ResponseCache {
+        private store = new Map<string, CacheEntry<unknown>>();
+
+        get<T>(key: string): T | undefined {
+            const entry = this.store.get(key);
+            if (!entry || entry.expiresAt < Date.now()) {
+                this.store.delete(key);
+                return undefined;
+            }
+            return entry.value as T;
+        }
+
+        set<T>(key: string, value: T, ttlMs: number): void {
+            this.store.set(key, { value, expiresAt: Date.now() + ttlMs });
+        }
+
+        clear(): void {
+            this.store.clear();
+        }
+    }
+
+changed:
+  src/api.ts: |
+    export interface ApiResponse<T> {
+        data: T;
+        status: number;
+    }
+
+    export function fetchData(): Promise<{ data: string; metadata: { timestamp: number } }> {
+        return fetch('/api/data')
+            .then(res => {
+                if (!res.ok) {
+                    throw new Error(`HTTP ${res.status}`);
+                }
+                return res.json();
+            })
+            .then(data => ({
+                ...data,
+                metadata: { timestamp: Date.now() },
+            }));
+    }
+
+    export function fetchConfig(): Promise<Record<string, string>> {
+        return fetch('/api/config').then(res => res.json());
+    }
+
+    export function handleApiError(error: Error): never {
+        console.error('API Error:', error.message);
+        throw error;
+    }
+  # Unchanged
+  src/consumer.ts: |
+    import { fetchData, fetchConfig } from './api';
+
+    export async function loadDashboard() {
+        const data = await fetchData();
+        const config = await fetchConfig();
+        return { data: data.data, config };
+    }
+  src/utils/retry.ts: |
+    interface RetryOptions {
+        maxAttempts: number;
+        delayMs: number;
+        backoffFactor: number;
+    }
+
+    const DEFAULT_RETRY: RetryOptions = { maxAttempts: 3, delayMs: 500, backoffFactor: 2 };
+
+    export async function withRetry<T>(
+        fn: () => Promise<T>,
+        options: RetryOptions = DEFAULT_RETRY
+    ): Promise<T> {
+        let lastError: Error | undefined;
+        for (let attempt = 0; attempt < options.maxAttempts; attempt++) {
+            try {
+                return await fn();
+            } catch (err) {
+                lastError = err as Error;
+                await new Promise(r => setTimeout(r, options.delayMs * Math.pow(options.backoffFactor, attempt)));
+            }
+        }
+        throw lastError;
+    }
+  src/utils/cache.ts: |
+    interface CacheEntry<T> {
+        value: T;
+        expiresAt: number;
+    }
+
+    export class ResponseCache {
+        private store = new Map<string, CacheEntry<unknown>>();
+
+        get<T>(key: string): T | undefined {
+            const entry = this.store.get(key);
+            if (!entry || entry.expiresAt < Date.now()) {
+                this.store.delete(key);
+                return undefined;
+            }
+            return entry.value as T;
+        }
+
+        set<T>(key: string, value: T, ttlMs: number): void {
+            this.store.set(key, { value, expiresAt: Date.now() + ttlMs });
+        }
+
+        clear(): void {
+            this.store.clear();
+        }
+    }
+
+must_include_files:
+  # Q1: "Does this caller break?" — consumer imports fetchData.
+  # Reviewer needs to see the import edge to verify impact.
+  - src/consumer.ts
+must_include_content_from:
+  src/consumer.ts:
+    - "loadDashboard"
+    - "fetchData"
+must_not_include:
+  # retry.ts: generic retry utility, no import of api.ts
+  - withRetry
+  - RetryOptions
+  - backoffFactor
+  # cache.ts: URL-keyed caching, unrelated to fetchData's promise chain
+  - ResponseCache
+  - CacheEntry
+  - ttlMs
+must_not_include_files:
+  - src/utils/retry.ts
+  - src/utils/cache.ts
+max_fragments: 10
+max_files: 4
+add_garbage_files: false
+skip_garbage_check: true

@@ -8,6 +8,8 @@ from pathlib import Path
 from ...types import Fragment, FragmentId
 from ..base import EdgeBuilder, EdgeDict, FragmentIndex, discover_files_by_refs
 
+logger = logging.getLogger(__name__)
+
 _GHA_RUN_RE = re.compile(r"^\s{0,20}-?\s{0,5}run:\s{0,5}[|>]?\s{0,5}([^\n]{1,500})", re.MULTILINE)
 
 _GITLAB_SCRIPT_RE = re.compile(
@@ -287,11 +289,11 @@ class CICDEdgeBuilder(EdgeBuilder):
             if any(cmd in content.lower() for cmd in ["npm", "yarn", "pnpm"]):
                 local_refs.add("package.json")
 
-            logging.debug("CICD refs for %s: %s", ci.name, local_refs)
+            logger.debug("CICD refs for %s: %s", ci.name, local_refs)
             refs.update(local_refs)
 
         discovered = discover_files_by_refs(refs, changed_files, all_candidate_files, repo_root)
-        logging.debug("CICD discovered for %s: %s", [c.name for c in ci_files], [d.name for d in discovered])
+        logger.debug("CICD discovered for %s: %s", [c.name for c in ci_files], [d.name for d in discovered])
         return discovered
 
     def build(self, fragments: list[Fragment], repo_root: Path | None = None) -> EdgeDict:

@@ -1,0 +1,280 @@
+# Scenario: robust.sh hardens with set -euo pipefail and calls safety helpers.
+# Sources safety.sh for die() and trap_errors().
+#
+# Reviewer questions:
+#   Q1: "What does die() do?"
+#       -> safety.sh: prints to stderr and exits with code 1.
+#   Q2: "What does trap_errors install?"
+#       -> safety.sh: trap ... ERR handler printing line and exit code.
+#
+# Not needed:
+#   - debug.sh: enables set -x tracing. Related "set options" but not sourced.
+#   - signals.sh: handles SIGTERM/SIGINT. Related signals but different types.
+#   - scripts/strict_wrapper.sh: HARDEST TRAP — sources safety.sh, uses
+#     set -euo pipefail, calls die() and trap_errors(). Identical pattern.
+#     But a wrapper for other scripts, not the function definitions.
+#   - lib/logging.sh: logging utilities with similar warn/error pattern.
+#     Related error-handling domain but not sourced by robust.sh.
+#   - scripts/lint_strict.sh: shellcheck with strict mode checks.
+#     Related "strictness" concept but code quality tool.
+
+initial:
+  lib/safety.sh: |
+    #!/bin/bash
+
+    die() {
+        echo "FATAL: $1" >&2
+        exit 1
+    }
+
+    warn() {
+        echo "WARN: $1" >&2
+    }
+
+    trap_errors() {
+        local handler=${1:-_default_error_handler}
+        trap "$handler" ERR
+    }
+
+    _default_error_handler() {
+        local exit_code=$?
+        local line_no=${BASH_LINENO[0]}
+        echo "Error on line $line_no (exit code $exit_code)" >&2
+    }
+  robust.sh: |
+    #!/bin/bash
+    set -e
+    source ./lib/safety.sh
+
+    readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+    echo "Script directory: $SCRIPT_DIR"
+    echo "Running..."
+  debug.sh: |
+    #!/bin/bash
+
+    enable_debug() {
+        export PS4='+(${BASH_SOURCE}:${LINENO}): ${FUNCNAME[0]:+${FUNCNAME[0]}(): }'
+        set -x
+    }
+
+    disable_debug() {
+        set +x
+    }
+
+    log_debug() {
+        if [[ "${DEBUG:-0}" == "1" ]]; then
+            echo "DEBUG: $*" >&2
+        fi
+    }
+  signals.sh: |
+    #!/bin/bash
+
+    CLEANUP_FUNCTIONS=()
+
+    register_cleanup() {
+        CLEANUP_FUNCTIONS+=("$1")
+    }
+
+    handle_sigterm() {
+        echo "Received SIGTERM, cleaning up..."
+        for fn in "${CLEANUP_FUNCTIONS[@]}"; do
+            "$fn" 2>/dev/null
+        done
+        exit 143
+    }
+
+    trap handle_sigterm SIGTERM SIGINT
+  scripts/strict_wrapper.sh: |
+    #!/bin/bash
+    set -euo pipefail
+    source ./lib/safety.sh
+
+    trap_errors
+
+    SCRIPT=$1
+    shift
+    if [[ -z "$SCRIPT" ]]; then
+        die "Usage: $0 <script> [args...]"
+    fi
+    if [[ ! -x "$SCRIPT" ]]; then
+        die "Script not executable: $SCRIPT"
+    fi
+    exec "$SCRIPT" "$@"
+  lib/logging.sh: |
+    #!/bin/bash
+    LOG_FILE="${LOG_FILE:-/var/log/app.log}"
+
+    log_info() {
+        echo "[INFO] $(date +%T) $1" | tee -a "$LOG_FILE"
+    }
+
+    log_warn() {
+        echo "[WARN] $(date +%T) $1" | tee -a "$LOG_FILE" >&2
+    }
+
+    log_error() {
+        echo "[ERROR] $(date +%T) $1" | tee -a "$LOG_FILE" >&2
+    }
+  scripts/lint_strict.sh: |
+    #!/bin/bash
+    shellcheck -S error robust.sh
+    shellcheck -S warning lib/safety.sh
+    echo "Strict lint complete: $?"
+
+changed:
+  lib/safety.sh: |
+    #!/bin/bash
+
+    die() {
+        echo "FATAL: $1" >&2
+        exit 1
+    }
+
+    warn() {
+        echo "WARN: $1" >&2
+    }
+
+    trap_errors() {
+        local handler=${1:-_default_error_handler}
+        trap "$handler" ERR
+    }
+
+    _default_error_handler() {
+        local exit_code=$?
+        local line_no=${BASH_LINENO[0]}
+        echo "Error on line $line_no (exit code $exit_code)" >&2
+    }
+  robust.sh: |
+    #!/bin/bash
+    set -euo pipefail
+    source ./lib/safety.sh
+
+    trap_errors
+
+    readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    readonly CONFIG_FILE="${SCRIPT_DIR}/config.yaml"
+
+    if [[ ! -f "$CONFIG_FILE" ]]; then
+        die "Config file not found: $CONFIG_FILE"
+    fi
+
+    echo "Script directory: $SCRIPT_DIR"
+    echo "Config: $CONFIG_FILE"
+    echo "Running..."
+  debug.sh: |
+    #!/bin/bash
+
+    enable_debug() {
+        export PS4='+(${BASH_SOURCE}:${LINENO}): ${FUNCNAME[0]:+${FUNCNAME[0]}(): }'
+        set -x
+    }
+
+    disable_debug() {
+        set +x
+    }
+
+    log_debug() {
+        if [[ "${DEBUG:-0}" == "1" ]]; then
+            echo "DEBUG: $*" >&2
+        fi
+    }
+  signals.sh: |
+    #!/bin/bash
+
+    CLEANUP_FUNCTIONS=()
+
+    register_cleanup() {
+        CLEANUP_FUNCTIONS+=("$1")
+    }
+
+    handle_sigterm() {
+        echo "Received SIGTERM, cleaning up..."
+        for fn in "${CLEANUP_FUNCTIONS[@]}"; do
+            "$fn" 2>/dev/null
+        done
+        exit 143
+    }
+
+    trap handle_sigterm SIGTERM SIGINT
+  scripts/strict_wrapper.sh: |
+    #!/bin/bash
+    set -euo pipefail
+    source ./lib/safety.sh
+
+    trap_errors
+
+    SCRIPT=$1
+    shift
+    if [[ -z "$SCRIPT" ]]; then
+        die "Usage: $0 <script> [args...]"
+    fi
+    if [[ ! -x "$SCRIPT" ]]; then
+        die "Script not executable: $SCRIPT"
+    fi
+    exec "$SCRIPT" "$@"
+  lib/logging.sh: |
+    #!/bin/bash
+    LOG_FILE="${LOG_FILE:-/var/log/app.log}"
+
+    log_info() {
+        echo "[INFO] $(date +%T) $1" | tee -a "$LOG_FILE"
+    }
+
+    log_warn() {
+        echo "[WARN] $(date +%T) $1" | tee -a "$LOG_FILE" >&2
+    }
+
+    log_error() {
+        echo "[ERROR] $(date +%T) $1" | tee -a "$LOG_FILE" >&2
+    }
+  scripts/lint_strict.sh: |
+    #!/bin/bash
+    shellcheck -S error robust.sh
+    shellcheck -S warning lib/safety.sh
+    echo "Strict lint complete: $?"
+
+must_include_files:
+  - lib/safety.sh
+  - robust.sh
+
+must_include_content_from:
+  lib/safety.sh:
+    - "die()"
+    - "trap_errors()"
+    - "_default_error_handler"
+  robust.sh:
+    - "trap_errors"
+    - "die"
+    - "set -euo pipefail"
+
+must_not_include:
+  # --- debug.sh: set -x tracing ---
+  - enable_debug
+  - disable_debug
+  - log_debug
+  # --- signals.sh: SIGTERM handling ---
+  - handle_sigterm
+  - register_cleanup
+  - CLEANUP_FUNCTIONS
+  # --- strict_wrapper.sh: HARDEST TRAP, uses die + trap_errors ---
+  - "Script not executable"
+  - 'exec "$SCRIPT"'
+  # --- logging.sh: related log/warn/error pattern ---
+  - log_info
+  - log_warn
+  # --- lint_strict.sh: code quality tool ---
+  - "shellcheck -S"
+  - "Strict lint complete"
+
+must_not_include_files:
+  - debug.sh
+  - signals.sh
+  - scripts/strict_wrapper.sh
+  - lib/logging.sh
+  - scripts/lint_strict.sh
+
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

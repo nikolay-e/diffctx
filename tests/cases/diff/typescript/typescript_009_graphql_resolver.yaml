@@ -1,0 +1,169 @@
+initial:
+  src/graphql/types.ts: |
+    export interface GraphQLContext {
+      userId?: string;
+      userRole?: 'admin' | 'user' | 'guest';
+      dataSources: DataSources;
+    }
+
+    export interface DataSources {
+      postAPI: PostAPI;
+      userAPI: UserAPI;
+    }
+
+    export interface UserAPI {
+      getById(id: string): Promise<User | null>;
+    }
+
+    export interface PostAPI {
+      getById(id: string): Promise<Post | null>;
+      getByAuthorId(authorId: string): Promise<Post[]>;
+      create(input: CreatePostInput): Promise<Post>;
+      delete(id: string): Promise<boolean>;
+    }
+
+    export interface User {
+      id: string;
+      username: string;
+      email: string;
+      displayName: string;
+    }
+
+    export interface Post {
+      id: string;
+      authorId: string;
+      title: string;
+      content: string;
+      publishedAt?: Date;
+      createdAt: Date;
+    }
+
+    export interface CreatePostInput {
+      title: string;
+      content: string;
+      publish?: boolean;
+    }
+  src/graphql/resolvers/postResolvers.ts: |
+    console.log('placeholder');
+  vendor/search-client/index.ts: |2
+
+    }
+  docs/media/processing.md: |
+    # Media Processing
+changed:
+  src/graphql/types.ts: |
+    export interface GraphQLContext {
+      userId?: string;
+      userRole?: 'admin' | 'user' | 'guest';
+      dataSources: DataSources;
+    }
+
+    export interface DataSources {
+      postAPI: PostAPI;
+      userAPI: UserAPI;
+    }
+
+    export interface UserAPI {
+      getById(id: string): Promise<User | null>;
+    }
+
+    export interface PostAPI {
+      getById(id: string): Promise<Post | null>;
+      getByAuthorId(authorId: string): Promise<Post[]>;
+      create(input: CreatePostInput): Promise<Post>;
+      delete(id: string): Promise<boolean>;
+    }
+
+    export interface User {
+      id: string;
+      username: string;
+      email: string;
+      displayName: string;
+    }
+
+    export interface Post {
+      id: string;
+      authorId: string;
+      title: string;
+      content: string;
+      publishedAt?: Date;
+      createdAt: Date;
+    }
+
+    export interface CreatePostInput {
+      title: string;
+      content: string;
+      publish?: boolean;
+    }
+  src/graphql/resolvers/postResolvers.ts: |
+    import { GraphQLContext, Post, User, CreatePostInput } from '../types';
+
+    interface PostResolvers {
+      Query: {
+        post: (parent: unknown, args: { id: string }, context: GraphQLContext) => Promise<Post | null>;
+        userPosts: (parent: unknown, args: { userId: string }, context: GraphQLContext) => Promise<Post[]>;
+      };
+      Mutation: {
+        createPost: (parent: unknown, args: { input: CreatePostInput }, context: GraphQLContext) => Promise<Post>;
+        deletePost: (parent: unknown, args: { id: string }, context: GraphQLContext) => Promise<boolean>;
+      };
+      Post: {
+        author: (parent: Post, args: unknown, context: GraphQLContext) => Promise<User | null>;
+      };
+    }
+
+    export const postResolvers: PostResolvers = {
+      Query: {
+        post: async (_parent, { id }, { dataSources }) => {
+          return dataSources.postAPI.getById(id);
+        },
+
+        userPosts: async (_parent, { userId }, { dataSources }) => {
+          return dataSources.postAPI.getByAuthorId(userId);
+        },
+      },
+
+      Mutation: {
+        createPost: async (_parent, { input }, { dataSources, userId }) => {
+          if (!userId) {
+            throw new Error('Authentication required');
+          }
+          return dataSources.postAPI.create(input);
+        },
+
+        deletePost: async (_parent, { id }, { dataSources, userId, userRole }) => {
+          if (!userId) {
+            throw new Error('Authentication required');
+          }
+
+          const post = await dataSources.postAPI.getById(id);
+          if (!post) {
+            throw new Error('Post not found');
+          }
+
+          if (post.authorId !== userId && userRole !== 'admin') {
+            throw new Error('Not authorized');
+          }
+
+          return dataSources.postAPI.delete(id);
+        },
+      },
+
+      Post: {
+        author: async (parent, _args, { dataSources }) => {
+          return dataSources.userAPI.getById(parent.authorId);
+        },
+      },
+    };
+  vendor/search-client/index.ts: |2
+
+    }
+  docs/media/processing.md: |
+    # Media Processing
+must_include_files:
+- src/graphql/resolvers/postResolvers.ts
+must_include_content:
+- import { GraphQLContext, Post, User, CreatePostInput } from '../types';
+- interface PostResolvers {
+add_garbage_files: false
+skip_garbage_check: true

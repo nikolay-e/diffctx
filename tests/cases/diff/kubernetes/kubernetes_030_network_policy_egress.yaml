@@ -1,0 +1,280 @@
+# Scenario: Default-deny egress NetworkPolicy replaced with granular rules
+# allowing only postgres, redis, kafka, and kube-dns.
+# Reviewer asks: "Are egress rules correctly scoped to required backends?"
+# Trap rationale: cilium-netpol.yaml and calico-globalnetpol.yaml share
+# network policy vocabulary but use different CNI APIs with no reference.
+
+initial:
+  k8s/base/deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: order-processor
+      namespace: production
+      labels:
+        app: order-processor
+        tier: backend
+    spec:
+      replicas: 5
+      selector:
+        matchLabels:
+          app: order-processor
+      template:
+        metadata:
+          labels:
+            app: order-processor
+            tier: backend
+        spec:
+          containers:
+          - name: processor
+            image: registry.example.com/order-processor:v2.3.0
+            ports:
+            - containerPort: 8080
+              name: http
+            env:
+            - name: DATABASE_HOST
+              value: postgres.database.svc.cluster.local
+            - name: REDIS_HOST
+              value: redis.cache.svc.cluster.local
+            - name: KAFKA_BROKERS
+              value: kafka-bootstrap.kafka.svc.cluster.local:9092
+            resources:
+              requests:
+                memory: "256Mi"
+                cpu: "250m"
+              limits:
+                memory: "512Mi"
+                cpu: "500m"
+  k8s/base/service.yaml: |
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: order-processor
+      namespace: production
+    spec:
+      selector:
+        app: order-processor
+      ports:
+      - name: http
+        port: 80
+        targetPort: 8080
+  k8s/base/configmap.yaml: |
+    apiVersion: v1
+    kind: ConfigMap
+    metadata:
+      name: order-processor-config
+      namespace: production
+    data:
+      LOG_LEVEL: info
+      BATCH_SIZE: "100"
+      RETRY_COUNT: "3"
+  k8s/base/networkpolicy.yaml: |
+    apiVersion: networking.k8s.io/v1
+    kind: NetworkPolicy
+    metadata:
+      name: default-deny-egress
+      namespace: production
+    spec:
+      podSelector: {}
+      policyTypes:
+      - Egress
+  k8s/cni/cilium-netpol.yaml: |
+    apiVersion: cilium.io/v2
+    kind: CiliumNetworkPolicy
+    metadata:
+      name: allow-dns-egress
+      namespace: kube-system
+    spec:
+      endpointSelector:
+        matchLabels:
+          k8s-app: kube-dns
+      egress:
+      - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+        toPorts:
+        - ports:
+          - port: "53"
+            protocol: UDP
+  k8s/cni/calico-globalnetpol.yaml: |
+    apiVersion: projectcalico.org/v3
+    kind: GlobalNetworkPolicy
+    metadata:
+      name: default-deny-all
+    spec:
+      selector: all()
+      types:
+      - Ingress
+      - Egress
+      egress:
+      - action: Allow
+        protocol: UDP
+        destination:
+          ports:
+          - 53
+  helm/values.yaml: |
+    image:
+changed:
+  k8s/base/deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: order-processor
+      namespace: production
+      labels:
+        app: order-processor
+        tier: backend
+    spec:
+      replicas: 5
+      selector:
+        matchLabels:
+          app: order-processor
+      template:
+        metadata:
+          labels:
+            app: order-processor
+            tier: backend
+        spec:
+          containers:
+          - name: processor
+            image: registry.example.com/order-processor:v2.3.0
+            ports:
+            - containerPort: 8080
+              name: http
+            env:
+            - name: DATABASE_HOST
+              value: postgres.database.svc.cluster.local
+            - name: REDIS_HOST
+              value: redis.cache.svc.cluster.local
+            - name: KAFKA_BROKERS
+              value: kafka-bootstrap.kafka.svc.cluster.local:9092
+            resources:
+              requests:
+                memory: "256Mi"
+                cpu: "250m"
+              limits:
+                memory: "512Mi"
+                cpu: "500m"
+  k8s/base/service.yaml: |
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: order-processor
+      namespace: production
+    spec:
+      selector:
+        app: order-processor
+      ports:
+      - name: http
+        port: 80
+        targetPort: 8080
+  k8s/base/configmap.yaml: |
+    apiVersion: v1
+    kind: ConfigMap
+    metadata:
+      name: order-processor-config
+      namespace: production
+    data:
+      LOG_LEVEL: info
+      BATCH_SIZE: "100"
+      RETRY_COUNT: "3"
+  k8s/base/networkpolicy.yaml: |
+    apiVersion: networking.k8s.io/v1
+    kind: NetworkPolicy
+    metadata:
+      name: order-processor-egress
+      namespace: production
+      labels:
+        app: order-processor
+    spec:
+      podSelector:
+        matchLabels:
+          app: order-processor
+      policyTypes:
+      - Egress
+      egress:
+      - to:
+        - namespaceSelector:
+            matchLabels:
+              name: database
+          podSelector:
+            matchLabels:
+              app: postgres
+        ports:
+        - protocol: TCP
+          port: 5432
+      - to:
+        - namespaceSelector:
+            matchLabels:
+              name: cache
+          podSelector:
+            matchLabels:
+              app: redis
+        ports:
+        - protocol: TCP
+          port: 6379
+      - to:
+        - namespaceSelector:
+            matchLabels:
+              name: kafka
+        ports:
+        - protocol: TCP
+          port: 9092
+      - to:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+        ports:
+        - protocol: UDP
+          port: 53
+  k8s/cni/cilium-netpol.yaml: |
+    apiVersion: cilium.io/v2
+    kind: CiliumNetworkPolicy
+    metadata:
+      name: allow-dns-egress
+      namespace: kube-system
+    spec:
+      endpointSelector:
+        matchLabels:
+          k8s-app: kube-dns
+      egress:
+      - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+        toPorts:
+        - ports:
+          - port: "53"
+            protocol: UDP
+  k8s/cni/calico-globalnetpol.yaml: |
+    apiVersion: projectcalico.org/v3
+    kind: GlobalNetworkPolicy
+    metadata:
+      name: default-deny-all
+    spec:
+      selector: all()
+      types:
+      - Ingress
+      - Egress
+      egress:
+      - action: Allow
+        protocol: UDP
+        destination:
+          ports:
+          - 53
+  helm/values.yaml: |
+    image:
+must_include_files:
+- k8s/base/networkpolicy.yaml
+must_include_content:
+- 'name: order-processor-egress'
+must_not_include:
+- CiliumNetworkPolicy
+- GlobalNetworkPolicy
+- cilium-netpol.yaml
+- calico-globalnetpol.yaml
+must_not_include_files:
+- k8s/cni/cilium-netpol.yaml
+- k8s/cni/calico-globalnetpol.yaml
+add_garbage_files: false
+skip_garbage_check: true

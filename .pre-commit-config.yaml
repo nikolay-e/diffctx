@@ -14,6 +14,18 @@ repos:
         stages: [post-commit]
 
   # ============================================================================
+  # README AUTO-GENERATION
+  # ============================================================================
+  - repo: local
+    hooks:
+      - id: update-readme-usage
+        name: Auto-generate README usage section
+        language: python
+        entry: python scripts/update_readme_usage.py
+        pass_filenames: false
+        always_run: true
+
+  # ============================================================================
   # BASIC FILE QUALITY CHECKS (baseline hygiene)
   # ============================================================================
   - repo: https://github.com/pre-commit/pre-commit-hooks
@@ -163,16 +175,6 @@ repos:
             "--ignore-imports=yes",
           ]
         files: ^src/
-
-  # ============================================================================
-  # SPELL CHECKING
-  # ============================================================================
-  - repo: https://github.com/codespell-project/codespell
-    rev: v2.4.1
-    hooks:
-      - id: codespell
-        args: ["--write-changes", "--ignore-words-list=crate,nd,ser,llm,async,cli,theses,datas,hel,afterall,aftereach"]
-        exclude: ^(\.git/|\.venv/|venv/)
 
   # ============================================================================
   # YAML LINTING

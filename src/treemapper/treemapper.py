@@ -7,6 +7,8 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from .cli import ParsedArgs
 
+logger = logging.getLogger(__name__)
+
 
 def _configure_windows_utf8() -> None:
     if sys.platform == "win32" and hasattr(sys.stdout, "reconfigure"):
@@ -31,8 +33,13 @@ def _build_diff_tree(args: ParsedArgs) -> dict[str, Any]:
             whitelist_file=args.whitelist_file,
         )
     except GitError as e:
-        print(f"Error: {e}", file=sys.stderr)
+        logger.error("%s", e)
         sys.exit(1)
+
+
+def _root_display_name(root_dir: Any) -> str:
+    name = root_dir.name
+    return name if name else str(root_dir)
 
 
 def _build_standard_tree(args: ParsedArgs) -> dict[str, Any]:
@@ -49,7 +56,7 @@ def _build_standard_tree(args: ParsedArgs) -> dict[str, Any]:
         whitelist_spec=get_whitelist_spec(args.whitelist_file, args.root_dir),
     )
     return {
-        "name": args.root_dir.name,
+        "name": _root_display_name(args.root_dir),
         "type": "directory",
         "children": build_tree(args.root_dir, ctx),
     }
@@ -62,10 +69,11 @@ def _handle_clipboard(output_content: str, args: ParsedArgs) -> bool:
         return False
     try:
         copy_to_clipboard(output_content)
-        print("Copied to clipboard", file=sys.stderr)
+        if not args.quiet:
+            print("Copied to clipboard", file=sys.stderr)
         return True
     except ClipboardError as e:
-        print(f"Clipboard unavailable: {e}", file=sys.stderr)
+        logger.error("Clipboard unavailable: %s", e)
         return False
 
 
@@ -76,12 +84,13 @@ def _handle_output_file(output_content: str, args: ParsedArgs) -> None:
         return
     try:
         write_string_to_file(output_content, args.output_file, args.output_format)
-        print(f"Saved to {args.output_file}", file=sys.stderr)
+        if not args.quiet:
+            print(f"Saved to {args.output_file}", file=sys.stderr)
     except IsADirectoryError:
-        print(f"Error: {args.output_file} is a directory", file=sys.stderr)
+        logger.error("'%s' is a directory", args.output_file)
         sys.exit(1)
     except OSError as e:
-        print(f"Error: cannot write {args.output_file}: {e}", file=sys.stderr)
+        logger.error("Cannot write '%s': %s", args.output_file, e)
         sys.exit(1)
 
 
@@ -97,15 +106,17 @@ def _run() -> None:
     directory_tree = _build_diff_tree(args) if args.diff_range else _build_standard_tree(args)
 
     output_content = tree_to_string(directory_tree, args.output_format)
-    print_token_summary(output_content)
+    if not args.quiet:
+        print_token_summary(output_content)
 
     clipboard_ok = _handle_clipboard(output_content, args)
     _handle_output_file(output_content, args)
 
     should_write_stdout = args.force_stdout or not args.copy or not clipboard_ok
     if not args.output_file and should_write_stdout:
-        sys.stdout.write(output_content)
-        logging.info("Directory tree written to stdout in %s format", args.output_format)
+        from .writer import write_string_to_file
+
+        write_string_to_file(output_content, None, args.output_format)
 
 
 def main() -> None:

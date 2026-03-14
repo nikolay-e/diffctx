@@ -1,0 +1,220 @@
+# Scenario: build.gradle gains dependency-management plugin, jacoco plugin,
+#   actuator + test dependencies, and jacocoTestReport task. Only build.gradle changed.
+#
+# Diff shows:
+#   + id 'io.spring.dependency-management' version '1.1.4'
+#   + id 'jacoco'
+#   + spring-boot-starter-actuator, spring-boot-starter-test dependencies
+#   + test { finalizedBy jacocoTestReport }
+#   + jacoco { toolVersion = "0.8.11" }, jacocoTestReport { ... }
+#
+# Reviewer questions:
+#   Q1: "Do existing source files use actuator endpoints or test annotations?"
+#       -> WebApplication.java (UNCHANGED) is @SpringBootApplication.
+#          IndexController.java has @RestController. Neither uses actuator
+#          or test APIs yet. Reviewer needs to see existing code to assess
+#          whether the new dependencies are actually consumed.
+#
+# Not needed for comprehension:
+#   - WebApplication.java: Standard Spring Boot main class. Not changed.
+#     Does not reference actuator, jacoco, or test dependencies.
+#
+#   - IndexController.java: Simple REST controller. Not changed.
+#     Uses @RestController but doesn't use actuator endpoints.
+#
+#   - HealthIndicator.java: Custom actuator health indicator. KEYWORD OVERLAP:
+#     directly related to spring-boot-starter-actuator dependency being added.
+#     HARDEST TRAP. But the file exists already (if it exists) — the build.gradle
+#     change just adds the dependency. The file itself doesn't help review
+#     whether the Gradle config is correct.
+
+initial:
+  build.gradle: |
+    plugins {
+        id 'java'
+        id 'org.springframework.boot' version '3.2.0'
+    }
+
+    group = 'com.example'
+    version = '1.0.0'
+
+    java {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    repositories {
+        mavenCentral()
+    }
+
+    dependencies {
+        implementation 'org.springframework.boot:spring-boot-starter-web'
+    }
+
+    test {
+        useJUnitPlatform()
+    }
+  src/main/java/com/example/webapp/WebApplication.java: |
+    package com.example.webapp;
+
+    import org.springframework.boot.SpringApplication;
+    import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+    @SpringBootApplication
+    public class WebApplication {
+        public static void main(String[] args) {
+            SpringApplication.run(WebApplication.class, args);
+        }
+    }
+  src/main/java/com/example/webapp/controller/IndexController.java: |
+    package com.example.webapp.controller;
+
+    import org.springframework.web.bind.annotation.GetMapping;
+    import org.springframework.web.bind.annotation.RestController;
+
+    @RestController
+    public class IndexController {
+        @GetMapping("/")
+        public String index() {
+            return "Welcome to the web application";
+        }
+    }
+  src/main/java/com/example/webapp/health/HealthIndicator.java: |
+    package com.example.webapp.health;
+
+    import org.springframework.boot.actuate.health.Health;
+    import org.springframework.boot.actuate.health.AbstractHealthIndicator;
+    import org.springframework.stereotype.Component;
+
+    @Component
+    public class HealthIndicator extends AbstractHealthIndicator {
+        @Override
+        protected void doHealthCheck(Health.Builder builder) throws Exception {
+            builder.up()
+                .withDetail("app", "running")
+                .withDetail("version", "1.0.0");
+        }
+    }
+
+changed:
+  build.gradle: |
+    plugins {
+        id 'java'
+        id 'org.springframework.boot' version '3.2.0'
+        id 'io.spring.dependency-management' version '1.1.4'
+        id 'jacoco'
+    }
+
+    group = 'com.example'
+    version = '1.0.0'
+
+    java {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    repositories {
+        mavenCentral()
+    }
+
+    dependencies {
+        implementation 'org.springframework.boot:spring-boot-starter-web'
+        implementation 'org.springframework.boot:spring-boot-starter-actuator'
+        testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    }
+
+    test {
+        useJUnitPlatform()
+        finalizedBy jacocoTestReport
+    }
+
+    jacoco {
+        toolVersion = "0.8.11"
+    }
+
+    jacocoTestReport {
+        dependsOn test
+        reports {
+            xml.required = true
+            html.required = true
+        }
+    }
+  src/main/java/com/example/webapp/WebApplication.java: |
+    package com.example.webapp;
+
+    import org.springframework.boot.SpringApplication;
+    import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+    @SpringBootApplication
+    public class WebApplication {
+        public static void main(String[] args) {
+            SpringApplication.run(WebApplication.class, args);
+        }
+    }
+  src/main/java/com/example/webapp/controller/IndexController.java: |
+    package com.example.webapp.controller;
+
+    import org.springframework.web.bind.annotation.GetMapping;
+    import org.springframework.web.bind.annotation.RestController;
+
+    @RestController
+    public class IndexController {
+        @GetMapping("/")
+        public String index() {
+            return "Welcome to the web application";
+        }
+    }
+  src/main/java/com/example/webapp/health/HealthIndicator.java: |
+    package com.example.webapp.health;
+
+    import org.springframework.boot.actuate.health.Health;
+    import org.springframework.boot.actuate.health.AbstractHealthIndicator;
+    import org.springframework.stereotype.Component;
+
+    @Component
+    public class HealthIndicator extends AbstractHealthIndicator {
+        @Override
+        protected void doHealthCheck(Health.Builder builder) throws Exception {
+            builder.up()
+                .withDetail("app", "running")
+                .withDetail("version", "1.0.0");
+        }
+    }
+
+must_include_files:
+  - build.gradle
+
+must_include_content_from:
+  build.gradle:
+    - "id 'io.spring.dependency-management' version '1.1.4'"
+    - "id 'jacoco'"
+    - "spring-boot-starter-actuator"
+    - "spring-boot-starter-test"
+    - "finalizedBy jacocoTestReport"
+
+must_not_include:
+  # --- WebApplication.java: standard main class ---
+  # Not changed. Doesn't use actuator, jacoco, or tests.
+  - WebApplication
+  - SpringApplication.run
+  # --- IndexController.java: simple REST controller ---
+  # Not changed. Doesn't reference any new dependencies.
+  - IndexController
+  - "Welcome to the web application"
+  # --- HealthIndicator.java: actuator health check ---
+  # KEYWORD OVERLAP: directly uses spring-boot-starter-actuator.
+  # But file was not changed and its existence doesn't help
+  # review whether the Gradle configuration is correct.
+  - AbstractHealthIndicator
+  - doHealthCheck
+  - "builder.up()"
+
+must_not_include_files:
+  - src/main/java/com/example/webapp/WebApplication.java
+  - src/main/java/com/example/webapp/controller/IndexController.java
+  - src/main/java/com/example/webapp/health/HealthIndicator.java
+
+max_fragments: 5
+max_files: 2
+add_garbage_files: false
+skip_garbage_check: true

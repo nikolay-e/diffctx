@@ -1,0 +1,262 @@
+# Test 020: Webhook config changes timeout/retry — reviewer needs consuming code
+#
+# Scenario: webhooks.yaml reduces timeout 30→10, increases retry_count 3→5,
+# adds a backup endpoint. Only the YAML file is changed.
+#
+# Reviewer questions:
+#   Q1: "Does anything actually read these values?"
+#       → webhooks.py has WebhookDispatcher(timeout=30, retry_count=3) with
+#         HARDCODED DEFAULTS that now DISAGREE with the config (10, 5).
+#         Without seeing this, the reviewer can't tell if the config change
+#         has any effect or if the code ignores it.
+#   Q2: "What happens with timeout=10 instead of 30?"
+#       → webhooks.py does requests.post(..., timeout=self.timeout).
+#         Reducing timeout from 30s to 10s means slower webhooks will start
+#         failing. The reviewer needs to see the dispatch() call to judge
+#         whether 10s is safe.
+#
+# Not needed:
+#   - health_checker.py: polls /healthz endpoints. Different timeout,
+#     different purpose. Knowing how health checks work adds nothing
+#     to understanding webhook timeout changes.
+#   - event_bus.py: in-memory pub/sub for internal events. No HTTP,
+#     no timeouts, no retry logic. Unrelated concept despite sharing
+#     the word "dispatch".
+#   - config/database.yaml: database connection config. Different
+#     service, different timeout semantics.
+
+initial:
+  config/webhooks.yaml: |
+    webhooks:
+      timeout: 30
+      retry_count: 3
+      endpoints:
+        - url: https://example.com/hook
+  src/webhooks.py: |
+    import requests
+    import time
+    import logging
+
+    logger = logging.getLogger(__name__)
+
+    class WebhookDispatcher:
+        def __init__(self, timeout: int = 30, retry_count: int = 3):
+            self.timeout = timeout
+            self.retry_count = retry_count
+
+        def dispatch(self, url: str, payload: dict) -> bool:
+            """Send webhook with retry logic."""
+            for attempt in range(1, self.retry_count + 1):
+                try:
+                    resp = requests.post(url, json=payload, timeout=self.timeout)
+                    resp.raise_for_status()
+                    return True
+                except requests.Timeout:
+                    logger.warning(f"Timeout on attempt {attempt}/{self.retry_count}")
+                except requests.RequestException as exc:
+                    logger.error(f"Webhook failed: {exc}")
+                if attempt < self.retry_count:
+                    time.sleep(2 ** attempt)
+            return False
+
+        def dispatch_all(self, urls: list[str], payload: dict) -> dict[str, bool]:
+            """Send to multiple endpoints, return per-URL results."""
+            return {url: self.dispatch(url, payload) for url in urls}
+  # --- Not needed: different timeout, different purpose ---
+  # Health checks poll /healthz with their own 5s timeout.
+  # Knowing this adds nothing to evaluating webhook timeout=10.
+  src/health_checker.py: |
+    import requests
+
+    class HealthChecker:
+        def __init__(self, check_interval: int = 60, check_timeout: int = 5):
+            self.check_interval = check_interval
+            self.check_timeout = check_timeout
+
+        def check_endpoint(self, url: str) -> bool:
+            """Poll a health endpoint."""
+            try:
+                resp = requests.get(f"{url}/healthz", timeout=self.check_timeout)
+                return resp.status_code == 200
+            except requests.RequestException:
+                return False
+
+        def check_all(self, endpoints: list[str]) -> dict[str, bool]:
+            return {ep: self.check_endpoint(ep) for ep in endpoints}
+  # --- Not needed: in-memory events, no HTTP, no timeouts ---
+  # Shares the word "dispatch" but it's in-process function calls.
+  src/event_bus.py: |
+    from collections import defaultdict
+    from typing import Callable
+
+    class EventBus:
+        def __init__(self):
+            self._handlers: dict[str, list[Callable]] = defaultdict(list)
+
+        def subscribe(self, event_type: str, handler: Callable) -> None:
+            self._handlers[event_type].append(handler)
+
+        def dispatch(self, event_type: str, data: dict) -> None:
+            """Dispatch event to all registered handlers."""
+            for handler in self._handlers.get(event_type, []):
+                handler(data)
+
+        def clear(self, event_type: str | None = None) -> None:
+            if event_type:
+                self._handlers.pop(event_type, None)
+            else:
+                self._handlers.clear()
+  # --- Not needed: different config, different service ---
+  config/database.yaml: |
+    database:
+      host: localhost
+      port: 5432
+      name: myapp
+      pool_size: 10
+      connection_timeout: 30
+      query_timeout: 60
+
+changed:
+  config/webhooks.yaml: |
+    webhooks:
+      timeout: 10
+      retry_count: 5
+      endpoints:
+        - url: https://example.com/hook
+        - url: https://backup.example.com/hook
+  # All other files unchanged
+  src/webhooks.py: |
+    import requests
+    import time
+    import logging
+
+    logger = logging.getLogger(__name__)
+
+    class WebhookDispatcher:
+        def __init__(self, timeout: int = 30, retry_count: int = 3):
+            self.timeout = timeout
+            self.retry_count = retry_count
+
+        def dispatch(self, url: str, payload: dict) -> bool:
+            """Send webhook with retry logic."""
+            for attempt in range(1, self.retry_count + 1):
+                try:
+                    resp = requests.post(url, json=payload, timeout=self.timeout)
+                    resp.raise_for_status()
+                    return True
+                except requests.Timeout:
+                    logger.warning(f"Timeout on attempt {attempt}/{self.retry_count}")
+                except requests.RequestException as exc:
+                    logger.error(f"Webhook failed: {exc}")
+                if attempt < self.retry_count:
+                    time.sleep(2 ** attempt)
+            return False
+
+        def dispatch_all(self, urls: list[str], payload: dict) -> dict[str, bool]:
+            """Send to multiple endpoints, return per-URL results."""
+            return {url: self.dispatch(url, payload) for url in urls}
+  src/health_checker.py: |
+    import requests
+
+    class HealthChecker:
+        def __init__(self, check_interval: int = 60, check_timeout: int = 5):
+            self.check_interval = check_interval
+            self.check_timeout = check_timeout
+
+        def check_endpoint(self, url: str) -> bool:
+            """Poll a health endpoint."""
+            try:
+                resp = requests.get(f"{url}/healthz", timeout=self.check_timeout)
+                return resp.status_code == 200
+            except requests.RequestException:
+                return False
+
+        def check_all(self, endpoints: list[str]) -> dict[str, bool]:
+            return {ep: self.check_endpoint(ep) for ep in endpoints}
+  src/event_bus.py: |
+    from collections import defaultdict
+    from typing import Callable
+
+    class EventBus:
+        def __init__(self):
+            self._handlers: dict[str, list[Callable]] = defaultdict(list)
+
+        def subscribe(self, event_type: str, handler: Callable) -> None:
+            self._handlers[event_type].append(handler)
+
+        def dispatch(self, event_type: str, data: dict) -> None:
+            """Dispatch event to all registered handlers."""
+            for handler in self._handlers.get(event_type, []):
+                handler(data)
+
+        def clear(self, event_type: str | None = None) -> None:
+            if event_type:
+                self._handlers.pop(event_type, None)
+            else:
+                self._handlers.clear()
+  config/database.yaml: |
+    database:
+      host: localhost
+      port: 5432
+      name: myapp
+      pool_size: 10
+      connection_timeout: 30
+      query_timeout: 60
+
+# === What a reviewer needs to understand this change ===
+#
+# Diff: timeout 30→10, retry_count 3→5, added backup endpoint.
+#
+# Without webhooks.py, the reviewer sees numbers change and thinks "ok".
+# With webhooks.py, the reviewer sees:
+#   1. Constructor defaults (timeout=30) DON'T match new config (timeout=10)
+#      — is the config actually loaded, or do defaults win?
+#   2. dispatch() does requests.post(..., timeout=self.timeout)
+#      — 10s timeout means slower external services will fail
+#   3. retry logic uses time.sleep(2 ** attempt) with retry_count=5
+#      — that's sleeps of 2, 4, 8, 16, 32 seconds = 62s total backoff
+#      — combined with 5 attempts × 10s timeout = up to 112s per webhook
+#   4. dispatch_all() calls dispatch() per URL — with 2 endpoints now,
+#      worst case doubles to 224s
+
+must_include_files:
+  - config/webhooks.yaml
+  # Q1+Q2: "Does code read these values? What happens with timeout=10?"
+  # Without seeing the code, the config change is meaningless numbers.
+  # With the code, the reviewer can evaluate whether 10s is safe and
+  # whether the retry backoff with 5 retries is acceptable.
+  - src/webhooks.py
+must_include_content_from:
+  config/webhooks.yaml:
+    - "timeout: 10"
+    - "retry_count: 5"
+    - backup.example.com
+  src/webhooks.py:
+    # The defaults that now disagree with config
+    - "timeout: int = 30"
+    - "retry_count: int = 3"
+    # The actual HTTP call affected by the timeout change
+    - "requests.post(url, json=payload, timeout=self.timeout)"
+must_not_include:
+  # --- health_checker.py: different timeout, different concern ---
+  # Its 5s check_timeout is unrelated to webhook delivery timeout.
+  - HealthChecker
+  - check_endpoint
+  - "/healthz"
+  # --- event_bus.py: shares "dispatch" as a word, not a concept ---
+  # In-memory event handlers, no HTTP, no timeouts.
+  - EventBus
+  - subscribe
+  - _handlers
+  # --- database.yaml: different service's config ---
+  - pool_size
+  - query_timeout
+  - connection_timeout
+must_not_include_files:
+  - src/health_checker.py
+  - src/event_bus.py
+  - config/database.yaml
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

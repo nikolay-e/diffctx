@@ -1,0 +1,172 @@
+# Scenario: types.ts is changed to add retries and debug? to the Config type.
+#   app.ts imports Config and uses config.apiUrl. Only types.ts is changed;
+#   app.ts is unchanged.
+#
+# Diff shows:
+#   - Config { apiUrl: string; timeout: number; }
+#   + Config { apiUrl: string; timeout: number; retries: number; debug?: boolean; }
+#
+# Reviewer questions:
+#   Q1: "Does app.ts need to supply the new required `retries` field?"
+#       -> app.ts (UNCHANGED): uses Config in init() function. If Config
+#          objects are constructed elsewhere, they now need a retries field.
+#          Reviewer must trace where Config objects are created.
+#
+#   Q2: "Does app.ts use any of the new fields?"
+#       -> app.ts: only accesses config.apiUrl. The new retries and debug
+#          fields are not accessed. Reviewer can assess whether init()
+#          should use them.
+#
+# Not needed for comprehension:
+#   - config-factory.ts: Creates Config objects with defaults. Direct structural
+#     edge — imports Config and constructs instances. HARD TRAP: this is where
+#     the new `retries` field must be added. But it's a downstream impact,
+#     not needed to understand the type change itself.
+#
+#   - env-config.ts: Loads config from environment variables into a different
+#     EnvConfig type with similar fields (API_URL, TIMEOUT). Same config
+#     domain. HARD TRAP: overlapping field names and same purpose.
+#
+#   - config.test.ts: Tests for Config handling. Imports Config type,
+#     constructs test objects. Direct type edge.
+
+initial:
+  types.ts: |
+    export type Config = {
+        apiUrl: string;
+        timeout: number;
+    };
+  app.ts: |
+    import { Config } from './types';
+
+    function init(config: Config) {
+        console.log(`Connecting to ${config.apiUrl}`);
+    }
+  config-factory.ts: |
+    import { Config } from './types';
+
+    export function createDefaultConfig(): Config {
+        return { apiUrl: 'http://localhost:3000', timeout: 5000 };
+    }
+
+    export function createConfig(apiUrl: string, timeout: number): Config {
+        return { apiUrl, timeout };
+    }
+  env-config.ts: |
+    export interface EnvConfig {
+        apiUrl: string;
+        timeout: number;
+        retries: number;
+        debug: boolean;
+    }
+
+    export function loadFromEnv(): EnvConfig {
+        return {
+            apiUrl: process.env.API_URL ?? 'http://localhost:3000',
+            timeout: parseInt(process.env.TIMEOUT ?? '5000', 10),
+            retries: parseInt(process.env.RETRIES ?? '3', 10),
+            debug: process.env.DEBUG === 'true',
+        };
+    }
+  config.test.ts: |
+    import { Config } from './types';
+
+    describe('Config', () => {
+        it('should have required fields', () => {
+            const config: Config = { apiUrl: 'http://test.com', timeout: 1000 };
+            expect(config.apiUrl).toBe('http://test.com');
+            expect(config.timeout).toBe(1000);
+        });
+    });
+
+changed:
+  types.ts: |
+    export type Config = {
+        apiUrl: string;
+        timeout: number;
+        retries: number;
+        debug?: boolean;
+    };
+  app.ts: |
+    import { Config } from './types';
+
+    function init(config: Config) {
+        console.log(`Connecting to ${config.apiUrl}`);
+    }
+  config-factory.ts: |
+    import { Config } from './types';
+
+    export function createDefaultConfig(): Config {
+        return { apiUrl: 'http://localhost:3000', timeout: 5000 };
+    }
+
+    export function createConfig(apiUrl: string, timeout: number): Config {
+        return { apiUrl, timeout };
+    }
+  env-config.ts: |
+    export interface EnvConfig {
+        apiUrl: string;
+        timeout: number;
+        retries: number;
+        debug: boolean;
+    }
+
+    export function loadFromEnv(): EnvConfig {
+        return {
+            apiUrl: process.env.API_URL ?? 'http://localhost:3000',
+            timeout: parseInt(process.env.TIMEOUT ?? '5000', 10),
+            retries: parseInt(process.env.RETRIES ?? '3', 10),
+            debug: process.env.DEBUG === 'true',
+        };
+    }
+  config.test.ts: |
+    import { Config } from './types';
+
+    describe('Config', () => {
+        it('should have required fields', () => {
+            const config: Config = { apiUrl: 'http://test.com', timeout: 1000 };
+            expect(config.apiUrl).toBe('http://test.com');
+            expect(config.timeout).toBe(1000);
+        });
+    });
+
+must_include_files:
+  - types.ts
+  # Q1+Q2: app.ts imports Config — reviewer needs to see the usage to
+  # assess impact of the type change.
+  - app.ts
+
+must_include_content_from:
+  types.ts:
+    - "type Config = {"
+    - "retries: number"
+    - "debug?: boolean"
+  app.ts:
+    - "import { Config } from './types'"
+    - "config.apiUrl"
+
+must_not_include:
+  # --- config-factory.ts: creates Config objects — would need updating ---
+  # HARD TRAP: imports Config, constructs instances that are now incomplete
+  # (missing retries). Downstream impact, not needed for type change review.
+  - createDefaultConfig
+  - createConfig
+  # --- env-config.ts: separate config type with similar fields ---
+  # HARD TRAP: has retries and debug fields — same names as the new ones.
+  - EnvConfig
+  - loadFromEnv
+  - "process.env"
+  # --- config.test.ts: tests with Config type ---
+  # Direct edge: imports Config, constructs test objects.
+  - "should have required fields"
+  - "http://test.com"
+
+must_not_include_files:
+  - config-factory.ts
+  - env-config.ts
+  - config.test.ts
+
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

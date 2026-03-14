@@ -1,0 +1,250 @@
+# Scenario: UserService uses mixin methods (TimestampMixin, SerializableMixin)
+# Changed: service.py imports mixins and creates classes that use mixin functionality
+# Reviewer questions: Is MRO correct? Does to_dict() include timestamp fields?
+# Trap 1: event_tracker.py — tracks events with timestamps, shares "timestamp" vocabulary but independent
+# Trap 2: json_encoder.py — encodes objects to JSON, shares "serialize/to_dict" domain but no dep
+initial:
+  mixins.py: |
+    import logging
+    from typing import Optional, Any, Dict
+    from dataclasses import dataclass, field
+    from datetime import datetime
+    from enum import Enum
+
+    class LogLevel(Enum):
+        INFO = "info"
+        WARNING = "warning"
+        ERROR = "error"
+
+    @dataclass
+    class LogEntry:
+        timestamp: datetime
+        level: LogLevel
+        message: str
+        context: Dict[str, Any] = field(default_factory=dict)
+
+        def to_dict(self) -> dict:
+            return {
+                "timestamp": self.timestamp.isoformat(),
+                "level": self.level.value,
+                "message": self.message,
+                "context": self.context
+            }
+
+    class LoggingMixin:
+        _log_history: list[LogEntry] = []
+
+        @property
+        def logger(self) -> logging.Logger:
+            return logging.getLogger(self.__class__.__name__)
+
+        def log_action(self, action: str, **context) -> None:
+            entry = LogEntry(
+                timestamp=datetime.now(),
+                level=LogLevel.INFO,
+                message=f"Action: {action}",
+                context=context
+            )
+            self._log_history.append(entry)
+            self.logger.info(entry.message)
+
+        def log_error(self, error: str, **context) -> None:
+            entry = LogEntry(
+                timestamp=datetime.now(),
+                level=LogLevel.ERROR,
+                message=f"Error: {error}",
+                context=context
+            )
+            self._log_history.append(entry)
+            self.logger.error(entry.message)
+
+        def get_log_history(self) -> list[LogEntry]:
+            return self._log_history.copy()
+  service.py: |
+    class UserService:
+        pass
+  event_tracker.py: |
+    from typing import List, Dict, Any, Optional
+    from dataclasses import dataclass
+    from datetime import datetime
+
+    @dataclass
+    class TrackedEvent:
+        name: str
+        timestamp: datetime
+        data: Dict[str, Any]
+
+    class EventTracker:
+        def __init__(self):
+            self._events: List[TrackedEvent] = []
+
+        def track(self, name: str, data: Dict[str, Any]) -> None:
+            self._events.append(TrackedEvent(name=name, timestamp=datetime.now(), data=data))
+
+        def get_events(self, name: Optional[str] = None) -> List[TrackedEvent]:
+            if name:
+                return [e for e in self._events if e.name == name]
+            return self._events.copy()
+  json_encoder.py: |
+    import json
+    from typing import Any, Dict
+    from datetime import datetime
+
+    class CustomJsonEncoder(json.JSONEncoder):
+        def default(self, obj: Any) -> Any:
+            if isinstance(obj, datetime):
+                return obj.isoformat()
+            if hasattr(obj, 'to_dict'):
+                return obj.to_dict()
+            return super().default(obj)
+
+    def serialize_to_json(obj: Any) -> str:
+        return json.dumps(obj, cls=CustomJsonEncoder, indent=2)
+
+    def deserialize_from_json(data: str) -> Dict[str, Any]:
+        return json.loads(data)
+changed:
+  mixins.py: |
+    import logging
+    from typing import Optional, Any, Dict
+    from dataclasses import dataclass, field
+    from datetime import datetime
+    from enum import Enum
+
+    class LogLevel(Enum):
+        INFO = "info"
+        WARNING = "warning"
+        ERROR = "error"
+
+    @dataclass
+    class LogEntry:
+        timestamp: datetime
+        level: LogLevel
+        message: str
+        context: Dict[str, Any] = field(default_factory=dict)
+
+        def to_dict(self) -> dict:
+            return {
+                "timestamp": self.timestamp.isoformat(),
+                "level": self.level.value,
+                "message": self.message,
+                "context": self.context
+            }
+
+    class LoggingMixin:
+        _log_history: list[LogEntry] = []
+
+        @property
+        def logger(self) -> logging.Logger:
+            return logging.getLogger(self.__class__.__name__)
+
+        def log_action(self, action: str, **context) -> None:
+            entry = LogEntry(
+                timestamp=datetime.now(),
+                level=LogLevel.INFO,
+                message=f"Action: {action}",
+                context=context
+            )
+            self._log_history.append(entry)
+            self.logger.info(entry.message)
+
+        def log_error(self, error: str, **context) -> None:
+            entry = LogEntry(
+                timestamp=datetime.now(),
+                level=LogLevel.ERROR,
+                message=f"Error: {error}",
+                context=context
+            )
+            self._log_history.append(entry)
+            self.logger.error(entry.message)
+
+        def get_log_history(self) -> list[LogEntry]:
+            return self._log_history.copy()
+  service.py: |
+    from mixins import LoggingMixin, LogEntry, LogLevel
+    from typing import Optional, Dict
+    from dataclasses import dataclass
+
+    @dataclass
+    class User:
+        id: str
+        name: str
+        email: str
+        active: bool = True
+
+    class UserService(LoggingMixin):
+        def __init__(self):
+            self._users: Dict[str, User] = {}
+
+        def create_user(self, name: str, email: str) -> User:
+            self.log_action(f"Creating user: {name}", email=email)
+            user_id = f"user_{len(self._users) + 1}"
+            user = User(id=user_id, name=name, email=email)
+            self._users[user_id] = user
+            return user
+
+        def get_user(self, user_id: str) -> Optional[User]:
+            user = self._users.get(user_id)
+            if user is None:
+                self.log_error(f"User not found: {user_id}")
+            return user
+  event_tracker.py: |
+    from typing import List, Dict, Any, Optional
+    from dataclasses import dataclass
+    from datetime import datetime
+
+    @dataclass
+    class TrackedEvent:
+        name: str
+        timestamp: datetime
+        data: Dict[str, Any]
+
+    class EventTracker:
+        def __init__(self):
+            self._events: List[TrackedEvent] = []
+
+        def track(self, name: str, data: Dict[str, Any]) -> None:
+            self._events.append(TrackedEvent(name=name, timestamp=datetime.now(), data=data))
+
+        def get_events(self, name: Optional[str] = None) -> List[TrackedEvent]:
+            if name:
+                return [e for e in self._events if e.name == name]
+            return self._events.copy()
+  json_encoder.py: |
+    import json
+    from typing import Any, Dict
+    from datetime import datetime
+
+    class CustomJsonEncoder(json.JSONEncoder):
+        def default(self, obj: Any) -> Any:
+            if isinstance(obj, datetime):
+                return obj.isoformat()
+            if hasattr(obj, 'to_dict'):
+                return obj.to_dict()
+            return super().default(obj)
+
+    def serialize_to_json(obj: Any) -> str:
+        return json.dumps(obj, cls=CustomJsonEncoder, indent=2)
+
+    def deserialize_from_json(data: str) -> Dict[str, Any]:
+        return json.loads(data)
+must_include_files:
+- service.py
+- mixins.py
+must_include_content_from:
+  service.py:
+  - 'from mixins import LoggingMixin, LogEntry, LogLevel'
+  - 'class UserService(LoggingMixin):'
+must_not_include:
+- EventTracker
+- TrackedEvent
+- CustomJsonEncoder
+- serialize_to_json
+- deserialize_from_json
+must_not_include_files:
+- event_tracker.py
+- json_encoder.py
+add_garbage_files: false
+skip_garbage_check: true
+max_fragments: 10
+max_files: 5

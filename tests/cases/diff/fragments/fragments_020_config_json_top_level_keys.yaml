@@ -1,0 +1,82 @@
+initial:
+  config.json: |
+    {
+      "database": {
+        "host": "localhost",
+        "port": 5432,
+        "name": "mydb",
+        "credentials": {
+          "user": "admin",
+          "password": "secret"
+        }
+      },
+      "server": {
+        "port": 8080,
+        "debug": true,
+        "workers": 4
+      },
+      "garbage_section_a": {
+        "nested": {
+        }
+      },
+      "garbage_section_b": {
+      },
+      "logging": {
+      }
+    }
+  garbage_config_072.json: |
+    {
+      "garbage_root": {
+        "key": "GARBAGE_FRAG_garbroot_072",
+        "nested": {
+          "value": "GARBAGE_FRAG_garbnested_072"
+        }
+      },
+      "another_garbage": {
+        "items": ["GARBAGE_FRAG_garbitem1_072", "GARBAGE_FRAG_garbitem2_072"]
+      }
+    }
+changed:
+  config.json: |
+    {
+      "database": {
+        "host": "localhost",
+        "port": 5433,
+        "name": "mydb",
+        "credentials": {
+          "user": "admin",
+          "password": "secret"
+        }
+      },
+      "server": {
+        "port": 8080,
+        "debug": true,
+        "workers": 4
+      },
+      "garbage_section_a": {
+        "nested": {
+        }
+      },
+      "garbage_section_b": {
+      },
+      "logging": {
+      }
+    }
+  garbage_config_072.json: |
+    {
+      "garbage_root": {
+        "key": "GARBAGE_FRAG_garbroot_072",
+        "nested": {
+          "value": "GARBAGE_FRAG_garbnested_072"
+        }
+      },
+      "another_garbage": {
+        "items": ["GARBAGE_FRAG_garbitem1_072", "GARBAGE_FRAG_garbitem2_072"]
+      }
+    }
+must_include_files:
+- config.json
+must_not_include:
+- garbage_config_072.json
+add_garbage_files: false
+skip_garbage_check: true

@@ -1,0 +1,137 @@
+# Scenario: Adding a nested dynamic block to an ALB listener for redirect
+#   rules driven by a variable list.
+# Reviewer questions:
+#   1. What ALB does this listener attach to? (alb.tf defines aws_lb.main)
+#   2. What's the structure of the redirects variable? (variables.tf defines the type)
+# Traps:
+#   - internal/internal_lb.tf: another ALB listener with dynamic blocks but for internal LB
+#   - scripts/lb_health.sh: references ALB health checks but is operational tooling
+
+initial:
+  lb.tf: |
+    resource "aws_lb_listener" "https" {
+      load_balancer_arn = aws_lb.main.arn
+      port              = 443
+      protocol          = "HTTPS"
+      ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"
+      certificate_arn   = aws_acm_certificate.main.arn
+
+      default_action {
+        type             = "forward"
+        target_group_arn = aws_lb_target_group.app.arn
+      }
+    }
+  alb.tf: |
+    resource "aws_lb" "main" {
+      name               = "app-alb"
+      internal           = false
+      load_balancer_type = "application"
+      security_groups    = [aws_security_group.alb.id]
+      subnets            = var.public_subnet_ids
+    }
+
+    resource "aws_lb_target_group" "app" {
+      name     = "app-tg"
+      port     = 8080
+      protocol = "HTTP"
+      vpc_id   = aws_vpc.main.id
+    }
+  variables.tf: |
+    variable "redirects" {
+      type = list(object({
+        host   = string
+        target = string
+      }))
+      default = []
+    }
+
+    variable "public_subnet_ids" {
+      type = list(string)
+    }
+  internal/internal_lb.tf: |
+    variable "internal_redirects" {
+      default = [
+        { host = "old-internal.corp.com", target = "new-internal.corp.com" }
+      ]
+    }
+
+    resource "aws_lb_listener" "internal" {
+      load_balancer_arn = aws_lb.internal.arn
+      port              = 443
+      protocol          = "HTTPS"
+
+      dynamic "default_action" {
+        for_each = var.internal_redirects
+        content {
+          type = "redirect"
+          redirect {
+            host        = default_action.value.target
+            status_code = "HTTP_301"
+          }
+        }
+      }
+    }
+  scripts/lb_health.sh: |
+    #!/bin/bash
+    echo "Checking LB health..."
+    aws elbv2 describe-target-health --target-group-arn "$1"
+
+changed:
+  lb.tf: |
+    resource "aws_lb_listener" "https" {
+      load_balancer_arn = aws_lb.main.arn
+      port              = 443
+      protocol          = "HTTPS"
+      ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"
+      certificate_arn   = aws_acm_certificate.main.arn
+
+      default_action {
+        type             = "forward"
+        target_group_arn = aws_lb_target_group.app.arn
+      }
+
+      dynamic "default_action" {
+        for_each = var.redirects
+        content {
+          type = "redirect"
+          redirect {
+            host        = default_action.value.target
+            port        = "443"
+            protocol    = "HTTPS"
+            status_code = "HTTP_301"
+          }
+        }
+      }
+    }
+
+# alb.tf and variables.tf are unchanged but the reviewer needs:
+# - alb.tf to see what ALB the listener attaches to (aws_lb.main)
+# - variables.tf to understand the redirects variable type driving the dynamic block
+must_include_files:
+  - alb.tf
+  - variables.tf
+
+must_include_content_from:
+  alb.tf:
+    - resource "aws_lb" "main" {
+    - name               = "app-alb"
+  variables.tf:
+    - variable "redirects" {
+    - host   = string
+    - target = string
+
+must_not_include:
+  # Internal LB listener - same dynamic block pattern but for internal LB, unrelated
+  - internal_redirects
+  - aws_lb.internal.arn
+  # Shell script - operational tooling, not infrastructure definition
+  - describe-target-health
+
+must_not_include_files:
+  - internal/internal_lb.tf
+  - scripts/lb_health.sh
+
+max_fragments: 5
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

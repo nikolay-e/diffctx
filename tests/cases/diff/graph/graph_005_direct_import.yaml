@@ -1,0 +1,318 @@
+initial:
+  utils.py: |
+    def helper():
+        return 42
+
+    def format_output(value):
+        return f"Result: {value}"
+
+    def validate_input(data):
+        return data is not None
+  core/base.py: |
+    class BaseProcessor:
+        def process(self, data):
+            raise NotImplementedError
+
+        def validate(self, data):
+            return True
+  core/handlers.py: |
+    from core.base import BaseProcessor
+
+    class DataHandler(BaseProcessor):
+        def process(self, data):
+            return {"processed": data}
+
+        def transform(self, data):
+            return str(data).upper()
+  services/data_service.py: |
+    from core.handlers import DataHandler
+    from utils import helper, validate_input
+
+    class DataService:
+        def __init__(self):
+            self.handler = DataHandler()
+
+        def execute(self, data):
+            if not validate_input(data):
+                return None
+            processed = self.handler.process(data)
+            enriched = helper()
+            return {**processed, "helper_value": enriched}
+  main.py: |
+    from utils import helper, format_output
+    from services.data_service import DataService
+    from core.handlers import DataHandler
+
+    def main():
+        result = helper()
+        formatted = format_output(result)
+        return formatted
+
+    def run_service():
+        service = DataService()
+        return service.execute({"input": "data"})
+
+    def direct_handler():
+        handler = DataHandler()
+        return handler.process({"direct": True})
+
+  # --- Tricky garbage: has validate_form_data function with similar validation pattern ---
+  garbage_form_checker.py: |
+    GARBAGE_GRAPH_005_FORM_CHECKER_A = "form_check"
+    GARBAGE_GRAPH_005_FORM_CHECKER_B = True
+
+    def validate_form_data(data):
+        return isinstance(data, dict) and len(data) > 0
+
+    def check_all_forms(inputs):
+        return all(validate_form_data(i) for i in inputs)
+
+    class FormChecker:
+        GARBAGE_GRAPH_005_FORM_CHECKER_C = "strict"
+
+        def check(self, data):
+            return validate_form_data(data)
+
+  # --- Tricky garbage: has helper() and format_output() function name collision ---
+  garbage_text_formatter.py: |
+    GARBAGE_GRAPH_005_TEXT_FMT_D = "formatter"
+    GARBAGE_GRAPH_005_TEXT_FMT_E = 42
+
+    def make_label():
+        return "formatted"
+
+    def render_text(value):
+        return f"Formatted: {value}"
+
+    class TextFormatter:
+        GARBAGE_GRAPH_005_TEXT_FMT_F = True
+
+        def build(self):
+            return render_text(make_label())
+
+  # --- Tricky garbage: same directory, similar safe-execution pattern ---
+  garbage_safe_executor.py: |
+    GARBAGE_GRAPH_005_SAFE_EXEC_G = "safe_executor"
+    GARBAGE_GRAPH_005_SAFE_EXEC_H = False
+
+    def safe_execute(data):
+        if data is None:
+            return None
+        return process_data(data)
+
+    def process_data(data):
+        return {"result": data}
+
+    class SafeExecutor:
+        def run(self, data):
+            return safe_execute(data)
+
+  garbage/import_chain_GARBAGE_GRAPH_mno001.py: |
+    from garbage.sub_import_GARBAGE_GRAPH_mno001 import sub_helper_GARBAGE_GRAPH_mno001
+
+    def chain_caller_GARBAGE_GRAPH_mno001():
+        return sub_helper_GARBAGE_GRAPH_mno001()
+  garbage/sub_import_GARBAGE_GRAPH_mno001.py: |
+    def sub_helper_GARBAGE_GRAPH_mno001():
+        return "sub"
+  garbage/circular_a_GARBAGE_GRAPH_mno002.py: |
+    from garbage.circular_b_GARBAGE_GRAPH_mno002 import func_b_GARBAGE_GRAPH_mno002
+
+    def func_a_GARBAGE_GRAPH_mno002():
+        return func_b_GARBAGE_GRAPH_mno002()
+  garbage/circular_b_GARBAGE_GRAPH_mno002.py: |
+    def func_b_GARBAGE_GRAPH_mno002():
+        return "b"
+  garbage/star_import_GARBAGE_GRAPH_mno003.py: |
+    from garbage.export_all_GARBAGE_GRAPH_mno003 import *
+
+    def use_star_GARBAGE_GRAPH_mno003():
+        return exported_func_GARBAGE_GRAPH_mno003()
+  garbage/export_all_GARBAGE_GRAPH_mno003.py: |
+    __all__ = ['exported_func_GARBAGE_GRAPH_mno003']
+
+    def exported_func_GARBAGE_GRAPH_mno003():
+        return "exported"
+
+    def private_func_GARBAGE_GRAPH_mno003():
+        return "private"
+changed:
+  utils.py: |
+    def helper():
+        return 42
+
+    def format_output(value):
+        return f"Result: {value}"
+
+    def validate_input(data):
+        return data is not None
+  core/base.py: |
+    class BaseProcessor:
+        def process(self, data):
+            raise NotImplementedError
+
+        def validate(self, data):
+            return True
+  core/handlers.py: |
+    from core.base import BaseProcessor
+
+    class DataHandler(BaseProcessor):
+        def process(self, data):
+            return {"processed": data}
+
+        def transform(self, data):
+            return str(data).upper()
+  services/data_service.py: |
+    from core.handlers import DataHandler
+    from utils import helper, validate_input
+
+    class DataService:
+        def __init__(self):
+            self.handler = DataHandler()
+
+        def execute(self, data):
+            if not validate_input(data):
+                return None
+            processed = self.handler.process(data)
+            enriched = helper()
+            return {**processed, "helper_value": enriched}
+  main.py: |
+    from utils import helper, format_output, validate_input
+    from services.data_service import DataService
+    from core.handlers import DataHandler
+
+    def main():
+        result = helper()
+        formatted = format_output(result)
+        return formatted
+
+    def run_service():
+        service = DataService()
+        return service.execute({"input": "data"})
+
+    def direct_handler():
+        handler = DataHandler()
+        return handler.process({"direct": True})
+
+    def safe_main(data):
+        if not validate_input(data):
+            return None
+        return main()
+  garbage_form_checker.py: |
+    GARBAGE_GRAPH_005_FORM_CHECKER_A = "form_check"
+    GARBAGE_GRAPH_005_FORM_CHECKER_B = True
+
+    def validate_form_data(data):
+        return isinstance(data, dict) and len(data) > 0
+
+    def check_all_forms(inputs):
+        return all(validate_form_data(i) for i in inputs)
+
+    class FormChecker:
+        GARBAGE_GRAPH_005_FORM_CHECKER_C = "strict"
+
+        def check(self, data):
+            return validate_form_data(data)
+  garbage_text_formatter.py: |
+    GARBAGE_GRAPH_005_TEXT_FMT_D = "formatter"
+    GARBAGE_GRAPH_005_TEXT_FMT_E = 42
+
+    def make_label():
+        return "formatted"
+
+    def render_text(value):
+        return f"Formatted: {value}"
+
+    class TextFormatter:
+        GARBAGE_GRAPH_005_TEXT_FMT_F = True
+
+        def build(self):
+            return render_text(make_label())
+  garbage_safe_executor.py: |
+    GARBAGE_GRAPH_005_SAFE_EXEC_G = "safe_executor"
+    GARBAGE_GRAPH_005_SAFE_EXEC_H = False
+
+    def safe_execute(data):
+        if data is None:
+            return None
+        return process_data(data)
+
+    def process_data(data):
+        return {"result": data}
+
+    class SafeExecutor:
+        def run(self, data):
+            return safe_execute(data)
+  garbage/import_chain_GARBAGE_GRAPH_mno001.py: |
+    from garbage.sub_import_GARBAGE_GRAPH_mno001 import sub_helper_GARBAGE_GRAPH_mno001
+
+    def chain_caller_GARBAGE_GRAPH_mno001():
+        return sub_helper_GARBAGE_GRAPH_mno001()
+  garbage/sub_import_GARBAGE_GRAPH_mno001.py: |
+    def sub_helper_GARBAGE_GRAPH_mno001():
+        return "sub"
+  garbage/circular_a_GARBAGE_GRAPH_mno002.py: |
+    from garbage.circular_b_GARBAGE_GRAPH_mno002 import func_b_GARBAGE_GRAPH_mno002
+
+    def func_a_GARBAGE_GRAPH_mno002():
+        return func_b_GARBAGE_GRAPH_mno002()
+  garbage/circular_b_GARBAGE_GRAPH_mno002.py: |
+    def func_b_GARBAGE_GRAPH_mno002():
+        return "b"
+  garbage/star_import_GARBAGE_GRAPH_mno003.py: |
+    from garbage.export_all_GARBAGE_GRAPH_mno003 import *
+
+    def use_star_GARBAGE_GRAPH_mno003():
+        return exported_func_GARBAGE_GRAPH_mno003()
+  garbage/export_all_GARBAGE_GRAPH_mno003.py: |
+    __all__ = ['exported_func_GARBAGE_GRAPH_mno003']
+
+    def exported_func_GARBAGE_GRAPH_mno003():
+        return "exported"
+
+    def private_func_GARBAGE_GRAPH_mno003():
+        return "private"
+
+# === Assertions ===
+
+must_include_files:
+- main.py
+
+must_include_content_from:
+  main.py:
+    - from utils import helper, format_output, validate_input
+    - 'def safe_main(data):'
+    - 'if not validate_input(data):'
+
+must_not_include:
+# Plain garbage markers
+- GARBAGE_GRAPH_mno001
+- GARBAGE_GRAPH_mno002
+- GARBAGE_GRAPH_mno003
+# Tricky: has validate_input function name collision
+- GARBAGE_GRAPH_005_FORM_CHECKER_A
+- GARBAGE_GRAPH_005_FORM_CHECKER_B
+- GARBAGE_GRAPH_005_FORM_CHECKER_C
+# Tricky: has helper() and format_output() function name collision
+- GARBAGE_GRAPH_005_TEXT_FMT_D
+- GARBAGE_GRAPH_005_TEXT_FMT_E
+- GARBAGE_GRAPH_005_TEXT_FMT_F
+# Tricky: same directory, similar null-check-then-delegate pattern
+- GARBAGE_GRAPH_005_SAFE_EXEC_G
+- GARBAGE_GRAPH_005_SAFE_EXEC_H
+
+must_not_include_files:
+- garbage/import_chain_GARBAGE_GRAPH_mno001.py
+- garbage/sub_import_GARBAGE_GRAPH_mno001.py
+- garbage/circular_a_GARBAGE_GRAPH_mno002.py
+- garbage/circular_b_GARBAGE_GRAPH_mno002.py
+- garbage/star_import_GARBAGE_GRAPH_mno003.py
+- garbage/export_all_GARBAGE_GRAPH_mno003.py
+- garbage_form_checker.py
+- garbage_text_formatter.py
+- garbage_safe_executor.py
+
+max_fragments: 12
+max_files: 5
+add_garbage_files: false
+skip_garbage_check: true

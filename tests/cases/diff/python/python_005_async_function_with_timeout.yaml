@@ -1,0 +1,350 @@
+# Scenario: fetch_data() and HttpClient gain timeout parameter support
+# Changed: async_utils.py adds timeout params to fetch_data, HttpClient, fetch_multiple, retry_fetch
+# Reviewer questions: How do callers handle timeouts? Does FetchStatus.TIMEOUT get used?
+# Trap 1: rate_limiter.py — async rate limiting, shares "async" vocabulary but no import from async_utils
+# Trap 2: health_check.py — async health checks with timeouts, similar domain but independent
+initial:
+  async_utils.py: |
+    import asyncio
+    from typing import Any, Dict, Optional, List
+    from dataclasses import dataclass
+    from enum import Enum
+
+    class FetchStatus(Enum):
+        SUCCESS = "success"
+        ERROR = "error"
+        TIMEOUT = "timeout"
+
+    @dataclass
+    class FetchResult:
+        url: str
+        status: FetchStatus
+        data: Optional[Dict[str, Any]] = None
+        error: Optional[str] = None
+        elapsed_ms: float = 0.0
+
+    class HttpClient:
+        def __init__(self, base_url: str = ""):
+            self.base_url = base_url
+            self._session_count = 0
+
+        async def get(self, path: str) -> Dict[str, Any]:
+            url = f"{self.base_url}{path}"
+            return await fetch_data(url)
+
+        async def post(self, path: str, data: Dict[str, Any]) -> Dict[str, Any]:
+            url = f"{self.base_url}{path}"
+            await simulate_delay()
+            return {"url": url, "data": data, "method": "POST"}
+
+    async def fetch_data(url: str) -> Dict[str, Any]:
+        await simulate_delay()
+        return {"url": url, "data": "content"}
+
+    async def fetch_multiple(urls: List[str]) -> List[FetchResult]:
+        tasks = [fetch_data(url) for url in urls]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        return [
+            FetchResult(
+                url=url,
+                status=FetchStatus.SUCCESS if isinstance(r, dict) else FetchStatus.ERROR,
+                data=r if isinstance(r, dict) else None,
+                error=str(r) if isinstance(r, Exception) else None
+            )
+            for url, r in zip(urls, results)
+        ]
+
+    async def simulate_delay(seconds: float = 0.1) -> None:
+        await asyncio.sleep(seconds)
+
+    async def retry_fetch(url: str, max_retries: int = 3) -> Optional[Dict[str, Any]]:
+        for attempt in range(max_retries):
+            try:
+                return await fetch_data(url)
+            except Exception:
+                if attempt == max_retries - 1:
+                    raise
+                await asyncio.sleep(0.5 * (attempt + 1))
+        return None
+  handler.py: |
+    from async_utils import fetch_data, FetchResult, FetchStatus, HttpClient
+    from typing import Dict, Any, List
+
+    class RequestHandler:
+        def __init__(self):
+            self.client = HttpClient()
+
+        async def handle_request(self, url: str) -> Dict[str, Any]:
+            data = await fetch_data(url)
+            return self._process_response(data)
+
+        async def handle_batch(self, urls: List[str]) -> List[Dict[str, Any]]:
+            results = []
+            for url in urls:
+                data = await fetch_data(url)
+                results.append(self._process_response(data))
+            return results
+
+        def _process_response(self, data: Dict[str, Any]) -> Dict[str, Any]:
+            return {"processed": True, "original": data}
+  rate_limiter.py: |
+    import asyncio
+    import time
+    from typing import Dict, Optional
+    from dataclasses import dataclass
+
+    @dataclass
+    class RateLimitConfig:
+        requests_per_second: int = 100
+        burst_size: int = 10
+        timeout_seconds: float = 30.0
+
+    class AsyncRateLimiter:
+        def __init__(self, config: RateLimitConfig):
+            self._config = config
+            self._tokens: float = config.burst_size
+            self._last_refill = time.monotonic()
+            self._lock = asyncio.Lock()
+
+        async def acquire(self) -> bool:
+            async with self._lock:
+                now = time.monotonic()
+                elapsed = now - self._last_refill
+                self._tokens = min(
+                    self._config.burst_size,
+                    self._tokens + elapsed * self._config.requests_per_second,
+                )
+                self._last_refill = now
+                if self._tokens >= 1:
+                    self._tokens -= 1
+                    return True
+                return False
+
+        async def wait_and_acquire(self) -> None:
+            while not await self.acquire():
+                await asyncio.sleep(1.0 / self._config.requests_per_second)
+  health_check.py: |
+    import asyncio
+    from typing import Dict, Any, List
+    from dataclasses import dataclass
+    from enum import Enum
+
+    class ServiceStatus(Enum):
+        HEALTHY = "healthy"
+        DEGRADED = "degraded"
+        UNHEALTHY = "unhealthy"
+
+    @dataclass
+    class HealthResult:
+        service_name: str
+        status: ServiceStatus
+        response_time_ms: float
+        details: Optional[Dict[str, Any]] = None
+
+    class HealthChecker:
+        def __init__(self, timeout_seconds: float = 5.0):
+            self._timeout = timeout_seconds
+            self._checks: Dict[str, callable] = {}
+
+        def register_check(self, name: str, check_fn: callable) -> None:
+            self._checks[name] = check_fn
+
+        async def run_checks(self) -> List[HealthResult]:
+            results = []
+            for name, check_fn in self._checks.items():
+                try:
+                    start = asyncio.get_event_loop().time()
+                    await asyncio.wait_for(check_fn(), timeout=self._timeout)
+                    elapsed = (asyncio.get_event_loop().time() - start) * 1000
+                    results.append(HealthResult(name, ServiceStatus.HEALTHY, elapsed))
+                except asyncio.TimeoutError:
+                    results.append(HealthResult(name, ServiceStatus.UNHEALTHY, self._timeout * 1000))
+            return results
+changed:
+  async_utils.py: |
+    import asyncio
+    from typing import Any, Dict, Optional, List
+    from dataclasses import dataclass
+    from enum import Enum
+
+    class FetchStatus(Enum):
+        SUCCESS = "success"
+        ERROR = "error"
+        TIMEOUT = "timeout"
+
+    @dataclass
+    class FetchResult:
+        url: str
+        status: FetchStatus
+        data: Optional[Dict[str, Any]] = None
+        error: Optional[str] = None
+        elapsed_ms: float = 0.0
+
+    class HttpClient:
+        def __init__(self, base_url: str = "", default_timeout: float = 30.0):
+            self.base_url = base_url
+            self.default_timeout = default_timeout
+            self._session_count = 0
+
+        async def get(self, path: str, timeout: Optional[float] = None) -> Dict[str, Any]:
+            url = f"{self.base_url}{path}"
+            return await fetch_data(url, timeout=timeout or self.default_timeout)
+
+        async def post(self, path: str, data: Dict[str, Any], timeout: Optional[float] = None) -> Dict[str, Any]:
+            url = f"{self.base_url}{path}"
+            await simulate_delay()
+            return {"url": url, "data": data, "method": "POST"}
+
+    async def fetch_data(url: str, timeout: float = 30.0) -> Dict[str, Any]:
+        try:
+            await asyncio.wait_for(simulate_delay(), timeout=timeout)
+            return {"url": url, "data": "content", "timeout": timeout}
+        except asyncio.TimeoutError:
+            return {"url": url, "error": "timeout", "timeout_value": timeout}
+
+    async def fetch_multiple(urls: List[str], timeout: float = 30.0) -> List[FetchResult]:
+        tasks = [fetch_data(url, timeout=timeout) for url in urls]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        return [
+            FetchResult(
+                url=url,
+                status=FetchStatus.TIMEOUT if isinstance(r, dict) and "error" in r else (
+                    FetchStatus.SUCCESS if isinstance(r, dict) else FetchStatus.ERROR
+                ),
+                data=r if isinstance(r, dict) and "error" not in r else None,
+                error=r.get("error") if isinstance(r, dict) else str(r) if isinstance(r, Exception) else None
+            )
+            for url, r in zip(urls, results)
+        ]
+
+    async def simulate_delay(seconds: float = 0.1) -> None:
+        await asyncio.sleep(seconds)
+
+    async def retry_fetch(url: str, max_retries: int = 3, timeout: float = 30.0) -> Optional[Dict[str, Any]]:
+        for attempt in range(max_retries):
+            try:
+                result = await fetch_data(url, timeout=timeout)
+                if "error" not in result:
+                    return result
+            except Exception:
+                pass
+            if attempt < max_retries - 1:
+                await asyncio.sleep(0.5 * (attempt + 1))
+        return None
+  handler.py: |
+    from async_utils import fetch_data, FetchResult, FetchStatus, HttpClient
+    from typing import Dict, Any, List
+
+    class RequestHandler:
+        def __init__(self):
+            self.client = HttpClient()
+
+        async def handle_request(self, url: str) -> Dict[str, Any]:
+            data = await fetch_data(url)
+            return self._process_response(data)
+
+        async def handle_batch(self, urls: List[str]) -> List[Dict[str, Any]]:
+            results = []
+            for url in urls:
+                data = await fetch_data(url)
+                results.append(self._process_response(data))
+            return results
+
+        def _process_response(self, data: Dict[str, Any]) -> Dict[str, Any]:
+            return {"processed": True, "original": data}
+  rate_limiter.py: |
+    import asyncio
+    import time
+    from typing import Dict, Optional
+    from dataclasses import dataclass
+
+    @dataclass
+    class RateLimitConfig:
+        requests_per_second: int = 100
+        burst_size: int = 10
+        timeout_seconds: float = 30.0
+
+    class AsyncRateLimiter:
+        def __init__(self, config: RateLimitConfig):
+            self._config = config
+            self._tokens: float = config.burst_size
+            self._last_refill = time.monotonic()
+            self._lock = asyncio.Lock()
+
+        async def acquire(self) -> bool:
+            async with self._lock:
+                now = time.monotonic()
+                elapsed = now - self._last_refill
+                self._tokens = min(
+                    self._config.burst_size,
+                    self._tokens + elapsed * self._config.requests_per_second,
+                )
+                self._last_refill = now
+                if self._tokens >= 1:
+                    self._tokens -= 1
+                    return True
+                return False
+
+        async def wait_and_acquire(self) -> None:
+            while not await self.acquire():
+                await asyncio.sleep(1.0 / self._config.requests_per_second)
+  health_check.py: |
+    import asyncio
+    from typing import Dict, Any, List
+    from dataclasses import dataclass
+    from enum import Enum
+
+    class ServiceStatus(Enum):
+        HEALTHY = "healthy"
+        DEGRADED = "degraded"
+        UNHEALTHY = "unhealthy"
+
+    @dataclass
+    class HealthResult:
+        service_name: str
+        status: ServiceStatus
+        response_time_ms: float
+        details: Optional[Dict[str, Any]] = None
+
+    class HealthChecker:
+        def __init__(self, timeout_seconds: float = 5.0):
+            self._timeout = timeout_seconds
+            self._checks: Dict[str, callable] = {}
+
+        def register_check(self, name: str, check_fn: callable) -> None:
+            self._checks[name] = check_fn
+
+        async def run_checks(self) -> List[HealthResult]:
+            results = []
+            for name, check_fn in self._checks.items():
+                try:
+                    start = asyncio.get_event_loop().time()
+                    await asyncio.wait_for(check_fn(), timeout=self._timeout)
+                    elapsed = (asyncio.get_event_loop().time() - start) * 1000
+                    results.append(HealthResult(name, ServiceStatus.HEALTHY, elapsed))
+                except asyncio.TimeoutError:
+                    results.append(HealthResult(name, ServiceStatus.UNHEALTHY, self._timeout * 1000))
+            return results
+must_include_files:
+- async_utils.py
+- handler.py
+must_include_content_from:
+  async_utils.py:
+  - 'def __init__(self, base_url: str = "", default_timeout: float = 30.0):'
+  - 'async def get(self, path: str, timeout: Optional[float] = None) -> Dict[str, Any]:'
+  handler.py:
+  - from async_utils import fetch_data, FetchResult, FetchStatus, HttpClient
+must_not_include:
+- AsyncRateLimiter
+- RateLimitConfig
+- wait_and_acquire
+- HealthChecker
+- HealthResult
+- ServiceStatus
+must_not_include_files:
+- rate_limiter.py
+- health_check.py
+add_garbage_files: false
+skip_garbage_check: true
+max_fragments: 10
+max_files: 4

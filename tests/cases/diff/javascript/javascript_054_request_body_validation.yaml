@@ -1,0 +1,98 @@
+# Scenario: controller.ts is rewritten to import CreateUserBody from schemas.ts
+# and cast req.body to it for type-safe access.
+#
+# Diff: controller.ts adds `import { CreateUserBody } from './schemas'` and uses
+# `req.body as CreateUserBody` to access body.name and body.email.
+#
+# Reviewer questions:
+#   Q1: "What fields does CreateUserBody have?"
+#       -> schemas.ts (UNCHANGED) defines CreateUserBody with name, email, password.
+#          Reviewer verifies the controller accesses body.name and body.email (valid
+#          fields) and doesn't use body.password (intentional omission from response).
+#
+# Not needed:
+#   - update-schema.ts: UpdateUserBody schema for PATCH/PUT. Same schema pattern
+#     but for a different operation, not imported by this controller.
+#   - password-hasher.ts: hashes passwords before storage. Related to the password
+#     field in CreateUserBody but not imported by the controller.
+
+initial:
+  schemas.ts: |
+    export interface CreateUserBody {
+        name: string;
+        email: string;
+        password: string;
+    }
+  controller.ts: |
+    console.log('initial');
+  update-schema.ts: |
+    export interface UpdateUserBody {
+        name?: string;
+        email?: string;
+    }
+
+    export function validateUpdate(body: unknown): body is UpdateUserBody {
+        if (!body || typeof body !== 'object') return false;
+        return true;
+    }
+  password-hasher.ts: |
+    export async function hashPassword(plain: string): Promise<string> {
+        const encoder = new TextEncoder();
+        const data = encoder.encode(plain);
+        const hash = await crypto.subtle.digest('SHA-256', data);
+        return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('');
+    }
+changed:
+  schemas.ts: |
+    export interface CreateUserBody {
+        name: string;
+        email: string;
+        password: string;
+    }
+  controller.ts: |
+    import { Request, Response } from 'express';
+    import { CreateUserBody } from './schemas';
+
+    export function createUser(req: Request, res: Response) {
+        const body = req.body as CreateUserBody;
+        res.status(201).json({ id: '1', name: body.name, email: body.email });
+    }
+  update-schema.ts: |
+    export interface UpdateUserBody {
+        name?: string;
+        email?: string;
+    }
+
+    export function validateUpdate(body: unknown): body is UpdateUserBody {
+        if (!body || typeof body !== 'object') return false;
+        return true;
+    }
+  password-hasher.ts: |
+    export async function hashPassword(plain: string): Promise<string> {
+        const encoder = new TextEncoder();
+        const data = encoder.encode(plain);
+        const hash = await crypto.subtle.digest('SHA-256', data);
+        return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('');
+    }
+must_include_files:
+  # Q1: schemas.ts defines CreateUserBody that controller.ts imports
+  - schemas.ts
+must_include_content_from:
+  schemas.ts:
+    - "interface CreateUserBody {"
+    - "name: string"
+    - "email: string"
+must_not_include:
+  # update-schema.ts: different schema for update operation, not imported
+  - UpdateUserBody
+  - validateUpdate
+  # password-hasher.ts: password hashing, not part of controller logic
+  - hashPassword
+  - SHA-256
+must_not_include_files:
+  - update-schema.ts
+  - password-hasher.ts
+max_fragments: 5
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

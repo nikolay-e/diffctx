@@ -1,0 +1,154 @@
+initial:
+  s3.tf: |
+    resource "aws_s3_bucket" "static" {
+      bucket = "my-static-site"
+    }
+
+    resource "aws_s3_bucket_policy" "static" {
+      bucket = aws_s3_bucket.static.id
+      policy = jsonencode({
+        Version = "2012-10-17"
+        Statement = [{
+          Effect    = "Allow"
+          Principal = "*"
+          Action    = ["s3:GetObject"]
+          Resource  = "${aws_s3_bucket.static.arn}/*"
+        }]
+      })
+    }
+  src/upload.py: |
+    import boto3
+
+    def upload_file(bucket: str, key: str, data: bytes):
+        s3 = boto3.client("s3")
+        s3.put_object(Bucket=bucket, Key=key, Body=data)
+
+  # --- Tricky garbage: sibling .tf with same aws_s3_bucket resource type ---
+  garbage_s3_logging.tf: |
+    GARBAGE_TF_073_LOGGING_MARKER_A = "s3-access-logs"
+    GARBAGE_TF_073_BUCKET_LOG_MARKER_B = "enabled"
+
+    resource "aws_s3_bucket" "access_logs" {
+      bucket = "access-logs-archive"
+
+      tags = {
+        Environment = "audit"
+        Purpose     = "access-logging"
+      }
+    }
+
+    resource "aws_s3_bucket_policy" "access_logs" {
+      bucket = aws_s3_bucket.access_logs.id
+      policy = jsonencode({
+        Version = "2012-10-17"
+        Statement = [{
+          Effect    = "Allow"
+          Principal = {"Service": "logging.s3.amazonaws.com"}
+          Action    = ["s3:PutObject"]
+          Resource  = "${aws_s3_bucket.access_logs.arn}/*"
+        }]
+      })
+    }
+
+  # --- Plain garbage: no overlap ---
+  garbage_billing.py: |
+    GARBAGE_TF_073_BILLING_MARKER_C = "cost-center"
+    GARBAGE_TF_073_INVOICE_MARKER_D = 9999
+
+    class BillingReport:
+        GARBAGE_TF_073_REPORT_MARKER_E = True
+
+        def generate(self, month: int) -> dict:
+            return {"month": month, "total": 0}
+
+changed:
+  s3.tf: |
+    resource "aws_s3_bucket" "static" {
+      bucket = "my-static-site-prod"
+    }
+
+    resource "aws_s3_bucket_policy" "static" {
+      bucket = aws_s3_bucket.static.id
+      policy = jsonencode({
+        Version = "2012-10-17"
+        Statement = [{
+          Effect    = "Allow"
+          Principal = {"AWS": "arn:aws:iam::123456789:root"}
+          Action    = ["s3:GetObject", "s3:PutObject"]
+          Resource  = "${aws_s3_bucket.static.arn}/*"
+        }]
+      })
+    }
+  src/upload.py: |
+    import boto3
+
+    def upload_file(bucket: str, key: str, data: bytes):
+        s3 = boto3.client("s3")
+        s3.put_object(Bucket=bucket, Key=key, Body=data)
+
+  garbage_s3_logging.tf: |
+    GARBAGE_TF_073_LOGGING_MARKER_A = "s3-access-logs"
+    GARBAGE_TF_073_BUCKET_LOG_MARKER_B = "enabled"
+
+    resource "aws_s3_bucket" "access_logs" {
+      bucket = "access-logs-archive"
+
+      tags = {
+        Environment = "audit"
+        Purpose     = "access-logging"
+      }
+    }
+
+    resource "aws_s3_bucket_policy" "access_logs" {
+      bucket = aws_s3_bucket.access_logs.id
+      policy = jsonencode({
+        Version = "2012-10-17"
+        Statement = [{
+          Effect    = "Allow"
+          Principal = {"Service": "logging.s3.amazonaws.com"}
+          Action    = ["s3:PutObject"]
+          Resource  = "${aws_s3_bucket.access_logs.arn}/*"
+        }]
+      })
+    }
+
+  garbage_billing.py: |
+    GARBAGE_TF_073_BILLING_MARKER_C = "cost-center"
+    GARBAGE_TF_073_INVOICE_MARKER_D = 9999
+
+    class BillingReport:
+        GARBAGE_TF_073_REPORT_MARKER_E = True
+
+        def generate(self, month: int) -> dict:
+            return {"month": month, "total": 0}
+
+# === Assertions ===
+
+must_include_files:
+- s3.tf
+
+must_include_content_from:
+  s3.tf:
+    - bucket = "my-static-site-prod"
+    - 'Principal = {"AWS": "arn:aws:iam::123456789:root"}'
+    - '["s3:GetObject", "s3:PutObject"]'
+    - 'resource "aws_s3_bucket_policy" "static"'
+
+must_not_include:
+# Tricky garbage: sibling .tf with same resource types
+- GARBAGE_TF_073_LOGGING_MARKER_A
+- GARBAGE_TF_073_BUCKET_LOG_MARKER_B
+# Plain garbage
+- GARBAGE_TF_073_BILLING_MARKER_C
+- GARBAGE_TF_073_INVOICE_MARKER_D
+- GARBAGE_TF_073_REPORT_MARKER_E
+
+must_not_include_files:
+- garbage_s3_logging.tf
+- garbage_billing.py
+- src/upload.py
+
+max_fragments: 3
+max_files: 1
+add_garbage_files: false
+skip_garbage_check: true

@@ -32,11 +32,13 @@ from .limits import (
     LIMITS,
     PPR,
     SIBLING,
+    UTILITY,
     AlgorithmLimits,
     CochangeConfig,
     LexicalConfig,
     PPRConfig,
     SiblingConfig,
+    UtilityConfig,
 )
 from .patterns import (
     CONFIG_KEY_PATTERNS,
@@ -91,6 +93,7 @@ __all__ = [
     "SIBLING",
     "SWIFT_EXTENSIONS",
     "TYPESCRIPT_EXTENSIONS",
+    "UTILITY",
     "AlgorithmLimits",
     "CochangeConfig",
     "EdgeWeightConfig",
@@ -98,4 +101,5 @@ __all__ = [
     "LexicalConfig",
     "PPRConfig",
     "SiblingConfig",
+    "UtilityConfig",
 ]

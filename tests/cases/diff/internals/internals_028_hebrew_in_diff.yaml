@@ -1,0 +1,15 @@
+initial:
+  hebrew_diff.py: |
+    def placeholder():
+        pass
+changed:
+  hebrew_diff.py: |
+    def foo():
+        """תיעוד בעברית"""
+        return process_value(x)
+must_include_files:
+- hebrew_diff.py
+must_include_content:
+- '"""תיעוד בעברית"""'
+add_garbage_files: false
+skip_garbage_check: true

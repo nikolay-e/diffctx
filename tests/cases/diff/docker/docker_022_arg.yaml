@@ -1,0 +1,200 @@
+# Scenario: Rust Dockerfile rewritten from simple single-stage to multi-stage with
+# extensive ARG usage: RUST_VERSION, BUILDPLATFORM/TARGETPLATFORM for cross-compilation,
+# VERSION/GIT_SHA/BUILD_DATE for versioning, and CARGO_* for build tuning.
+# Production stage switches to distroless with OCI labels.
+#
+# Reviewer questions:
+#   1. Does Cargo.toml define the crate name "myapp" matching the binary path?
+#   2. Does src/main.rs use env!("CARGO_PKG_VERSION") — compatible with ARG VERSION?
+#   3. What deps does Cargo.toml pull — do they need musl-dev/openssl-dev?
+
+initial:
+  src/main.rs: |
+    use std::env;
+    use std::net::TcpListener;
+
+    fn main() {
+        let version = env!("CARGO_PKG_VERSION");
+        println!("App version: {}", version);
+
+        let port = env::var("PORT").unwrap_or_else(|_| "8080".to_string());
+        let listener = TcpListener::bind(format!("0.0.0.0:{}", port)).unwrap();
+        println!("Listening on port {}", port);
+    }
+  Cargo.toml: |
+    [package]
+    name = "myapp"
+    version = "1.0.0"
+    edition = "2021"
+
+    [dependencies]
+    tokio = { version = "1.35", features = ["full"] }
+    axum = "0.7"
+  Dockerfile: |
+    FROM rust:1.74-alpine
+    WORKDIR /app
+    COPY . .
+    RUN cargo build --release
+    CMD ["./target/release/myapp"]
+
+  # Trap: build script — uses cargo build but is a local convenience script
+  scripts/build.sh: |
+    #!/bin/bash
+    cargo build --release
+    echo "Binary at target/release/myapp"
+
+  # Trap: test file — same crate, tests main function
+  tests/integration_test.rs: |
+    #[test]
+    fn test_main() {
+        assert!(true);
+    }
+
+  # Trap: GitHub action — release workflow, shares versioning concept
+  .github/actions/release/action.yml: |
+    name: Release
+    inputs:
+      version:
+        required: true
+    runs:
+      using: composite
+      steps:
+        - run: cargo build --release
+
+  # Trap: benchmark — Rust code in same crate but performance testing
+  benches/benchmark.rs: |
+    use criterion::{criterion_group, criterion_main, Criterion};
+    fn bench_main(c: &mut Criterion) {
+        c.bench_function("startup", |b| b.iter(|| {}));
+    }
+    criterion_group!(benches, bench_main);
+    criterion_main!(benches);
+
+changed:
+  src/main.rs: |
+    use std::env;
+    use std::net::TcpListener;
+
+    fn main() {
+        let version = env!("CARGO_PKG_VERSION");
+        println!("App version: {}", version);
+
+        let port = env::var("PORT").unwrap_or_else(|_| "8080".to_string());
+        let listener = TcpListener::bind(format!("0.0.0.0:{}", port)).unwrap();
+        println!("Listening on port {}", port);
+    }
+  Cargo.toml: |
+    [package]
+    name = "myapp"
+    version = "1.0.0"
+    edition = "2021"
+
+    [dependencies]
+    tokio = { version = "1.35", features = ["full"] }
+    axum = "0.7"
+  Dockerfile: |
+    # Build arguments for versioning and caching
+    ARG RUST_VERSION=1.75
+    ARG BUILDPLATFORM=linux/amd64
+    ARG TARGETPLATFORM=linux/amd64
+
+    # Build stage
+    FROM --platform=$BUILDPLATFORM rust:${RUST_VERSION}-alpine AS builder
+
+    # Build arguments available inside build stage
+    ARG VERSION=0.0.0
+    ARG GIT_SHA=unknown
+    ARG BUILD_DATE
+    ARG CARGO_INCREMENTAL=0
+    ARG CARGO_NET_RETRY=10
+
+    # Install build dependencies
+    RUN apk add --no-cache musl-dev openssl-dev pkgconfig
+
+    WORKDIR /build
+
+    # Cache dependencies
+    COPY Cargo.toml Cargo.lock ./
+    RUN mkdir src && echo "fn main() {}" > src/main.rs && \
+        cargo build --release && \
+        rm -rf src
+
+    # Build actual application
+    COPY src ./src
+    RUN cargo build --release \
+        --config "env.APP_VERSION='${VERSION}'" \
+        --config "env.GIT_SHA='${GIT_SHA}'"
+
+    # Production stage
+    FROM gcr.io/distroless/cc-debian12:nonroot AS production
+
+    ARG VERSION=0.0.0
+    ARG GIT_SHA=unknown
+    ARG BUILD_DATE
+
+    LABEL org.opencontainers.image.version="${VERSION}" \
+          org.opencontainers.image.revision="${GIT_SHA}" \
+          org.opencontainers.image.created="${BUILD_DATE}" \
+          org.opencontainers.image.source="https://github.com/org/myapp"
+
+    COPY --from=builder --chown=nonroot:nonroot /build/target/release/myapp /app
+
+    USER nonroot:nonroot
+    ENTRYPOINT ["/app"]
+
+  scripts/build.sh: |
+    #!/bin/bash
+    cargo build --release
+    echo "Binary at target/release/myapp"
+  tests/integration_test.rs: |
+    #[test]
+    fn test_main() {
+        assert!(true);
+    }
+  .github/actions/release/action.yml: |
+    name: Release
+    inputs:
+      version:
+        required: true
+    runs:
+      using: composite
+      steps:
+        - run: cargo build --release
+  benches/benchmark.rs: |
+    use criterion::{criterion_group, criterion_main, Criterion};
+    fn bench_main(c: &mut Criterion) {
+        c.bench_function("startup", |b| b.iter(|| {}));
+    }
+    criterion_group!(benches, bench_main);
+    criterion_main!(benches);
+
+# === Assertions ===
+
+must_include_files:
+- Dockerfile
+
+must_include_content_from:
+  Dockerfile:
+    - ARG RUST_VERSION=1.75
+    - ARG VERSION=0.0.0
+    - ARG GIT_SHA=unknown
+    - COPY Cargo.toml Cargo.lock ./
+    - cargo build --release
+  Cargo.toml:
+    - name = "myapp"
+    - tokio = { version = "1.35", features = ["full"] }
+
+must_not_include_files:
+  # Build script — local convenience, doesn't inform ARG review
+- scripts/build.sh
+  # Tests — same crate but doesn't help reviewer understand ARG usage
+- tests/integration_test.rs
+  # Release action — shares versioning concept but is CI config, not Dockerfile
+- .github/actions/release/action.yml
+  # Benchmarks — Rust code but performance testing, unrelated to Docker ARGs
+- benches/benchmark.rs
+
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

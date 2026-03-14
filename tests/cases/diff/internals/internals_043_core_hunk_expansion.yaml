@@ -1,0 +1,24 @@
+initial:
+  core.py: |
+    def caller_function():
+        pass
+  helper.py: |
+    def helper_function():
+        pass
+changed:
+  core.py: |
+    from helper import helper_function
+
+    def caller_function():
+        helper_function()
+  helper.py: |
+    def helper_function():
+        return "helping"
+must_include_files:
+- core.py
+- helper.py
+must_include_content:
+- from helper import helper_function
+- helper_function()
+add_garbage_files: false
+skip_garbage_check: true

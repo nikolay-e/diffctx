@@ -1,0 +1,220 @@
+# Scenario: OrderRepository returns Order model types from repository methods
+# Changed: repository/order_repo.py imports Order and returns Order instances from queries
+# Reviewer questions: Are Optional returns handled? Does find_by_customer filter correctly?
+# Trap 1: repository/product_repo.py — product repository, shares "repository" vocabulary but independent
+# Trap 2: services/order_notifications.py — sends order notifications, shares "order" domain but no dep
+initial:
+  models/order.py: |
+    from dataclasses import dataclass, field
+    from typing import List
+    from enum import Enum
+
+    class OrderStatus(Enum):
+        PENDING = "pending"
+        CONFIRMED = "confirmed"
+        SHIPPED = "shipped"
+
+    @dataclass
+    class LineItem:
+        product_name: str
+        quantity: int
+        unit_price: float
+
+        def subtotal(self) -> float:
+            return self.quantity * self.unit_price
+
+    @dataclass
+    class Order:
+        order_id: int
+        customer_name: str
+        status: OrderStatus = OrderStatus.PENDING
+        items: List[LineItem] = field(default_factory=list)
+
+        def total_amount(self) -> float:
+            return sum(item.subtotal() for item in self.items)
+
+        def item_count(self) -> int:
+            return sum(item.quantity for item in self.items)
+  repository/order_repo.py: |
+    from models.order import Order, OrderStatus
+
+    class OrderRepository:
+        def __init__(self):
+            self._orders = {}
+            self._next_id = 1
+
+        def save(self, order: Order) -> None:
+            self._orders[order.order_id] = order
+
+        def get_orders(self):
+            pass
+
+        def find_by_status(self, status: OrderStatus):
+            return [o for o in self._orders.values() if o.status == status]
+  repository/product_repo.py: |
+    from typing import Dict, List, Optional
+    from dataclasses import dataclass
+    from decimal import Decimal
+
+    @dataclass
+    class Product:
+        id: str
+        name: str
+        price: Decimal
+        in_stock: bool = True
+
+    class ProductRepository:
+        def __init__(self):
+            self._products: Dict[str, Product] = {}
+
+        def find_by_id(self, product_id: str) -> Optional[Product]:
+            return self._products.get(product_id)
+
+        def find_in_stock(self) -> List[Product]:
+            return [p for p in self._products.values() if p.in_stock]
+
+        def save(self, product: Product) -> None:
+            self._products[product.id] = product
+  services/order_notifications.py: |
+    from typing import List, Optional
+    from dataclasses import dataclass
+    from datetime import datetime
+
+    @dataclass
+    class OrderNotification:
+        order_id: str
+        customer_email: str
+        subject: str
+        sent_at: Optional[datetime] = None
+
+    class OrderNotificationService:
+        def __init__(self):
+            self._sent: List[OrderNotification] = []
+
+        def send_confirmation(self, order_id: str, email: str) -> bool:
+            self._sent.append(OrderNotification(
+                order_id=order_id, customer_email=email,
+                subject=f"Order {order_id} confirmed", sent_at=datetime.now()
+            ))
+            return True
+
+        def get_sent_count(self) -> int:
+            return len(self._sent)
+changed:
+  models/order.py: |
+    from dataclasses import dataclass, field
+    from typing import List
+    from enum import Enum
+
+    class OrderStatus(Enum):
+        PENDING = "pending"
+        CONFIRMED = "confirmed"
+        SHIPPED = "shipped"
+
+    @dataclass
+    class LineItem:
+        product_name: str
+        quantity: int
+        unit_price: float
+
+        def subtotal(self) -> float:
+            return self.quantity * self.unit_price
+
+    @dataclass
+    class Order:
+        order_id: int
+        customer_name: str
+        status: OrderStatus = OrderStatus.PENDING
+        items: List[LineItem] = field(default_factory=list)
+
+        def total_amount(self) -> float:
+            return sum(item.subtotal() for item in self.items)
+
+        def item_count(self) -> int:
+            return sum(item.quantity for item in self.items)
+  repository/order_repo.py: |
+    from models.order import Order, OrderStatus
+
+    class OrderRepository:
+        def __init__(self):
+            self._orders = {}
+            self._next_id = 1
+
+        def save(self, order: Order) -> None:
+            self._orders[order.order_id] = order
+
+        def get_orders(self) -> list[Order]:
+            return sorted(self._orders.values(), key=lambda o: o.order_id)
+
+        def find_by_status(self, status: OrderStatus):
+            return [o for o in self._orders.values() if o.status == status]
+  repository/product_repo.py: |
+    from typing import Dict, List, Optional
+    from dataclasses import dataclass
+    from decimal import Decimal
+
+    @dataclass
+    class Product:
+        id: str
+        name: str
+        price: Decimal
+        in_stock: bool = True
+
+    class ProductRepository:
+        def __init__(self):
+            self._products: Dict[str, Product] = {}
+
+        def find_by_id(self, product_id: str) -> Optional[Product]:
+            return self._products.get(product_id)
+
+        def find_in_stock(self) -> List[Product]:
+            return [p for p in self._products.values() if p.in_stock]
+
+        def save(self, product: Product) -> None:
+            self._products[product.id] = product
+  services/order_notifications.py: |
+    from typing import List, Optional
+    from dataclasses import dataclass
+    from datetime import datetime
+
+    @dataclass
+    class OrderNotification:
+        order_id: str
+        customer_email: str
+        subject: str
+        sent_at: Optional[datetime] = None
+
+    class OrderNotificationService:
+        def __init__(self):
+            self._sent: List[OrderNotification] = []
+
+        def send_confirmation(self, order_id: str, email: str) -> bool:
+            self._sent.append(OrderNotification(
+                order_id=order_id, customer_email=email,
+                subject=f"Order {order_id} confirmed", sent_at=datetime.now()
+            ))
+            return True
+
+        def get_sent_count(self) -> int:
+            return len(self._sent)
+must_include_files:
+- repository/order_repo.py
+- models/order.py
+must_include_content_from:
+  repository/order_repo.py:
+  - 'from models.order import Order, OrderStatus'
+  - 'def get_orders(self) -> list[Order]:'
+must_not_include:
+- ProductRepository
+- Product
+- find_in_stock
+- OrderNotificationService
+- OrderNotification
+- send_confirmation
+must_not_include_files:
+- repository/product_repo.py
+- services/order_notifications.py
+add_garbage_files: false
+skip_garbage_check: true
+max_fragments: 10
+max_files: 5

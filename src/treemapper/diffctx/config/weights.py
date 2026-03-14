@@ -21,8 +21,8 @@ EDGE_WEIGHTS = {
     "doc_structure": EdgeWeightConfig(0.30, 0.83),
     "anchor_link": EdgeWeightConfig(0.55, 0.64),
     "citation": EdgeWeightConfig(0.25, 1.0),
-    "python_call": EdgeWeightConfig(0.55, 0.70),
-    "python_symbol": EdgeWeightConfig(0.60, 0.70),
+    "python_call": EdgeWeightConfig(0.65, 0.70),
+    "python_symbol": EdgeWeightConfig(0.70, 0.70),
     "python_type": EdgeWeightConfig(0.50, 0.70),
     "javascript_call": EdgeWeightConfig(0.70, 0.50),
     "javascript_symbol": EdgeWeightConfig(0.75, 0.50),
@@ -80,7 +80,7 @@ class LangWeights:
 
 
 LANG_WEIGHTS: dict[str, LangWeights] = {
-    "python": LangWeights(0.55, 0.60, 0.50, 0.20, 0.35),
+    "python": LangWeights(0.65, 0.70, 0.50, 0.20, 0.35),
     "javascript": LangWeights(0.50, 0.55, 0.45, 0.25, 0.35),
     "jsx": LangWeights(0.50, 0.55, 0.45, 0.25, 0.35),
     "typescript": LangWeights(0.70, 0.75, 0.65, 0.15, 0.25),

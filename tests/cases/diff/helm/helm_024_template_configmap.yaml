@@ -1,0 +1,55 @@
+initial:
+  chart/Chart.yaml: |
+    apiVersion: v2
+    name: cfg-app
+    version: 1.0.0
+  chart/values.yaml: |
+    config:
+      logLevel: info
+      maxConnections: 100
+  chart/templates/configmap.yaml: |
+    apiVersion: v1
+    kind: ConfigMap
+    metadata:
+      name: app-config
+    data: {}
+  chart/templates/falco-rules.yaml: |
+    apiVersion: v1
+    kind: ConfigMap
+    metadata:
+    data:
+      rules: |
+  chart/docs/config-management.md: |
+    # Configuration Management
+    ## Hot Reload
+changed:
+  chart/Chart.yaml: |
+    apiVersion: v2
+    name: cfg-app
+    version: 1.0.0
+  chart/values.yaml: |
+    config:
+      logLevel: info
+      maxConnections: 100
+  chart/templates/configmap.yaml: |
+    apiVersion: v1
+    kind: ConfigMap
+    metadata:
+      name: {{ .Release.Name }}-config
+    data:
+      {{- toYaml .Values.config | nindent 4 }}
+  chart/templates/falco-rules.yaml: |
+    apiVersion: v1
+    kind: ConfigMap
+    metadata:
+    data:
+      rules: |
+  chart/docs/config-management.md: |
+    # Configuration Management
+    ## Hot Reload
+must_include_files:
+- chart/templates/configmap.yaml
+must_include_content:
+- 'name: {{ .Release.Name }}-config'
+add_garbage_files: false
+skip_garbage_check: true

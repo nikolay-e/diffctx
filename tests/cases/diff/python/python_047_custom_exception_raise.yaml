@@ -1,0 +1,199 @@
+# Scenario: service.py adds imports of custom exceptions and uses them for
+#   input validation and not-found handling.
+#
+# Reviewer questions:
+#   - Are ValidationError and NotFoundError the right exceptions for these cases?
+#   - Does the validation logic cover all required fields?
+#
+# Trap files:
+#   - audit/audit_logger.py: logging/event vocabulary, no dependency on exceptions or service
+#   - cache/lru_cache.py: caching with get/put, completely different domain
+
+initial:
+  exceptions.py: |
+    class ValidationError(Exception):
+        def __init__(self, field: str, message: str):
+            self.field = field
+            self.message = message
+            super().__init__(f"Validation failed on '{field}': {message}")
+
+        def to_dict(self) -> dict:
+            return {"field": self.field, "error": self.message}
+
+    class NotFoundError(Exception):
+        def __init__(self, entity: str, entity_id: int):
+            self.entity = entity
+            self.entity_id = entity_id
+            super().__init__(f"{entity} with id={entity_id} not found")
+
+        def to_dict(self) -> dict:
+            return {"entity": self.entity, "id": self.entity_id, "error": "not found"}
+
+    class AuthorizationError(Exception):
+        def __init__(self, action: str, resource: str):
+            self.action = action
+            self.resource = resource
+            super().__init__(f"Not authorized to {action} on {resource}")
+  service.py: |
+    from typing import Any
+
+    def validate_user_input(data: dict[str, Any]) -> dict[str, Any]:
+        return data
+
+    def create_user(name: str, email: str) -> dict[str, Any]:
+        validated = validate_user_input({"name": name, "email": email})
+        return {"id": 1, **validated}
+
+    def get_user_by_email(email: str) -> dict[str, Any]:
+        return {"id": 1, "name": "Test", "email": email}
+  audit/audit_logger.py: |
+    from datetime import datetime
+    from typing import Optional
+
+    class AuditLogger:
+        def __init__(self, log_path: str = "/var/log/audit.log"):
+            self.log_path = log_path
+            self._entries: list[dict] = []
+
+        def log_event(self, event_type: str, user_id: int, details: str) -> None:
+            self._entries.append({
+                "type": event_type,
+                "user_id": user_id,
+                "details": details,
+                "timestamp": datetime.utcnow().isoformat(),
+            })
+
+        def get_recent_events(self, count: int = 10) -> list[dict]:
+            return self._entries[-count:]
+  cache/lru_cache.py: |
+    from collections import OrderedDict
+
+    class LRUCache:
+        def __init__(self, max_size: int = 256):
+            self.max_size = max_size
+            self._store: OrderedDict[str, object] = OrderedDict()
+
+        def get(self, key: str) -> object | None:
+            if key in self._store:
+                self._store.move_to_end(key)
+                return self._store[key]
+            return None
+
+        def put(self, key: str, value: object) -> None:
+            if key in self._store:
+                self._store.move_to_end(key)
+            self._store[key] = value
+            if len(self._store) > self.max_size:
+                self._store.popitem(last=False)
+
+changed:
+  exceptions.py: |
+    class ValidationError(Exception):
+        def __init__(self, field: str, message: str):
+            self.field = field
+            self.message = message
+            super().__init__(f"Validation failed on '{field}': {message}")
+
+        def to_dict(self) -> dict:
+            return {"field": self.field, "error": self.message}
+
+    class NotFoundError(Exception):
+        def __init__(self, entity: str, entity_id: int):
+            self.entity = entity
+            self.entity_id = entity_id
+            super().__init__(f"{entity} with id={entity_id} not found")
+
+        def to_dict(self) -> dict:
+            return {"entity": self.entity, "id": self.entity_id, "error": "not found"}
+
+    class AuthorizationError(Exception):
+        def __init__(self, action: str, resource: str):
+            self.action = action
+            self.resource = resource
+            super().__init__(f"Not authorized to {action} on {resource}")
+  service.py: |
+    from typing import Any
+    from exceptions import ValidationError, NotFoundError
+
+    def validate_user_input(data: dict[str, Any]) -> dict[str, Any]:
+        if not data.get("name"):
+            raise ValidationError("name", "is required")
+        if not data.get("email"):
+            raise ValidationError("email", "is required")
+        if "@" not in data["email"]:
+            raise ValidationError("email", "must contain @")
+        return data
+
+    def create_user(name: str, email: str) -> dict[str, Any]:
+        validated = validate_user_input({"name": name, "email": email})
+        return {"id": 1, **validated}
+
+    def get_user_by_email(email: str) -> dict[str, Any]:
+        user = None
+        if user is None:
+            raise NotFoundError("User", 0)
+        return user
+  audit/audit_logger.py: |
+    from datetime import datetime
+    from typing import Optional
+
+    class AuditLogger:
+        def __init__(self, log_path: str = "/var/log/audit.log"):
+            self.log_path = log_path
+            self._entries: list[dict] = []
+
+        def log_event(self, event_type: str, user_id: int, details: str) -> None:
+            self._entries.append({
+                "type": event_type,
+                "user_id": user_id,
+                "details": details,
+                "timestamp": datetime.utcnow().isoformat(),
+            })
+
+        def get_recent_events(self, count: int = 10) -> list[dict]:
+            return self._entries[-count:]
+  cache/lru_cache.py: |
+    from collections import OrderedDict
+
+    class LRUCache:
+        def __init__(self, max_size: int = 256):
+            self.max_size = max_size
+            self._store: OrderedDict[str, object] = OrderedDict()
+
+        def get(self, key: str) -> object | None:
+            if key in self._store:
+                self._store.move_to_end(key)
+                return self._store[key]
+            return None
+
+        def put(self, key: str, value: object) -> None:
+            if key in self._store:
+                self._store.move_to_end(key)
+            self._store[key] = value
+            if len(self._store) > self.max_size:
+                self._store.popitem(last=False)
+
+must_include_files:
+- service.py
+must_include_content_from:
+  service.py:
+    - "from exceptions import ValidationError, NotFoundError"
+    - 'if not data.get("name"):'
+    - "raise NotFoundError"
+  exceptions.py:
+    - "class ValidationError(Exception)"
+    - "class NotFoundError(Exception)"
+    - "def to_dict"
+must_not_include:
+- AuditLogger
+- log_event
+- get_recent_events
+- LRUCache
+- popitem
+must_not_include_files:
+- audit/audit_logger.py
+- cache/lru_cache.py
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

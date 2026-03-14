@@ -1,0 +1,213 @@
+# Scenario: app.php creates a Multiplier instance and uses its getFactor() value
+# inside a closure passed to array_map. Multiplier.php defines the factor class.
+#
+# Diff: app.php changes from simple echo to requiring Multiplier.php, creating
+# a Multiplier(10), capturing getFactor() result in a closure via `use ($factor)`,
+# and mapping it over an array.
+#
+# Reviewer questions:
+#   Q1: "What does getFactor() return — is it the right type for multiplication?"
+#       -> Multiplier.php (UNCHANGED) shows getFactor() returns int (the promoted
+#          $factor property). Since $x * $factor is int * int, types are compatible.
+#   Q2: "Can the Multiplier factor be changed after closure creation?"
+#       -> Multiplier.php has no setter — $factor is private and only set in constructor.
+#          The closure captures by value anyway, so it's safe.
+#
+# Not needed:
+#   - Adder.php: similar arithmetic class that adds a constant. Same domain
+#     (math operations) but not imported by app.php — no edge.
+#   - ArrayHelper.php: utility functions for array manipulation. Same domain
+#     (working with arrays) but independent of Multiplier.
+#   - Calculator.php: also requires Multiplier.php and calls getFactor().
+#     DIRECT structural edge (same class, same method) but combines multiple
+#     operations — different consumer.
+#   - Divider.php: arithmetic class with constructor promotion like Multiplier.
+#     Same PHP pattern (private promoted property) but independent.
+#   - lib/FunctionComposer.php: composes closures. Same closure mechanism
+#     but doesn't reference Multiplier.
+
+initial:
+  src/Multiplier.php: |
+    <?php
+    class Multiplier {
+        public function __construct(private int $factor) {}
+
+        public function getFactor(): int {
+            return $this->factor;
+        }
+
+        public function multiply(int $value): int {
+            return $value * $this->factor;
+        }
+    }
+  src/app.php: |
+    <?php
+    echo "Hello";
+  src/Adder.php: |
+    <?php
+    class Adder {
+        private int $offset;
+
+        public function __construct(int $offset) {
+            $this->offset = $offset;
+        }
+
+        public function add(int $value): int {
+            return $value + $this->offset;
+        }
+
+        public function getOffset(): int {
+            return $this->offset;
+        }
+    }
+  src/ArrayHelper.php: |
+    <?php
+    class ArrayHelper {
+        public static function flatten(array $nested): array {
+            $result = [];
+            array_walk_recursive($nested, function($item) use (&$result) {
+                $result[] = $item;
+            });
+            return $result;
+        }
+
+        public static function unique(array $items): array {
+            return array_values(array_unique($items));
+        }
+
+        public static function chunk(array $items, int $size): array {
+            return array_chunk($items, $size);
+        }
+    }
+  src/Calculator.php: |
+    <?php
+    require_once 'Multiplier.php';
+    require_once 'Adder.php';
+
+    class Calculator {
+        private Multiplier $multiplier;
+        private Adder $adder;
+
+        public function __construct(int $factor, int $offset) {
+            $this->multiplier = new Multiplier($factor);
+            $this->adder = new Adder($offset);
+        }
+
+        public function compute(int $value): int {
+            $scaled = $value * $this->multiplier->getFactor();
+            return $this->adder->add($scaled);
+        }
+
+        public function batchCompute(array $values): array {
+            return array_map([$this, 'compute'], $values);
+        }
+    }
+  src/Divider.php: |
+    <?php
+    class Divider {
+        public function __construct(private int $divisor) {
+            if ($divisor === 0) {
+                throw new \InvalidArgumentException('Divisor cannot be zero');
+            }
+        }
+
+        public function divide(int $value): float {
+            return $value / $this->divisor;
+        }
+
+        public function getDivisor(): int {
+            return $this->divisor;
+        }
+    }
+  src/lib/FunctionComposer.php: |
+    <?php
+    class FunctionComposer {
+        private array $functions = [];
+
+        public function add(callable $fn): self {
+            $this->functions[] = $fn;
+            return $this;
+        }
+
+        public function compose(): callable {
+            $fns = $this->functions;
+            return function ($value) use ($fns) {
+                return array_reduce($fns, fn($carry, $fn) => $fn($carry), $value);
+            };
+        }
+
+        public function apply($value) {
+            return ($this->compose())($value);
+        }
+    }
+
+changed:
+  src/Multiplier.php: |
+    <?php
+    class Multiplier {
+        public function __construct(private int $factor) {}
+
+        public function getFactor(): int {
+            return $this->factor;
+        }
+
+        public function multiply(int $value): int {
+            return $value * $this->factor;
+        }
+    }
+  src/app.php: |
+    <?php
+    require_once 'Multiplier.php';
+
+    $multiplier = new Multiplier(10);
+    $factor = $multiplier->getFactor();
+
+    $callback = function(int $x) use ($factor): int {
+        return $x * $factor;
+    };
+
+    $numbers = [1, 2, 3, 4, 5];
+    $result = array_map($callback, $numbers);
+    print_r($result);
+
+must_include_files:
+  # Q1: Multiplier.php defines the class whose getFactor() is used in the closure
+  - src/Multiplier.php
+must_include_content_from:
+  src/Multiplier.php:
+    - "private int $factor"
+    - "public function getFactor(): int"
+  src/app.php:
+    - "$multiplier->getFactor()"
+    - "use ($factor)"
+must_not_include:
+  # Adder.php: arithmetic class, not imported by app.php
+  - getOffset
+  - "$this->offset"
+  # ArrayHelper.php: array utilities, independent of Multiplier
+  - flatten
+  - array_walk_recursive
+  - chunk
+  # Calculator.php: HARDEST TRAP — requires Multiplier.php, calls getFactor()
+  # Same class, same method, but different consumer combining operations
+  - Calculator
+  - batchCompute
+  - "compute"
+  # Divider.php: constructor promotion pattern — mechanism trap
+  - Divider
+  - getDivisor
+  - "Divisor cannot be zero"
+  # lib/FunctionComposer.php: closure composition, no Multiplier reference
+  - FunctionComposer
+  - compose
+  - "array_reduce"
+must_not_include_files:
+  - src/Adder.php
+  - src/ArrayHelper.php
+  - src/Calculator.php
+  - src/Divider.php
+  - src/lib/FunctionComposer.php
+max_fragments: 5
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

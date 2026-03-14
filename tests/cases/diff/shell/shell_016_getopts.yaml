@@ -1,0 +1,155 @@
+# Scenario: cli.sh adds -o (output) and -n (count) options to its getopts
+# loop. After parsing, it sources processor.sh which defines run_processor()
+# that accepts file, output, and count arguments. The reviewer needs
+# processor.sh to verify the new options are correctly forwarded.
+#
+# Reviewer questions:
+#   1. What does run_processor() expect as arguments?
+#      -> processor.sh: run_processor(input, output, count). The new
+#         -o and -n flags map directly to output and count params.
+#   2. What are the default values if -o or -n are omitted?
+#      -> processor.sh: DEFAULT_OUTPUT="/dev/stdout", DEFAULT_COUNT=1.
+#         cli.sh uses these as fallback when flags aren't provided.
+#
+# Not needed:
+#   - scripts/completions.sh: generates bash completions for cli.sh flags.
+#     Aware of flag names but doesn't define processing logic.
+#   - scripts/manpage.sh: generates man page from cli.sh usage text.
+#     Documentation generator, not runtime logic.
+
+initial:
+  cli.sh: |
+    #!/bin/bash
+    source ./processor.sh
+
+    usage() {
+        echo "Usage: $0 [-f file] [-v] [-h]"
+        exit 1
+    }
+
+    verbose=false
+    file=""
+
+    while getopts "f:vh" opt; do
+        case "$opt" in
+            f) file="$OPTARG" ;;
+            v) verbose=true ;;
+            h) usage ;;
+            *) usage ;;
+        esac
+    done
+
+    shift $((OPTIND - 1))
+
+    [[ -n "$file" ]] && run_processor "$file"
+  processor.sh: |
+    #!/bin/bash
+    DEFAULT_OUTPUT="/dev/stdout"
+    DEFAULT_COUNT=1
+
+    run_processor() {
+        local input=$1
+        local output=${2:-$DEFAULT_OUTPUT}
+        local count=${3:-$DEFAULT_COUNT}
+        echo "Processing $input -> $output (count: $count)"
+    }
+  scripts/completions.sh: |
+    #!/bin/bash
+    _cli_completions() {
+        local opts="-f -o -n -v -h"
+        COMPREPLY=($(compgen -W "$opts" -- "${COMP_WORDS[COMP_CWORD]}"))
+    }
+    complete -F _cli_completions cli.sh
+  scripts/manpage.sh: |
+    #!/bin/bash
+    cat <<'MAN' > cli.1
+    .TH CLI 1 "2024-01-01"
+    .SH NAME
+    cli \- process files
+    .SH OPTIONS
+    -f file  Input file
+    -v       Verbose mode
+    MAN
+
+changed:
+  cli.sh: |
+    #!/bin/bash
+    source ./processor.sh
+
+    usage() {
+        echo "Usage: $0 [-f file] [-o output] [-n count] [-v] [-h]"
+        exit 1
+    }
+
+    verbose=false
+    file=""
+    output="$DEFAULT_OUTPUT"
+    count="$DEFAULT_COUNT"
+
+    while getopts "f:o:n:vh" opt; do
+        case "$opt" in
+            f) file="$OPTARG" ;;
+            o) output="$OPTARG" ;;
+            n) count="$OPTARG" ;;
+            v) verbose=true ;;
+            h) usage ;;
+            *) usage ;;
+        esac
+    done
+
+    shift $((OPTIND - 1))
+
+    if [[ "$verbose" == true ]]; then
+        echo "Verbose mode enabled"
+        echo "File: $file, Output: $output, Count: $count"
+    fi
+
+    [[ -n "$file" ]] && run_processor "$file" "$output" "$count"
+  processor.sh: |
+    #!/bin/bash
+    DEFAULT_OUTPUT="/dev/stdout"
+    DEFAULT_COUNT=1
+
+    run_processor() {
+        local input=$1
+        local output=${2:-$DEFAULT_OUTPUT}
+        local count=${3:-$DEFAULT_COUNT}
+        echo "Processing $input -> $output (count: $count)"
+    }
+  scripts/completions.sh: |
+    #!/bin/bash
+    _cli_completions() {
+        local opts="-f -o -n -v -h"
+        COMPREPLY=($(compgen -W "$opts" -- "${COMP_WORDS[COMP_CWORD]}"))
+    }
+    complete -F _cli_completions cli.sh
+  scripts/manpage.sh: |
+    #!/bin/bash
+    cat <<'MAN' > cli.1
+    .TH CLI 1 "2024-01-01"
+    .SH NAME
+    cli \- process files
+    .SH OPTIONS
+    -f file  Input file
+    -v       Verbose mode
+    MAN
+
+must_include_files:
+- cli.sh
+
+must_include_content_from:
+  processor.sh:
+    - run_processor()
+    - DEFAULT_OUTPUT="/dev/stdout"
+    - DEFAULT_COUNT=1
+
+must_not_include_files:
+  # completions.sh: bash completion definitions, not runtime processing
+- scripts/completions.sh
+  # manpage.sh: documentation generator, not sourced by cli.sh
+- scripts/manpage.sh
+
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

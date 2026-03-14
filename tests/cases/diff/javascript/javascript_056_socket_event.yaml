@@ -1,0 +1,96 @@
+# Scenario: socket.ts is rewritten to import CHAT_EVENT and ChatMessage from
+# events.ts and set up socket.io event handling.
+#
+# Diff: socket.ts adds `import { CHAT_EVENT, ChatMessage } from './events'` and
+# wires `socket.on(CHAT_EVENT, ...)` inside io.on('connection', ...).
+#
+# Reviewer questions:
+#   Q1: "What event name and message shape are used?"
+#       -> events.ts (UNCHANGED) defines CHAT_EVENT = 'chat:message' and ChatMessage
+#          with userId, text, timestamp. Reviewer verifies the handler correctly
+#          types the incoming message.
+#
+# Not needed:
+#   - room-events.ts: room join/leave events for socket.io (ROOM_JOIN, ROOM_LEAVE).
+#     Same event system but different event types, not imported by socket.ts.
+#   - socket-auth.ts: socket authentication middleware. Security concern,
+#     not related to chat message handling.
+
+initial:
+  events.ts: |
+    export interface ChatMessage {
+        userId: string;
+        text: string;
+        timestamp: number;
+    }
+
+    export const CHAT_EVENT = 'chat:message';
+  socket.ts: |
+    console.log('initial');
+  room-events.ts: |
+    export const ROOM_JOIN = 'room:join';
+    export const ROOM_LEAVE = 'room:leave';
+
+    export interface RoomEvent {
+        roomId: string;
+        userId: string;
+    }
+  socket-auth.ts: |
+    export function authenticateSocket(token: string): { userId: string } | null {
+        if (!token || token.length < 10) return null;
+        return { userId: 'user-' + token.slice(0, 8) };
+    }
+changed:
+  events.ts: |
+    export interface ChatMessage {
+        userId: string;
+        text: string;
+        timestamp: number;
+    }
+
+    export const CHAT_EVENT = 'chat:message';
+  socket.ts: |
+    import { Server } from 'socket.io';
+    import { CHAT_EVENT, ChatMessage } from './events';
+
+    export function setupSocket(io: Server) {
+        io.on('connection', (socket) => {
+            socket.on(CHAT_EVENT, (message: ChatMessage) => {
+                io.emit(CHAT_EVENT, message);
+            });
+        });
+    }
+  room-events.ts: |
+    export const ROOM_JOIN = 'room:join';
+    export const ROOM_LEAVE = 'room:leave';
+
+    export interface RoomEvent {
+        roomId: string;
+        userId: string;
+    }
+  socket-auth.ts: |
+    export function authenticateSocket(token: string): { userId: string } | null {
+        if (!token || token.length < 10) return null;
+        return { userId: 'user-' + token.slice(0, 8) };
+    }
+must_include_files:
+  # Q1: events.ts defines the event name and message type that socket.ts imports
+  - events.ts
+must_include_content_from:
+  events.ts:
+    - "interface ChatMessage {"
+    - "CHAT_EVENT = 'chat:message'"
+must_not_include:
+  # room-events.ts: room events, different socket.io event types
+  - ROOM_JOIN
+  - ROOM_LEAVE
+  - RoomEvent
+  # socket-auth.ts: socket authentication, not chat handling
+  - authenticateSocket
+must_not_include_files:
+  - room-events.ts
+  - socket-auth.ts
+max_fragments: 5
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

@@ -1,0 +1,15 @@
+initial:
+  mixed_script.py: |
+    def placeholder():
+        pass
+changed:
+  mixed_script.py: |
+    # This has mixed а (cyrillic) and a (latin)
+    def process(а, a):
+        return а + a
+must_include_files:
+- mixed_script.py
+must_include_content:
+- 'def process(а, a):'
+add_garbage_files: false
+skip_garbage_check: true

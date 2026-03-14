@@ -1,0 +1,156 @@
+initial:
+  pkg/__init__.py: ''
+  pkg/utils.py: |
+    def helper():
+        return "help"
+  pkg/subpkg/__init__.py: ''
+  pkg/subpkg/module.py: |
+    def action():
+        pass
+
+  # --- Tricky: also uses relative import from ..utils (same-import consumer) ---
+  pkg/subpkg/worker.py: |
+    from ..utils import helper
+    GARBAGE_DEP_012_WORKER_IMPORT_C = "worker_module"
+    GARBAGE_DEP_012_WORKER_POOL_D = 4
+
+    class Worker:
+        GARBAGE_DEP_012_WORKER_CLASS_E = True
+
+        def execute(self) -> str:
+            return helper()
+
+        def action(self) -> str:
+            return f"worker_{helper()}"
+
+  # --- Tricky: has own helper() and action() functions (name collision) ---
+  pkg/subpkg/helpers.py: |
+    GARBAGE_DEP_012_HELPERS_MOD_F = "local_helpers"
+    GARBAGE_DEP_012_HELPERS_VER_G = "1.0"
+
+    def helper():
+        GARBAGE_DEP_012_HELPERS_FUNC_H = True
+        return "local_help"
+
+    def action():
+        GARBAGE_DEP_012_HELPERS_ACT_I = True
+        result = helper()
+        return result
+
+  # --- Plain garbage ---
+  garbage/gardening_GARBAGE_DEP_012_GARDEN_A.py: |
+    GARBAGE_DEP_012_GARDEN_A = "garden_module"
+
+    def plant_seed(seed_type: str, depth_cm: float) -> dict:
+        return {"seed": seed_type, "depth": depth_cm}
+
+    class Garden_GARBAGE_DEP_012_GARDEN_A:
+        def __init__(self, size_sqm: float):
+            self.size = size_sqm
+            self.plants = []
+  garbage/cooking_GARBAGE_DEP_012_COOK_B.py: |
+    GARBAGE_DEP_012_COOK_B = "recipe_module"
+
+    def bake_time(weight_kg: float) -> int:
+        return int(weight_kg * 45)
+
+    class Recipe_GARBAGE_DEP_012_COOK_B:
+        def __init__(self, name: str):
+            self.name = name
+            self.steps = []
+changed:
+  pkg/__init__.py: ''
+  pkg/utils.py: |
+    def helper():
+        return "help"
+  pkg/subpkg/__init__.py: ''
+  pkg/subpkg/module.py: |
+    from ..utils import helper
+
+    def action():
+        result = helper()
+        return result
+  pkg/subpkg/worker.py: |
+    from ..utils import helper
+    GARBAGE_DEP_012_WORKER_IMPORT_C = "worker_module"
+    GARBAGE_DEP_012_WORKER_POOL_D = 4
+
+    class Worker:
+        GARBAGE_DEP_012_WORKER_CLASS_E = True
+
+        def execute(self) -> str:
+            return helper()
+
+        def action(self) -> str:
+            return f"worker_{helper()}"
+  pkg/subpkg/helpers.py: |
+    GARBAGE_DEP_012_HELPERS_MOD_F = "local_helpers"
+    GARBAGE_DEP_012_HELPERS_VER_G = "1.0"
+
+    def helper():
+        GARBAGE_DEP_012_HELPERS_FUNC_H = True
+        return "local_help"
+
+    def action():
+        GARBAGE_DEP_012_HELPERS_ACT_I = True
+        result = helper()
+        return result
+  garbage/gardening_GARBAGE_DEP_012_GARDEN_A.py: |
+    GARBAGE_DEP_012_GARDEN_A = "garden_module"
+
+    def plant_seed(seed_type: str, depth_cm: float) -> dict:
+        return {"seed": seed_type, "depth": depth_cm}
+
+    class Garden_GARBAGE_DEP_012_GARDEN_A:
+        def __init__(self, size_sqm: float):
+            self.size = size_sqm
+            self.plants = []
+  garbage/cooking_GARBAGE_DEP_012_COOK_B.py: |
+    GARBAGE_DEP_012_COOK_B = "recipe_module"
+
+    def bake_time(weight_kg: float) -> int:
+        return int(weight_kg * 45)
+
+    class Recipe_GARBAGE_DEP_012_COOK_B:
+        def __init__(self, name: str):
+            self.name = name
+            self.steps = []
+
+# === Assertions ===
+
+must_include_files:
+- pkg/subpkg/module.py
+- pkg/utils.py
+
+must_include_content_from:
+  pkg/subpkg/module.py:
+    - from ..utils import helper
+    - result = helper()
+    - 'def action():'
+  pkg/utils.py:
+    - 'def helper():'
+
+must_not_include:
+# Plain garbage
+- GARBAGE_DEP_012_GARDEN_A
+- GARBAGE_DEP_012_COOK_B
+# Tricky: same relative import from ..utils with helper() call and action() method
+- GARBAGE_DEP_012_WORKER_IMPORT_C
+- GARBAGE_DEP_012_WORKER_POOL_D
+- GARBAGE_DEP_012_WORKER_CLASS_E
+# Tricky: same function names helper() and action() in same subpkg directory
+- GARBAGE_DEP_012_HELPERS_MOD_F
+- GARBAGE_DEP_012_HELPERS_VER_G
+- GARBAGE_DEP_012_HELPERS_FUNC_H
+- GARBAGE_DEP_012_HELPERS_ACT_I
+
+must_not_include_files:
+- pkg/subpkg/worker.py
+- pkg/subpkg/helpers.py
+- garbage/gardening_GARBAGE_DEP_012_GARDEN_A.py
+- garbage/cooking_GARBAGE_DEP_012_COOK_B.py
+
+max_fragments: 5
+max_files: 2
+add_garbage_files: false
+skip_garbage_check: true

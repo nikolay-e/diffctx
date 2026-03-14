@@ -1,0 +1,217 @@
+# Scenario: proc_macro_derive gains field introspection — MyTrait now includes
+# a field_count() method derived by examining struct fields at compile time.
+#
+# Diff: derive_macro/src/lib.rs adds Data/Fields parsing and emits field_count();
+# src/main.rs updates the MyTrait definition and uses field_count() in main().
+#
+# Reviewer questions:
+#   Q1: "Does the trait definition match the expanded code?" -> src/main.rs (CHANGED)
+#        adds fn field_count(&self) -> usize to the trait.
+#   Q2: "How does the macro count fields?" -> derive_macro/src/lib.rs (CHANGED)
+#        inspects Data::Struct / Fields::Named|Unnamed|Unit.
+#
+# Trap files (plausible but no dependency on the derive macro):
+#   - src/serializer.rs: uses serde derive macros (#[derive(Serialize)]) on a
+#     different struct. Same "derive" domain but no connection to MyTrait.
+#   - src/validator.rs: validates struct fields at runtime using reflection-like
+#     patterns. Shares "field" vocabulary but no compile-time macro dependency.
+
+initial:
+  derive_macro/src/lib.rs: |
+    use proc_macro::TokenStream;
+    use quote::quote;
+    use syn::{parse_macro_input, DeriveInput};
+
+    #[proc_macro_derive(MyTrait)]
+    pub fn my_trait_derive(input: TokenStream) -> TokenStream {
+        let input = parse_macro_input!(input as DeriveInput);
+        let name = input.ident;
+
+        let expanded = quote! {
+            impl MyTrait for #name {
+                fn name(&self) -> &str {
+                    stringify!(#name)
+                }
+            }
+        };
+
+        TokenStream::from(expanded)
+    }
+  src/main.rs: |
+    use derive_macro::MyTrait;
+
+    pub trait MyTrait {
+        fn name(&self) -> &str;
+    }
+
+    #[derive(MyTrait)]
+    struct MyStruct {
+        value: i32,
+    }
+
+    fn main() {
+        let s = MyStruct { value: 42 };
+        println!("Name: {}", s.name());
+    }
+  src/serializer.rs: |
+    use serde::{Serialize, Deserialize};
+
+    #[derive(Serialize, Deserialize, Debug)]
+    pub struct Config {
+        pub name: String,
+        pub version: u32,
+        pub features: Vec<String>,
+    }
+
+    impl Config {
+        pub fn to_json(&self) -> String {
+            serde_json::to_string_pretty(self).unwrap_or_default()
+        }
+
+        pub fn from_json(json: &str) -> Result<Self, serde_json::Error> {
+            serde_json::from_str(json)
+        }
+    }
+  src/validator.rs: |
+    pub struct FieldValidator {
+        required_fields: Vec<String>,
+    }
+
+    impl FieldValidator {
+        pub fn new(fields: Vec<String>) -> Self {
+            Self { required_fields: fields }
+        }
+
+        pub fn validate_fields(&self, present: &[String]) -> Vec<String> {
+            self.required_fields
+                .iter()
+                .filter(|f| !present.contains(f))
+                .cloned()
+                .collect()
+        }
+
+        pub fn field_count(&self) -> usize {
+            self.required_fields.len()
+        }
+    }
+
+changed:
+  derive_macro/src/lib.rs: |
+    use proc_macro::TokenStream;
+    use quote::quote;
+    use syn::{parse_macro_input, DeriveInput, Data, Fields};
+
+    #[proc_macro_derive(MyTrait, attributes(my_attr))]
+    pub fn my_trait_derive(input: TokenStream) -> TokenStream {
+        let input = parse_macro_input!(input as DeriveInput);
+        let name = input.ident;
+
+        let field_count = match input.data {
+            Data::Struct(ref data) => match data.fields {
+                Fields::Named(ref fields) => fields.named.len(),
+                Fields::Unnamed(ref fields) => fields.unnamed.len(),
+                Fields::Unit => 0,
+            },
+            _ => 0,
+        };
+
+        let expanded = quote! {
+            impl MyTrait for #name {
+                fn name(&self) -> &str {
+                    stringify!(#name)
+                }
+
+                fn field_count(&self) -> usize {
+                    #field_count
+                }
+            }
+        };
+
+        TokenStream::from(expanded)
+    }
+  src/main.rs: |
+    use derive_macro::MyTrait;
+
+    pub trait MyTrait {
+        fn name(&self) -> &str;
+        fn field_count(&self) -> usize;
+    }
+
+    #[derive(MyTrait)]
+    struct MyStruct {
+        value: i32,
+    }
+
+    fn main() {
+        let s = MyStruct { value: 42 };
+        println!("Name: {}, fields: {}", s.name(), s.field_count());
+    }
+  src/serializer.rs: |
+    use serde::{Serialize, Deserialize};
+
+    #[derive(Serialize, Deserialize, Debug)]
+    pub struct Config {
+        pub name: String,
+        pub version: u32,
+        pub features: Vec<String>,
+    }
+
+    impl Config {
+        pub fn to_json(&self) -> String {
+            serde_json::to_string_pretty(self).unwrap_or_default()
+        }
+
+        pub fn from_json(json: &str) -> Result<Self, serde_json::Error> {
+            serde_json::from_str(json)
+        }
+    }
+  src/validator.rs: |
+    pub struct FieldValidator {
+        required_fields: Vec<String>,
+    }
+
+    impl FieldValidator {
+        pub fn new(fields: Vec<String>) -> Self {
+            Self { required_fields: fields }
+        }
+
+        pub fn validate_fields(&self, present: &[String]) -> Vec<String> {
+            self.required_fields
+                .iter()
+                .filter(|f| !present.contains(f))
+                .cloned()
+                .collect()
+        }
+
+        pub fn field_count(&self) -> usize {
+            self.required_fields.len()
+        }
+    }
+
+must_include_files:
+  # Changed: macro now parses struct fields
+  - derive_macro/src/lib.rs
+  # Changed: trait gains field_count(), main() calls it
+  - src/main.rs
+must_include_content_from:
+  derive_macro/src/lib.rs:
+    - "use syn::{parse_macro_input, DeriveInput, Data, Fields};"
+    - "let field_count = match input.data {"
+  src/main.rs:
+    - "fn field_count(&self) -> usize;"
+must_not_include:
+  # serializer.rs: serde derives on a different struct, no MyTrait connection
+  - "serde::{Serialize, Deserialize}"
+  - to_json
+  - from_json
+  # validator.rs: runtime field validation, shares "field_count" name but no macro link
+  - FieldValidator
+  - validate_fields
+  - required_fields
+must_not_include_files:
+  - src/serializer.rs
+  - src/validator.rs
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

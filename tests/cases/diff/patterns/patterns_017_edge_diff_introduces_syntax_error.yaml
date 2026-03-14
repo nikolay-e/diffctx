@@ -1,0 +1,112 @@
+# Scenario: A diff introduces a syntax error — function signature becomes unclosed.
+#
+# Diff: test.py changes from `def valid():` to `def broken(` with no closing paren.
+# The file becomes unparseable.
+#
+# Reviewer questions:
+#   Q1: "Can the algorithm handle a file that doesn't parse?"
+#       -> The changed file has a syntax error. The algorithm should still include it
+#          as a changed file even without AST-level parsing.
+#
+# Not needed:
+#   - utils/syntax_checker.py: validates Python syntax using ast.parse().
+#     Shares "syntax" and "parse" vocabulary but has no dependency on test.py.
+#   - utils/code_linter.py: runs pylint-style checks on source files.
+#     Code quality domain but no reference to test.py.
+
+initial:
+  test.py: |
+    def valid():
+        return 1
+  utils/syntax_checker.py: |
+    import ast
+
+    SUPPORTED_PYTHON_VERSIONS = ["3.10", "3.11", "3.12"]
+
+    class SyntaxChecker:
+        def check_file(self, filepath: str) -> bool:
+            try:
+                with open(filepath) as f:
+                    ast.parse(f.read())
+                return True
+            except SyntaxError:
+                return False
+
+        def get_error_details(self, filepath: str) -> dict | None:
+            try:
+                with open(filepath) as f:
+                    ast.parse(f.read())
+                return None
+            except SyntaxError as e:
+                return {"line": e.lineno, "offset": e.offset, "msg": e.msg}
+  utils/code_linter.py: |
+    LINT_RULES = ["E501", "W291", "E302", "E303"]
+    MAX_LINE_LENGTH = 120
+
+    class CodeLinter:
+        def lint_file(self, filepath: str) -> list[dict]:
+            return []
+
+        def lint_string(self, source: str) -> list[dict]:
+            violations = []
+            for i, line in enumerate(source.splitlines(), 1):
+                if len(line) > MAX_LINE_LENGTH:
+                    violations.append({"line": i, "rule": "E501", "msg": "Line too long"})
+            return violations
+changed:
+  test.py: |
+    def broken(
+        return 1
+  utils/syntax_checker.py: |
+    import ast
+
+    SUPPORTED_PYTHON_VERSIONS = ["3.10", "3.11", "3.12"]
+
+    class SyntaxChecker:
+        def check_file(self, filepath: str) -> bool:
+            try:
+                with open(filepath) as f:
+                    ast.parse(f.read())
+                return True
+            except SyntaxError:
+                return False
+
+        def get_error_details(self, filepath: str) -> dict | None:
+            try:
+                with open(filepath) as f:
+                    ast.parse(f.read())
+                return None
+            except SyntaxError as e:
+                return {"line": e.lineno, "offset": e.offset, "msg": e.msg}
+  utils/code_linter.py: |
+    LINT_RULES = ["E501", "W291", "E302", "E303"]
+    MAX_LINE_LENGTH = 120
+
+    class CodeLinter:
+        def lint_file(self, filepath: str) -> list[dict]:
+            return []
+
+        def lint_string(self, source: str) -> list[dict]:
+            violations = []
+            for i, line in enumerate(source.splitlines(), 1):
+                if len(line) > MAX_LINE_LENGTH:
+                    violations.append({"line": i, "rule": "E501", "msg": "Line too long"})
+            return violations
+must_include_files:
+  - test.py
+must_not_include:
+  # utils/syntax_checker.py: ast.parse()-based checker, no dependency on test.py
+  - SyntaxChecker
+  - SUPPORTED_PYTHON_VERSIONS
+  - get_error_details
+  # utils/code_linter.py: style rule linting, no reference to test.py
+  - CodeLinter
+  - LINT_RULES
+  - MAX_LINE_LENGTH
+must_not_include_files:
+  - utils/syntax_checker.py
+  - utils/code_linter.py
+max_fragments: 3
+max_files: 2
+add_garbage_files: false
+skip_garbage_check: true

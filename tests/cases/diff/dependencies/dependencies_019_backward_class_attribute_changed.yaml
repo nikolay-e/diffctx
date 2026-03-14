@@ -1,0 +1,106 @@
+initial:
+  models.py: |
+    class Config:
+        timeout = 30
+        max_connections = 10
+  client.py: |
+    from models import Config
+
+    def make_request():
+        timeout = Config.timeout
+        return f"Request with timeout {timeout}"
+  settings.py: |
+    from models import Config
+
+    default_timeout = Config.timeout
+
+  # --- Tricky: different Config class with same attribute names, no import link ---
+  adapters/config.py: |
+    GARBAGE_DEP_019_ADAPTER_CFG_A = "adapter_config"
+    GARBAGE_DEP_019_ADAPTER_MOD_B = True
+
+    class Config:
+        timeout = 30
+        max_connections = 20
+        GARBAGE_DEP_019_ADAPTER_ATTR_C = "different_config"
+
+        def get_timeout(self):
+            return self.timeout
+
+  # --- Tricky: same directory sibling with similar shape ---
+  defaults.py: |
+    GARBAGE_DEP_019_DEFAULTS_MOD_G = "defaults_sibling"
+    GARBAGE_DEP_019_DEFAULTS_KEY_H = 99
+
+    class Defaults:
+        timeout = 60
+        max_connections = 5
+        GARBAGE_DEP_019_DEFAULTS_CLASS_I = "similar_shape"
+
+changed:
+  models.py: |
+    class Config:
+        timeout = 60
+        max_connections = 10
+  client.py: |
+    from models import Config
+
+    def make_request():
+        timeout = Config.timeout
+        return f"Request with timeout {timeout}"
+  settings.py: |
+    from models import Config
+
+    default_timeout = Config.timeout
+  adapters/config.py: |
+    GARBAGE_DEP_019_ADAPTER_CFG_A = "adapter_config"
+    GARBAGE_DEP_019_ADAPTER_MOD_B = True
+
+    class Config:
+        timeout = 30
+        max_connections = 20
+        GARBAGE_DEP_019_ADAPTER_ATTR_C = "different_config"
+
+        def get_timeout(self):
+            return self.timeout
+  defaults.py: |
+    GARBAGE_DEP_019_DEFAULTS_MOD_G = "defaults_sibling"
+    GARBAGE_DEP_019_DEFAULTS_KEY_H = 99
+
+    class Defaults:
+        timeout = 60
+        max_connections = 5
+        GARBAGE_DEP_019_DEFAULTS_CLASS_I = "similar_shape"
+
+# === Assertions ===
+
+must_include_files:
+- models.py
+- client.py
+
+must_include_content_from:
+  models.py:
+    - timeout = 60
+    - 'class Config:'
+  client.py:
+    - 'def make_request():'
+    - Config.timeout
+
+must_not_include:
+# Tricky: same class name Config with same attribute timeout, no import
+- GARBAGE_DEP_019_ADAPTER_CFG_A
+- GARBAGE_DEP_019_ADAPTER_MOD_B
+- GARBAGE_DEP_019_ADAPTER_ATTR_C
+# Tricky: same directory sibling with timeout/max_connections attributes
+- GARBAGE_DEP_019_DEFAULTS_MOD_G
+- GARBAGE_DEP_019_DEFAULTS_KEY_H
+- GARBAGE_DEP_019_DEFAULTS_CLASS_I
+
+must_not_include_files:
+- adapters/config.py
+- defaults.py
+
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

@@ -1,0 +1,115 @@
+# Scenario: New file creates infer-based utility types operating on imported functions.
+#
+# Diff: infer_types.ts imports createUser, fetchData, EventHandler from functions.ts
+# and applies ReturnTypeOf, PromiseType, ExtractEventType to extract types from them.
+#
+# Reviewer questions:
+#   Q1: "What does ReturnTypeOf<typeof createUser> resolve to?" -> functions.ts
+#        (UNCHANGED) shows createUser returns { id: string; name: string; age: number }.
+#        The reviewer must see the signature to understand what infer extracts.
+#   Q2: "What is EventHandler<T>?" -> functions.ts defines (event: T) => void.
+#        ExtractEventType uses infer to pull T out of this generic.
+#
+# Not needed:
+#   - src/types/extract.ts: also uses `infer R` but for class method extraction.
+#     Same keyword, different pattern, no import edge from infer_types.ts.
+#   - src/utils/promise.ts: runtime promise utilities (delay, timeout, retry).
+#     Lexical overlap with "Promise" but no type-level dependency.
+
+initial:
+  src/functions.ts: |
+    export function createUser(name: string, age: number): { id: string; name: string; age: number } {
+        return { id: crypto.randomUUID(), name, age };
+    }
+
+    export async function fetchData<T>(url: string): Promise<T> {
+        const response = await fetch(url);
+        return response.json();
+    }
+
+    export type EventHandler<T> = (event: T) => void;
+  src/infer_types.ts: |
+    console.log('initial');
+  src/types/extract.ts: |
+    type MethodNames<T> = {
+        [K in keyof T]: T[K] extends (...args: any[]) => any ? K : never;
+    }[keyof T];
+
+    type MethodReturnType<T, K extends keyof T> =
+        T[K] extends (...args: any[]) => infer R ? R : never;
+  src/utils/promise.ts: |
+    export function delay(ms: number): Promise<void> {
+        return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    export function timeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+        return Promise.race([
+            promise,
+            delay(ms).then(() => { throw new Error(`Timeout after ${ms}ms`); }),
+        ]);
+    }
+
+changed:
+  src/functions.ts: |
+    export function createUser(name: string, age: number): { id: string; name: string; age: number } {
+        return { id: crypto.randomUUID(), name, age };
+    }
+
+    export async function fetchData<T>(url: string): Promise<T> {
+        const response = await fetch(url);
+        return response.json();
+    }
+
+    export type EventHandler<T> = (event: T) => void;
+  src/infer_types.ts: |
+    import { createUser, fetchData, EventHandler } from './functions';
+
+    export type ReturnTypeOf<T> = T extends (...args: any[]) => infer R ? R : never;
+
+    export type PromiseType<T> = T extends Promise<infer U> ? U : T;
+
+    export type FirstArgument<T> = T extends (first: infer F, ...args: any[]) => any ? F : never;
+
+    export type ExtractEventType<T> = T extends EventHandler<infer E> ? E : never;
+
+    export type UserReturn = ReturnTypeOf<typeof createUser>;
+  src/types/extract.ts: |
+    type MethodNames<T> = {
+        [K in keyof T]: T[K] extends (...args: any[]) => any ? K : never;
+    }[keyof T];
+
+    type MethodReturnType<T, K extends keyof T> =
+        T[K] extends (...args: any[]) => infer R ? R : never;
+  src/utils/promise.ts: |
+    export function delay(ms: number): Promise<void> {
+        return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    export function timeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+        return Promise.race([
+            promise,
+            delay(ms).then(() => { throw new Error(`Timeout after ${ms}ms`); }),
+        ]);
+    }
+
+must_include_files:
+  # Q1+Q2: functions.ts defines the function signatures that infer operates on
+  - src/functions.ts
+must_include_content_from:
+  src/functions.ts:
+    - "function createUser(name: string, age: number)"
+    - "type EventHandler<T> = (event: T) => void"
+must_not_include:
+  # extract.ts: uses infer but for class method extraction, no import edge
+  - MethodNames
+  - MethodReturnType
+  # promise.ts: runtime promise utilities, no type-level dependency
+  - delay
+  - timeout
+must_not_include_files:
+  - src/types/extract.ts
+  - src/utils/promise.ts
+max_fragments: 5
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

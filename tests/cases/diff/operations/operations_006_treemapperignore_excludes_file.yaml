@@ -1,0 +1,160 @@
+# Scenario: FileProcessor gains a status field and new method; .treemapperignore
+# excludes *.tmp and *.log files which also changed.
+# Reviewer asks: "What new functionality was added to FileProcessor?"
+# Trap rationale: file_archiver.py and directory_scanner.py share filesystem
+# vocabulary but are not imported by main.py. *.tmp and *.log must be excluded.
+
+initial:
+  .treemapperignore: |
+    *.tmp
+    *.log
+    build/
+  main.py: |
+    from pathlib import Path
+    from typing import Any
+
+    class FileProcessor:
+        def __init__(self, base_dir: str = "."):
+            self.base_dir = Path(base_dir)
+            self._processed: list[str] = []
+
+        def process_file(self, filename: str) -> dict[str, Any]:
+            path = self.base_dir / filename
+            size = path.stat().st_size if path.exists() else 0
+            self._processed.append(filename)
+            return {"file": filename, "size": size}
+
+        def get_processed_count(self) -> int:
+            return len(self._processed)
+
+    def create_processor(base_dir: str = ".") -> FileProcessor:
+        return FileProcessor(base_dir)
+  cache.tmp: |
+    temporary cached data that should be ignored by treemapper
+    session_id=abc123
+    last_access=2024-01-01
+  debug.log: |
+    [2024-01-01 00:00:00] INFO: Application started
+    [2024-01-01 00:01:00] DEBUG: Processing request
+    [2024-01-01 00:02:00] ERROR: Something failed
+  utils/file_archiver.py: |
+    import tarfile
+    from pathlib import Path
+
+    ARCHIVE_EXTENSION = ".tar.gz"
+
+    class FileArchiver:
+        def __init__(self, archive_dir: str = "/tmp/archives"):
+            self.archive_dir = Path(archive_dir)
+
+        def create_archive(self, files: list[str], name: str) -> Path:
+            archive_path = self.archive_dir / f"{name}{ARCHIVE_EXTENSION}"
+            return archive_path
+
+        def list_contents(self, archive_path: str) -> list[str]:
+            return []
+  utils/directory_scanner.py: |
+    from pathlib import Path
+    from typing import Iterator
+
+    SKIP_PATTERNS = {".git", "__pycache__", "node_modules"}
+
+    class DirectoryScanner:
+        def __init__(self, root: str = "."):
+            self.root = Path(root)
+
+        def scan(self) -> Iterator[Path]:
+            for item in self.root.rglob("*"):
+                if not any(p in item.parts for p in SKIP_PATTERNS):
+                    yield item
+
+        def count_files(self) -> int:
+            return sum(1 for _ in self.scan() if _.is_file())
+changed:
+  .treemapperignore: |
+    *.tmp
+    *.log
+    build/
+  main.py: |
+    from pathlib import Path
+    from typing import Any
+
+    class FileProcessor:
+        def __init__(self, base_dir: str = "."):
+            self.base_dir = Path(base_dir)
+            self._processed: list[str] = []
+
+        def process_file(self, filename: str) -> dict[str, Any]:
+            path = self.base_dir / filename
+            size = path.stat().st_size if path.exists() else 0
+            self._processed.append(filename)
+            return {"file": filename, "size": size, "status": "processed"}
+
+        def get_processed_count(self) -> int:
+            return len(self._processed)
+
+        def get_processed_files(self) -> list[str]:
+            return list(self._processed)
+
+    def create_processor(base_dir: str = ".") -> FileProcessor:
+        return FileProcessor(base_dir)
+  cache.tmp: |
+    temporary cached data that should be ignored by treemapper
+    session_id=abc123
+    last_access=2024-06-15
+  debug.log: |
+    [2024-01-01 00:00:00] INFO: Application started
+    [2024-01-01 00:01:00] DEBUG: Processing request
+    [2024-01-01 00:02:00] ERROR: Something failed
+    [2024-06-15 10:00:00] INFO: Application restarted
+  utils/file_archiver.py: |
+    import tarfile
+    from pathlib import Path
+
+    ARCHIVE_EXTENSION = ".tar.gz"
+
+    class FileArchiver:
+        def __init__(self, archive_dir: str = "/tmp/archives"):
+            self.archive_dir = Path(archive_dir)
+
+        def create_archive(self, files: list[str], name: str) -> Path:
+            archive_path = self.archive_dir / f"{name}{ARCHIVE_EXTENSION}"
+            return archive_path
+
+        def list_contents(self, archive_path: str) -> list[str]:
+            return []
+  utils/directory_scanner.py: |
+    from pathlib import Path
+    from typing import Iterator
+
+    SKIP_PATTERNS = {".git", "__pycache__", "node_modules"}
+
+    class DirectoryScanner:
+        def __init__(self, root: str = "."):
+            self.root = Path(root)
+
+        def scan(self) -> Iterator[Path]:
+            for item in self.root.rglob("*"):
+                if not any(p in item.parts for p in SKIP_PATTERNS):
+                    yield item
+
+        def count_files(self) -> int:
+            return sum(1 for _ in self.scan() if _.is_file())
+must_include_files:
+- main.py
+must_not_include:
+- cache.tmp
+- debug.log
+- FileArchiver
+- DirectoryScanner
+- ARCHIVE_EXTENSION
+- SKIP_PATTERNS
+- file_archiver.py
+- directory_scanner.py
+must_not_include_files:
+- cache.tmp
+- debug.log
+- utils/file_archiver.py
+- utils/directory_scanner.py
+add_garbage_files: false
+skip_garbage_check: true

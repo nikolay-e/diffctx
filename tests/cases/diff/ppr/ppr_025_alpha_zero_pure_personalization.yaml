@@ -1,0 +1,127 @@
+initial:
+  primary.py: |
+    SHARED = "shared"
+
+    def primary_func():
+        return SHARED
+  secondary.py: |
+    SHARED = "shared"
+
+    def secondary_func():
+        return SHARED
+
+  # --- Tricky garbage: same identifier SHARED, same function pattern ---
+  garbage_shared_config.py: |
+    GARBAGE_PPR025_SHARED_CFG_A = "config"
+    GARBAGE_PPR025_SHARED_VAL_B = 99
+
+    SHARED = "shared"
+
+    def shared_config_loader():
+        return SHARED
+
+    class SharedRegistry:
+        GARBAGE_PPR025_REGISTRY_C = True
+
+        def get_shared(self):
+            return SHARED
+
+  # --- Tricky garbage: same function name primary_func in different module ---
+  garbage_primary_mirror.py: |
+    GARBAGE_PPR025_MIRROR_FUNC_D = "mirror"
+    GARBAGE_PPR025_MIRROR_FLAG_E = False
+
+    def primary_func():
+        return "unrelated_primary"
+
+    def primary_helper():
+        GARBAGE_PPR025_HELPER_F = 42
+        return primary_func()
+
+  # --- Tricky garbage: structural sibling, same directory, similar shape ---
+  garbage_tertiary.py: |
+    GARBAGE_PPR025_TERTIARY_G = "tertiary"
+    GARBAGE_PPR025_TERTIARY_H = 0
+
+    SHARED = "shared"
+
+    def tertiary_func():
+        return SHARED + "_tertiary"
+
+changed:
+  primary.py: |
+    SHARED = "shared"
+
+    def primary_func():
+        return SHARED + "_modified"
+  secondary.py: |
+    SHARED = "shared"
+
+    def secondary_func():
+        return SHARED
+  garbage_shared_config.py: |
+    GARBAGE_PPR025_SHARED_CFG_A = "config"
+    GARBAGE_PPR025_SHARED_VAL_B = 99
+
+    SHARED = "shared"
+
+    def shared_config_loader():
+        return SHARED
+
+    class SharedRegistry:
+        GARBAGE_PPR025_REGISTRY_C = True
+
+        def get_shared(self):
+            return SHARED
+  garbage_primary_mirror.py: |
+    GARBAGE_PPR025_MIRROR_FUNC_D = "mirror"
+    GARBAGE_PPR025_MIRROR_FLAG_E = False
+
+    def primary_func():
+        return "unrelated_primary"
+
+    def primary_helper():
+        GARBAGE_PPR025_HELPER_F = 42
+        return primary_func()
+  garbage_tertiary.py: |
+    GARBAGE_PPR025_TERTIARY_G = "tertiary"
+    GARBAGE_PPR025_TERTIARY_H = 0
+
+    SHARED = "shared"
+
+    def tertiary_func():
+        return SHARED + "_tertiary"
+
+# === Assertions ===
+
+must_include_files:
+- primary.py
+
+must_include_content_from:
+  primary.py:
+    - 'def primary_func():'
+    - return SHARED + "_modified"
+    - SHARED
+
+must_not_include:
+# Tricky: same SHARED identifier and similar function pattern
+- GARBAGE_PPR025_SHARED_CFG_A
+- GARBAGE_PPR025_SHARED_VAL_B
+- GARBAGE_PPR025_REGISTRY_C
+# Tricky: same function name primary_func
+- GARBAGE_PPR025_MIRROR_FUNC_D
+- GARBAGE_PPR025_MIRROR_FLAG_E
+- GARBAGE_PPR025_HELPER_F
+# Tricky: structural sibling with SHARED
+- GARBAGE_PPR025_TERTIARY_G
+- GARBAGE_PPR025_TERTIARY_H
+
+must_not_include_files:
+- garbage_shared_config.py
+- garbage_primary_mirror.py
+- garbage_tertiary.py
+
+max_fragments: 4
+max_files: 2
+add_garbage_files: false
+skip_garbage_check: true

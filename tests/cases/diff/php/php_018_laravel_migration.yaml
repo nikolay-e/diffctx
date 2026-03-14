@@ -1,0 +1,158 @@
+# Scenario: CreateUsersTable migration uses Blueprint to define users table schema
+# Changed: CreateUsersTable now requires Blueprint and calls id(), string(), timestamps()
+# Reviewer needs: CreateUsersTable (changed) + Blueprint (unchanged, defines schema DSL)
+# Trap: CreatePostsTable — similar migration structure, also uses id/string/timestamps
+# Trap: SchemaBuilder — has similar create/table methods, shares domain vocabulary
+
+initial:
+  Blueprint.php: |
+    <?php
+    class Blueprint {
+        private array $columns = [];
+
+        public function id(): self {
+            $this->columns[] = ['name' => 'id', 'type' => 'bigint'];
+            return $this;
+        }
+
+        public function string(string $name, int $length = 255): self {
+            $this->columns[] = ['name' => $name, 'type' => 'string', 'length' => $length];
+            return $this;
+        }
+
+        public function unique(): self {
+            return $this;
+        }
+
+        public function timestamps(): self {
+            $this->columns[] = ['name' => 'created_at', 'type' => 'timestamp'];
+            $this->columns[] = ['name' => 'updated_at', 'type' => 'timestamp'];
+            return $this;
+        }
+    }
+  CreateUsersTable.php: |
+    <?php
+    class CreateUsersTable {}
+  CreatePostsTable.php: |
+    <?php
+    require_once 'Blueprint.php';
+
+    class CreatePostsTable {
+        public function up(): void {
+            $table = new Blueprint();
+            $table->id();
+            $table->string('title');
+            $table->string('slug')->unique();
+            $table->timestamps();
+        }
+    }
+  SchemaBuilder.php: |
+    <?php
+    class SchemaBuilder {
+        public function create(string $tableName, callable $callback): void {
+            $blueprint = new Blueprint();
+            $callback($blueprint);
+        }
+
+        public function table(string $tableName): Blueprint {
+            return new Blueprint();
+        }
+
+        public function drop(string $tableName): void {}
+    }
+
+changed:
+  Blueprint.php: |
+    <?php
+    class Blueprint {
+        private array $columns = [];
+
+        public function id(): self {
+            $this->columns[] = ['name' => 'id', 'type' => 'bigint'];
+            return $this;
+        }
+
+        public function string(string $name, int $length = 255): self {
+            $this->columns[] = ['name' => $name, 'type' => 'string', 'length' => $length];
+            return $this;
+        }
+
+        public function unique(): self {
+            return $this;
+        }
+
+        public function timestamps(): self {
+            $this->columns[] = ['name' => 'created_at', 'type' => 'timestamp'];
+            $this->columns[] = ['name' => 'updated_at', 'type' => 'timestamp'];
+            return $this;
+        }
+    }
+  CreateUsersTable.php: |
+    <?php
+    require_once 'Blueprint.php';
+
+    class CreateUsersTable {
+        public function up(): void {
+            $table = new Blueprint();
+            $table->id();
+            $table->string('name');
+            $table->string('email')->unique();
+            $table->string('password');
+            $table->timestamps();
+        }
+    }
+  CreatePostsTable.php: |
+    <?php
+    require_once 'Blueprint.php';
+
+    class CreatePostsTable {
+        public function up(): void {
+            $table = new Blueprint();
+            $table->id();
+            $table->string('title');
+            $table->string('slug')->unique();
+            $table->timestamps();
+        }
+    }
+  SchemaBuilder.php: |
+    <?php
+    class SchemaBuilder {
+        public function create(string $tableName, callable $callback): void {
+            $blueprint = new Blueprint();
+            $callback($blueprint);
+        }
+
+        public function table(string $tableName): Blueprint {
+            return new Blueprint();
+        }
+
+        public function drop(string $tableName): void {}
+    }
+
+must_include_files:
+- CreateUsersTable.php
+- Blueprint.php
+
+must_include_content_from:
+  CreateUsersTable.php:
+    - new Blueprint
+    - 'id()'
+    - timestamps
+  Blueprint.php:
+    - 'public function string(string $name'
+    - 'public function id(): self'
+
+must_not_include:
+- CreatePostsTable
+- SchemaBuilder
+- 'class CreatePostsTable'
+- 'class SchemaBuilder'
+
+must_not_include_files:
+- CreatePostsTable.php
+- SchemaBuilder.php
+
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

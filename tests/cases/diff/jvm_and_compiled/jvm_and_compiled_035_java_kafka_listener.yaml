@@ -1,0 +1,367 @@
+# Scenario: KafkaConsumer gains manual acknowledgment, error handling with
+#   try/catch, groupId, and a private processMessage method. KafkaProducer
+#   remains unchanged as the producer side.
+#
+# Diff shows:
+#   - KafkaConsumer with simple @KafkaListener on "orders" topic
+#   + groupId = "order-processor", Acknowledgment parameter, try/catch
+#     with ack.acknowledge(), logger for errors, processMessage() extraction
+#
+# Reviewer questions:
+#   Q1: "What is the producer sending to the 'orders' topic?"
+#       -> Needs KafkaProducer.java: sends String messages to "orders" topic
+#          via KafkaTemplate. Reviewer must verify consumer handles same format.
+#
+#   Q2: "Is the topic name consistent between producer and consumer?"
+#       -> Same file: both reference "orders" topic. Self-consistent.
+#
+# Not needed for comprehension:
+#   - RabbitConsumer.java: IDENTICAL message listener pattern — annotated
+#     handler method, acknowledgment, error handling. HARDEST TRAP: same
+#     messaging pattern but for RabbitMQ not Kafka.
+#
+#   - KafkaConfig.java: Spring @Configuration for Kafka consumer/producer
+#     factories. Same Kafka vocabulary. But factory configuration doesn't
+#     help review the listener logic.
+#
+#   - OrderProcessor.java: Business logic that processes order messages.
+#     Same "order" domain. But processing logic is independent.
+#
+#   - DeadLetterHandler.java: Handles failed Kafka messages. Same Kafka
+#     error handling vocabulary. Not called by KafkaConsumer.
+#
+#   - MessageSerializer.java: Kafka serializer/deserializer config.
+#     Same Kafka infrastructure. Independent of listener logic.
+
+initial:
+  src/main/java/com/example/KafkaConsumer.java: |
+    package com.example;
+
+    import org.springframework.kafka.annotation.KafkaListener;
+    import org.springframework.stereotype.Component;
+
+    @Component
+    public class KafkaConsumer {
+        @KafkaListener(topics = "orders")
+        public void listen(String message) {
+            System.out.println("Received: " + message);
+        }
+    }
+  src/main/java/com/example/KafkaProducer.java: |
+    package com.example;
+
+    import org.springframework.kafka.core.KafkaTemplate;
+    import org.springframework.stereotype.Component;
+
+    @Component
+    public class KafkaProducer {
+        private final KafkaTemplate<String, String> kafkaTemplate;
+
+        public KafkaProducer(KafkaTemplate<String, String> kafkaTemplate) {
+            this.kafkaTemplate = kafkaTemplate;
+        }
+
+        public void send(String message) {
+            kafkaTemplate.send("orders", message);
+        }
+
+        public void sendWithKey(String key, String message) {
+            kafkaTemplate.send("orders", key, message);
+        }
+    }
+  src/main/java/com/example/messaging/RabbitConsumer.java: |
+    package com.example.messaging;
+
+    import org.springframework.amqp.rabbit.annotation.RabbitListener;
+    import org.springframework.amqp.core.Message;
+    import org.springframework.stereotype.Component;
+    import com.rabbitmq.client.Channel;
+    import org.slf4j.Logger;
+    import org.slf4j.LoggerFactory;
+
+    @Component
+    public class RabbitConsumer {
+        private static final Logger logger = LoggerFactory.getLogger(RabbitConsumer.class);
+
+        @RabbitListener(queues = "orders-queue")
+        public void listen(Message message, Channel channel) throws Exception {
+            try {
+                String body = new String(message.getBody());
+                processMessage(body);
+                channel.basicAck(message.getMessageProperties().getDeliveryTag(), false);
+            } catch (Exception e) {
+                logger.error("Failed to process RabbitMQ message", e);
+                channel.basicNack(message.getMessageProperties().getDeliveryTag(), false, true);
+            }
+        }
+
+        private void processMessage(String body) {
+            logger.info("Processing RabbitMQ: {}", body);
+        }
+    }
+  src/main/java/com/example/config/KafkaConfig.java: |
+    package com.example.config;
+
+    import org.apache.kafka.clients.consumer.ConsumerConfig;
+    import org.springframework.context.annotation.Bean;
+    import org.springframework.context.annotation.Configuration;
+    import org.springframework.kafka.config.ConcurrentKafkaListenerContainerFactory;
+    import org.springframework.kafka.core.ConsumerFactory;
+    import org.springframework.kafka.core.DefaultKafkaConsumerFactory;
+    import org.springframework.kafka.listener.ContainerProperties;
+
+    import java.util.HashMap;
+    import java.util.Map;
+
+    @Configuration
+    public class KafkaConfig {
+        @Bean
+        public ConsumerFactory<String, String> consumerFactory() {
+            Map<String, Object> props = new HashMap<>();
+            props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092");
+            props.put(ConsumerConfig.GROUP_ID_CONFIG, "order-processor");
+            return new DefaultKafkaConsumerFactory<>(props);
+        }
+
+        @Bean
+        public ConcurrentKafkaListenerContainerFactory<String, String> kafkaListenerContainerFactory() {
+            var factory = new ConcurrentKafkaListenerContainerFactory<String, String>();
+            factory.setConsumerFactory(consumerFactory());
+            factory.getContainerProperties().setAckMode(ContainerProperties.AckMode.MANUAL);
+            return factory;
+        }
+    }
+  src/main/java/com/example/OrderProcessor.java: |
+    package com.example;
+
+    import com.fasterxml.jackson.databind.ObjectMapper;
+    import org.springframework.stereotype.Component;
+
+    @Component
+    public class OrderProcessor {
+        private final ObjectMapper objectMapper = new ObjectMapper();
+
+        public void process(String orderJson) {
+            try {
+                var order = objectMapper.readValue(orderJson, OrderEvent.class);
+                System.out.println("Processing order: " + order.orderId());
+            } catch (Exception e) {
+                throw new RuntimeException("Failed to parse order", e);
+            }
+        }
+
+        record OrderEvent(String orderId, String status, double amount) {}
+    }
+  src/main/java/com/example/error/DeadLetterHandler.java: |
+    package com.example.error;
+
+    import org.springframework.kafka.annotation.KafkaListener;
+    import org.springframework.stereotype.Component;
+    import org.slf4j.Logger;
+    import org.slf4j.LoggerFactory;
+
+    @Component
+    public class DeadLetterHandler {
+        private static final Logger logger = LoggerFactory.getLogger(DeadLetterHandler.class);
+
+        @KafkaListener(topics = "orders.DLT", groupId = "dlt-processor")
+        public void handleDeadLetter(String message) {
+            logger.warn("Dead letter received: {}", message);
+        }
+    }
+
+changed:
+  src/main/java/com/example/KafkaConsumer.java: |
+    package com.example;
+
+    import org.springframework.kafka.annotation.KafkaListener;
+    import org.springframework.kafka.support.Acknowledgment;
+    import org.springframework.stereotype.Component;
+    import org.slf4j.Logger;
+    import org.slf4j.LoggerFactory;
+
+    @Component
+    public class KafkaConsumer {
+        private static final Logger logger = LoggerFactory.getLogger(KafkaConsumer.class);
+
+        @KafkaListener(topics = "orders", groupId = "order-processor")
+        public void listen(String message, Acknowledgment ack) {
+            try {
+                processMessage(message);
+                ack.acknowledge();
+            } catch (Exception e) {
+                logger.error("Failed to process message", e);
+            }
+        }
+
+        private void processMessage(String message) {
+            logger.info("Processing: {}", message);
+        }
+    }
+  src/main/java/com/example/KafkaProducer.java: |
+    package com.example;
+
+    import org.springframework.kafka.core.KafkaTemplate;
+    import org.springframework.stereotype.Component;
+
+    @Component
+    public class KafkaProducer {
+        private final KafkaTemplate<String, String> kafkaTemplate;
+
+        public KafkaProducer(KafkaTemplate<String, String> kafkaTemplate) {
+            this.kafkaTemplate = kafkaTemplate;
+        }
+
+        public void send(String message) {
+            kafkaTemplate.send("orders", message);
+        }
+
+        public void sendWithKey(String key, String message) {
+            kafkaTemplate.send("orders", key, message);
+        }
+    }
+  src/main/java/com/example/messaging/RabbitConsumer.java: |
+    package com.example.messaging;
+
+    import org.springframework.amqp.rabbit.annotation.RabbitListener;
+    import org.springframework.amqp.core.Message;
+    import org.springframework.stereotype.Component;
+    import com.rabbitmq.client.Channel;
+    import org.slf4j.Logger;
+    import org.slf4j.LoggerFactory;
+
+    @Component
+    public class RabbitConsumer {
+        private static final Logger logger = LoggerFactory.getLogger(RabbitConsumer.class);
+
+        @RabbitListener(queues = "orders-queue")
+        public void listen(Message message, Channel channel) throws Exception {
+            try {
+                String body = new String(message.getBody());
+                processMessage(body);
+                channel.basicAck(message.getMessageProperties().getDeliveryTag(), false);
+            } catch (Exception e) {
+                logger.error("Failed to process RabbitMQ message", e);
+                channel.basicNack(message.getMessageProperties().getDeliveryTag(), false, true);
+            }
+        }
+
+        private void processMessage(String body) {
+            logger.info("Processing RabbitMQ: {}", body);
+        }
+    }
+  src/main/java/com/example/config/KafkaConfig.java: |
+    package com.example.config;
+
+    import org.apache.kafka.clients.consumer.ConsumerConfig;
+    import org.springframework.context.annotation.Bean;
+    import org.springframework.context.annotation.Configuration;
+    import org.springframework.kafka.config.ConcurrentKafkaListenerContainerFactory;
+    import org.springframework.kafka.core.ConsumerFactory;
+    import org.springframework.kafka.core.DefaultKafkaConsumerFactory;
+    import org.springframework.kafka.listener.ContainerProperties;
+
+    import java.util.HashMap;
+    import java.util.Map;
+
+    @Configuration
+    public class KafkaConfig {
+        @Bean
+        public ConsumerFactory<String, String> consumerFactory() {
+            Map<String, Object> props = new HashMap<>();
+            props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092");
+            props.put(ConsumerConfig.GROUP_ID_CONFIG, "order-processor");
+            return new DefaultKafkaConsumerFactory<>(props);
+        }
+
+        @Bean
+        public ConcurrentKafkaListenerContainerFactory<String, String> kafkaListenerContainerFactory() {
+            var factory = new ConcurrentKafkaListenerContainerFactory<String, String>();
+            factory.setConsumerFactory(consumerFactory());
+            factory.getContainerProperties().setAckMode(ContainerProperties.AckMode.MANUAL);
+            return factory;
+        }
+    }
+  src/main/java/com/example/OrderProcessor.java: |
+    package com.example;
+
+    import com.fasterxml.jackson.databind.ObjectMapper;
+    import org.springframework.stereotype.Component;
+
+    @Component
+    public class OrderProcessor {
+        private final ObjectMapper objectMapper = new ObjectMapper();
+
+        public void process(String orderJson) {
+            try {
+                var order = objectMapper.readValue(orderJson, OrderEvent.class);
+                System.out.println("Processing order: " + order.orderId());
+            } catch (Exception e) {
+                throw new RuntimeException("Failed to parse order", e);
+            }
+        }
+
+        record OrderEvent(String orderId, String status, double amount) {}
+    }
+  src/main/java/com/example/error/DeadLetterHandler.java: |
+    package com.example.error;
+
+    import org.springframework.kafka.annotation.KafkaListener;
+    import org.springframework.stereotype.Component;
+    import org.slf4j.Logger;
+    import org.slf4j.LoggerFactory;
+
+    @Component
+    public class DeadLetterHandler {
+        private static final Logger logger = LoggerFactory.getLogger(DeadLetterHandler.class);
+
+        @KafkaListener(topics = "orders.DLT", groupId = "dlt-processor")
+        public void handleDeadLetter(String message) {
+            logger.warn("Dead letter received: {}", message);
+        }
+    }
+
+must_include_files:
+  - src/main/java/com/example/KafkaConsumer.java
+  - src/main/java/com/example/KafkaProducer.java
+
+must_include_content_from:
+  src/main/java/com/example/KafkaConsumer.java:
+    - 'groupId = "order-processor"'
+    - "Acknowledgment ack"
+    - "ack.acknowledge()"
+    - "processMessage(message)"
+  src/main/java/com/example/KafkaProducer.java:
+    - 'kafkaTemplate.send("orders", message)'
+    - "KafkaTemplate<String, String>"
+
+must_not_include:
+  # RabbitConsumer.java: identical listener pattern for RabbitMQ
+  - RabbitConsumer
+  - RabbitListener
+  - basicAck
+  - basicNack
+  - "orders-queue"
+  # KafkaConfig.java: Kafka infrastructure config, not listener logic
+  - KafkaConfig
+  - ConsumerFactory
+  - BOOTSTRAP_SERVERS_CONFIG
+  # OrderProcessor.java: business logic, independent of listener
+  - OrderProcessor
+  - OrderEvent
+  - ObjectMapper
+  # DeadLetterHandler.java: DLT listener, independent error path
+  - DeadLetterHandler
+  - "orders.DLT"
+  - handleDeadLetter
+
+must_not_include_files:
+  - src/main/java/com/example/messaging/RabbitConsumer.java
+  - src/main/java/com/example/config/KafkaConfig.java
+  - src/main/java/com/example/OrderProcessor.java
+  - src/main/java/com/example/error/DeadLetterHandler.java
+
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

@@ -1,0 +1,21 @@
+initial:
+  all_unicode.py: |
+    def placeholder():
+        pass
+changed:
+  all_unicode.py: |
+    # 多语言测试 / Тест / اختبار
+    def handler():
+        cyrillic = "Привет"
+        chinese = "你好"
+        arabic = "مرحبا"
+        japanese = "こんにちは"
+        korean = "안녕하세요"
+        emoji = "🎉🔥🚀"
+        return {"status": "ok"}
+must_include_files:
+- all_unicode.py
+must_include_content:
+- 'def handler():'
+add_garbage_files: false
+skip_garbage_check: true

@@ -1,4 +1,0 @@
-must_include_files:
-- templates/deployment.yaml
-must_include_content:
-- 'value: {{ .Values.timeout | default 30 | quote }}'

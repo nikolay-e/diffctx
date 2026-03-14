@@ -1,0 +1,133 @@
+initial:
+  calculator.py: |
+    def add(a, b):
+        return a + b
+
+    def subtract(a, b):
+        return a - b
+  tests/test_calculator.py: |
+    from calculator import add, subtract
+
+    def test_add():
+        assert add(1, 2) == 3
+        assert add(-1, 1) == 0
+
+    def test_subtract():
+        assert subtract(5, 3) == 2
+
+  # --- Tricky: same function name "add" in different module (name collision) ---
+  utils/vector_math.py: |
+    GARBAGE_DEP030_VECMATH_A = "vector_module"
+    GARBAGE_DEP030_VECOPS_B = True
+
+    def add(a, b):
+        GARBAGE_DEP030_VECADD_C = "vector_add"
+        return [x + y for x, y in zip(a, b)]
+
+    def subtract(a, b):
+        return [x - y for x, y in zip(a, b)]
+
+  # --- Tricky: imports calculator but tests unrelated function ---
+  tests/test_subtract_only.py: |
+    from calculator import subtract
+    GARBAGE_DEP030_SUBTEST_D = "subtract_tests"
+    GARBAGE_DEP030_SUBONLY_E = True
+
+    def test_subtract_large():
+        GARBAGE_DEP030_SUBLARGE_F = "large_test"
+        assert subtract(1000, 500) == 500
+
+  # --- Tricky: same directory, similar test structure ---
+  tests/test_string_ops.py: |
+    GARBAGE_DEP030_STROPS_G = "string_operations"
+    GARBAGE_DEP030_STRTEST_H = True
+
+    def add(a, b):
+        return str(a) + str(b)
+
+    def test_add():
+        GARBAGE_DEP030_STRADD_I = "string_add_test"
+        assert add("hello", " world") == "hello world"
+
+changed:
+  calculator.py: |
+    def add(a, b):
+        return float(a) + float(b)
+
+    def subtract(a, b):
+        return a - b
+  tests/test_calculator.py: |
+    from calculator import add, subtract
+
+    def test_add():
+        assert add(1, 2) == 3
+        assert add(-1, 1) == 0
+
+    def test_subtract():
+        assert subtract(5, 3) == 2
+  utils/vector_math.py: |
+    GARBAGE_DEP030_VECMATH_A = "vector_module"
+    GARBAGE_DEP030_VECOPS_B = True
+
+    def add(a, b):
+        GARBAGE_DEP030_VECADD_C = "vector_add"
+        return [x + y for x, y in zip(a, b)]
+
+    def subtract(a, b):
+        return [x - y for x, y in zip(a, b)]
+  tests/test_subtract_only.py: |
+    from calculator import subtract
+    GARBAGE_DEP030_SUBTEST_D = "subtract_tests"
+    GARBAGE_DEP030_SUBONLY_E = True
+
+    def test_subtract_large():
+        GARBAGE_DEP030_SUBLARGE_F = "large_test"
+        assert subtract(1000, 500) == 500
+  tests/test_string_ops.py: |
+    GARBAGE_DEP030_STROPS_G = "string_operations"
+    GARBAGE_DEP030_STRTEST_H = True
+
+    def add(a, b):
+        return str(a) + str(b)
+
+    def test_add():
+        GARBAGE_DEP030_STRADD_I = "string_add_test"
+        assert add("hello", " world") == "hello world"
+
+# === Assertions ===
+
+must_include_files:
+- calculator.py
+- tests/test_calculator.py
+
+must_include_content_from:
+  calculator.py:
+    - return float(a) + float(b)
+    - 'def add(a, b):'
+  tests/test_calculator.py:
+    - 'def test_add():'
+    - assert add(1, 2) == 3
+
+must_not_include:
+# Tricky: same function name "add" (name collision from different module)
+- GARBAGE_DEP030_VECMATH_A
+- GARBAGE_DEP030_VECOPS_B
+- GARBAGE_DEP030_VECADD_C
+# Tricky: imports calculator.subtract but not add (unrelated to diff)
+- GARBAGE_DEP030_SUBTEST_D
+- GARBAGE_DEP030_SUBONLY_E
+- GARBAGE_DEP030_SUBLARGE_F
+# Tricky: same test_add function name, same directory
+- GARBAGE_DEP030_STROPS_G
+- GARBAGE_DEP030_STRTEST_H
+- GARBAGE_DEP030_STRADD_I
+
+must_not_include_files:
+- utils/vector_math.py
+- tests/test_subtract_only.py
+- tests/test_string_ops.py
+
+max_fragments: 5
+max_files: 2
+add_garbage_files: false
+skip_garbage_check: true

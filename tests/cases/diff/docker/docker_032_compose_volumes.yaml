@@ -1,0 +1,171 @@
+initial:
+  app.py: |
+    import os
+    import json
+    from pathlib import Path
+
+    DATA_DIR = Path(os.getenv("DATA_DIR", "/app/data"))
+    CONFIG_DIR = Path(os.getenv("CONFIG_DIR", "/app/config"))
+    LOGS_DIR = Path(os.getenv("LOGS_DIR", "/app/logs"))
+
+    def read_config(name: str) -> dict:
+        config_file = CONFIG_DIR / f"{name}.json"
+        if config_file.exists():
+            with open(config_file) as f:
+                return json.load(f)
+        return {}
+
+    def write_data(filename: str, data: dict) -> None:
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        with open(DATA_DIR / filename, 'w') as f:
+            json.dump(data, f)
+
+    def append_log(message: str) -> None:
+        LOGS_DIR.mkdir(parents=True, exist_ok=True)
+        with open(LOGS_DIR / "app.log", 'a') as f:
+            f.write(f"{message}\n")
+
+    if __name__ == "__main__":
+        config = read_config("app")
+        write_data("output.json", {"status": "ok"})
+        append_log("Application started")
+  requirements.txt: |
+    pyyaml==6.0.0
+  Dockerfile: |
+    FROM python:3.12-slim
+    WORKDIR /app
+    COPY requirements.txt .
+    RUN pip install -r requirements.txt
+    COPY app.py .
+    CMD ["python", "app.py"]
+  docker-compose.yml: |
+    version: '3.8'
+    services:
+      api:
+        build: .
+  scripts/volume_backup.sh: |
+    #!/bin/bash
+    tar -czf backup.tar.gz ./data
+  tests/test_volumes.py: |
+    def test_volume_mount():
+        pass
+  docs/storage.md: |
+    # Storage Configuration
+  k8s/pvc.yaml: |
+    apiVersion: v1
+  ansible/storage.yml: ''
+changed:
+  app.py: |
+    import os
+    import json
+    from pathlib import Path
+
+    DATA_DIR = Path(os.getenv("DATA_DIR", "/app/data"))
+    CONFIG_DIR = Path(os.getenv("CONFIG_DIR", "/app/config"))
+    LOGS_DIR = Path(os.getenv("LOGS_DIR", "/app/logs"))
+
+    def read_config(name: str) -> dict:
+        config_file = CONFIG_DIR / f"{name}.json"
+        if config_file.exists():
+            with open(config_file) as f:
+                return json.load(f)
+        return {}
+
+    def write_data(filename: str, data: dict) -> None:
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        with open(DATA_DIR / filename, 'w') as f:
+            json.dump(data, f)
+
+    def append_log(message: str) -> None:
+        LOGS_DIR.mkdir(parents=True, exist_ok=True)
+        with open(LOGS_DIR / "app.log", 'a') as f:
+            f.write(f"{message}\n")
+
+    if __name__ == "__main__":
+        config = read_config("app")
+        write_data("output.json", {"status": "ok"})
+        append_log("Application started")
+  requirements.txt: |
+    pyyaml==6.0.0
+  Dockerfile: |
+    FROM python:3.12-slim
+    WORKDIR /app
+    COPY requirements.txt .
+    RUN pip install -r requirements.txt
+    COPY app.py .
+    CMD ["python", "app.py"]
+  docker-compose.yml: |
+    version: '3.8'
+
+    services:
+      api:
+        build:
+          context: .
+          dockerfile: Dockerfile
+        environment:
+          - DATA_DIR=/app/data
+          - CONFIG_DIR=/app/config
+          - LOGS_DIR=/app/logs
+        volumes:
+          # Named volume for persistent data
+          - app_data:/app/data
+
+          # Bind mount for config (read-only)
+          - ./config:/app/config:ro
+
+          # Named volume for logs
+          - app_logs:/app/logs
+
+          # Temporary filesystem for cache
+          - type: tmpfs
+            target: /app/cache
+            tmpfs:
+              size: 50M
+
+        restart: unless-stopped
+        healthcheck:
+          test: ["CMD", "python", "-c", "import os; exit(0 if os.path.exists('/app/data') else 1)"]
+          interval: 30s
+          timeout: 5s
+          retries: 3
+
+      backup:
+        image: alpine:latest
+        volumes:
+          - app_data:/source:ro
+          - ./backups:/dest
+        command: sh -c "tar -czf /dest/backup-$$(date +%Y%m%d-%H%M%S).tar.gz /source"
+        profiles:
+          - maintenance
+
+    volumes:
+      app_data:
+        driver: local
+        driver_opts:
+          type: none
+          o: bind
+          device: ${PWD}/persistent/data
+
+      app_logs:
+        driver: local
+        labels:
+          com.example.description: "Application logs"
+          com.example.retention: "30d"
+  scripts/volume_backup.sh: |
+    #!/bin/bash
+    tar -czf backup.tar.gz ./data
+  tests/test_volumes.py: |
+    def test_volume_mount():
+        pass
+  docs/storage.md: |
+    # Storage Configuration
+  k8s/pvc.yaml: |
+    apiVersion: v1
+  ansible/storage.yml: ''
+must_include_files:
+- docker-compose.yml
+must_include_content:
+- 'dockerfile: Dockerfile'
+- 'driver: local'
+add_garbage_files: false
+skip_garbage_check: true

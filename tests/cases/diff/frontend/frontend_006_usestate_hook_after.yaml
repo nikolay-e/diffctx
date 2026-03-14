@@ -1,5 +1,0 @@
-types.ts: "export interface User {\n    id: string;\n    name: string;\n    email: string;\n}\n\nexport interface Post {\n    id: string;\n    title: string;\n    content: string;\n    authorId: string;\n\
-  }\n\n// react_garbage_marker_002\n"
-UserList.tsx: "import React, { useState } from 'react';\nimport { User } from './types';\n\nexport function UserList() {\n    const [users, setUsers] = useState<User[]>([]);\n    const [loading, setLoading]\
-  \ = useState(false);\n\n    const addUser = (user: User) => {\n        setUsers(prev => [...prev, user]);\n    };\n\n    return (\n        <div>\n            {loading ? <p>Loading...</p> : null}\n   \
-  \         {users.map(user => (\n                <div key={user.id}>{user.name}</div>\n            ))}\n        </div>\n    );\n}\n"

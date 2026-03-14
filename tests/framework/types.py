@@ -21,6 +21,10 @@ class YamlTestCase:
     must_include_files: list[str] = field(default_factory=list)
     must_include_content: list[str] = field(default_factory=list)
     must_not_include: list[str] = field(default_factory=list)
+    must_include_content_from: dict[str, list[str]] = field(default_factory=dict)
+    must_not_include_files: list[str] = field(default_factory=list)
+    max_fragments: int | None = None
+    max_files: int | None = None
     commit_message: str = "Update files"
     min_budget: int | None = None
     add_garbage_files: bool = True

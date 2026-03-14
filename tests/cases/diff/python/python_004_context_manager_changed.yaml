@@ -1,0 +1,396 @@
+# Scenario: transaction() context manager gains timing instrumentation
+# Changed: db.py adds time.time() calls to measure transaction duration
+# Reviewer questions: How does timing affect callers? Does savepoint need timing too?
+# Trap 1: audit_log.py — logs database events but does NOT import from db.py
+# Trap 2: connection_monitor.py — monitors connection pool health, shares "pool"/"connection" vocabulary but independent
+initial:
+  db.py: |
+    from contextlib import contextmanager
+    from typing import Optional, Any, Generator
+    import logging
+    import threading
+
+    logger = logging.getLogger(__name__)
+
+    class DatabaseError(Exception):
+        pass
+
+    class ConnectionPool:
+        def __init__(self, max_connections: int = 10):
+            self._pool: list = []
+            self._max_connections = max_connections
+            self._lock = threading.Lock()
+
+        def acquire(self) -> "Connection":
+            with self._lock:
+                if self._pool:
+                    return self._pool.pop()
+                return Connection()
+
+        def release(self, conn: "Connection") -> None:
+            with self._lock:
+                if len(self._pool) < self._max_connections:
+                    self._pool.append(conn)
+
+    class Connection:
+        def __init__(self):
+            self._in_transaction = False
+
+        def begin(self) -> None:
+            self._in_transaction = True
+
+        def commit(self) -> None:
+            self._in_transaction = False
+
+        def rollback(self) -> None:
+            self._in_transaction = False
+
+    _pool = ConnectionPool()
+
+    @contextmanager
+    def transaction() -> Generator[Connection, None, None]:
+        conn = _pool.acquire()
+        logger.info("Starting transaction")
+        conn.begin()
+        try:
+            yield conn
+            conn.commit()
+            logger.info("Committing")
+        except Exception as e:
+            conn.rollback()
+            logger.error(f"Rolling back due to: {e}")
+            raise
+        finally:
+            _pool.release(conn)
+
+    @contextmanager
+    def savepoint(conn: Connection, name: str) -> Generator[None, None, None]:
+        logger.debug(f"Creating savepoint {name}")
+        try:
+            yield
+            logger.debug(f"Releasing savepoint {name}")
+        except Exception:
+            logger.debug(f"Rolling back to savepoint {name}")
+            raise
+  service.py: |
+    from db import transaction, savepoint
+    from typing import Any, Dict, List
+
+    class DataService:
+        def __init__(self):
+            self._cache: Dict[str, Any] = {}
+
+        def save_data(self, data: Any) -> None:
+            with transaction() as conn:
+                self._store(conn, data)
+
+        def save_batch(self, items: List[Any]) -> int:
+            saved = 0
+            with transaction() as conn:
+                for item in items:
+                    with savepoint(conn, f"item_{saved}"):
+                        self._store(conn, item)
+                        saved += 1
+            return saved
+
+        def _store(self, conn: Any, data: Any) -> None:
+            key = str(id(data))
+            self._cache[key] = data
+
+    def store(data: Any) -> None:
+        service = DataService()
+        service.save_data(data)
+  audit_log.py: |
+    import logging
+    from typing import Dict, Any, List, Optional
+    from datetime import datetime
+    from dataclasses import dataclass
+
+    logger = logging.getLogger(__name__)
+
+    @dataclass
+    class AuditEntry:
+        timestamp: datetime
+        action: str
+        table_name: str
+        record_id: Optional[str] = None
+        changes: Optional[Dict[str, Any]] = None
+
+    class AuditLogger:
+        def __init__(self, retention_days: int = 90):
+            self._entries: List[AuditEntry] = []
+            self._retention_days = retention_days
+
+        def log_transaction(self, action: str, table_name: str, record_id: str) -> None:
+            entry = AuditEntry(
+                timestamp=datetime.now(),
+                action=action,
+                table_name=table_name,
+                record_id=record_id,
+            )
+            self._entries.append(entry)
+            logger.info(f"Audit: {action} on {table_name}/{record_id}")
+
+        def get_entries(self, table_name: Optional[str] = None) -> List[AuditEntry]:
+            if table_name:
+                return [e for e in self._entries if e.table_name == table_name]
+            return self._entries.copy()
+
+        def purge_old_entries(self) -> int:
+            cutoff = datetime.now()
+            original_count = len(self._entries)
+            self._entries = [e for e in self._entries if e.timestamp > cutoff]
+            return original_count - len(self._entries)
+  connection_monitor.py: |
+    import threading
+    import logging
+    from typing import Dict, List, Optional
+    from dataclasses import dataclass
+    from datetime import datetime
+
+    logger = logging.getLogger(__name__)
+
+    @dataclass
+    class ConnectionMetrics:
+        pool_size: int
+        active_connections: int
+        idle_connections: int
+        total_acquired: int
+        total_released: int
+
+    class ConnectionMonitor:
+        def __init__(self, check_interval: int = 30):
+            self._check_interval = check_interval
+            self._metrics_history: List[ConnectionMetrics] = []
+            self._lock = threading.Lock()
+
+        def record_metrics(self, pool_size: int, active: int) -> None:
+            with self._lock:
+                metrics = ConnectionMetrics(
+                    pool_size=pool_size,
+                    active_connections=active,
+                    idle_connections=pool_size - active,
+                    total_acquired=0,
+                    total_released=0,
+                )
+                self._metrics_history.append(metrics)
+
+        def get_latest(self) -> Optional[ConnectionMetrics]:
+            with self._lock:
+                return self._metrics_history[-1] if self._metrics_history else None
+
+        def get_average_utilization(self) -> float:
+            with self._lock:
+                if not self._metrics_history:
+                    return 0.0
+                total = sum(m.active_connections / max(m.pool_size, 1) for m in self._metrics_history)
+                return total / len(self._metrics_history)
+changed:
+  db.py: |
+    from contextlib import contextmanager
+    from typing import Optional, Any, Generator
+    import logging
+    import threading
+    import time
+
+    logger = logging.getLogger(__name__)
+
+    class DatabaseError(Exception):
+        pass
+
+    class ConnectionPool:
+        def __init__(self, max_connections: int = 10):
+            self._pool: list = []
+            self._max_connections = max_connections
+            self._lock = threading.Lock()
+
+        def acquire(self) -> "Connection":
+            with self._lock:
+                if self._pool:
+                    return self._pool.pop()
+                return Connection()
+
+        def release(self, conn: "Connection") -> None:
+            with self._lock:
+                if len(self._pool) < self._max_connections:
+                    self._pool.append(conn)
+
+    class Connection:
+        def __init__(self):
+            self._in_transaction = False
+
+        def begin(self) -> None:
+            self._in_transaction = True
+
+        def commit(self) -> None:
+            self._in_transaction = False
+
+        def rollback(self) -> None:
+            self._in_transaction = False
+
+    _pool = ConnectionPool()
+
+    @contextmanager
+    def transaction() -> Generator[Connection, None, None]:
+        conn = _pool.acquire()
+        start_time = time.time()
+        logger.info("Starting transaction")
+        conn.begin()
+        try:
+            yield conn
+            elapsed = time.time() - start_time
+            conn.commit()
+            logger.info(f"Committing (took {elapsed:.2f}s)")
+        except Exception as e:
+            elapsed = time.time() - start_time
+            conn.rollback()
+            logger.error(f"Rolling back (took {elapsed:.2f}s) due to: {e}")
+            raise
+        finally:
+            _pool.release(conn)
+
+    @contextmanager
+    def savepoint(conn: Connection, name: str) -> Generator[None, None, None]:
+        logger.debug(f"Creating savepoint {name}")
+        try:
+            yield
+            logger.debug(f"Releasing savepoint {name}")
+        except Exception:
+            logger.debug(f"Rolling back to savepoint {name}")
+            raise
+  service.py: |
+    from db import transaction, savepoint
+    from typing import Any, Dict, List
+
+    class DataService:
+        def __init__(self):
+            self._cache: Dict[str, Any] = {}
+
+        def save_data(self, data: Any) -> None:
+            with transaction() as conn:
+                self._store(conn, data)
+
+        def save_batch(self, items: List[Any]) -> int:
+            saved = 0
+            with transaction() as conn:
+                for item in items:
+                    with savepoint(conn, f"item_{saved}"):
+                        self._store(conn, item)
+                        saved += 1
+            return saved
+
+        def _store(self, conn: Any, data: Any) -> None:
+            key = str(id(data))
+            self._cache[key] = data
+
+    def store(data: Any) -> None:
+        service = DataService()
+        service.save_data(data)
+  audit_log.py: |
+    import logging
+    from typing import Dict, Any, List, Optional
+    from datetime import datetime
+    from dataclasses import dataclass
+
+    logger = logging.getLogger(__name__)
+
+    @dataclass
+    class AuditEntry:
+        timestamp: datetime
+        action: str
+        table_name: str
+        record_id: Optional[str] = None
+        changes: Optional[Dict[str, Any]] = None
+
+    class AuditLogger:
+        def __init__(self, retention_days: int = 90):
+            self._entries: List[AuditEntry] = []
+            self._retention_days = retention_days
+
+        def log_transaction(self, action: str, table_name: str, record_id: str) -> None:
+            entry = AuditEntry(
+                timestamp=datetime.now(),
+                action=action,
+                table_name=table_name,
+                record_id=record_id,
+            )
+            self._entries.append(entry)
+            logger.info(f"Audit: {action} on {table_name}/{record_id}")
+
+        def get_entries(self, table_name: Optional[str] = None) -> List[AuditEntry]:
+            if table_name:
+                return [e for e in self._entries if e.table_name == table_name]
+            return self._entries.copy()
+
+        def purge_old_entries(self) -> int:
+            cutoff = datetime.now()
+            original_count = len(self._entries)
+            self._entries = [e for e in self._entries if e.timestamp > cutoff]
+            return original_count - len(self._entries)
+  connection_monitor.py: |
+    import threading
+    import logging
+    from typing import Dict, List, Optional
+    from dataclasses import dataclass
+    from datetime import datetime
+
+    logger = logging.getLogger(__name__)
+
+    @dataclass
+    class ConnectionMetrics:
+        pool_size: int
+        active_connections: int
+        idle_connections: int
+        total_acquired: int
+        total_released: int
+
+    class ConnectionMonitor:
+        def __init__(self, check_interval: int = 30):
+            self._check_interval = check_interval
+            self._metrics_history: List[ConnectionMetrics] = []
+            self._lock = threading.Lock()
+
+        def record_metrics(self, pool_size: int, active: int) -> None:
+            with self._lock:
+                metrics = ConnectionMetrics(
+                    pool_size=pool_size,
+                    active_connections=active,
+                    idle_connections=pool_size - active,
+                    total_acquired=0,
+                    total_released=0,
+                )
+                self._metrics_history.append(metrics)
+
+        def get_latest(self) -> Optional[ConnectionMetrics]:
+            with self._lock:
+                return self._metrics_history[-1] if self._metrics_history else None
+
+        def get_average_utilization(self) -> float:
+            with self._lock:
+                if not self._metrics_history:
+                    return 0.0
+                total = sum(m.active_connections / max(m.pool_size, 1) for m in self._metrics_history)
+                return total / len(self._metrics_history)
+must_include_files:
+- db.py
+- service.py
+must_include_content_from:
+  db.py:
+  - start_time = time.time()
+  - 'logger.info(f"Committing (took {elapsed:.2f}s)")'
+  service.py:
+  - from db import transaction, savepoint
+must_not_include:
+- AuditLogger
+- AuditEntry
+- log_transaction
+- ConnectionMonitor
+- ConnectionMetrics
+- get_average_utilization
+must_not_include_files:
+- audit_log.py
+- connection_monitor.py
+add_garbage_files: false
+skip_garbage_check: true
+max_fragments: 10
+max_files: 4

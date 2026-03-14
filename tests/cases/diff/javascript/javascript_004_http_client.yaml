@@ -1,0 +1,206 @@
+# Scenario: data.service.ts is rewritten from scratch as an Angular service
+#   importing API_BASE and ApiResponse from api.config.ts. Only data.service.ts changed.
+#
+# Diff shows:
+#   - console.log('initial');
+#   + @Injectable({ providedIn: 'root' }) export class DataService { ... }
+#   + getData<T>(endpoint): Observable<T> using API_BASE and ApiResponse<T>
+#
+# Reviewer questions:
+#   Q1: "What is API_BASE — what URL prefix does getData use?"
+#       -> api.config.ts (UNCHANGED) exports API_BASE = '/api'. Reviewer must
+#          see this to understand the full URL template.
+#
+#   Q2: "What shape is ApiResponse<T> — does .pipe(map(r => r.data)) work?"
+#       -> Same file: ApiResponse<T> has data: T and status: number.
+#          Reviewer needs the interface to verify .data extraction.
+#
+# Not needed for comprehension:
+#   - data.service.test.ts: Tests DataService with HttpClientTestingModule.
+#     DIRECT EDGE: imports DataService, calls getData(). But test setup
+#     with mock HTTP doesn't help review the service implementation.
+#
+#   - auth.service.ts: Another Angular @Injectable service using HttpClient.
+#     STRUCTURAL TRAP: identical service pattern (constructor injection,
+#     HttpClient, Observable return). But different domain (auth vs data).
+
+initial:
+  api.config.ts: |
+    export const API_BASE = '/api';
+
+    export interface ApiResponse<T> {
+        data: T;
+        status: number;
+    }
+  data.service.ts: |
+    console.log('initial');
+  data.service.test.ts: |
+    import { TestBed } from '@angular/core/testing';
+    import { HttpClientTestingModule, HttpTestingController } from '@angular/common/http/testing';
+    import { DataService } from './data.service';
+
+    describe('DataService', () => {
+        let service: DataService;
+        let httpMock: HttpTestingController;
+
+        beforeEach(() => {
+            TestBed.configureTestingModule({
+                imports: [HttpClientTestingModule],
+                providers: [DataService],
+            });
+            service = TestBed.inject(DataService);
+            httpMock = TestBed.inject(HttpTestingController);
+        });
+
+        afterEach(() => httpMock.verify());
+
+        it('should extract data from ApiResponse', () => {
+            service.getData<string[]>('/users').subscribe(data => {
+                expect(data).toEqual(['Alice', 'Bob']);
+            });
+            const req = httpMock.expectOne('/api/users');
+            req.flush({ data: ['Alice', 'Bob'], status: 200 });
+        });
+    });
+  auth.service.ts: |
+    import { Injectable } from '@angular/core';
+    import { HttpClient, HttpHeaders } from '@angular/common/http';
+    import { Observable, BehaviorSubject } from 'rxjs';
+    import { tap } from 'rxjs/operators';
+
+    @Injectable({ providedIn: 'root' })
+    export class AuthService {
+        private tokenSubject = new BehaviorSubject<string | null>(null);
+
+        constructor(private http: HttpClient) {}
+
+        login(email: string, password: string): Observable<{ token: string }> {
+            return this.http.post<{ token: string }>('/api/auth/login', { email, password })
+                .pipe(tap(response => this.tokenSubject.next(response.token)));
+        }
+
+        logout(): void {
+            this.tokenSubject.next(null);
+        }
+
+        getToken(): Observable<string | null> {
+            return this.tokenSubject.asObservable();
+        }
+    }
+
+changed:
+  api.config.ts: |
+    export const API_BASE = '/api';
+
+    export interface ApiResponse<T> {
+        data: T;
+        status: number;
+    }
+  data.service.ts: |
+    import { Injectable } from '@angular/core';
+    import { HttpClient } from '@angular/common/http';
+    import { Observable } from 'rxjs';
+    import { map } from 'rxjs/operators';
+    import { API_BASE, ApiResponse } from './api.config';
+
+    @Injectable({ providedIn: 'root' })
+    export class DataService {
+        constructor(private http: HttpClient) {}
+
+        getData<T>(endpoint: string): Observable<T> {
+            return this.http.get<ApiResponse<T>>(`${API_BASE}${endpoint}`)
+                .pipe(map(response => response.data));
+        }
+    }
+  data.service.test.ts: |
+    import { TestBed } from '@angular/core/testing';
+    import { HttpClientTestingModule, HttpTestingController } from '@angular/common/http/testing';
+    import { DataService } from './data.service';
+
+    describe('DataService', () => {
+        let service: DataService;
+        let httpMock: HttpTestingController;
+
+        beforeEach(() => {
+            TestBed.configureTestingModule({
+                imports: [HttpClientTestingModule],
+                providers: [DataService],
+            });
+            service = TestBed.inject(DataService);
+            httpMock = TestBed.inject(HttpTestingController);
+        });
+
+        afterEach(() => httpMock.verify());
+
+        it('should extract data from ApiResponse', () => {
+            service.getData<string[]>('/users').subscribe(data => {
+                expect(data).toEqual(['Alice', 'Bob']);
+            });
+            const req = httpMock.expectOne('/api/users');
+            req.flush({ data: ['Alice', 'Bob'], status: 200 });
+        });
+    });
+  auth.service.ts: |
+    import { Injectable } from '@angular/core';
+    import { HttpClient, HttpHeaders } from '@angular/common/http';
+    import { Observable, BehaviorSubject } from 'rxjs';
+    import { tap } from 'rxjs/operators';
+
+    @Injectable({ providedIn: 'root' })
+    export class AuthService {
+        private tokenSubject = new BehaviorSubject<string | null>(null);
+
+        constructor(private http: HttpClient) {}
+
+        login(email: string, password: string): Observable<{ token: string }> {
+            return this.http.post<{ token: string }>('/api/auth/login', { email, password })
+                .pipe(tap(response => this.tokenSubject.next(response.token)));
+        }
+
+        logout(): void {
+            this.tokenSubject.next(null);
+        }
+
+        getToken(): Observable<string | null> {
+            return this.tokenSubject.asObservable();
+        }
+    }
+
+must_include_files:
+  - data.service.ts
+  # Q1+Q2: api.config.ts defines API_BASE and ApiResponse used by getData
+  - api.config.ts
+
+must_include_content_from:
+  data.service.ts:
+    - "import { API_BASE, ApiResponse } from './api.config'"
+    - "@Injectable({ providedIn: 'root' })"
+    - "getData<T>(endpoint: string)"
+  api.config.ts:
+    - "API_BASE = '/api'"
+    - "interface ApiResponse<T>"
+    - "data: T"
+
+must_not_include:
+  # --- data.service.test.ts: tests for DataService ---
+  # DIRECT EDGE: imports DataService, calls getData(). But mock HTTP
+  # setup doesn't help review the service implementation.
+  - HttpClientTestingModule
+  - HttpTestingController
+  - "expectOne('/api/users')"
+  # --- auth.service.ts: IDENTICAL Angular service pattern ---
+  # STRUCTURAL TRAP: same @Injectable, same HttpClient injection,
+  # same Observable return. But different domain (auth vs data).
+  - AuthService
+  - BehaviorSubject
+  - tokenSubject
+  - login
+
+must_not_include_files:
+  - data.service.test.ts
+  - auth.service.ts
+
+max_fragments: 5
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

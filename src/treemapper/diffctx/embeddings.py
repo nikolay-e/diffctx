@@ -9,6 +9,8 @@ from typing import TYPE_CHECKING
 
 from .types import Fragment, FragmentId
 
+logger = logging.getLogger(__name__)
+
 if TYPE_CHECKING:
     from sentence_transformers import SentenceTransformer
 
@@ -40,13 +42,13 @@ def _get_embed_model() -> SentenceTransformer | None:
 
                     _EMBED_MODEL = SentenceTransformer(_EMBED_MODEL_NAME, trust_remote_code=_TRUST_REMOTE_CODE)
                     _EMBED_AVAILABLE = True
-                    logging.debug("diffctx: loaded embedding model %s", _EMBED_MODEL_NAME)
+                    logger.debug("diffctx: loaded embedding model %s", _EMBED_MODEL_NAME)
                 except ImportError:
-                    logging.debug("diffctx: sentence-transformers not installed, skipping embeddings")
+                    logger.debug("diffctx: sentence-transformers not installed, skipping embeddings")
                     _EMBED_AVAILABLE = False
                     return None
                 except Exception as e:
-                    logging.debug("diffctx: failed to load embedding model: %s", e)
+                    logger.debug("diffctx: failed to load embedding model: %s", e)
                     _EMBED_AVAILABLE = False
                     return None
     return _EMBED_MODEL

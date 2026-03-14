@@ -1,0 +1,425 @@
+# Scenario: Post model starts including Commentable and Taggable concern modules
+#   from commentable.rb, and adds a summary method that calls concern methods.
+#   Only app/models/post.rb is changed.
+#
+# Diff shows:
+#   - require_relative 'concerns/commentable'
+#   + include Commentable, include Taggable
+#   + def summary calling comment_count and tags.join
+#
+# Reviewer questions:
+#   Q1: "What methods does Commentable define? Does comment_count exist?"
+#       -> Needs app/models/concerns/commentable.rb: Commentable defines
+#         comments, add_comment, comment_count via define_method.
+#         summary calls comment_count — reviewer must verify it exists.
+#
+#   Q2: "What methods does Taggable define? Does tags.join work?"
+#       -> Same file: Taggable defines tags (returns array), add_tag, tagged_with?.
+#         summary calls tags.join(', ') — reviewer must verify tags returns an array.
+#
+#   Q3: "Is include order significant for Commentable vs Taggable?"
+#       -> Both are in same file. Reviewer needs to see if they share any
+#         method names or interact. They don't — independent concerns.
+#
+# Not needed for comprehension:
+#   - app/models/concerns/searchable.rb: Another concern module with IDENTICAL
+#     pattern — self.included(base) + base.class_eval + define_method.
+#     Same directory, same Ruby concern structure. But Post doesn't include
+#     Searchable. Including it confuses which concerns are being mixed in.
+#
+#   - app/models/author.rb: Domain overlap — Author has post_ids, add_post,
+#     post_count, display_name. Shares "post" vocabulary heavily. But Author
+#     doesn't use concerns and post.rb doesn't reference Author.
+#
+#   - app/serializers/post_serializer.rb: Serializes Post objects with to_json
+#     and to_hash. Directly consumes Post. But HOW the serializer formats
+#     Post doesn't help review whether concern methods are correctly called.
+#
+#   - app/models/concerns/auditable.rb: Yet another concern in same directory.
+#     Uses exact same self.included/define_method pattern. But Post doesn't
+#     include Auditable.
+#
+#   - spec/models/post_spec.rb: Tests Post methods directly. Calls
+#     post.add_comment, post.add_tag, post.summary. Direct consumer of
+#     the changed code. But test expectations verify behavior, not concern
+#     method definitions.
+
+initial:
+  app/models/concerns/commentable.rb: |
+    module Commentable
+      def self.included(base)
+        base.class_eval do
+          define_method(:comments) { @comments ||= [] }
+          define_method(:add_comment) { |c| comments << c }
+          define_method(:comment_count) { comments.size }
+        end
+      end
+    end
+
+    module Taggable
+      def self.included(base)
+        base.class_eval do
+          define_method(:tags) { @tags ||= [] }
+          define_method(:add_tag) { |t| tags << t unless tags.include?(t) }
+          define_method(:tagged_with?) { |t| tags.include?(t) }
+        end
+      end
+    end
+  app/models/post.rb: |
+    class Post
+      attr_accessor :title, :body
+
+      def initialize(title:, body:)
+        @title = title
+        @body = body
+      end
+    end
+  app/models/concerns/searchable.rb: |
+    module Searchable
+      def self.included(base)
+        base.class_eval do
+          define_method(:search_index) { @search_index ||= {} }
+
+          define_method(:index_field) do |field|
+            value = send(field).to_s.downcase
+            words = value.split(/\s+/)
+            words.each do |word|
+              search_index[word] ||= []
+              search_index[word] << field unless search_index[word].include?(field)
+            end
+          end
+
+          define_method(:matches?) do |query|
+            terms = query.downcase.split(/\s+/)
+            terms.all? { |term| search_index.keys.any? { |k| k.include?(term) } }
+          end
+        end
+      end
+    end
+  app/models/author.rb: |
+    class Author
+      attr_accessor :name, :bio, :post_ids
+
+      def initialize(name:, bio: '')
+        @name = name
+        @bio = bio
+        @post_ids = []
+      end
+
+      def add_post(post_id)
+        @post_ids << post_id unless @post_ids.include?(post_id)
+      end
+
+      def remove_post(post_id)
+        @post_ids.delete(post_id)
+      end
+
+      def post_count
+        @post_ids.size
+      end
+
+      def prolific?
+        post_count >= 10
+      end
+
+      def display_name
+        "#{name} (#{post_count} posts)"
+      end
+    end
+  app/serializers/post_serializer.rb: |
+    class PostSerializer
+      def initialize(post)
+        @post = post
+      end
+
+      def to_hash
+        {
+          title: @post.title,
+          body: @post.body,
+          comment_count: @post.respond_to?(:comment_count) ? @post.comment_count : 0,
+          tags: @post.respond_to?(:tags) ? @post.tags : []
+        }
+      end
+
+      def to_json
+        require 'json'
+        JSON.generate(to_hash)
+      end
+
+      def summary_line
+        "#{@post.title} — #{to_hash[:comment_count]} comments"
+      end
+    end
+  app/models/concerns/auditable.rb: |
+    module Auditable
+      def self.included(base)
+        base.class_eval do
+          define_method(:audit_log) { @audit_log ||= [] }
+
+          define_method(:record_change) do |field, old_value, new_value|
+            audit_log << {
+              field: field,
+              from: old_value,
+              to: new_value,
+              at: Time.now
+            }
+          end
+
+          define_method(:last_change) { audit_log.last }
+          define_method(:change_count) { audit_log.size }
+        end
+      end
+    end
+  spec/models/post_spec.rb: |
+    require 'rspec'
+    require_relative '../../app/models/post'
+
+    RSpec.describe Post do
+      let(:post) { Post.new(title: 'Test Post', body: 'Hello world') }
+
+      describe '#summary' do
+        it 'includes title and counts' do
+          post.add_comment('Great post!')
+          post.add_tag('ruby')
+          expect(post.summary).to include('Test Post')
+          expect(post.summary).to include('1 comments')
+          expect(post.summary).to include('ruby')
+        end
+      end
+
+      describe '#add_comment' do
+        it 'increments comment count' do
+          post.add_comment('Nice')
+          expect(post.comment_count).to eq(1)
+        end
+      end
+
+      describe '#add_tag' do
+        it 'prevents duplicates' do
+          post.add_tag('ruby')
+          post.add_tag('ruby')
+          expect(post.tags.size).to eq(1)
+        end
+      end
+    end
+changed:
+  app/models/concerns/commentable.rb: |
+    module Commentable
+      def self.included(base)
+        base.class_eval do
+          define_method(:comments) { @comments ||= [] }
+          define_method(:add_comment) { |c| comments << c }
+          define_method(:comment_count) { comments.size }
+        end
+      end
+    end
+
+    module Taggable
+      def self.included(base)
+        base.class_eval do
+          define_method(:tags) { @tags ||= [] }
+          define_method(:add_tag) { |t| tags << t unless tags.include?(t) }
+          define_method(:tagged_with?) { |t| tags.include?(t) }
+        end
+      end
+    end
+  app/models/post.rb: |
+    require_relative 'concerns/commentable'
+
+    class Post
+      include Commentable
+      include Taggable
+
+      attr_accessor :title, :body
+
+      def initialize(title:, body:)
+        @title = title
+        @body = body
+      end
+
+      def summary
+        "#{title} (#{comment_count} comments, tags: #{tags.join(', ')})"
+      end
+    end
+  app/models/concerns/searchable.rb: |
+    module Searchable
+      def self.included(base)
+        base.class_eval do
+          define_method(:search_index) { @search_index ||= {} }
+
+          define_method(:index_field) do |field|
+            value = send(field).to_s.downcase
+            words = value.split(/\s+/)
+            words.each do |word|
+              search_index[word] ||= []
+              search_index[word] << field unless search_index[word].include?(field)
+            end
+          end
+
+          define_method(:matches?) do |query|
+            terms = query.downcase.split(/\s+/)
+            terms.all? { |term| search_index.keys.any? { |k| k.include?(term) } }
+          end
+        end
+      end
+    end
+  app/models/author.rb: |
+    class Author
+      attr_accessor :name, :bio, :post_ids
+
+      def initialize(name:, bio: '')
+        @name = name
+        @bio = bio
+        @post_ids = []
+      end
+
+      def add_post(post_id)
+        @post_ids << post_id unless @post_ids.include?(post_id)
+      end
+
+      def remove_post(post_id)
+        @post_ids.delete(post_id)
+      end
+
+      def post_count
+        @post_ids.size
+      end
+
+      def prolific?
+        post_count >= 10
+      end
+
+      def display_name
+        "#{name} (#{post_count} posts)"
+      end
+    end
+  app/serializers/post_serializer.rb: |
+    class PostSerializer
+      def initialize(post)
+        @post = post
+      end
+
+      def to_hash
+        {
+          title: @post.title,
+          body: @post.body,
+          comment_count: @post.respond_to?(:comment_count) ? @post.comment_count : 0,
+          tags: @post.respond_to?(:tags) ? @post.tags : []
+        }
+      end
+
+      def to_json
+        require 'json'
+        JSON.generate(to_hash)
+      end
+
+      def summary_line
+        "#{@post.title} — #{to_hash[:comment_count]} comments"
+      end
+    end
+  app/models/concerns/auditable.rb: |
+    module Auditable
+      def self.included(base)
+        base.class_eval do
+          define_method(:audit_log) { @audit_log ||= [] }
+
+          define_method(:record_change) do |field, old_value, new_value|
+            audit_log << {
+              field: field,
+              from: old_value,
+              to: new_value,
+              at: Time.now
+            }
+          end
+
+          define_method(:last_change) { audit_log.last }
+          define_method(:change_count) { audit_log.size }
+        end
+      end
+    end
+  spec/models/post_spec.rb: |
+    require 'rspec'
+    require_relative '../../app/models/post'
+
+    RSpec.describe Post do
+      let(:post) { Post.new(title: 'Test Post', body: 'Hello world') }
+
+      describe '#summary' do
+        it 'includes title and counts' do
+          post.add_comment('Great post!')
+          post.add_tag('ruby')
+          expect(post.summary).to include('Test Post')
+          expect(post.summary).to include('1 comments')
+          expect(post.summary).to include('ruby')
+        end
+      end
+
+      describe '#add_comment' do
+        it 'increments comment count' do
+          post.add_comment('Nice')
+          expect(post.comment_count).to eq(1)
+        end
+      end
+
+      describe '#add_tag' do
+        it 'prevents duplicates' do
+          post.add_tag('ruby')
+          post.add_tag('ruby')
+          expect(post.tags.size).to eq(1)
+        end
+      end
+    end
+
+must_include_files:
+  - app/models/post.rb
+  # Q1+Q2: summary calls comment_count and tags.join — both defined
+  # by concern modules in this file. Without it, reviewer cannot verify
+  # that the methods called in summary actually exist.
+  - app/models/concerns/commentable.rb
+
+must_include_content_from:
+  app/models/post.rb:
+    - "include Commentable"
+    - "include Taggable"
+    - "comment_count"
+    - "tags.join"
+  app/models/concerns/commentable.rb:
+    - "module Commentable"
+    - "define_method(:comment_count)"
+    - "module Taggable"
+    - "define_method(:tags)"
+
+must_not_include:
+  # --- searchable.rb: IDENTICAL concern pattern, different module ---
+  - Searchable
+  - search_index
+  - index_field
+  - "matches?"
+  # --- author.rb: "post" domain overlap, no concern dependency ---
+  - Author
+  - prolific?
+  - add_post
+  - remove_post
+  # --- post_serializer.rb: consumes Post but doesn't define concerns ---
+  - PostSerializer
+  - to_json
+  - summary_line
+  # --- auditable.rb: sibling concern, same pattern, not included ---
+  - Auditable
+  - audit_log
+  - record_change
+  # --- spec: tests Post methods, not concern definitions ---
+  - RSpec.describe
+  - expect(post.summary)
+
+must_not_include_files:
+  - app/models/concerns/searchable.rb
+  - app/models/author.rb
+  - app/serializers/post_serializer.rb
+  - app/models/concerns/auditable.rb
+  - spec/models/post_spec.rb
+
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

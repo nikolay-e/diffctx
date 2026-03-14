@@ -1,0 +1,171 @@
+# Scenario: updater.ts is rewritten from a stub to import FullConfig from config.ts
+#   and use Partial<FullConfig> for a config update function.
+#   Only updater.ts is changed; config.ts is unchanged.
+#
+# Diff shows:
+#   - console.log('initial')
+#   + import { FullConfig } from './config'
+#   + function updateConfig(current: FullConfig, updates: Partial<FullConfig>): FullConfig
+#   + Uses spread { ...current, ...updates } to merge
+#
+# Reviewer questions:
+#   Q1: "What fields does FullConfig have — what can be partially updated?"
+#       -> config.ts: FullConfig has host: string, port: number, ssl: boolean,
+#          timeout: number. Any subset of these can be passed as updates.
+#
+#   Q2: "Does the spread merge produce a valid FullConfig?"
+#       -> config.ts: All four fields are required. Starting from a complete
+#          FullConfig and spreading Partial<FullConfig> over it guarantees all
+#          fields remain present — the result is still a valid FullConfig.
+#
+# Not needed for comprehension:
+#   - config-loader.ts: Loads config from environment variables into FullConfig.
+#     Direct type edge — imports FullConfig. But HOW config is loaded from env
+#     doesn't help review the Partial spread-merge pattern.
+#
+#   - config-validator.ts: Validates FullConfig field values (port range, etc).
+#     Same FullConfig type, same field names. HARD TRAP: references the exact
+#     same fields by name. But validation doesn't help review the Partial type.
+#
+#   - network-config.ts: Parallel config interface (NetworkConfig with host,
+#     port, protocol) with its own update function. Same pattern, similar fields.
+#     HARD TRAP: overlapping field names (host, port) and same Partial pattern.
+
+initial:
+  config.ts: |
+    export interface FullConfig {
+        host: string;
+        port: number;
+        ssl: boolean;
+        timeout: number;
+    }
+  updater.ts: |
+    console.log('initial');
+  config-loader.ts: |
+    import { FullConfig } from './config';
+
+    export function loadConfigFromEnv(): FullConfig {
+        return {
+            host: process.env.HOST ?? 'localhost',
+            port: parseInt(process.env.PORT ?? '3000', 10),
+            ssl: process.env.SSL === 'true',
+            timeout: parseInt(process.env.TIMEOUT ?? '5000', 10),
+        };
+    }
+  config-validator.ts: |
+    import { FullConfig } from './config';
+
+    export function validateConfig(config: FullConfig): { valid: boolean; errors: string[] } {
+        const errors: string[] = [];
+        if (!config.host) errors.push('host is required');
+        if (config.port < 1 || config.port > 65535) errors.push('port out of range');
+        if (config.timeout < 0) errors.push('timeout must be non-negative');
+        return { valid: errors.length === 0, errors };
+    }
+  network-config.ts: |
+    export interface NetworkConfig {
+        host: string;
+        port: number;
+        protocol: 'http' | 'https';
+    }
+
+    export function updateNetworkConfig(
+        current: NetworkConfig,
+        updates: Partial<NetworkConfig>
+    ): NetworkConfig {
+        return { ...current, ...updates };
+    }
+
+changed:
+  config.ts: |
+    export interface FullConfig {
+        host: string;
+        port: number;
+        ssl: boolean;
+        timeout: number;
+    }
+  updater.ts: |
+    import { FullConfig } from './config';
+
+    function updateConfig(current: FullConfig, updates: Partial<FullConfig>): FullConfig {
+        return { ...current, ...updates };
+    }
+  config-loader.ts: |
+    import { FullConfig } from './config';
+
+    export function loadConfigFromEnv(): FullConfig {
+        return {
+            host: process.env.HOST ?? 'localhost',
+            port: parseInt(process.env.PORT ?? '3000', 10),
+            ssl: process.env.SSL === 'true',
+            timeout: parseInt(process.env.TIMEOUT ?? '5000', 10),
+        };
+    }
+  config-validator.ts: |
+    import { FullConfig } from './config';
+
+    export function validateConfig(config: FullConfig): { valid: boolean; errors: string[] } {
+        const errors: string[] = [];
+        if (!config.host) errors.push('host is required');
+        if (config.port < 1 || config.port > 65535) errors.push('port out of range');
+        if (config.timeout < 0) errors.push('timeout must be non-negative');
+        return { valid: errors.length === 0, errors };
+    }
+  network-config.ts: |
+    export interface NetworkConfig {
+        host: string;
+        port: number;
+        protocol: 'http' | 'https';
+    }
+
+    export function updateNetworkConfig(
+        current: NetworkConfig,
+        updates: Partial<NetworkConfig>
+    ): NetworkConfig {
+        return { ...current, ...updates };
+    }
+
+must_include_files:
+  - updater.ts
+  # Q1+Q2: config.ts defines FullConfig — reviewer needs to see all fields
+  # to understand what Partial<FullConfig> allows and verify the spread merge.
+  - config.ts
+
+must_include_content_from:
+  updater.ts:
+    - "import { FullConfig } from './config'"
+    - "updates: Partial<FullConfig>"
+    - "return { ...current, ...updates }"
+  config.ts:
+    - "interface FullConfig {"
+    - "host: string"
+    - "port: number"
+    - "ssl: boolean"
+    - "timeout: number"
+
+must_not_include:
+  # --- config-loader.ts: loads FullConfig from env vars ---
+  # Direct type edge: imports FullConfig. But env-var loading
+  # doesn't help review the Partial spread-merge pattern.
+  - loadConfigFromEnv
+  - "process.env"
+  # --- config-validator.ts: validates FullConfig fields ---
+  # HARD TRAP: same type, references same field names by value.
+  - validateConfig
+  - "host is required"
+  - "port out of range"
+  # --- network-config.ts: parallel config with same Partial pattern ---
+  # HARD TRAP: overlapping fields (host, port) and identical update pattern.
+  - NetworkConfig
+  - updateNetworkConfig
+  - protocol
+
+must_not_include_files:
+  - config-loader.ts
+  - config-validator.ts
+  - network-config.ts
+
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

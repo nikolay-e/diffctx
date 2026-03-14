@@ -1,0 +1,225 @@
+# Scenario: messenger.rb activates StringExtensions refinement to use shout and
+# whisper methods on String. string_ext.rb defines the refinement module.
+#
+# Diff: messenger.rb changes from an empty class to one with `using StringExtensions`
+# and methods that call text.shout and text.whisper on String instances.
+#
+# Reviewer questions:
+#   Q1: "What do the shout and whisper methods actually do to a String?"
+#       -> string_ext.rb (UNCHANGED) refines String: shout returns upcase + "!",
+#          whisper returns downcase + "..." — reviewer sees the full behavior.
+#   Q2: "Is the refinement scoped correctly?"
+#       -> string_ext.rb uses `refine String do` inside a module — standard
+#          refinement pattern. `using` in messenger.rb activates it class-wide.
+#
+# Not needed:
+#   - text_inflector.rb: pluralizes and singularizes words. String manipulation
+#     but no refinement — regular methods, no require edge to StringExtensions.
+#   - ansi_colors.rb: adds ANSI color escape codes to strings. Similar concept
+#     (enhancing strings) but different module — no import edge.
+#   - notification.rb: also uses `using StringExtensions` to call shout on
+#     alert titles. DIRECT structural edge (same refinement, same method) but
+#     is a separate consumer — its usage doesn't help review messenger.rb.
+#   - string_sanitizer.rb: cleans strings by removing special characters.
+#     Same "string transformation" domain but independent — no refinement.
+#   - lib/markdown_ext.rb: another refinement module (refine String for markdown).
+#     Same refinement mechanism but different module — no import edge.
+
+initial:
+  string_ext.rb: |
+    module StringExtensions
+      refine String do
+        def shout
+          upcase + "!"
+        end
+
+        def whisper
+          downcase + "..."
+        end
+
+        def emphasize
+          "*#{self}*"
+        end
+      end
+    end
+  messenger.rb: |
+    class Messenger
+    end
+  text_inflector.rb: |
+    module TextInflector
+      IRREGULAR = {
+        'person' => 'people',
+        'child' => 'children',
+        'mouse' => 'mice'
+      }.freeze
+
+      def self.pluralize(word)
+        return IRREGULAR[word] if IRREGULAR.key?(word)
+        case word
+        when /([^aeiou])y$/i then word.sub(/y$/i, 'ies')
+        when /(s|x|z|ch|sh)$/i then word + 'es'
+        else word + 's'
+        end
+      end
+
+      def self.singularize(word)
+        inverse = IRREGULAR.invert
+        return inverse[word] if inverse.key?(word)
+        word.sub(/s$/, '')
+      end
+    end
+  ansi_colors.rb: |
+    module AnsiColors
+      CODES = { red: 31, green: 32, yellow: 33, blue: 34, magenta: 35, cyan: 36 }.freeze
+
+      def self.colorize(text, color)
+        code = CODES.fetch(color, 0)
+        "\e[#{code}m#{text}\e[0m"
+      end
+
+      def self.bold(text)
+        "\e[1m#{text}\e[0m"
+      end
+
+      def self.strip_ansi(text)
+        text.gsub(/\e\[[0-9;]*m/, '')
+      end
+    end
+  notification.rb: |
+    require_relative 'string_ext'
+
+    class Notification
+      using StringExtensions
+
+      def initialize(title, body)
+        @title = title
+        @body = body
+      end
+
+      def alert_title
+        @title.shout
+      end
+
+      def summary
+        @body.whisper
+      end
+
+      def formatted
+        "#{alert_title}\n#{@body.emphasize}"
+      end
+    end
+  string_sanitizer.rb: |
+    module StringSanitizer
+      SPECIAL_CHARS = /[<>&"']/
+      HTML_ENTITIES = { '<' => '&lt;', '>' => '&gt;', '&' => '&amp;', '"' => '&quot;' }.freeze
+
+      def self.strip_tags(input)
+        input.gsub(/<\/?[^>]+>/, '')
+      end
+
+      def self.escape_html(input)
+        input.gsub(/[<>&"]/) { |match| HTML_ENTITIES[match] || match }
+      end
+
+      def self.normalize_whitespace(input)
+        input.gsub(/\s+/, ' ').strip
+      end
+    end
+  lib/markdown_ext.rb: |
+    module MarkdownExtensions
+      refine String do
+        def to_heading(level = 1)
+          "#{'#' * level} #{self}"
+        end
+
+        def to_bold
+          "**#{self}**"
+        end
+
+        def to_italic
+          "_#{self}_"
+        end
+
+        def to_link(url)
+          "[#{self}](#{url})"
+        end
+      end
+    end
+
+changed:
+  string_ext.rb: |
+    module StringExtensions
+      refine String do
+        def shout
+          upcase + "!"
+        end
+
+        def whisper
+          downcase + "..."
+        end
+
+        def emphasize
+          "*#{self}*"
+        end
+      end
+    end
+  messenger.rb: |
+    require_relative 'string_ext'
+
+    class Messenger
+      using StringExtensions
+
+      def loud_message(text)
+        text.shout
+      end
+
+      def quiet_message(text)
+        text.whisper
+      end
+    end
+
+must_include_files:
+  # Q1: string_ext.rb defines the refinement activated by messenger.rb
+  - string_ext.rb
+must_include_content_from:
+  string_ext.rb:
+    - "refine String do"
+    - "def shout"
+    - "def whisper"
+  messenger.rb:
+    - "using StringExtensions"
+    - "text.shout"
+must_not_include:
+  # text_inflector.rb: word pluralization, no require edge to StringExtensions
+  - TextInflector
+  - pluralize
+  - singularize
+  - IRREGULAR
+  # ansi_colors.rb: ANSI color codes, independent string enhancement
+  - AnsiColors
+  - colorize
+  - strip_ansi
+  # notification.rb: HARDEST TRAP — also uses `using StringExtensions` and
+  # calls .shout — same refinement, same method, but different consumer
+  - Notification
+  - alert_title
+  - formatted
+  # string_sanitizer.rb: string cleaning, no refinement
+  - StringSanitizer
+  - strip_tags
+  - escape_html
+  - normalize_whitespace
+  # lib/markdown_ext.rb: different refinement module, same mechanism
+  - MarkdownExtensions
+  - to_heading
+  - to_bold
+must_not_include_files:
+  - text_inflector.rb
+  - ansi_colors.rb
+  - notification.rb
+  - string_sanitizer.rb
+  - lib/markdown_ext.rb
+max_fragments: 8
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

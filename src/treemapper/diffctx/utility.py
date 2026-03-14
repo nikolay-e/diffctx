@@ -1,3 +1,4 @@
+# pylint: disable=duplicate-code
 from __future__ import annotations
 
 import math
@@ -6,6 +7,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from .config.limits import UTILITY
+from .edges.structural.test import _is_test_file
 from .stopwords import CODE_STOPWORDS
 from .tokenizer import extract_tokens
 from .types import Fragment, FragmentId
@@ -16,7 +19,193 @@ if TYPE_CHECKING:
 _CONCEPT_RE = re.compile(r"[A-Za-z_]\w*")
 _CALL_RE = re.compile(r"(\w+)\s*\(")
 _TYPE_REF_RE = re.compile(r"(?::|->)\s*([A-Z]\w+)")
+_GENERIC_TYPE_RE = re.compile(r"[\[<,]\s*([A-Z]\w*)")
+
+_LANGUAGE_BUILTINS: frozenset[str] = frozenset(
+    {
+        "range",
+        "enumerate",
+        "zip",
+        "sorted",
+        "reversed",
+        "isinstance",
+        "issubclass",
+        "hasattr",
+        "getattr",
+        "setattr",
+        "delattr",
+        "callable",
+        "iter",
+        "next",
+        "any",
+        "all",
+        "abs",
+        "round",
+        "pow",
+        "divmod",
+        "repr",
+        "dir",
+        "vars",
+        "globals",
+        "locals",
+        "breakpoint",
+        "property",
+        "classmethod",
+        "staticmethod",
+        "dataclass",
+        "object",
+        "exception",
+        "baseexception",
+        "valueerror",
+        "typeerror",
+        "keyerror",
+        "indexerror",
+        "attributeerror",
+        "importerror",
+        "runtimeerror",
+        "stopiteration",
+        "generatorexit",
+        "oserror",
+        "ioerror",
+        "filenotfounderror",
+        "permissionerror",
+        "notimplementederror",
+        "zerodivisionerror",
+        "overflowerror",
+        "memoryerror",
+        "recursionerror",
+        "unicodeerror",
+        "assertionerror",
+        "lookuperror",
+        "arithmeticerror",
+        "array.from",
+        "object.keys",
+        "object.values",
+        "object.entries",
+        "array.isarray",
+        "number.isnan",
+        "number.isfinite",
+        "parseint",
+        "parsefloat",
+        "isnan",
+        "isfinite",
+        "settimeout",
+        "setinterval",
+        "clearinterval",
+        "cleartimeout",
+        "requestanimationframe",
+        "cancelanimationframe",
+        "new",
+        "delete",
+        "typeof",
+        "void",
+        "make",
+        "append",
+        "panic",
+        "recover",
+        "close",
+        "cap",
+        "println",
+        "printf",
+        "sprintf",
+        "fprintf",
+        "errorf",
+        "vec",
+        "box",
+        "rc",
+        "arc",
+        "option",
+        "result",
+        "some",
+        "ok",
+        "err",
+        "unwrap",
+        "expect",
+        "clone",
+        "into",
+        "collect",
+        "map",
+        "filter",
+        "fold",
+        "usestate",
+        "useeffect",
+        "usecontext",
+        "usereducer",
+        "usecallback",
+        "usememo",
+        "useref",
+        "uselayouteffect",
+        "useimperativehandle",
+        "usedebugvalue",
+        "useid",
+        "usetransition",
+        "usedeferredvalue",
+        "createcontext",
+        "forwardref",
+        "createref",
+        "memo",
+        "lazy",
+        "suspense",
+        "fragment",
+        "strictmode",
+        "profiler",
+        "usenavigate",
+        "useparams",
+        "uselocation",
+        "usesearchparams",
+        "useloaderdata",
+        "useactiondata",
+        "usefetcher",
+        "useoutletcontext",
+        "usedispatch",
+        "useselector",
+        "usestore",
+        "usequery",
+        "usemutation",
+        "usesubscription",
+        "describe",
+        "beforeeach",
+        "aftereach",
+        "beforeall",
+        "afterall",
+        "assert",
+    }
+)
 _CLOSURE_MIN_EDGE_WEIGHT = 0.5
+_INVARIANT_RE = re.compile(r"\b(?:assert|require|ensure|precondition|postcondition|invariant)\s*\(\s*(\w+)", re.IGNORECASE)
+
+_COMMENT_PREFIXES = ("#", "//", "*", "/*", "--", '"""', "'''", "<!--")
+
+_JS_IMPORT_RE = re.compile(r"""import\s+\{([^}]+)\}\s+from\s+['"]([^'"]+)['"]""")
+_PY_IMPORT_RE = re.compile(r"""from\s+(\S+)\s+import\s+(.+)""")
+
+
+def _parse_import_names(names_str: str) -> set[str]:
+    result: set[str] = set()
+    for name in names_str.split(","):
+        name = name.strip().split(" as ")[0].strip()
+        if name:
+            result.add(name.lower())
+    return result
+
+
+def _collect_external_symbols(diff_text: str) -> frozenset[str]:
+    symbols: set[str] = set()
+    for line in _extract_changed_lines(diff_text):
+        for m in _JS_IMPORT_RE.finditer(line):
+            js_names, js_source = m.group(1), m.group(2)
+            if not js_source.startswith("."):
+                symbols.update(_parse_import_names(js_names))
+        for m in _PY_IMPORT_RE.finditer(line):
+            py_module, py_names = m.group(1), m.group(2)
+            if not py_module.startswith("."):
+                symbols.update(_parse_import_names(py_names))
+    return frozenset(symbols)
+
+
+def _is_comment_line(line: str) -> bool:
+    stripped = line.lstrip()
+    return any(stripped.startswith(p) for p in _COMMENT_PREFIXES)
 
 
 @dataclass(frozen=True)
@@ -27,13 +216,37 @@ class InformationNeed:
     priority: float
 
 
+def _defines_strength(scope_match: bool, has_scope: bool) -> float:
+    if scope_match:
+        return 1.0
+    return 0.5 if not has_scope else 0.3
+
+
+def _is_test_fragment(frag: Fragment) -> bool:
+    if _is_test_file(frag.path):
+        return True
+    return frag.symbol_name is not None and frag.symbol_name.lower().startswith("test_")
+
+
 def _match_strength_typed(frag: Fragment, need: InformationNeed) -> float:
     sym = need.symbol
-    if frag.symbol_name and frag.symbol_name.lower() == sym:
-        return 1.0
-    if sym in frag.identifiers:
-        return 0.5
-    return 0.0
+    frag_sym = frag.symbol_name.lower() if frag.symbol_name else ""
+    defines = frag_sym == sym and frag_sym != ""
+    mentions = sym in frag.identifiers
+    scope_match = need.scope is not None and need.scope == frag.path
+    nt = need.need_type
+
+    if nt == "impact" and scope_match:
+        return 0.0
+    if defines and "_signature" not in frag.kind:
+        return _defines_strength(scope_match, need.scope is not None)
+    if nt == "impact" and mentions and not defines:
+        return 0.8
+    if defines and ("_signature" in frag.kind or nt == "signature"):
+        return 0.7
+    if nt == "test" and mentions and _is_test_fragment(frag):
+        return 0.6
+    return 0.3 if mentions else 0.0
 
 
 def _extract_changed_lines(diff_text: str) -> list[str]:
@@ -59,11 +272,15 @@ def concepts_from_diff_text(diff_text: str, profile: str = "code", *, use_nlp: b
 def _extract_diff_symbols(diff_text: str) -> set[str]:
     symbols: set[str] = set()
     for line in _extract_changed_lines(diff_text):
+        if _is_comment_line(line):
+            continue
         for m in _CALL_RE.finditer(line):
             name = m.group(1)
-            if len(name) >= 3 and name.lower() not in CODE_STOPWORDS:
+            if len(name) >= 3 and name.lower() not in CODE_STOPWORDS and name.lower() not in _LANGUAGE_BUILTINS:
                 symbols.add(name.lower())
         for m in _TYPE_REF_RE.finditer(line):
+            symbols.add(m.group(1).lower())
+        for m in _GENERIC_TYPE_RE.finditer(line):
             symbols.add(m.group(1).lower())
     return symbols
 
@@ -82,16 +299,36 @@ def _build_sigma(
     sigma.update(_extract_diff_symbols(diff_text))
 
     for frag in all_fragments:
-        if not frag.symbol_name or not frag.symbol_name.lower().startswith("test_"):
+        if not _is_test_fragment(frag):
             continue
-        tested = frag.symbol_name.lower().removeprefix("test_")
-        if tested in sigma:
-            sigma.add(frag.symbol_name.lower())
+        sym_lower = frag.symbol_name.lower() if frag.symbol_name else None
+        tested = sym_lower.removeprefix("test_") if sym_lower else None
+        if tested and tested in sigma and sym_lower:
+            sigma.add(sym_lower)
 
     return sigma
 
 
 _CLOSURE_EDGE_CATEGORIES = frozenset({"structural", "semantic"})
+
+
+def _eligible_neighbor_symbols(
+    frag: Fragment,
+    graph: Graph,
+    frag_by_id: dict[FragmentId, Fragment],
+    closure: set[str],
+) -> set[str]:
+    result: set[str] = set()
+    for nbr_id, weight in graph.neighbors(frag.id).items():
+        if weight < _CLOSURE_MIN_EDGE_WEIGHT:
+            continue
+        cat = graph.edge_categories.get((frag.id, nbr_id), "")
+        if cat and cat not in _CLOSURE_EDGE_CATEGORIES:
+            continue
+        nbr = frag_by_id.get(nbr_id)
+        if nbr and nbr.symbol_name and nbr.symbol_name.lower() not in closure:
+            result.add(nbr.symbol_name.lower())
+    return result
 
 
 def _closure_expand_step(
@@ -103,15 +340,7 @@ def _closure_expand_step(
     new_symbols: set[str] = set()
     for sym in closure:
         for frag in frag_by_symbol.get(sym, []):
-            for nbr_id, weight in graph.neighbors(frag.id).items():
-                if weight < _CLOSURE_MIN_EDGE_WEIGHT:
-                    continue
-                cat = graph.edge_categories.get((frag.id, nbr_id), "")
-                if cat and cat not in _CLOSURE_EDGE_CATEGORIES:
-                    continue
-                nbr = frag_by_id.get(nbr_id)
-                if nbr and nbr.symbol_name and nbr.symbol_name.lower() not in closure:
-                    new_symbols.add(nbr.symbol_name.lower())
+            new_symbols.update(_eligible_neighbor_symbols(frag, graph, frag_by_id, closure))
     return new_symbols
 
 
@@ -171,19 +400,35 @@ def _collect_core_needs(
     return core_symbol_names
 
 
+def _process_line_for_needs(
+    line: str,
+    external_syms: frozenset[str],
+    needs: dict[tuple[str, str], InformationNeed],
+) -> None:
+    for m in _CALL_RE.finditer(line):
+        name = m.group(1)
+        low = name.lower()
+        if len(name) < 3 or low in CODE_STOPWORDS or low in _LANGUAGE_BUILTINS:
+            continue
+        if low in external_syms:
+            continue
+        needs.setdefault(("definition", low), InformationNeed("definition", low, None, 1.0))
+    for m in _TYPE_REF_RE.finditer(line):
+        sym = m.group(1).lower()
+        needs.setdefault(("signature", sym), InformationNeed("signature", sym, None, 0.7))
+    for m in _GENERIC_TYPE_RE.finditer(line):
+        sym = m.group(1).lower()
+        needs.setdefault(("signature", sym), InformationNeed("signature", sym, None, 0.7))
+
+
 def _collect_diff_line_needs(
     diff_text: str,
     needs: dict[tuple[str, str], InformationNeed],
 ) -> None:
+    external_syms = _collect_external_symbols(diff_text)
     for line in _extract_changed_lines(diff_text):
-        for m in _CALL_RE.finditer(line):
-            name = m.group(1)
-            if len(name) < 3 or name.lower() in CODE_STOPWORDS:
-                continue
-            needs.setdefault(("definition", name.lower()), InformationNeed("definition", name.lower(), None, 1.0))
-        for m in _TYPE_REF_RE.finditer(line):
-            sym = m.group(1).lower()
-            needs.setdefault(("signature", sym), InformationNeed("signature", sym, None, 0.7))
+        if not _is_comment_line(line):
+            _process_line_for_needs(line, external_syms, needs)
 
 
 def _collect_test_needs(
@@ -192,13 +437,24 @@ def _collect_test_needs(
     needs: dict[tuple[str, str], InformationNeed],
 ) -> None:
     for frag in all_fragments:
-        if not frag.symbol_name or not frag.symbol_name.lower().startswith("test_"):
+        if not _is_test_fragment(frag):
             continue
-        tested = frag.symbol_name.lower().removeprefix("test_")
-        if tested in core_symbol_names or ("definition", tested) in needs:
+        tested = frag.symbol_name.lower().removeprefix("test_") if frag.symbol_name else None
+        if tested and (tested in core_symbol_names or ("definition", tested) in needs):
             key = ("test", tested)
             if key not in needs:
                 needs[key] = InformationNeed("test", tested, None, 0.6)
+
+
+def _collect_invariant_needs(
+    diff_text: str,
+    needs: dict[tuple[str, str], InformationNeed],
+) -> None:
+    for line in _extract_changed_lines(diff_text):
+        for m in _INVARIANT_RE.finditer(line):
+            sym = m.group(1).lower()
+            if len(sym) >= 3 and sym not in CODE_STOPWORDS:
+                needs.setdefault(("invariant", sym), InformationNeed("invariant", sym, None, 0.85))
 
 
 def needs_from_diff(
@@ -212,6 +468,7 @@ def needs_from_diff(
 
     core_symbol_names = _collect_core_needs(all_fragments, core_ids, needs)
     _collect_diff_line_needs(diff_text, needs)
+    _collect_invariant_needs(diff_text, needs)
     _collect_test_needs(all_fragments, core_symbol_names, needs)
 
     base_symbols = {n.symbol for n in needs.values()}
@@ -237,10 +494,28 @@ def needs_from_diff(
 
 @dataclass
 class UtilityState:
-    max_rel: dict[str, float] = field(default_factory=dict)
+    max_rel: dict[tuple[str, str], float] = field(default_factory=dict)
+    priorities: dict[tuple[str, str], float] = field(default_factory=dict)
+    structural_sum: float = 0.0
+    eta: float = UTILITY.eta
+    gamma: float = UTILITY.gamma
+    r_cap: float = 1.0
+    changed_dirs: frozenset[Path] = field(default_factory=frozenset)
+    proximity_decay: float = UTILITY.proximity_decay
+    file_importance: dict[Path, float] = field(default_factory=dict)
 
     def copy(self) -> UtilityState:
-        return UtilityState(max_rel=dict(self.max_rel))
+        return UtilityState(
+            max_rel=dict(self.max_rel),
+            priorities=dict(self.priorities),
+            structural_sum=self.structural_sum,
+            eta=self.eta,
+            gamma=self.gamma,
+            r_cap=self.r_cap,
+            changed_dirs=self.changed_dirs,
+            proximity_decay=self.proximity_decay,
+            file_importance=self.file_importance,
+        )
 
 
 def _phi(x: float) -> float:
@@ -250,6 +525,13 @@ def _phi(x: float) -> float:
 _MIN_REL_FOR_BONUS = 0.03
 _STRONG_REL_THRESHOLD = 0.10
 _RELATEDNESS_BONUS = 0.25
+
+
+def _augmented_score(m: float, rel_score: float, state: UtilityState) -> float:
+    # Paper: a(f,n) = m(f,n) + η·R(f). We normalize R by R_cap
+    # to keep η interpretable across repos of different scale.
+    r_norm = min(rel_score / state.r_cap, 1.0) if state.r_cap > 0 else 0.0
+    return m + state.eta * r_norm
 
 
 def _needs_from_identifiers(frag: Fragment) -> tuple[InformationNeed, ...]:
@@ -262,36 +544,40 @@ def marginal_gain(
     needs: tuple[InformationNeed, ...],
     state: UtilityState,
 ) -> float:
-    if not needs:
-        effective = _needs_from_identifiers(frag)
-        if not effective:
-            return 0.0
-        gain = 0.0
-        for need in effective:
-            m = _match_strength_typed(frag, need)
-            if m <= 0.0:
-                continue
-            a_fz = rel_score * m
-            old_max = state.max_rel.get(need.symbol, 0.0)
-            new_max = max(old_max, a_fz)
-            gain += _phi(new_max) - _phi(old_max)
-        return gain
+    effective = needs if needs else _needs_from_identifiers(frag)
+    if not effective:
+        return 0.0
 
+    has_match = False
     gain = 0.0
-    for need in needs:
+    for need in effective:
         m = _match_strength_typed(frag, need)
         if m <= 0.0:
             continue
-        a_fz = rel_score * m
-        old_max = state.max_rel.get(need.symbol, 0.0)
+        if need.need_type == "impact" and state.file_importance:
+            m *= state.file_importance.get(frag.path, 1.0)
+        has_match = True
+        a_fz = _augmented_score(m, rel_score, state)
+        nkey = (need.need_type, need.symbol)
+        old_max = state.max_rel.get(nkey, 0.0)
         new_max = max(old_max, a_fz)
-        gain += _phi(new_max) - _phi(old_max)
+        gain += need.priority * (_phi(new_max) - _phi(old_max))
 
-    if rel_score >= _MIN_REL_FOR_BONUS and (gain > 0 or rel_score >= _STRONG_REL_THRESHOLD):
-        total_covered = sum(min(state.max_rel.get(n.symbol, 0.0), 1.0) for n in needs)
+    # Diversity floor: after needs saturate (U1 gain -> 0), high-PPR
+    # fragments still get nonzero gain proportional to unsatisfied needs.
+    if needs and rel_score >= _MIN_REL_FOR_BONUS and (gain > 0 or rel_score >= _STRONG_REL_THRESHOLD):
+        total_covered = sum(min(state.max_rel.get((n.need_type, n.symbol), 0.0), 1.0) for n in needs)
         unsatisfied = max(0.0, 1.0 - total_covered / max(1, len(needs)))
         floor = rel_score * _RELATEDNESS_BONUS * unsatisfied
         gain = max(gain, floor)
+
+    # Structural proximity layer (U2): gamma * min(R/R_cap, 1).
+    # Gated on has_match: paper assumes high PPR implies relevance,
+    # but noisy edges (sibling, cochange) leak PPR mass to unrelated
+    # fragments. Requiring at least one identifier overlap prevents this.
+    if has_match:
+        r_norm = min(rel_score / state.r_cap, 1.0) if state.r_cap > 0 else 0.0
+        gain += state.gamma * r_norm
 
     return gain
 
@@ -303,21 +589,54 @@ def apply_fragment(
     state: UtilityState,
 ) -> None:
     effective = needs if needs else _needs_from_identifiers(frag)
+    has_match = False
     for need in effective:
         m = _match_strength_typed(frag, need)
         if m <= 0.0:
             continue
-        a_fz = rel_score * m
-        old_max = state.max_rel.get(need.symbol, 0.0)
-        state.max_rel[need.symbol] = max(old_max, a_fz)
+        if need.need_type == "impact" and state.file_importance:
+            m *= state.file_importance.get(frag.path, 1.0)
+        has_match = True
+        a_fz = _augmented_score(m, rel_score, state)
+        nkey = (need.need_type, need.symbol)
+        old_max = state.max_rel.get(nkey, 0.0)
+        state.max_rel[nkey] = max(old_max, a_fz)
+        state.priorities[nkey] = max(state.priorities.get(nkey, 0.0), need.priority)
+    if has_match:
+        r_norm = min(rel_score / state.r_cap, 1.0) if state.r_cap > 0 else 0.0
+        state.structural_sum += state.gamma * r_norm
+
+
+def _dir_distance(d1: Path, d2: Path) -> int:
+    p1 = d1.parts
+    p2 = d2.parts
+    common = 0
+    for a, b in zip(p1, p2):
+        if a == b:
+            common += 1
+        else:
+            break
+    return (len(p1) - common) + (len(p2) - common)
+
+
+def _proximity_factor(frag_path: Path, changed_dirs: frozenset[Path], alpha: float) -> float:
+    if not changed_dirs:
+        return 1.0
+    frag_dir = frag_path.parent
+    min_dist = min(_dir_distance(frag_dir, d) for d in changed_dirs)
+    if min_dist <= 0:
+        return 1.0
+    return 1.0 / (1.0 + alpha * min_dist)
 
 
 def compute_density(frag: Fragment, rel_score: float, needs: tuple[InformationNeed, ...], state: UtilityState) -> float:
     if frag.token_count <= 0:
         return 0.0
     gain = marginal_gain(frag, rel_score, needs, state)
-    return gain / frag.token_count
+    pf = _proximity_factor(frag.path, state.changed_dirs, state.proximity_decay)
+    return gain * pf / frag.token_count
 
 
 def utility_value(state: UtilityState) -> float:
-    return sum(_phi(v) for v in state.max_rel.values())
+    u1 = sum(state.priorities.get(sym, 1.0) * _phi(v) for sym, v in state.max_rel.items())
+    return u1 + state.structural_sum

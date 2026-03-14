@@ -1,6 +1,7 @@
 # TreeMapper
 
 [![CI](https://github.com/nikolay-e/treemapper/actions/workflows/ci.yml/badge.svg)](https://github.com/nikolay-e/treemapper/actions/workflows/ci.yml)
+[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=nikolay-e_TreeMapper&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=nikolay-e_TreeMapper)
 [![codecov](https://codecov.io/gh/nikolay-e/treemapper/branch/main/graph/badge.svg)](https://codecov.io/gh/nikolay-e/treemapper)
 [![PyPI](https://img.shields.io/pypi/v/treemapper)](https://pypi.org/project/treemapper/)
 [![Python versions](https://img.shields.io/pypi/pyversions/treemapper)](https://pypi.org/project/treemapper/)
@@ -41,29 +42,33 @@ children:
 
 ## Usage
 
+<!-- BEGIN USAGE -->
 ```bash
-treemapper                               # current dir, YAML to stdout
+treemapper                            # current dir, YAML to stdout
 treemapper .                          # YAML to stdout + token count
 treemapper . -o tree.yaml             # save to file
-treemapper . -o                       # save to tree.yaml (default)
-treemapper . -o -                     # explicit stdout output
+treemapper . --save                   # save to tree.yaml (default name)
+treemapper . -o -                     # explicit stdout
 treemapper . -f json                  # JSON format
 treemapper . -f txt                   # plain text with indentation
-treemapper . -f md                    # Markdown with fenced code
-treemapper . -f yml                   # YAML (alias)
-treemapper . --no-content             # structure only
-treemapper . --max-depth 3            # limit depth (0=root, 1=children)
+treemapper . -f md                    # Markdown with fenced code blocks
+treemapper . --no-content             # structure only, no file contents
+treemapper . --max-depth 3            # limit depth (0=root only)
 treemapper . --max-file-bytes 10000   # skip files > 10KB (default: 10 MB)
-treemapper . --max-file-bytes 0       # no limit
+treemapper . --no-file-size-limit     # include all files regardless of size
 treemapper . -i custom.ignore         # custom ignore patterns
-treemapper . --no-default-ignores     # disable .gitignore + defaults
+treemapper . -w whitelist             # include-only filter
+treemapper . --no-default-ignores     # disable built-in ignore patterns
 treemapper . --log-level info         # log level (default: error)
 treemapper . -c                       # copy to clipboard
 treemapper . -c -o tree.yaml          # clipboard + save to file
 treemapper -v                         # show version
 ```
+<!-- END USAGE -->
 
 ## Diff Context Mode
+
+**Paper:** [Context-Selection for Git Diff (Zenodo, 2026)](https://doi.org/10.5281/zenodo.18824580)
 
 Smart context selection for git diffs — automatically finds the
 minimal set of code fragments needed to understand a change:
@@ -144,12 +149,13 @@ from treemapper import map_directory
 from treemapper import to_yaml, to_json, to_text, to_markdown
 
 tree = map_directory(
-    path,                    # directory path
-    max_depth=None,          # limit traversal depth
-    no_content=False,        # exclude file contents
-    max_file_bytes=None,     # skip large files
-    ignore_file=None,        # custom ignore file
-    no_default_ignores=False,# disable default ignores
+    path,                     # directory path
+    max_depth=None,           # limit traversal depth
+    no_content=False,         # exclude file contents
+    max_file_bytes=None,      # skip large files
+    ignore_file=None,         # custom ignore file
+    no_default_ignores=False, # disable default ignores
+    whitelist_file=None,      # include-only filter
 )
 
 yaml_str = to_yaml(tree)
@@ -160,14 +166,19 @@ md_str = to_markdown(tree)
 
 ## Ignore Patterns
 
-Respects `.gitignore` and `.treemapperignore` automatically.
-Use `--no-default-ignores` to disable all ignore processing
-(`.gitignore`, `.treemapperignore`, and built-in defaults).
+Respects `.gitignore` and `.treemapper/ignore` automatically.
+Use `--no-default-ignores` to disable built-in patterns
+(`.gitignore` and `.treemapper/ignore` still apply).
 
 - Hierarchical: nested ignore files at each directory level
 - Negation patterns: `!important.log` un-ignores a file
 - Anchored patterns: `/root_only.txt` matches only in root
 - Output file is always auto-ignored
+
+Auto-discovered files:
+
+- `.treemapper/ignore` — TreeMapper-specific ignore patterns
+- `.treemapper/whitelist` — Include-only filter (only matched files included)
 
 ## Content Placeholders
 

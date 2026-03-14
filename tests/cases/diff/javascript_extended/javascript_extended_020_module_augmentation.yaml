@@ -1,0 +1,196 @@
+# Reviewer sees: augmentation.ts adds 'role' to the User interface augmentation
+# and adds a role parameter to createUserWithEmail().
+#
+# Reviewer questions:
+#   Q1: "Who consumes User objects — will they expect the new role field?"
+#       -> src/services/profile-service.ts imports User and createUserWithEmail.
+#          It calls createUserWithEmail(name, email) with 2 args — new optional
+#          role param won't break it. Reviewer verifies backward compatibility.
+#   Q2: "What's the original User interface being augmented?"
+#       -> src/models/user.ts defines User { id, name } and createUser().
+#          The reviewer needs the base type to understand the augmentation.
+#          NOTE: the algorithm may not discover this via declare module edge,
+#          so this is a stretch goal, not a hard requirement.
+#
+# Not needed:
+#   - src/services/permissions.ts: role-based access control. Tempting because
+#     the diff adds a 'role' field, but this service uses its own RoleConfig
+#     type, no import of User. Lexical overlap ("role") but no dependency.
+#   - src/utils/id-generator.ts: ID generation utilities. Structurally unrelated.
+
+initial:
+  src/models/user.ts: |
+    export interface User {
+        id: string;
+        name: string;
+    }
+
+    export function createUser(name: string): User {
+        return { id: Date.now().toString(), name };
+    }
+  src/models/augmentation.ts: |
+    import { User } from './user';
+
+    declare module './user' {
+        interface User {
+            email?: string;
+        }
+    }
+
+    export function createUserWithEmail(name: string, email: string): User {
+        return { id: Date.now().toString(), name, email };
+    }
+  src/services/profile-service.ts: |
+    import { User } from '../models/user';
+    import { createUserWithEmail } from '../models/augmentation';
+
+    export function buildProfile(name: string, email: string): { user: User; displayName: string } {
+        const user = createUserWithEmail(name, email);
+        return { user, displayName: user.name.toUpperCase() };
+    }
+
+    export function formatUserSummary(user: User): string {
+        return `${user.name} <${user.email ?? 'no email'}>`;
+    }
+  # --- Not needed: own RoleConfig type, no import of User ---
+  src/services/permissions.ts: |
+    interface RoleConfig {
+        role: string;
+        permissions: string[];
+        inheritsFrom?: string;
+    }
+
+    const roleHierarchy: RoleConfig[] = [
+        { role: 'viewer', permissions: ['read'] },
+        { role: 'editor', permissions: ['read', 'write'], inheritsFrom: 'viewer' },
+        { role: 'admin', permissions: ['read', 'write', 'delete'], inheritsFrom: 'editor' },
+    ];
+
+    export function getPermissions(role: string): string[] {
+        const config = roleHierarchy.find(r => r.role === role);
+        return config?.permissions ?? [];
+    }
+
+    export function hasPermission(role: string, permission: string): boolean {
+        return getPermissions(role).includes(permission);
+    }
+  # --- Not needed: ID utilities, unrelated to User augmentation ---
+  src/utils/id-generator.ts: |
+    let counter = 0;
+
+    export function generateId(prefix: string = 'id'): string {
+        counter++;
+        return `${prefix}_${Date.now()}_${counter}`;
+    }
+
+    export function parseId(id: string): { prefix: string; timestamp: number; sequence: number } {
+        const [prefix, timestamp, sequence] = id.split('_');
+        return { prefix, timestamp: Number(timestamp), sequence: Number(sequence) };
+    }
+
+    export function isValidId(id: string): boolean {
+        return /^[a-z]+_\d+_\d+$/.test(id);
+    }
+
+changed:
+  # Unchanged
+  src/models/user.ts: |
+    export interface User {
+        id: string;
+        name: string;
+    }
+
+    export function createUser(name: string): User {
+        return { id: Date.now().toString(), name };
+    }
+  src/models/augmentation.ts: |
+    import { User } from './user';
+
+    declare module './user' {
+        interface User {
+            email?: string;
+            role?: 'admin' | 'user';
+        }
+    }
+
+    export function createUserWithEmail(name: string, email: string, role?: 'admin' | 'user'): User {
+        return { id: Date.now().toString(), name, email, role };
+    }
+  # Unchanged
+  src/services/profile-service.ts: |
+    import { User } from '../models/user';
+    import { createUserWithEmail } from '../models/augmentation';
+
+    export function buildProfile(name: string, email: string): { user: User; displayName: string } {
+        const user = createUserWithEmail(name, email);
+        return { user, displayName: user.name.toUpperCase() };
+    }
+
+    export function formatUserSummary(user: User): string {
+        return `${user.name} <${user.email ?? 'no email'}>`;
+    }
+  src/services/permissions.ts: |
+    interface RoleConfig {
+        role: string;
+        permissions: string[];
+        inheritsFrom?: string;
+    }
+
+    const roleHierarchy: RoleConfig[] = [
+        { role: 'viewer', permissions: ['read'] },
+        { role: 'editor', permissions: ['read', 'write'], inheritsFrom: 'viewer' },
+        { role: 'admin', permissions: ['read', 'write', 'delete'], inheritsFrom: 'editor' },
+    ];
+
+    export function getPermissions(role: string): string[] {
+        const config = roleHierarchy.find(r => r.role === role);
+        return config?.permissions ?? [];
+    }
+
+    export function hasPermission(role: string, permission: string): boolean {
+        return getPermissions(role).includes(permission);
+    }
+  src/utils/id-generator.ts: |
+    let counter = 0;
+
+    export function generateId(prefix: string = 'id'): string {
+        counter++;
+        return `${prefix}_${Date.now()}_${counter}`;
+    }
+
+    export function parseId(id: string): { prefix: string; timestamp: number; sequence: number } {
+        const [prefix, timestamp, sequence] = id.split('_');
+        return { prefix, timestamp: Number(timestamp), sequence: Number(sequence) };
+    }
+
+    export function isValidId(id: string): boolean {
+        return /^[a-z]+_\d+_\d+$/.test(id);
+    }
+
+must_include_files:
+  # Q1: Consumer that imports User and createUserWithEmail.
+  # Reviewer verifies the new optional role param doesn't break
+  # existing call sites (buildProfile passes 2 args, still valid).
+  - src/services/profile-service.ts
+must_include_content_from:
+  src/services/profile-service.ts:
+    - "createUserWithEmail"
+    - "formatUserSummary"
+must_not_include:
+  # permissions.ts: uses its own RoleConfig, no import of User.
+  # Lexical overlap with "role" but structurally unrelated.
+  - RoleConfig
+  - roleHierarchy
+  - getPermissions
+  - hasPermission
+  # id-generator.ts: ID utilities, no User dependency
+  - generateId
+  - parseId
+  - isValidId
+must_not_include_files:
+  - src/services/permissions.ts
+  - src/utils/id-generator.ts
+max_fragments: 8
+max_files: 4
+add_garbage_files: false
+skip_garbage_check: true

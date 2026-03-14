@@ -1,0 +1,290 @@
+# Scenario: Service refactored from RuntimeException to a custom exception
+#   hierarchy — ServiceException base class with errorCode, and
+#   ValidationException extending it with "VALIDATION_ERROR" code.
+#
+# Diff shows:
+#   - Service throwing RuntimeException("Input is null")
+#   + Service throwing ValidationException("Input cannot be null/empty"),
+#     new ServiceException(message, errorCode, cause) base class,
+#     new ValidationException(message) extending ServiceException
+#
+# Reviewer questions:
+#   Q1: "What does ValidationException extend — what constructor does it call?"
+#       -> Needs ServiceException.java: base class with errorCode field,
+#          super(message, errorCode) constructor. ValidationException
+#          calls super(message, "VALIDATION_ERROR").
+#
+#   Q2: "How does the Service use these exceptions — what inputs trigger them?"
+#       -> Needs Service.java diff showing null and empty checks.
+#
+# Not needed for comprehension:
+#   - NotFoundException.java: Another custom exception extending
+#     ServiceException. Same hierarchy, same super() call pattern.
+#     HARDEST TRAP: sibling exception in the same hierarchy.
+#
+#   - GlobalExceptionHandler.java: @ControllerAdvice that catches
+#     ServiceException. Direct consumer of the exception hierarchy.
+#     But error response formatting doesn't help review exception design.
+#
+#   - ErrorResponse.java: DTO for error responses, has errorCode field.
+#     Same "errorCode" vocabulary. But the DTO is independent.
+#
+#   - AuthorizationException.java: Another ServiceException subclass
+#     for auth failures. Same pattern, different error code.
+#
+#   - ServiceTest.java: Tests that Service throws ValidationException.
+#     References the same classes. Test assertions don't help review.
+
+initial:
+  src/main/java/com/example/Service.java: |
+    package com.example;
+
+    public class Service {
+        public void process(String input) {
+            if (input == null) {
+                throw new RuntimeException("Input is null");
+            }
+        }
+    }
+  src/main/java/com/example/exceptions/NotFoundException.java: |
+    package com.example.exceptions;
+
+    public class NotFoundException extends ServiceException {
+        public NotFoundException(String resource, String id) {
+            super(resource + " not found: " + id, "NOT_FOUND");
+        }
+    }
+  src/main/java/com/example/handler/GlobalExceptionHandler.java: |
+    package com.example.handler;
+
+    import org.springframework.http.ResponseEntity;
+    import org.springframework.web.bind.annotation.ControllerAdvice;
+    import org.springframework.web.bind.annotation.ExceptionHandler;
+
+    @ControllerAdvice
+    public class GlobalExceptionHandler {
+        @ExceptionHandler(ServiceException.class)
+        public ResponseEntity<ErrorResponse> handleServiceException(ServiceException ex) {
+            ErrorResponse response = new ErrorResponse(ex.getErrorCode(), ex.getMessage());
+            return ResponseEntity.badRequest().body(response);
+        }
+
+        @ExceptionHandler(NotFoundException.class)
+        public ResponseEntity<ErrorResponse> handleNotFound(NotFoundException ex) {
+            ErrorResponse response = new ErrorResponse(ex.getErrorCode(), ex.getMessage());
+            return ResponseEntity.status(404).body(response);
+        }
+    }
+  src/main/java/com/example/dto/ErrorResponse.java: |
+    package com.example.dto;
+
+    public class ErrorResponse {
+        private final String errorCode;
+        private final String message;
+        private final long timestamp;
+
+        public ErrorResponse(String errorCode, String message) {
+            this.errorCode = errorCode;
+            this.message = message;
+            this.timestamp = System.currentTimeMillis();
+        }
+
+        public String getErrorCode() { return errorCode; }
+        public String getMessage() { return message; }
+        public long getTimestamp() { return timestamp; }
+    }
+  src/main/java/com/example/exceptions/AuthorizationException.java: |
+    package com.example.exceptions;
+
+    public class AuthorizationException extends ServiceException {
+        public AuthorizationException(String action) {
+            super("Not authorized to: " + action, "AUTHORIZATION_ERROR");
+        }
+    }
+  src/test/java/com/example/ServiceTest.java: |
+    package com.example;
+
+    import org.junit.jupiter.api.Test;
+    import static org.junit.jupiter.api.Assertions.*;
+
+    class ServiceTest {
+        private final Service service = new Service();
+
+        @Test
+        void processNullInputThrows() {
+            assertThrows(RuntimeException.class, () -> service.process(null));
+        }
+
+        @Test
+        void processValidInput() {
+            assertDoesNotThrow(() -> service.process("valid"));
+        }
+    }
+
+changed:
+  src/main/java/com/example/Service.java: |
+    package com.example;
+
+    public class Service {
+        public void process(String input) {
+            if (input == null) {
+                throw new ValidationException("Input cannot be null");
+            }
+            if (input.isEmpty()) {
+                throw new ValidationException("Input cannot be empty");
+            }
+        }
+    }
+  src/main/java/com/example/exceptions/ServiceException.java: |
+    package com.example.exceptions;
+
+    public class ServiceException extends RuntimeException {
+        private final String errorCode;
+
+        public ServiceException(String message, String errorCode) {
+            super(message);
+            this.errorCode = errorCode;
+        }
+
+        public ServiceException(String message, String errorCode, Throwable cause) {
+            super(message, cause);
+            this.errorCode = errorCode;
+        }
+
+        public String getErrorCode() {
+            return errorCode;
+        }
+    }
+  src/main/java/com/example/exceptions/ValidationException.java: |
+    package com.example.exceptions;
+
+    public class ValidationException extends ServiceException {
+        public ValidationException(String message) {
+            super(message, "VALIDATION_ERROR");
+        }
+    }
+  src/main/java/com/example/exceptions/NotFoundException.java: |
+    package com.example.exceptions;
+
+    public class NotFoundException extends ServiceException {
+        public NotFoundException(String resource, String id) {
+            super(resource + " not found: " + id, "NOT_FOUND");
+        }
+    }
+  src/main/java/com/example/handler/GlobalExceptionHandler.java: |
+    package com.example.handler;
+
+    import org.springframework.http.ResponseEntity;
+    import org.springframework.web.bind.annotation.ControllerAdvice;
+    import org.springframework.web.bind.annotation.ExceptionHandler;
+
+    @ControllerAdvice
+    public class GlobalExceptionHandler {
+        @ExceptionHandler(ServiceException.class)
+        public ResponseEntity<ErrorResponse> handleServiceException(ServiceException ex) {
+            ErrorResponse response = new ErrorResponse(ex.getErrorCode(), ex.getMessage());
+            return ResponseEntity.badRequest().body(response);
+        }
+
+        @ExceptionHandler(NotFoundException.class)
+        public ResponseEntity<ErrorResponse> handleNotFound(NotFoundException ex) {
+            ErrorResponse response = new ErrorResponse(ex.getErrorCode(), ex.getMessage());
+            return ResponseEntity.status(404).body(response);
+        }
+    }
+  src/main/java/com/example/dto/ErrorResponse.java: |
+    package com.example.dto;
+
+    public class ErrorResponse {
+        private final String errorCode;
+        private final String message;
+        private final long timestamp;
+
+        public ErrorResponse(String errorCode, String message) {
+            this.errorCode = errorCode;
+            this.message = message;
+            this.timestamp = System.currentTimeMillis();
+        }
+
+        public String getErrorCode() { return errorCode; }
+        public String getMessage() { return message; }
+        public long getTimestamp() { return timestamp; }
+    }
+  src/main/java/com/example/exceptions/AuthorizationException.java: |
+    package com.example.exceptions;
+
+    public class AuthorizationException extends ServiceException {
+        public AuthorizationException(String action) {
+            super("Not authorized to: " + action, "AUTHORIZATION_ERROR");
+        }
+    }
+  src/test/java/com/example/ServiceTest.java: |
+    package com.example;
+
+    import org.junit.jupiter.api.Test;
+    import static org.junit.jupiter.api.Assertions.*;
+
+    class ServiceTest {
+        private final Service service = new Service();
+
+        @Test
+        void processNullInputThrows() {
+            assertThrows(RuntimeException.class, () -> service.process(null));
+        }
+
+        @Test
+        void processValidInput() {
+            assertDoesNotThrow(() -> service.process("valid"));
+        }
+    }
+
+must_include_files:
+  - src/main/java/com/example/Service.java
+  - src/main/java/com/example/exceptions/ServiceException.java
+  - src/main/java/com/example/exceptions/ValidationException.java
+
+must_include_content_from:
+  src/main/java/com/example/Service.java:
+    - 'throw new ValidationException("Input cannot be null")'
+    - 'throw new ValidationException("Input cannot be empty")'
+  src/main/java/com/example/exceptions/ServiceException.java:
+    - "public class ServiceException extends RuntimeException"
+    - "private final String errorCode"
+    - "public String getErrorCode()"
+  src/main/java/com/example/exceptions/ValidationException.java:
+    - "public class ValidationException extends ServiceException"
+    - 'super(message, "VALIDATION_ERROR")'
+
+must_not_include:
+  # NotFoundException.java: sibling exception in same hierarchy
+  - NotFoundException
+  - "NOT_FOUND"
+  - "not found:"
+  # GlobalExceptionHandler.java: catches exceptions, doesn't help review design
+  - GlobalExceptionHandler
+  - "@ControllerAdvice"
+  - handleServiceException
+  - handleNotFound
+  # ErrorResponse.java: DTO with errorCode, same vocabulary
+  - ErrorResponse
+  - timestamp
+  # AuthorizationException.java: another sibling exception
+  - AuthorizationException
+  - "AUTHORIZATION_ERROR"
+  - "Not authorized to"
+  # ServiceTest.java: tests, doesn't help review exception hierarchy
+  - ServiceTest
+  - assertThrows
+  - assertDoesNotThrow
+
+must_not_include_files:
+  - src/main/java/com/example/exceptions/NotFoundException.java
+  - src/main/java/com/example/handler/GlobalExceptionHandler.java
+  - src/main/java/com/example/dto/ErrorResponse.java
+  - src/main/java/com/example/exceptions/AuthorizationException.java
+  - src/test/java/com/example/ServiceTest.java
+
+max_fragments: 7
+max_files: 4
+add_garbage_files: false
+skip_garbage_check: true

@@ -1,0 +1,35 @@
+initial:
+  charts/postgresql/values.yaml: |
+    auth:
+      username: postgres
+      password: ""
+      database: postgres
+  values.yaml: |
+    postgresql:
+      enabled: true
+  junk.py: |
+    garbage_marker_12345 = 1
+    unused_marker_67890 = 2
+changed:
+  charts/postgresql/values.yaml: |
+    auth:
+      username: postgres
+      password: ""
+      database: postgres
+  values.yaml: |
+    postgresql:
+      enabled: true
+      auth:
+        username: myapp
+        database: myapp
+        existingSecret: db-secret
+  junk.py: |
+    garbage_marker_12345 = 1
+    unused_marker_67890 = 2
+must_include_files:
+- values.yaml
+must_include_content:
+- 'username: postgres'
+- 'username: myapp'
+add_garbage_files: false
+skip_garbage_check: true

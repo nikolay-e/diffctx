@@ -1,9 +1,0 @@
-must_include_files:
-- infrastructure/storage.tf
-must_include_content:
-- source             = "./modules/s3"
-must_not_include:
-- GARBAGE_TF_ATHENA_444_006
-- GARBAGE_TF_EMR_444_001
-- athena.tf
-- emr.tf

@@ -1,0 +1,154 @@
+# Scenario: UserActor is implemented as a full Akka actor handling CreateUser,
+# DeleteUser, and GetUser messages defined in Messages.scala.
+#
+# Diff: UserActor.scala goes from empty class to full Actor implementation
+# with receive, pattern matching on messages, mutable state, and companion object.
+#
+# Reviewer questions:
+#   Q1: "What messages does UserActor handle?"
+#       -> Messages.scala (UNCHANGED) defines CreateUser, DeleteUser, GetUser,
+#          UserCreated as case classes extending UserMessage.
+#
+# Not needed:
+#   - OrderActor.scala: another Akka actor for order processing.
+#     Same actor pattern but handles different message types, no dependency.
+#   - ActorConfig.scala: Akka system configuration object.
+#     Infrastructure code, not referenced by UserActor implementation.
+
+initial:
+  Messages.scala: |
+    sealed trait UserMessage
+    case class CreateUser(name: String) extends UserMessage
+    case class DeleteUser(id: String) extends UserMessage
+    case class GetUser(id: String) extends UserMessage
+    case class UserCreated(id: String, name: String)
+  UserActor.scala: |
+    // Initial
+    class UserActor {}
+  OrderActor.scala: |
+    import akka.actor.{Actor, ActorLogging, Props}
+
+    sealed trait OrderMessage
+    case class PlaceOrder(item: String, quantity: Int) extends OrderMessage
+    case class CancelOrder(orderId: String) extends OrderMessage
+
+    class OrderActor extends Actor with ActorLogging {
+      private var orders: Map[String, (String, Int)] = Map.empty
+
+      def receive: Receive = {
+        case PlaceOrder(item, qty) =>
+          val id = java.util.UUID.randomUUID().toString
+          orders = orders + (id -> (item, qty))
+          log.info(s"Placed order $id")
+
+        case CancelOrder(id) =>
+          orders = orders - id
+          log.info(s"Cancelled order $id")
+      }
+    }
+
+    object OrderActor {
+      def props: Props = Props[OrderActor]()
+    }
+  ActorConfig.scala: |
+    import akka.actor.ActorSystem
+    import com.typesafe.config.ConfigFactory
+
+    object ActorConfig {
+      val system: ActorSystem = ActorSystem("app-system", ConfigFactory.load())
+
+      def shutdown(): Unit = {
+        system.terminate()
+      }
+    }
+
+changed:
+  Messages.scala: |
+    sealed trait UserMessage
+    case class CreateUser(name: String) extends UserMessage
+    case class DeleteUser(id: String) extends UserMessage
+    case class GetUser(id: String) extends UserMessage
+    case class UserCreated(id: String, name: String)
+  UserActor.scala: |
+    import akka.actor.{Actor, ActorLogging, Props}
+
+    class UserActor extends Actor with ActorLogging {
+      private var users: Map[String, String] = Map.empty
+
+      def receive: Receive = {
+        case CreateUser(name) =>
+          val id = java.util.UUID.randomUUID().toString
+          users = users + (id -> name)
+          log.info(s"Created user $id: $name")
+          sender() ! UserCreated(id, name)
+
+        case DeleteUser(id) =>
+          users = users - id
+          log.info(s"Deleted user $id")
+
+        case GetUser(id) =>
+          sender() ! users.get(id)
+      }
+    }
+
+    object UserActor {
+      def props: Props = Props[UserActor]()
+    }
+  OrderActor.scala: |
+    import akka.actor.{Actor, ActorLogging, Props}
+
+    sealed trait OrderMessage
+    case class PlaceOrder(item: String, quantity: Int) extends OrderMessage
+    case class CancelOrder(orderId: String) extends OrderMessage
+
+    class OrderActor extends Actor with ActorLogging {
+      private var orders: Map[String, (String, Int)] = Map.empty
+
+      def receive: Receive = {
+        case PlaceOrder(item, qty) =>
+          val id = java.util.UUID.randomUUID().toString
+          orders = orders + (id -> (item, qty))
+          log.info(s"Placed order $id")
+
+        case CancelOrder(id) =>
+          orders = orders - id
+          log.info(s"Cancelled order $id")
+      }
+    }
+
+    object OrderActor {
+      def props: Props = Props[OrderActor]()
+    }
+  ActorConfig.scala: |
+    import akka.actor.ActorSystem
+    import com.typesafe.config.ConfigFactory
+
+    object ActorConfig {
+      val system: ActorSystem = ActorSystem("app-system", ConfigFactory.load())
+
+      def shutdown(): Unit = {
+        system.terminate()
+      }
+    }
+
+must_include_files:
+  - UserActor.scala
+must_include_content_from:
+  UserActor.scala:
+    - "import akka.actor.{Actor, ActorLogging, Props}"
+must_not_include:
+  # OrderActor.scala: different actor, same pattern but no dependency on UserActor
+  - OrderActor
+  - PlaceOrder
+  - CancelOrder
+  # ActorConfig.scala: system setup, not referenced by UserActor
+  - ActorConfig
+  - ActorSystem
+  - ConfigFactory
+must_not_include_files:
+  - OrderActor.scala
+  - ActorConfig.scala
+max_fragments: 4
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

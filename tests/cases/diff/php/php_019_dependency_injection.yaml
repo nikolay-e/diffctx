@@ -1,0 +1,373 @@
+# Scenario: UserService gets constructor-injected UserRepository dependency
+#   — reviewer needs UserRepository to verify find() and save() method contracts
+#
+# Diff shows:
+#   - class UserService {}
+#   + require_once 'UserRepository.php'; constructor injection with
+#     private UserRepository $repo; getUser() calls $this->repo->find($id),
+#     createUser() calls $this->repo->save($data)
+#
+# Reviewer questions:
+#   Q1: "What does find(int $id) return — is array the right type?"
+#       -> Returns ['id' => $id, 'name' => 'User']. Array is correct.
+#   Q2: "What does save(array $data) return — is bool success flag?"
+#       -> Returns true always. Bool return is correct.
+#
+# Not needed for comprehension:
+#   - ProductRepository.php: has IDENTICAL find/save interface. Same class
+#     shape (find returning array, save returning bool). HARDEST TRAP:
+#     structurally identical sibling but operates on products.
+#
+#   - UserLogger.php: user-related naming. Has getUser(int) method returning
+#     string. HARD TRAP: shares "User" domain and has similar method name.
+#     Also uses constructor injection pattern. But independent class.
+#
+#   - UserValidator.php: user-domain class with validate(array) method.
+#     Could plausibly be called before save(). Same naming convention.
+#     But not referenced in the diff.
+#
+#   - OrderRepository.php: another repository with find/save pattern.
+#     Same interface shape. But different domain entity.
+#
+#   - UserFactory.php: creates User arrays matching repository format.
+#     Domain overlap — produces data that save() consumes. But not
+#     referenced in the diff.
+
+initial:
+  UserRepository.php: |
+    <?php
+    class UserRepository {
+        private array $store = [];
+
+        public function find(int $id): array {
+            return $this->store[$id] ?? ['id' => $id, 'name' => 'User'];
+        }
+
+        public function save(array $data): bool {
+            $this->store[] = $data;
+            return true;
+        }
+
+        public function delete(int $id): bool {
+            if (isset($this->store[$id])) {
+                unset($this->store[$id]);
+                return true;
+            }
+            return false;
+        }
+
+        public function findAll(): array {
+            return $this->store;
+        }
+    }
+  UserService.php: |
+    <?php
+    class UserService {}
+  ProductRepository.php: |
+    <?php
+    class ProductRepository {
+        private array $products = [];
+
+        public function find(int $id): array {
+            return $this->products[$id] ?? ['id' => $id, 'name' => 'Product'];
+        }
+
+        public function save(array $data): bool {
+            $this->products[] = $data;
+            return true;
+        }
+
+        public function findByCategory(string $category): array {
+            return array_filter($this->products, fn($p) => ($p['category'] ?? '') === $category);
+        }
+
+        public function count(): int {
+            return count($this->products);
+        }
+    }
+  UserLogger.php: |
+    <?php
+    class UserLogger {
+        private string $logPath;
+
+        public function __construct(string $logPath) {
+            $this->logPath = $logPath;
+        }
+
+        public function logAction(int $userId, string $action): void {
+            $entry = sprintf("[%s] User %d: %s", date('c'), $userId, $action);
+        }
+
+        public function getUser(int $id): string {
+            return "user_{$id}";
+        }
+
+        public function getLogPath(): string {
+            return $this->logPath;
+        }
+    }
+  UserValidator.php: |
+    <?php
+    class UserValidator {
+        private array $rules = [];
+
+        public function validate(array $data): bool {
+            if (empty($data['name']) || !is_string($data['name'])) {
+                return false;
+            }
+            if (isset($data['email']) && !filter_var($data['email'], FILTER_VALIDATE_EMAIL)) {
+                return false;
+            }
+            return true;
+        }
+
+        public function addRule(string $field, callable $rule): void {
+            $this->rules[$field] = $rule;
+        }
+
+        public function getErrors(array $data): array {
+            $errors = [];
+            foreach ($this->rules as $field => $rule) {
+                if (!$rule($data[$field] ?? null)) {
+                    $errors[] = "Validation failed for: {$field}";
+                }
+            }
+            return $errors;
+        }
+    }
+  OrderRepository.php: |
+    <?php
+    class OrderRepository {
+        private array $orders = [];
+
+        public function find(int $id): array {
+            return $this->orders[$id] ?? ['id' => $id, 'status' => 'pending'];
+        }
+
+        public function save(array $data): bool {
+            $this->orders[] = $data;
+            return true;
+        }
+
+        public function findByUser(int $userId): array {
+            return array_filter($this->orders, fn($o) => ($o['user_id'] ?? 0) === $userId);
+        }
+    }
+  UserFactory.php: |
+    <?php
+    class UserFactory {
+        private static int $nextId = 1;
+
+        public static function create(string $name, string $email = ''): array {
+            return [
+                'id' => self::$nextId++,
+                'name' => $name,
+                'email' => $email,
+                'created_at' => date('c'),
+            ];
+        }
+
+        public static function createAdmin(string $name): array {
+            $user = self::create($name);
+            $user['role'] = 'admin';
+            return $user;
+        }
+    }
+
+changed:
+  UserRepository.php: |
+    <?php
+    class UserRepository {
+        private array $store = [];
+
+        public function find(int $id): array {
+            return $this->store[$id] ?? ['id' => $id, 'name' => 'User'];
+        }
+
+        public function save(array $data): bool {
+            $this->store[] = $data;
+            return true;
+        }
+
+        public function delete(int $id): bool {
+            if (isset($this->store[$id])) {
+                unset($this->store[$id]);
+                return true;
+            }
+            return false;
+        }
+
+        public function findAll(): array {
+            return $this->store;
+        }
+    }
+  UserService.php: |
+    <?php
+    require_once 'UserRepository.php';
+
+    class UserService {
+        public function __construct(private UserRepository $repo) {}
+
+        public function getUser(int $id): array {
+            return $this->repo->find($id);
+        }
+
+        public function createUser(array $data): bool {
+            return $this->repo->save($data);
+        }
+    }
+  ProductRepository.php: |
+    <?php
+    class ProductRepository {
+        private array $products = [];
+
+        public function find(int $id): array {
+            return $this->products[$id] ?? ['id' => $id, 'name' => 'Product'];
+        }
+
+        public function save(array $data): bool {
+            $this->products[] = $data;
+            return true;
+        }
+
+        public function findByCategory(string $category): array {
+            return array_filter($this->products, fn($p) => ($p['category'] ?? '') === $category);
+        }
+
+        public function count(): int {
+            return count($this->products);
+        }
+    }
+  UserLogger.php: |
+    <?php
+    class UserLogger {
+        private string $logPath;
+
+        public function __construct(string $logPath) {
+            $this->logPath = $logPath;
+        }
+
+        public function logAction(int $userId, string $action): void {
+            $entry = sprintf("[%s] User %d: %s", date('c'), $userId, $action);
+        }
+
+        public function getUser(int $id): string {
+            return "user_{$id}";
+        }
+
+        public function getLogPath(): string {
+            return $this->logPath;
+        }
+    }
+  UserValidator.php: |
+    <?php
+    class UserValidator {
+        private array $rules = [];
+
+        public function validate(array $data): bool {
+            if (empty($data['name']) || !is_string($data['name'])) {
+                return false;
+            }
+            if (isset($data['email']) && !filter_var($data['email'], FILTER_VALIDATE_EMAIL)) {
+                return false;
+            }
+            return true;
+        }
+
+        public function addRule(string $field, callable $rule): void {
+            $this->rules[$field] = $rule;
+        }
+
+        public function getErrors(array $data): array {
+            $errors = [];
+            foreach ($this->rules as $field => $rule) {
+                if (!$rule($data[$field] ?? null)) {
+                    $errors[] = "Validation failed for: {$field}";
+                }
+            }
+            return $errors;
+        }
+    }
+  OrderRepository.php: |
+    <?php
+    class OrderRepository {
+        private array $orders = [];
+
+        public function find(int $id): array {
+            return $this->orders[$id] ?? ['id' => $id, 'status' => 'pending'];
+        }
+
+        public function save(array $data): bool {
+            $this->orders[] = $data;
+            return true;
+        }
+
+        public function findByUser(int $userId): array {
+            return array_filter($this->orders, fn($o) => ($o['user_id'] ?? 0) === $userId);
+        }
+    }
+  UserFactory.php: |
+    <?php
+    class UserFactory {
+        private static int $nextId = 1;
+
+        public static function create(string $name, string $email = ''): array {
+            return [
+                'id' => self::$nextId++,
+                'name' => $name,
+                'email' => $email,
+                'created_at' => date('c'),
+            ];
+        }
+
+        public static function createAdmin(string $name): array {
+            $user = self::create($name);
+            $user['role'] = 'admin';
+            return $user;
+        }
+    }
+
+must_include_files:
+  - UserService.php
+  # Q1/Q2: Reviewer needs UserRepository to verify find()/save() contracts
+  - UserRepository.php
+
+must_include_content_from:
+  UserService.php:
+    - "UserRepository $repo"
+    - "$this->repo->find($id)"
+    - "$this->repo->save($data)"
+  UserRepository.php:
+    - "public function find(int $id): array"
+    - "public function save(array $data): bool"
+
+must_not_include:
+  # --- ProductRepository.php: HARDEST TRAP — identical find/save interface ---
+  - "class ProductRepository"
+  - "findByCategory"
+  # --- UserLogger.php: user-domain, has getUser method, constructor injection ---
+  - "class UserLogger"
+  - "logAction"
+  - "getLogPath"
+  # --- UserValidator.php: user-domain, validate(array) could precede save ---
+  - "class UserValidator"
+  - "addRule"
+  - "getErrors"
+  # --- OrderRepository.php: another repository with same find/save shape ---
+  - "class OrderRepository"
+  - "findByUser"
+  # --- UserFactory.php: produces data save() consumes, user-domain overlap ---
+  - "class UserFactory"
+  - "createAdmin"
+
+must_not_include_files:
+  - ProductRepository.php
+  - UserLogger.php
+  - UserValidator.php
+  - OrderRepository.php
+  - UserFactory.php
+
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

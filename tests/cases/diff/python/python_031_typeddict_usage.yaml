@@ -1,0 +1,229 @@
+# Scenario: loader.py imports AppConfig and DatabaseConfig TypedDicts from
+#   types.py and implements real config loading with json.load(). Both
+#   loader.py and types.py are relevant; types.py is unchanged.
+#
+# Diff shows:
+#   + from types import AppConfig, DatabaseConfig
+#   + def load_config(path: str) -> AppConfig: (replaces stub)
+#   + json.load(), db_config: DatabaseConfig, AppConfig(...) construction
+#
+# Reviewer questions:
+#   Q1: "Does load_config correctly populate all required AppConfig fields?"
+#       -> types.py (UNCHANGED): AppConfig has debug, timeout, host, port,
+#          database (DatabaseConfig), log_level (Optional). The diff
+#          constructs AppConfig with all fields. Reviewer must verify
+#          the field names and types match the TypedDict definition.
+#
+#   Q2: "Is DatabaseConfig a nested TypedDict — are all its keys required?"
+#       -> types.py: DatabaseConfig(TypedDict) has host, port, name, user,
+#          password — all required (total=True by default). The diff assigns
+#          raw["database"] directly. Reviewer must check if raw JSON will
+#          always have all 5 keys.
+#
+#   Q3: "Does ServerConfig's total=False matter here?"
+#       -> types.py defines ServerConfig(TypedDict, total=False) but loader.py
+#          doesn't import or use it. Not relevant to this diff.
+#
+# Not needed for comprehension:
+#   - schema_validator.py: SchemaValidator with validate() method checking
+#     required fields and types. HARDEST TRAP: validates data against a
+#     schema with field names — same "type validation" concept as TypedDict.
+#     SchemaError dataclass parallels TypedDict field checking. But
+#     schema_validator uses runtime isinstance checks, not TypedDict static
+#     typing. No import from types.py or loader.py.
+#
+#   - config_merger.py: deep_merge() and ConfigMerger class for merging
+#     config dicts. "Config" domain overlap — both deal with configuration
+#     dictionaries. But config_merger works on plain dicts, doesn't import
+#     AppConfig or DatabaseConfig, and doesn't affect how loader.py loads.
+initial:
+  types.py: |
+    from typing import TypedDict, Optional
+
+    class DatabaseConfig(TypedDict):
+        host: str
+        port: int
+        name: str
+        user: str
+        password: str
+
+    class AppConfig(TypedDict):
+        debug: bool
+        timeout: int
+        host: str
+        port: int
+        database: DatabaseConfig
+        log_level: Optional[str]
+
+    class ServerConfig(TypedDict, total=False):
+        workers: int
+        max_connections: int
+        ssl_enabled: bool
+  loader.py: |
+    import json
+
+    def load_config():
+        pass
+
+    def merge_configs(base: dict, override: dict) -> dict:
+        result = dict(base)
+        result.update(override)
+        return result
+  schema_validator.py: |
+    from typing import Dict, Any, List, Optional
+    from dataclasses import dataclass
+
+    @dataclass
+    class SchemaError:
+        path: str
+        message: str
+
+    class SchemaValidator:
+        def __init__(self, schema: Dict[str, Any]):
+            self._schema = schema
+
+        def validate(self, data: Dict[str, Any]) -> List[SchemaError]:
+            errors = []
+            for field, field_type in self._schema.items():
+                if field not in data:
+                    errors.append(SchemaError(field, f"Missing required field: {field}"))
+                elif not isinstance(data[field], field_type):
+                    errors.append(SchemaError(field, f"Expected {field_type.__name__}"))
+            return errors
+  config_merger.py: |
+    from typing import Dict, Any, Optional
+
+    def deep_merge(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
+        result = base.copy()
+        for key, value in override.items():
+            if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+                result[key] = deep_merge(result[key], value)
+            else:
+                result[key] = value
+        return result
+
+    class ConfigMerger:
+        def __init__(self, base: Dict[str, Any]):
+            self._base = base
+
+        def merge(self, overrides: Dict[str, Any]) -> Dict[str, Any]:
+            return deep_merge(self._base, overrides)
+changed:
+  types.py: |
+    from typing import TypedDict, Optional
+
+    class DatabaseConfig(TypedDict):
+        host: str
+        port: int
+        name: str
+        user: str
+        password: str
+
+    class AppConfig(TypedDict):
+        debug: bool
+        timeout: int
+        host: str
+        port: int
+        database: DatabaseConfig
+        log_level: Optional[str]
+
+    class ServerConfig(TypedDict, total=False):
+        workers: int
+        max_connections: int
+        ssl_enabled: bool
+  loader.py: |
+    import json
+    from types import AppConfig, DatabaseConfig
+
+    def load_config(path: str) -> AppConfig:
+        with open(path) as f:
+            raw = json.load(f)
+        db_config: DatabaseConfig = raw["database"]
+        return AppConfig(
+            debug=raw.get("debug", False),
+            timeout=raw.get("timeout", 30),
+            host=raw.get("host", "localhost"),
+            port=raw.get("port", 8080),
+            database=db_config,
+            log_level=raw.get("log_level"),
+        )
+
+    def merge_configs(base: dict, override: dict) -> dict:
+        result = dict(base)
+        result.update(override)
+        return result
+  schema_validator.py: |
+    from typing import Dict, Any, List, Optional
+    from dataclasses import dataclass
+
+    @dataclass
+    class SchemaError:
+        path: str
+        message: str
+
+    class SchemaValidator:
+        def __init__(self, schema: Dict[str, Any]):
+            self._schema = schema
+
+        def validate(self, data: Dict[str, Any]) -> List[SchemaError]:
+            errors = []
+            for field, field_type in self._schema.items():
+                if field not in data:
+                    errors.append(SchemaError(field, f"Missing required field: {field}"))
+                elif not isinstance(data[field], field_type):
+                    errors.append(SchemaError(field, f"Expected {field_type.__name__}"))
+            return errors
+  config_merger.py: |
+    from typing import Dict, Any, Optional
+
+    def deep_merge(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
+        result = base.copy()
+        for key, value in override.items():
+            if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+                result[key] = deep_merge(result[key], value)
+            else:
+                result[key] = value
+        return result
+
+    class ConfigMerger:
+        def __init__(self, base: Dict[str, Any]):
+            self._base = base
+
+        def merge(self, overrides: Dict[str, Any]) -> Dict[str, Any]:
+            return deep_merge(self._base, overrides)
+must_include_files:
+  - loader.py
+  # Q1/Q2: types.py defines AppConfig and DatabaseConfig TypedDicts that
+  # loader.py imports and uses. Reviewer must see the field definitions.
+  - types.py
+
+must_include_content_from:
+  loader.py:
+    - 'from types import AppConfig, DatabaseConfig'
+    - 'def load_config(path: str) -> AppConfig:'
+    - "db_config: DatabaseConfig"
+  types.py:
+    - "class AppConfig(TypedDict)"
+    - "class DatabaseConfig(TypedDict)"
+    - "database: DatabaseConfig"
+
+must_not_include:
+  # --- schema_validator.py: type validation vocabulary overlap ---
+  # SchemaValidator checks field types at runtime — same concept as
+  # TypedDict static field checking. But uses isinstance, not TypedDict.
+  - SchemaValidator
+  - SchemaError
+  - "Missing required field"
+  # --- config_merger.py: config dict merging, "config" domain ---
+  # deep_merge() on plain dicts — config domain but no TypedDict usage.
+  - ConfigMerger
+  - deep_merge
+
+must_not_include_files:
+  - schema_validator.py
+  - config_merger.py
+
+add_garbage_files: false
+skip_garbage_check: true
+max_fragments: 10
+max_files: 5

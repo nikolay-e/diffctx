@@ -1,0 +1,165 @@
+# Scenario: Changing primary region from us-east-1 to eu-west-1 and adding
+#   a provider alias for the original US region.
+#
+# Reviewer questions:
+#   Q1: "What resources will be affected by the region change?"
+#       -> main.tf has S3 bucket and DynamoDB that will move to eu-west-1.
+#   Q2: "Do any resources need to stay in us-east-1 via the alias?"
+#       -> main.tf shows resources without explicit provider, so they all move.
+#   Q3: "Are there resources that explicitly need us-east-1?"
+#       -> acm.tf (UNCHANGED) has an ACM certificate that MUST be in us-east-1
+#         for CloudFront. This resource should use the new alias.
+#
+# Not needed:
+#   - modules/cdn/provider.tf: Module-level provider with its own alias.
+#     HARD TRAP: same provider "aws" block, same alias pattern, same
+#     us-east-1 region. But module providers are scoped independently.
+#
+#   - backend.tf: Backend config with region = "us-east-1". Contains the
+#     exact region string being changed. HARD TRAP: same region reference.
+#     But backend region is where state is stored, not where resources deploy.
+#
+#   - dns/route53.tf: Route53 record. Route53 is global service, not
+#     affected by provider region. But same AWS infrastructure domain.
+#
+#   - outputs.tf: Exports resource ARNs. References the same resources as
+#     main.tf but doesn't affect region placement.
+
+initial:
+  provider.tf: |
+    provider "aws" {
+      region = "us-east-1"
+    }
+  main.tf: |
+    resource "aws_s3_bucket" "data" {
+      bucket = "my-data-bucket"
+
+      tags = {
+        Name = "data-bucket"
+      }
+    }
+
+    resource "aws_dynamodb_table" "sessions" {
+      name         = "sessions"
+      billing_mode = "PAY_PER_REQUEST"
+      hash_key     = "id"
+
+      attribute {
+        name = "id"
+        type = "S"
+      }
+    }
+  acm.tf: |
+    resource "aws_acm_certificate" "cloudfront" {
+      domain_name       = "cdn.example.com"
+      validation_method = "DNS"
+
+      tags = {
+        Name = "CloudFront Certificate"
+      }
+
+      lifecycle {
+        create_before_destroy = true
+      }
+    }
+
+    resource "aws_acm_certificate_validation" "cloudfront" {
+      certificate_arn = aws_acm_certificate.cloudfront.arn
+    }
+  modules/cdn/provider.tf: |
+    provider "aws" {
+      alias  = "us_east"
+      region = "us-east-1"
+    }
+
+    resource "aws_cloudfront_distribution" "cdn" {
+      provider = aws.us_east
+      enabled  = true
+    }
+  backend.tf: |
+    terraform {
+      backend "s3" {
+        bucket = "terraform-state"
+        key    = "app/terraform.tfstate"
+        region = "us-east-1"
+      }
+    }
+  dns/route53.tf: |
+    resource "aws_route53_zone" "primary" {
+      name = "example.com"
+    }
+
+    resource "aws_route53_record" "app" {
+      zone_id = aws_route53_zone.primary.zone_id
+      name    = "app.example.com"
+      type    = "A"
+      ttl     = 300
+      records = ["10.0.1.100"]
+    }
+  outputs.tf: |
+    output "bucket_arn" {
+      value = aws_s3_bucket.data.arn
+    }
+
+    output "table_name" {
+      value = aws_dynamodb_table.sessions.name
+    }
+
+    output "certificate_arn" {
+      value = aws_acm_certificate.cloudfront.arn
+    }
+
+changed:
+  provider.tf: |
+    provider "aws" {
+      region = "eu-west-1"
+    }
+
+    provider "aws" {
+      alias  = "us"
+      region = "us-east-1"
+    }
+
+must_include_files:
+  - provider.tf
+  # Q1+Q2: Resources that will move regions
+  - main.tf
+  # Q3: ACM certificate that MUST stay in us-east-1 for CloudFront
+  - acm.tf
+
+must_include_content_from:
+  provider.tf:
+    - region = "eu-west-1"
+    - alias  = "us"
+  main.tf:
+    - resource "aws_s3_bucket" "data" {
+    - resource "aws_dynamodb_table" "sessions" {
+  acm.tf:
+    - resource "aws_acm_certificate" "cloudfront" {
+    - domain_name       = "cdn.example.com"
+
+must_not_include:
+  # --- modules/cdn/provider.tf: module-scoped provider, different scope ---
+  - alias  = "us_east"
+  - aws.us_east
+  - aws_cloudfront_distribution
+  # --- backend.tf: state storage region, not resource deployment region ---
+  - backend "s3" {
+  - terraform-state
+  # --- dns/route53.tf: global service, not region-dependent ---
+  - aws_route53_zone
+  - app.example.com
+  # --- outputs.tf: exports ARNs but doesn't affect region placement ---
+  - output "bucket_arn"
+  - output "table_name"
+
+must_not_include_files:
+  - modules/cdn/provider.tf
+  - backend.tf
+  - dns/route53.tf
+  - outputs.tf
+
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

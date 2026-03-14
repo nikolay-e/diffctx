@@ -1,0 +1,77 @@
+# Scenario: Adding an Environment tag to the common_tags locals block used
+#   across all resources.
+# Reviewer questions:
+#   1. What resources consume local.common_tags? (main.tf tags the instance)
+#   2. Are there other resources using these tags? (s3.tf also uses them)
+# Traps:
+#   - modules/networking/locals.tf: module-level locals with similar structure (same pattern, different scope)
+#   - variables.tf: variable defs (not local values)
+
+initial:
+  locals.tf: |
+    locals {
+      common_tags = {
+        Project = "myapp"
+        Owner   = "team"
+      }
+    }
+  main.tf: |
+    resource "aws_instance" "web" {
+      ami           = "ami-12345678"
+      instance_type = "t3.micro"
+      tags          = local.common_tags
+    }
+  s3.tf: |
+    resource "aws_s3_bucket" "data" {
+      bucket = "myapp-data"
+      tags   = local.common_tags
+    }
+  modules/networking/locals.tf: |
+    locals {
+      common_tags = {
+        Project = "networking"
+        Owner   = "infra-team"
+      }
+    }
+  variables.tf: |
+    variable "environment" {
+      type    = string
+      default = "production"
+    }
+
+changed:
+  locals.tf: |
+    locals {
+      common_tags = {
+        Project     = "myapp"
+        Owner       = "team"
+        Environment = "prod"
+      }
+    }
+
+must_include_files:
+  - locals.tf
+  - main.tf
+
+must_include_content_from:
+  locals.tf:
+    - Environment = "prod"
+    - Project     = "myapp"
+  main.tf:
+    - tags          = local.common_tags
+
+must_not_include:
+  # Module-level locals - same block name but scoped to networking module
+  - networking
+  - infra-team
+  # Variables - input definitions, not local values
+  - variable "environment" {
+
+must_not_include_files:
+  - modules/networking/locals.tf
+  - variables.tf
+
+max_fragments: 4
+max_files: 2
+add_garbage_files: false
+skip_garbage_check: true

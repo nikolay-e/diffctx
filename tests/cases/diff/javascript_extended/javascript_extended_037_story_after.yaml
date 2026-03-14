@@ -1,7 +1,0 @@
-Button.tsx: "export interface ButtonProps {\n    label: string;\n    variant?: 'primary' | 'secondary';\n    size?: 'small' | 'medium' | 'large';\n    onClick?: () => void;\n}\n\nexport function Button({\
-  \ label, variant = 'primary', size = 'medium', onClick }: ButtonProps) {\n    return (\n        <button className={`btn btn-${variant} btn-${size}`} onClick={onClick}>\n            {label}\n        </button>\n\
-  \    );\n}\n\n// storybook_garbage_marker_001\n"
-Button.stories.tsx: "import type { Meta, StoryObj } from '@storybook/react';\nimport { Button, ButtonProps } from './Button';\n\nconst meta: Meta<typeof Button> = {\n    title: 'Components/Button',\n  \
-  \  component: Button,\n    argTypes: {\n        variant: { control: 'select', options: ['primary', 'secondary'] },\n        size: { control: 'select', options: ['small', 'medium', 'large'] },\n    },\n\
-  };\n\nexport default meta;\ntype Story = StoryObj<typeof Button>;\n\nexport const Primary: Story = {\n    args: {\n        label: 'Primary Button',\n        variant: 'primary',\n    },\n};\n\nexport const\
-  \ Secondary: Story = {\n    args: {\n        label: 'Secondary Button',\n        variant: 'secondary',\n    },\n};\n"

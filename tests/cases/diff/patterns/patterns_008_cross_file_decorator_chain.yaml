@@ -1,0 +1,545 @@
+# Scenario: log_calls decorator enhanced with timing, error logging, and argument
+#   display. Only decorators/logging.py is changed.
+#
+# Diff shows:
+#   + import time
+#   + start_time = time.time()
+#   + logger.info(f"Calling {func.__name__} with args={args}, kwargs={kwargs}")
+#   + elapsed = time.time() - start_time; logger.info(f"Finished ... in {elapsed:.3f}s")
+#   + except Exception as e: logger.error(f"Failed ... after {elapsed:.3f}s: {e}"); raise
+#
+# Reviewer questions:
+#   Q1: "Which services use @log_calls and will now get verbose timing/arg logs?"
+#       -> services/user_service.py (UNCHANGED) uses @log_calls on create_user
+#          and delete_user. These will now log argument values including user
+#          name, email, and user_id — potential PII exposure concern.
+#
+#   Q2: "Does the timing change affect @retry behavior in decorator stacking?"
+#       -> services/order_service.py (UNCHANGED) stacks @log_calls on top of
+#          @retry(max_attempts=3) on create_order. Timing now wraps ALL retry
+#          attempts, so elapsed includes retries. The reviewer must verify
+#          whether this is the intended behavior.
+#
+#   Q3: "Does the retry decorator in the same file interact with the new
+#        exception handling in log_calls?"
+#       -> decorators/logging.py (CHANGED) defines both log_calls and retry.
+#          The new try/except in log_calls catches Exception and re-raises.
+#          When stacked as @log_calls @retry, log_calls catches the final
+#          exception AFTER retry exhausts attempts. The reviewer needs to see
+#          retry's implementation to verify this interaction.
+#
+# Not needed for comprehension:
+#   - decorators/auth.py: Authentication decorator that checks request tokens.
+#     Same decorators/ directory, same @functools.wraps pattern, same wrapper
+#     structure. HARDEST TRAP: structurally identical sibling decorator file.
+#     But auth checking is unrelated to logging/timing behavior.
+#
+#   - services/payment_service.py: Uses @log_calls AND @retry together, just
+#     like order_service.py. Same decorator stacking pattern, same directory.
+#     But it's a SECOND consumer with identical stacking — including it would
+#     duplicate the information already provided by order_service.py.
+#
+#   - utils/performance_tracker.py: Tracks function execution times with
+#     start/stop methods. Same "timing" domain — uses time.time(), measures
+#     elapsed seconds. But no import or decorator dependency on log_calls.
+#
+#   - tests/test_decorators.py: Tests @log_calls and @retry behavior directly.
+#     Imports both decorators, applies them to test functions, asserts log
+#     output. Direct import edge. But tests verify existing behavior, not
+#     the new timing/error-handling additions.
+#
+#   - config/logging_config.py: Configures logging levels, handlers, and
+#     formatters. Same logging domain — sets up the logger that log_calls
+#     writes to. But logger configuration doesn't affect decorator behavior.
+
+initial:
+  decorators/logging.py: |
+    import functools
+    import logging
+
+    logger = logging.getLogger(__name__)
+
+    def log_calls(func):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            logger.info(f"Calling {func.__name__}")
+            result = func(*args, **kwargs)
+            logger.info(f"Finished {func.__name__}")
+            return result
+        return wrapper
+
+    def retry(max_attempts=3):
+        def decorator(func):
+            @functools.wraps(func)
+            def wrapper(*args, **kwargs):
+                for attempt in range(max_attempts):
+                    try:
+                        return func(*args, **kwargs)
+                    except Exception as e:
+                        if attempt == max_attempts - 1:
+                            raise
+                        logger.warning(f"Attempt {attempt + 1} failed: {e}")
+            return wrapper
+        return decorator
+
+  services/user_service.py: |
+    from decorators.logging import log_calls
+
+    class UserService:
+        def __init__(self, user_repo):
+            self.user_repo = user_repo
+
+        @log_calls
+        def create_user(self, name: str, email: str):
+            user = {"name": name, "email": email}
+            self.user_repo.save(user)
+            return user
+
+        @log_calls
+        def delete_user(self, user_id: int):
+            self.user_repo.delete(user_id)
+            return {"deleted": user_id}
+
+        def get_user(self, user_id: int):
+            return self.user_repo.find(user_id)
+
+  services/order_service.py: |
+    from decorators.logging import log_calls, retry
+
+    class OrderService:
+        def __init__(self, order_repo, inventory_client):
+            self.order_repo = order_repo
+            self.inventory_client = inventory_client
+
+        @log_calls
+        @retry(max_attempts=3)
+        def create_order(self, user_id: int, items: list):
+            self.inventory_client.reserve(items)
+            order = {"user_id": user_id, "items": items, "status": "created"}
+            self.order_repo.save(order)
+            return order
+
+        @log_calls
+        def cancel_order(self, order_id: int):
+            order = self.order_repo.find(order_id)
+            order["status"] = "cancelled"
+            self.order_repo.save(order)
+            return order
+
+  decorators/auth.py: |
+    import functools
+    import logging
+
+    logger = logging.getLogger(__name__)
+
+    def require_auth(func):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            request = kwargs.get("request") or (args[0] if args else None)
+            if not request or not request.get("token"):
+                raise PermissionError("Authentication required")
+            logger.info(f"Authenticated request for {func.__name__}")
+            return func(*args, **kwargs)
+        return wrapper
+
+    def require_role(role: str):
+        def decorator(func):
+            @functools.wraps(func)
+            def wrapper(*args, **kwargs):
+                request = kwargs.get("request") or (args[0] if args else None)
+                user_role = request.get("role", "") if request else ""
+                if user_role != role:
+                    raise PermissionError(f"Role '{role}' required")
+                return func(*args, **kwargs)
+            return wrapper
+        return decorator
+
+  services/payment_service.py: |
+    from decorators.logging import log_calls, retry
+
+    class PaymentService:
+        def __init__(self, gateway_client):
+            self.gateway_client = gateway_client
+
+        @log_calls
+        @retry(max_attempts=3)
+        def charge_card(self, card_token: str, amount: float, currency: str = "USD"):
+            response = self.gateway_client.charge(card_token, amount, currency)
+            if response.get("status") != "success":
+                raise RuntimeError(f"Charge failed: {response.get('error')}")
+            return response
+
+        @log_calls
+        def refund(self, transaction_id: str, amount: float):
+            return self.gateway_client.refund(transaction_id, amount)
+
+        def get_transaction(self, transaction_id: str):
+            return self.gateway_client.get(transaction_id)
+
+  utils/performance_tracker.py: |
+    import time
+    from typing import Any
+
+    SLOW_THRESHOLD_SECONDS = 1.0
+    TRACKING_ENABLED = True
+
+    class PerformanceTracker:
+        def __init__(self):
+            self._timings: dict[str, list[float]] = {}
+
+        def start_timer(self, operation: str) -> float:
+            return time.time()
+
+        def stop_timer(self, operation: str, start: float) -> float:
+            elapsed = time.time() - start
+            if operation not in self._timings:
+                self._timings[operation] = []
+            self._timings[operation].append(elapsed)
+            return elapsed
+
+        def average_time(self, operation: str) -> float:
+            times = self._timings.get(operation, [])
+            return sum(times) / len(times) if times else 0.0
+
+        def is_slow(self, operation: str) -> bool:
+            return self.average_time(operation) > SLOW_THRESHOLD_SECONDS
+
+  tests/test_decorators.py: |
+    import logging
+    from decorators.logging import log_calls, retry
+
+    def test_log_calls_logs_function_name(caplog):
+        @log_calls
+        def sample_function():
+            return 42
+
+        with caplog.at_level(logging.INFO):
+            result = sample_function()
+        assert result == 42
+        assert "sample_function" in caplog.text
+
+    def test_retry_retries_on_failure():
+        call_count = 0
+
+        @retry(max_attempts=3)
+        def flaky_function():
+            nonlocal call_count
+            call_count += 1
+            if call_count < 3:
+                raise RuntimeError("Temporary failure")
+            return "success"
+
+        result = flaky_function()
+        assert result == "success"
+        assert call_count == 3
+
+    def test_retry_raises_after_max_attempts():
+        @retry(max_attempts=2)
+        def always_fails():
+            raise ValueError("Permanent failure")
+
+        try:
+            always_fails()
+        except ValueError:
+            pass
+
+  config/logging_config.py: |
+    import logging
+
+    LOG_LEVEL = "INFO"
+    LOG_FORMAT = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+    LOG_DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
+    LOG_FILE = "/var/log/app/application.log"
+    MAX_LOG_SIZE_MB = 100
+
+    def configure_logging(level: str = LOG_LEVEL) -> None:
+        logging.basicConfig(
+            level=getattr(logging, level),
+            format=LOG_FORMAT,
+            datefmt=LOG_DATE_FORMAT,
+        )
+
+    def get_logger(name: str) -> logging.Logger:
+        return logging.getLogger(name)
+
+changed:
+  decorators/logging.py: |
+    import functools
+    import logging
+    import time
+
+    logger = logging.getLogger(__name__)
+
+    def log_calls(func):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            start_time = time.time()
+            logger.info(f"Calling {func.__name__} with args={args}, kwargs={kwargs}")
+            try:
+                result = func(*args, **kwargs)
+                elapsed = time.time() - start_time
+                logger.info(f"Finished {func.__name__} in {elapsed:.3f}s")
+                return result
+            except Exception as e:
+                elapsed = time.time() - start_time
+                logger.error(f"Failed {func.__name__} after {elapsed:.3f}s: {e}")
+                raise
+        return wrapper
+
+    def retry(max_attempts=3):
+        def decorator(func):
+            @functools.wraps(func)
+            def wrapper(*args, **kwargs):
+                for attempt in range(max_attempts):
+                    try:
+                        return func(*args, **kwargs)
+                    except Exception as e:
+                        if attempt == max_attempts - 1:
+                            raise
+                        logger.warning(f"Attempt {attempt + 1} failed: {e}")
+            return wrapper
+        return decorator
+
+  services/user_service.py: |
+    from decorators.logging import log_calls
+
+    class UserService:
+        def __init__(self, user_repo):
+            self.user_repo = user_repo
+
+        @log_calls
+        def create_user(self, name: str, email: str):
+            user = {"name": name, "email": email}
+            self.user_repo.save(user)
+            return user
+
+        @log_calls
+        def delete_user(self, user_id: int):
+            self.user_repo.delete(user_id)
+            return {"deleted": user_id}
+
+        def get_user(self, user_id: int):
+            return self.user_repo.find(user_id)
+
+  services/order_service.py: |
+    from decorators.logging import log_calls, retry
+
+    class OrderService:
+        def __init__(self, order_repo, inventory_client):
+            self.order_repo = order_repo
+            self.inventory_client = inventory_client
+
+        @log_calls
+        @retry(max_attempts=3)
+        def create_order(self, user_id: int, items: list):
+            self.inventory_client.reserve(items)
+            order = {"user_id": user_id, "items": items, "status": "created"}
+            self.order_repo.save(order)
+            return order
+
+        @log_calls
+        def cancel_order(self, order_id: int):
+            order = self.order_repo.find(order_id)
+            order["status"] = "cancelled"
+            self.order_repo.save(order)
+            return order
+
+  decorators/auth.py: |
+    import functools
+    import logging
+
+    logger = logging.getLogger(__name__)
+
+    def require_auth(func):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            request = kwargs.get("request") or (args[0] if args else None)
+            if not request or not request.get("token"):
+                raise PermissionError("Authentication required")
+            logger.info(f"Authenticated request for {func.__name__}")
+            return func(*args, **kwargs)
+        return wrapper
+
+    def require_role(role: str):
+        def decorator(func):
+            @functools.wraps(func)
+            def wrapper(*args, **kwargs):
+                request = kwargs.get("request") or (args[0] if args else None)
+                user_role = request.get("role", "") if request else ""
+                if user_role != role:
+                    raise PermissionError(f"Role '{role}' required")
+                return func(*args, **kwargs)
+            return wrapper
+        return decorator
+
+  services/payment_service.py: |
+    from decorators.logging import log_calls, retry
+
+    class PaymentService:
+        def __init__(self, gateway_client):
+            self.gateway_client = gateway_client
+
+        @log_calls
+        @retry(max_attempts=3)
+        def charge_card(self, card_token: str, amount: float, currency: str = "USD"):
+            response = self.gateway_client.charge(card_token, amount, currency)
+            if response.get("status") != "success":
+                raise RuntimeError(f"Charge failed: {response.get('error')}")
+            return response
+
+        @log_calls
+        def refund(self, transaction_id: str, amount: float):
+            return self.gateway_client.refund(transaction_id, amount)
+
+        def get_transaction(self, transaction_id: str):
+            return self.gateway_client.get(transaction_id)
+
+  utils/performance_tracker.py: |
+    import time
+    from typing import Any
+
+    SLOW_THRESHOLD_SECONDS = 1.0
+    TRACKING_ENABLED = True
+
+    class PerformanceTracker:
+        def __init__(self):
+            self._timings: dict[str, list[float]] = {}
+
+        def start_timer(self, operation: str) -> float:
+            return time.time()
+
+        def stop_timer(self, operation: str, start: float) -> float:
+            elapsed = time.time() - start
+            if operation not in self._timings:
+                self._timings[operation] = []
+            self._timings[operation].append(elapsed)
+            return elapsed
+
+        def average_time(self, operation: str) -> float:
+            times = self._timings.get(operation, [])
+            return sum(times) / len(times) if times else 0.0
+
+        def is_slow(self, operation: str) -> bool:
+            return self.average_time(operation) > SLOW_THRESHOLD_SECONDS
+
+  tests/test_decorators.py: |
+    import logging
+    from decorators.logging import log_calls, retry
+
+    def test_log_calls_logs_function_name(caplog):
+        @log_calls
+        def sample_function():
+            return 42
+
+        with caplog.at_level(logging.INFO):
+            result = sample_function()
+        assert result == 42
+        assert "sample_function" in caplog.text
+
+    def test_retry_retries_on_failure():
+        call_count = 0
+
+        @retry(max_attempts=3)
+        def flaky_function():
+            nonlocal call_count
+            call_count += 1
+            if call_count < 3:
+                raise RuntimeError("Temporary failure")
+            return "success"
+
+        result = flaky_function()
+        assert result == "success"
+        assert call_count == 3
+
+    def test_retry_raises_after_max_attempts():
+        @retry(max_attempts=2)
+        def always_fails():
+            raise ValueError("Permanent failure")
+
+        try:
+            always_fails()
+        except ValueError:
+            pass
+
+  config/logging_config.py: |
+    import logging
+
+    LOG_LEVEL = "INFO"
+    LOG_FORMAT = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+    LOG_DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
+    LOG_FILE = "/var/log/app/application.log"
+    MAX_LOG_SIZE_MB = 100
+
+    def configure_logging(level: str = LOG_LEVEL) -> None:
+        logging.basicConfig(
+            level=getattr(logging, level),
+            format=LOG_FORMAT,
+            datefmt=LOG_DATE_FORMAT,
+        )
+
+    def get_logger(name: str) -> logging.Logger:
+        return logging.getLogger(name)
+
+must_include_files:
+  - decorators/logging.py
+  # Q1: Uses @log_calls on create_user(name, email) — will now log PII args
+  - services/user_service.py
+  # Q2: Stacks @log_calls + @retry — timing now wraps retry attempts
+  - services/order_service.py
+
+must_include_content_from:
+  decorators/logging.py:
+    - "start_time = time.time()"
+    - "elapsed = time.time() - start_time"
+    - 'logger.error(f"Failed {func.__name__} after {elapsed:.3f}s: {e}")'
+  services/user_service.py:
+    - "from decorators.logging import log_calls"
+    - "@log_calls"
+    - "def create_user(self, name: str, email: str):"
+  services/order_service.py:
+    - "from decorators.logging import log_calls, retry"
+    - "@log_calls"
+    - "@retry(max_attempts=3)"
+
+must_not_include:
+  # --- decorators/auth.py: IDENTICAL structure, different purpose ---
+  # HARDEST TRAP. Same directory, same import functools + logging pattern,
+  # same @functools.wraps, same wrapper structure. But checks auth tokens,
+  # not logging/timing.
+  - require_auth
+  - require_role
+  - PermissionError
+  # --- services/payment_service.py: DUPLICATE stacking pattern ---
+  # Uses @log_calls + @retry exactly like order_service.py. Including it
+  # would duplicate information already available from order_service.py.
+  - PaymentService
+  - charge_card
+  - gateway_client
+  # --- utils/performance_tracker.py: Same "timing" domain ---
+  # Uses time.time(), tracks elapsed seconds. But no decorator dependency.
+  - PerformanceTracker
+  - SLOW_THRESHOLD_SECONDS
+  - start_timer
+  # --- tests/test_decorators.py: Tests the changed decorators ---
+  # Direct import edge. But tests verify pre-existing behavior.
+  - test_log_calls_logs_function_name
+  - test_retry_retries_on_failure
+  - test_retry_raises_after_max_attempts
+  # --- config/logging_config.py: Logger configuration ---
+  # Sets up the logger that log_calls writes to. But config doesn't
+  # affect decorator behavior.
+  - configure_logging
+  - LOG_FORMAT
+  - MAX_LOG_SIZE_MB
+
+must_not_include_files:
+  - decorators/auth.py
+  - services/payment_service.py
+  - utils/performance_tracker.py
+  - tests/test_decorators.py
+  - config/logging_config.py
+
+max_fragments: 8
+max_files: 4
+add_garbage_files: false
+skip_garbage_check: true

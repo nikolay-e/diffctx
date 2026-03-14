@@ -1,0 +1,286 @@
+# Scenario: Program object is implemented as a Cats Effect IOApp using
+#   for-comprehension to compose Database IO operations — connect, query,
+#   print results, and disconnect.
+#
+# Diff shows:
+#   - object Program {}  (empty)
+#   + extends IOApp, program def using for-comprehension with
+#     Database.connect(), Database.query(), IO(println), Database.disconnect()
+#
+# Reviewer questions:
+#   Q1: "What IO operations does Database expose — do connect/query/disconnect exist?"
+#       -> Needs Database.scala: object with connect(), disconnect(), query()
+#          all returning IO types. The for-comprehension binds their results.
+#
+#   Q2: "What does query return — is results.foreach(println) valid?"
+#       -> Same file: query returns IO[List[String]], so results is List[String].
+#
+# Not needed for comprehension:
+#   - HttpServer.scala: IDENTICAL IOApp pattern — extends IOApp, run method
+#     returning IO[ExitCode]. HARDEST TRAP: same Cats Effect structure.
+#
+#   - MigrationRunner.scala: Database operations using IO. Same IO and
+#     database vocabulary. But migration is independent.
+#
+#   - ConfigLoader.scala: Loads config using IO effect. Same Cats Effect
+#     IO pattern. Not called by Program.
+#
+#   - Logger.scala: IO-based logging utility. Same IO wrapping pattern.
+#     Not referenced by Program.
+#
+#   - ResourceManager.scala: Resource management with IO and bracket.
+#     Same Cats Effect vocabulary. Independent of Program.
+
+initial:
+  Database.scala: |
+    import cats.effect.IO
+
+    object Database {
+      def connect(): IO[Unit] = IO(println("Connected to database"))
+
+      def disconnect(): IO[Unit] = IO(println("Disconnected from database"))
+
+      def query(sql: String): IO[List[String]] = IO {
+        println(s"Executing: $sql")
+        List("result1", "result2", "result3")
+      }
+
+      def execute(sql: String): IO[Int] = IO {
+        println(s"Executing: $sql")
+        1
+      }
+    }
+  Program.scala: |
+    object Program {}
+  HttpServer.scala: |
+    import cats.effect.{IO, IOApp, ExitCode}
+
+    object HttpServer extends IOApp {
+      def startServer(port: Int): IO[Unit] = IO {
+        println(s"Server started on port $port")
+      }
+
+      def stopServer(): IO[Unit] = IO {
+        println("Server stopped")
+      }
+
+      def run(args: List[String]): IO[ExitCode] = {
+        val port = args.headOption.flatMap(_.toIntOption).getOrElse(8080)
+        for {
+          _ <- startServer(port)
+          _ <- IO.never[Unit]
+        } yield ExitCode.Success
+      }
+    }
+  MigrationRunner.scala: |
+    import cats.effect.IO
+
+    object MigrationRunner {
+      def migrate(version: Int): IO[Unit] = IO {
+        println(s"Running migration to version $version")
+      }
+
+      def rollback(version: Int): IO[Unit] = IO {
+        println(s"Rolling back to version $version")
+      }
+
+      def currentVersion(): IO[Int] = IO.pure(1)
+
+      def migrateAll(from: Int, to: Int): IO[Unit] = {
+        (from until to).foldLeft(IO.unit) { (acc, v) =>
+          acc.flatMap(_ => migrate(v + 1))
+        }
+      }
+    }
+  config/ConfigLoader.scala: |
+    import cats.effect.IO
+
+    case class AppConfig(host: String, port: Int, dbUrl: String)
+
+    object ConfigLoader {
+      def load(): IO[AppConfig] = IO {
+        AppConfig("localhost", 8080, "jdbc:postgresql://localhost/db")
+      }
+
+      def loadFromEnv(): IO[AppConfig] = IO {
+        val host = sys.env.getOrElse("HOST", "localhost")
+        val port = sys.env.getOrElse("PORT", "8080").toInt
+        val dbUrl = sys.env.getOrElse("DB_URL", "jdbc:postgresql://localhost/db")
+        AppConfig(host, port, dbUrl)
+      }
+    }
+  logging/Logger.scala: |
+    import cats.effect.IO
+    import java.time.LocalDateTime
+
+    object Logger {
+      def info(message: String): IO[Unit] = IO {
+        println(s"[INFO ${LocalDateTime.now}] $message")
+      }
+
+      def error(message: String): IO[Unit] = IO {
+        println(s"[ERROR ${LocalDateTime.now}] $message")
+      }
+
+      def debug(message: String): IO[Unit] = IO {
+        println(s"[DEBUG ${LocalDateTime.now}] $message")
+      }
+    }
+
+changed:
+  Database.scala: |
+    import cats.effect.IO
+
+    object Database {
+      def connect(): IO[Unit] = IO(println("Connected to database"))
+
+      def disconnect(): IO[Unit] = IO(println("Disconnected from database"))
+
+      def query(sql: String): IO[List[String]] = IO {
+        println(s"Executing: $sql")
+        List("result1", "result2", "result3")
+      }
+
+      def execute(sql: String): IO[Int] = IO {
+        println(s"Executing: $sql")
+        1
+      }
+    }
+  Program.scala: |
+    import cats.effect.{IO, IOApp, ExitCode}
+    import cats.syntax.all._
+
+    object Program extends IOApp {
+      def program: IO[Unit] = for {
+        _ <- Database.connect()
+        results <- Database.query("SELECT * FROM users")
+        _ <- IO(results.foreach(println))
+        _ <- Database.disconnect()
+      } yield ()
+
+      def run(args: List[String]): IO[ExitCode] = {
+        program.as(ExitCode.Success)
+      }
+    }
+  HttpServer.scala: |
+    import cats.effect.{IO, IOApp, ExitCode}
+
+    object HttpServer extends IOApp {
+      def startServer(port: Int): IO[Unit] = IO {
+        println(s"Server started on port $port")
+      }
+
+      def stopServer(): IO[Unit] = IO {
+        println("Server stopped")
+      }
+
+      def run(args: List[String]): IO[ExitCode] = {
+        val port = args.headOption.flatMap(_.toIntOption).getOrElse(8080)
+        for {
+          _ <- startServer(port)
+          _ <- IO.never[Unit]
+        } yield ExitCode.Success
+      }
+    }
+  MigrationRunner.scala: |
+    import cats.effect.IO
+
+    object MigrationRunner {
+      def migrate(version: Int): IO[Unit] = IO {
+        println(s"Running migration to version $version")
+      }
+
+      def rollback(version: Int): IO[Unit] = IO {
+        println(s"Rolling back to version $version")
+      }
+
+      def currentVersion(): IO[Int] = IO.pure(1)
+
+      def migrateAll(from: Int, to: Int): IO[Unit] = {
+        (from until to).foldLeft(IO.unit) { (acc, v) =>
+          acc.flatMap(_ => migrate(v + 1))
+        }
+      }
+    }
+  config/ConfigLoader.scala: |
+    import cats.effect.IO
+
+    case class AppConfig(host: String, port: Int, dbUrl: String)
+
+    object ConfigLoader {
+      def load(): IO[AppConfig] = IO {
+        AppConfig("localhost", 8080, "jdbc:postgresql://localhost/db")
+      }
+
+      def loadFromEnv(): IO[AppConfig] = IO {
+        val host = sys.env.getOrElse("HOST", "localhost")
+        val port = sys.env.getOrElse("PORT", "8080").toInt
+        val dbUrl = sys.env.getOrElse("DB_URL", "jdbc:postgresql://localhost/db")
+        AppConfig(host, port, dbUrl)
+      }
+    }
+  logging/Logger.scala: |
+    import cats.effect.IO
+    import java.time.LocalDateTime
+
+    object Logger {
+      def info(message: String): IO[Unit] = IO {
+        println(s"[INFO ${LocalDateTime.now}] $message")
+      }
+
+      def error(message: String): IO[Unit] = IO {
+        println(s"[ERROR ${LocalDateTime.now}] $message")
+      }
+
+      def debug(message: String): IO[Unit] = IO {
+        println(s"[DEBUG ${LocalDateTime.now}] $message")
+      }
+    }
+
+must_include_files:
+  - Program.scala
+  - Database.scala
+
+must_include_content_from:
+  Program.scala:
+    - "Database.connect()"
+    - 'Database.query("SELECT * FROM users")'
+    - "IO(results.foreach(println))"
+    - "Database.disconnect()"
+    - "program.as(ExitCode.Success)"
+  Database.scala:
+    - "def connect(): IO[Unit]"
+    - "def query(sql: String): IO[List[String]]"
+    - "def disconnect(): IO[Unit]"
+
+must_not_include:
+  # HttpServer.scala: identical IOApp, different purpose
+  - HttpServer
+  - startServer
+  - stopServer
+  - "IO.never"
+  # MigrationRunner.scala: database IO, independent
+  - MigrationRunner
+  - migrate
+  - rollback
+  - migrateAll
+  # ConfigLoader.scala: IO config loading, independent
+  - ConfigLoader
+  - AppConfig
+  - loadFromEnv
+  # Logger.scala: IO logging, not called by Program
+  - "[INFO"
+  - "[ERROR"
+  - "[DEBUG"
+  - LocalDateTime
+
+must_not_include_files:
+  - HttpServer.scala
+  - MigrationRunner.scala
+  - config/ConfigLoader.scala
+  - logging/Logger.scala
+
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

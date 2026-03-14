@@ -1,0 +1,108 @@
+# Scenario: seed_func returns "modified seed" — tests that changed file gets high PPR score
+# Changed: seed_module.py — seed_func() changes return value
+# Reviewer needs: seed_module.py (changed, the seed node should score high)
+# Trap: random_init.py — seed-related naming (initialize_seed, SeedGenerator)
+# Trap: seed_validator.py — also has seed_* naming, validates seed values
+# Trap: cache_manager.py — completely unrelated module
+
+initial:
+  seed_module.py: |
+    def seed_func():
+        return "seed"
+  other_module.py: |
+    def other_func():
+        return "other"
+  random_init.py: |
+    SEED_INITIAL = 12345
+
+    def initialize_seed():
+        return SEED_INITIAL
+
+    class SeedGenerator:
+        def generate(self):
+            return initialize_seed()
+  seed_validator.py: |
+    def seed_helper():
+        return "helper"
+
+    class SeedProcessor:
+        def process(self):
+            return seed_helper()
+
+        def validate_seed(self, value):
+            return value is not None
+  cache_manager.py: |
+    CACHE_SIZE = 1024
+    CACHE_TTL = 3600
+
+    class CacheManager:
+        def get(self, key: str):
+            pass
+
+changed:
+  seed_module.py: |
+    def seed_func():
+        return "modified seed"
+  other_module.py: |
+    def other_func():
+        return "other"
+  random_init.py: |
+    SEED_INITIAL = 12345
+
+    def initialize_seed():
+        return SEED_INITIAL
+
+    class SeedGenerator:
+        def generate(self):
+            return initialize_seed()
+  seed_validator.py: |
+    def seed_helper():
+        return "helper"
+
+    class SeedProcessor:
+        def process(self):
+            return seed_helper()
+
+        def validate_seed(self, value):
+            return value is not None
+  cache_manager.py: |
+    CACHE_SIZE = 1024
+    CACHE_TTL = 3600
+
+    class CacheManager:
+        def get(self, key: str):
+            pass
+
+# === Assertions ===
+
+must_include:
+- seed_func
+- modified seed
+
+must_include_files:
+- seed_module.py
+
+must_include_content_from:
+  seed_module.py:
+    - 'def seed_func():'
+    - return "modified seed"
+
+must_not_include:
+- other_func
+- SeedGenerator
+- initialize_seed
+- SeedProcessor
+- seed_helper
+- CacheManager
+- CACHE_SIZE
+
+must_not_include_files:
+- other_module.py
+- random_init.py
+- seed_validator.py
+- cache_manager.py
+
+max_fragments: 4
+max_files: 2
+add_garbage_files: false
+skip_garbage_check: true

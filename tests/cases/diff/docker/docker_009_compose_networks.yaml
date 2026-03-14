@@ -1,0 +1,247 @@
+initial:
+  src/proxy.py: |
+    import requests
+    import os
+    from flask import Flask, jsonify
+
+    app = Flask(__name__)
+
+    BACKEND_URL = os.getenv("BACKEND_URL", "http://backend:8080")
+    API_URL = os.getenv("API_URL", "http://api:8080")
+
+    def call_backend(endpoint: str):
+        response = requests.get(f"{BACKEND_URL}{endpoint}")
+        return response.json()
+
+    def call_api(endpoint: str):
+        response = requests.get(f"{API_URL}{endpoint}")
+        return response.json()
+
+    @app.route('/health')
+    def health():
+        return jsonify(status='ok', service='proxy')
+
+    @app.route('/proxy/backend/<path:path>')
+    def proxy_backend(path):
+        return call_backend(f'/{path}')
+
+    @app.route('/proxy/api/<path:path>')
+    def proxy_api(path):
+        return call_api(f'/{path}')
+  src/api.py: |
+    from flask import Flask, jsonify
+
+    app = Flask(__name__)
+
+    @app.route('/health')
+    def health():
+        return jsonify(status='ok', service='api')
+
+    @app.route('/users')
+    def users():
+        return jsonify(users=['alice', 'bob'])
+  requirements.txt: |
+    flask==2.3.0
+    requests==2.31.0
+    gunicorn==21.2.0
+  Dockerfile: |
+    FROM python:3.12-slim
+    WORKDIR /app
+    COPY requirements.txt .
+    RUN pip install -r requirements.txt
+    COPY src/ ./src/
+    CMD ["gunicorn", "-b", "0.0.0.0:8080", "src.proxy:app"]
+  docker-compose.yml: |
+    version: '3.8'
+    services:
+      web:
+        build: .
+        networks:
+          - frontend
+    networks:
+      frontend:
+  scripts/network_setup.sh: |
+    #!/bin/bash
+    docker network create frontend
+  tests/test_network.py: |
+    def test_network_connectivity():
+        pass
+  docs/networking.md: |
+    # Network Architecture
+  terraform/vpc.tf: |
+    resource "aws_vpc" "main" {
+    }
+  k8s/network-policy.yaml: |
+    apiVersion: networking.k8s.io/v1
+changed:
+  src/proxy.py: |
+    import requests
+    import os
+    from flask import Flask, jsonify
+
+    app = Flask(__name__)
+
+    BACKEND_URL = os.getenv("BACKEND_URL", "http://backend:8080")
+    API_URL = os.getenv("API_URL", "http://api:8080")
+
+    def call_backend(endpoint: str):
+        response = requests.get(f"{BACKEND_URL}{endpoint}")
+        return response.json()
+
+    def call_api(endpoint: str):
+        response = requests.get(f"{API_URL}{endpoint}")
+        return response.json()
+
+    @app.route('/health')
+    def health():
+        return jsonify(status='ok', service='proxy')
+
+    @app.route('/proxy/backend/<path:path>')
+    def proxy_backend(path):
+        return call_backend(f'/{path}')
+
+    @app.route('/proxy/api/<path:path>')
+    def proxy_api(path):
+        return call_api(f'/{path}')
+  src/api.py: |
+    from flask import Flask, jsonify
+
+    app = Flask(__name__)
+
+    @app.route('/health')
+    def health():
+        return jsonify(status='ok', service='api')
+
+    @app.route('/users')
+    def users():
+        return jsonify(users=['alice', 'bob'])
+  requirements.txt: |
+    flask==2.3.0
+    requests==2.31.0
+    gunicorn==21.2.0
+  Dockerfile: |
+    FROM python:3.12-slim
+    WORKDIR /app
+    COPY requirements.txt .
+    RUN pip install -r requirements.txt
+    COPY src/ ./src/
+    CMD ["gunicorn", "-b", "0.0.0.0:8080", "src.proxy:app"]
+  docker-compose.yml: |
+    version: '3.8'
+
+    services:
+      web:
+        build:
+          context: .
+          dockerfile: Dockerfile
+        ports:
+          - "80:8080"
+        environment:
+          - BACKEND_URL=http://api:8080
+          - API_URL=http://api:8080
+        networks:
+          frontend:
+            aliases:
+              - proxy
+              - gateway
+          backend:
+        depends_on:
+          api:
+            condition: service_healthy
+        healthcheck:
+          test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+          interval: 30s
+          timeout: 10s
+          retries: 3
+
+      api:
+        build:
+          context: .
+          dockerfile: Dockerfile
+        command: ["gunicorn", "-b", "0.0.0.0:8080", "src.api:app"]
+        networks:
+          backend:
+            ipv4_address: 172.20.0.10
+          data:
+        healthcheck:
+          test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+          interval: 30s
+          timeout: 10s
+          retries: 3
+
+      db:
+        image: postgres:16-alpine
+        environment:
+          POSTGRES_PASSWORD: secret
+        networks:
+          data:
+            ipv4_address: 172.21.0.10
+        volumes:
+          - postgres_data:/var/lib/postgresql/data
+
+      redis:
+        image: redis:7-alpine
+        networks:
+          data:
+            aliases:
+              - cache
+              - session-store
+
+      monitoring:
+        image: prom/prometheus:latest
+        networks:
+          - frontend
+          - backend
+          - data
+        ports:
+          - "9090:9090"
+
+    networks:
+      frontend:
+        driver: bridge
+        driver_opts:
+          com.docker.network.bridge.name: br-frontend
+        ipam:
+          driver: default
+          config:
+            - subnet: 172.19.0.0/24
+              gateway: 172.19.0.1
+
+      backend:
+        driver: bridge
+        internal: true
+        ipam:
+          config:
+            - subnet: 172.20.0.0/24
+
+      data:
+        driver: bridge
+        internal: true
+        ipam:
+          config:
+            - subnet: 172.21.0.0/24
+        labels:
+          - "com.example.description=Data tier network"
+
+    volumes:
+      postgres_data:
+  scripts/network_setup.sh: |
+    #!/bin/bash
+    docker network create frontend
+  tests/test_network.py: |
+    def test_network_connectivity():
+        pass
+  docs/networking.md: |
+    # Network Architecture
+  terraform/vpc.tf: |
+    resource "aws_vpc" "main" {
+    }
+  k8s/network-policy.yaml: |
+    apiVersion: networking.k8s.io/v1
+must_include_files:
+- docker-compose.yml
+must_include_content:
+- 'dockerfile: Dockerfile'
+- 'driver: bridge'
+add_garbage_files: false
+skip_garbage_check: true

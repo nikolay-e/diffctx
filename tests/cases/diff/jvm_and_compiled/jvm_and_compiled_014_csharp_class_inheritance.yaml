@@ -1,0 +1,240 @@
+# Scenario: Employee goes from empty to inheriting Person and implementing IWorker.
+#   Uses base(name, age) constructor call, accesses inherited Name property.
+#
+# Reviewer questions:
+#   Q1: "What fields does Person provide? Does base(name, age) match its constructor?"
+#       -> Models/Person.cs: Person(string name, int age) sets Name and Age.
+#          Employee passes name, age to base — reviewer must verify parameter order.
+#
+#   Q2: "What methods does IWorker require? Are they all implemented?"
+#       -> Interfaces/IWorker.cs: Work() and GetSalary(). Employee implements
+#          both. Reviewer must verify return types match (void, decimal).
+#
+#   Q3: "Does Employee.Work() correctly access inherited Name?"
+#       -> Person.cs: Name is public get/set. Employee uses $"{Name} is working"
+#          which accesses the inherited property. Reviewer must verify it exists.
+#
+# Not needed:
+#   - Services/EmployeeService.cs: Creates and manages Employee instances.
+#     Direct structural edge (new Employee(...)). But how the service uses
+#     Employee doesn't help review the inheritance correctness.
+#
+#   - Models/Manager.cs: Another class inheriting Person and implementing IWorker.
+#     IDENTICAL structure: base(name, age), Work() override, GetSalary().
+#     Hardest trap: structurally identical sibling class.
+#
+#   - Interfaces/IPayable.cs: Another interface with decimal GetPay() method.
+#     Similar signature to IWorker.GetSalary(). Same directory.
+#
+#   - Tests/EmployeeTests.cs: Constructs Employee and verifies Work/GetSalary.
+#     Same types. But tests verify behavior, not inheritance structure.
+
+initial:
+  Models/Person.cs: |
+    namespace MyApp.Models
+    {
+        public class Person
+        {
+            public string Name { get; set; }
+            public int Age { get; set; }
+
+            public Person(string name, int age)
+            {
+                Name = name;
+                Age = age;
+            }
+
+            public override string ToString()
+            {
+                return $"{Name} (age {Age})";
+            }
+        }
+    }
+
+  Interfaces/IWorker.cs: |
+    namespace MyApp.Interfaces
+    {
+        public interface IWorker
+        {
+            void Work();
+            decimal GetSalary();
+        }
+    }
+
+  Models/Employee.cs: |
+    namespace MyApp.Models
+    {
+        public class Employee { }
+    }
+
+  Models/Manager.cs: |
+    using MyApp.Interfaces;
+
+    namespace MyApp.Models
+    {
+        public class Manager : Person, IWorker
+        {
+            public string Team { get; set; }
+            public decimal Salary { get; set; }
+            public int DirectReports { get; set; }
+
+            public Manager(string name, int age, string team, decimal salary)
+                : base(name, age)
+            {
+                Team = team;
+                Salary = salary;
+                DirectReports = 0;
+            }
+
+            public void Work()
+            {
+                Console.WriteLine($"{Name} is managing {Team} with {DirectReports} reports");
+            }
+
+            public decimal GetSalary() => Salary;
+        }
+    }
+
+  Services/EmployeeService.cs: |
+    using MyApp.Models;
+    using MyApp.Interfaces;
+
+    namespace MyApp.Services
+    {
+        public class EmployeeService
+        {
+            private readonly List<Employee> _employees = new();
+
+            public Employee Hire(string name, int age, string dept, decimal salary)
+            {
+                var emp = new Employee(name, age, dept, salary);
+                _employees.Add(emp);
+                return emp;
+            }
+
+            public decimal TotalPayroll()
+            {
+                return _employees.Sum(e => e.GetSalary());
+            }
+
+            public void AssignWork()
+            {
+                foreach (var emp in _employees)
+                    emp.Work();
+            }
+        }
+    }
+
+  Interfaces/IPayable.cs: |
+    namespace MyApp.Interfaces
+    {
+        public interface IPayable
+        {
+            decimal GetPay();
+            string PaymentMethod { get; }
+        }
+    }
+
+  Tests/EmployeeTests.cs: |
+    using MyApp.Models;
+    using Xunit;
+
+    namespace MyApp.Tests
+    {
+        public class EmployeeTests
+        {
+            [Fact]
+            public void Constructor_SetsProperties()
+            {
+                var emp = new Employee("Alice", 30, "Engineering", 90000m);
+                Assert.Equal("Alice", emp.Name);
+                Assert.Equal(30, emp.Age);
+                Assert.Equal("Engineering", emp.Department);
+                Assert.Equal(90000m, emp.Salary);
+            }
+
+            [Fact]
+            public void GetSalary_ReturnsSalary()
+            {
+                var emp = new Employee("Bob", 25, "Sales", 60000m);
+                Assert.Equal(60000m, emp.GetSalary());
+            }
+        }
+    }
+
+changed:
+  Models/Employee.cs: |
+    using MyApp.Interfaces;
+
+    namespace MyApp.Models
+    {
+        public class Employee : Person, IWorker
+        {
+            public string Department { get; set; }
+            public decimal Salary { get; set; }
+
+            public Employee(string name, int age, string department, decimal salary)
+                : base(name, age)
+            {
+                Department = department;
+                Salary = salary;
+            }
+
+            public void Work()
+            {
+                Console.WriteLine($"{Name} is working in {Department}");
+            }
+
+            public decimal GetSalary() => Salary;
+        }
+    }
+
+must_include_files:
+  - Models/Employee.cs
+  # Q1+Q3: Reviewer needs Person to verify constructor signature and inherited Name.
+  - Models/Person.cs
+  # Q2: Reviewer needs IWorker to verify required methods are implemented.
+  - Interfaces/IWorker.cs
+
+must_include_content_from:
+  Models/Employee.cs:
+    - "public class Employee : Person, IWorker"
+    - ": base(name, age)"
+    - "public void Work()"
+    - "public decimal GetSalary()"
+  Models/Person.cs:
+    - "public Person(string name, int age)"
+    - "public string Name { get; set; }"
+  Interfaces/IWorker.cs:
+    - "void Work()"
+    - "decimal GetSalary()"
+
+must_not_include:
+  # --- Manager.cs: identical inheritance pattern, different class ---
+  - "class Manager"
+  - "Team"
+  - DirectReports
+  - "managing"
+  # --- EmployeeService.cs: consumes Employee, different concern ---
+  - EmployeeService
+  - TotalPayroll
+  - AssignWork
+  # --- IPayable.cs: similar interface, different contract ---
+  - IPayable
+  - GetPay
+  - PaymentMethod
+  # --- Tests ---
+  - EmployeeTests
+  - "[Fact]"
+  - Assert.Equal
+
+must_not_include_files:
+  - Models/Manager.cs
+  - Services/EmployeeService.cs
+  - Interfaces/IPayable.cs
+  - Tests/EmployeeTests.cs
+
+max_fragments: 8
+max_files: 4
+add_garbage_files: false
+skip_garbage_check: true

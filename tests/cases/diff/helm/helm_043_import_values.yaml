@@ -1,0 +1,213 @@
+# Scenario: Adding import-values to a Helm subchart dependency, mapping
+#   the backend subchart's "exports" key to the parent chart's "config" key.
+#   Only Chart.yaml is changed.
+#
+# Reviewer questions:
+#   Q1: "Does the backend subchart actually export values under an
+#        'exports' key?"
+#       -> Needs charts/backend/values.yaml: must verify that an `exports:`
+#         section exists with the keys that will be imported.
+#
+#   Q2: "What values will appear under .Values.config in the parent chart
+#        after the import?"
+#       -> Same file: charts/backend/values.yaml has exports.dbHost and
+#         exports.dbPort. After import, these become .Values.config.dbHost
+#         and .Values.config.dbPort in the parent.
+#
+#   Q3: "Do parent templates use .Values.config to consume these imported values?"
+#       -> Needs templates/deployment.yaml: it references .Values.config.dbHost
+#         and .Values.config.dbPort — the exact paths that import-values creates.
+#
+# Not needed for comprehension:
+#   - charts/backend/templates/deployment.yaml: The backend subchart's own
+#     deployment template. Uses .Values.replicaCount and .Values.image from
+#     its own values, NOT the exports key. The import-values mechanism flows
+#     from subchart values TO parent, not into subchart templates.
+#
+#   - charts/backend/Chart.yaml: Backend subchart metadata. The import-values
+#     mechanism doesn't depend on Chart.yaml metadata — it depends on the
+#     values.yaml structure.
+#
+#   - charts/frontend/values.yaml: Sibling subchart values. Same directory
+#     pattern (charts/*/values.yaml). No connection to backend's exports.
+#
+#   - values.yaml: Parent chart's own values. Currently has no `config:` key.
+#     After import, .Values.config will be populated from the subchart.
+#     But the reviewer needs to verify the SOURCE (backend exports), not
+#     the parent values file which has no relevant content yet.
+
+initial:
+  Chart.yaml: |
+    apiVersion: v2
+    name: myapp
+    dependencies:
+      - name: backend
+        version: 1.0.0
+  charts/backend/values.yaml: |
+    replicaCount: 3
+    image:
+      repository: backend-api
+      tag: "1.0.0"
+    exports:
+      dbHost: "postgres.default.svc"
+      dbPort: 5432
+      cacheHost: "redis.default.svc"
+  charts/backend/Chart.yaml: |
+    apiVersion: v2
+    name: backend
+    version: 1.0.0
+    description: Backend API service
+  charts/backend/templates/deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: {{ include "backend.fullname" . }}
+    spec:
+      replicas: {{ .Values.replicaCount }}
+      template:
+        spec:
+          containers:
+            - name: backend
+              image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+  charts/frontend/values.yaml: |
+    replicaCount: 2
+    image:
+      repository: frontend-app
+      tag: "1.0.0"
+    exports:
+      apiUrl: "http://backend:8080"
+  templates/deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: {{ include "myapp.fullname" . }}
+    spec:
+      template:
+        spec:
+          containers:
+            - name: myapp
+              env:
+                - name: DB_HOST
+                  value: {{ .Values.config.dbHost }}
+                - name: DB_PORT
+                  value: "{{ .Values.config.dbPort }}"
+  values.yaml: |
+    replicaCount: 1
+    image:
+      repository: myapp
+      tag: "1.0.0"
+
+changed:
+  Chart.yaml: |
+    apiVersion: v2
+    name: myapp
+    dependencies:
+      - name: backend
+        version: 1.0.0
+        import-values:
+          - child: exports
+            parent: config
+  charts/backend/values.yaml: |
+    replicaCount: 3
+    image:
+      repository: backend-api
+      tag: "1.0.0"
+    exports:
+      dbHost: "postgres.default.svc"
+      dbPort: 5432
+      cacheHost: "redis.default.svc"
+  charts/backend/Chart.yaml: |
+    apiVersion: v2
+    name: backend
+    version: 1.0.0
+    description: Backend API service
+  charts/backend/templates/deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: {{ include "backend.fullname" . }}
+    spec:
+      replicas: {{ .Values.replicaCount }}
+      template:
+        spec:
+          containers:
+            - name: backend
+              image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+  charts/frontend/values.yaml: |
+    replicaCount: 2
+    image:
+      repository: frontend-app
+      tag: "1.0.0"
+    exports:
+      apiUrl: "http://backend:8080"
+  templates/deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: {{ include "myapp.fullname" . }}
+    spec:
+      template:
+        spec:
+          containers:
+            - name: myapp
+              env:
+                - name: DB_HOST
+                  value: {{ .Values.config.dbHost }}
+                - name: DB_PORT
+                  value: "{{ .Values.config.dbPort }}"
+  values.yaml: |
+    replicaCount: 1
+    image:
+      repository: myapp
+      tag: "1.0.0"
+
+must_include_files:
+  - Chart.yaml
+  # Q1+Q2: import-values maps child: exports -> parent: config.
+  # Reviewer must verify backend's values.yaml has an exports: section
+  # and see what keys (dbHost, dbPort, cacheHost) will be imported.
+  - charts/backend/values.yaml
+  # Q3: Parent template uses .Values.config.dbHost and .Values.config.dbPort
+  # — the exact paths created by import-values. Reviewer must verify
+  # these match the exported keys.
+  - templates/deployment.yaml
+
+must_include_content_from:
+  Chart.yaml:
+    - "import-values:"
+    - "child: exports"
+    - "parent: config"
+  charts/backend/values.yaml:
+    - "exports:"
+    - 'dbHost: "postgres.default.svc"'
+    - "dbPort: 5432"
+  templates/deployment.yaml:
+    - ".Values.config.dbHost"
+    - ".Values.config.dbPort"
+
+must_not_include:
+  # --- charts/backend/templates/deployment.yaml: subchart's own template ---
+  # Uses .Values.replicaCount and .Values.image — NOT .Values.exports.
+  # import-values flows from subchart values TO parent, not into subchart templates.
+  - "backend.fullname"
+  - "{{ .Values.image.repository }}"
+  # --- charts/backend/Chart.yaml: subchart metadata ---
+  - "Backend API service"
+  # --- charts/frontend/values.yaml: sibling subchart with its own exports ---
+  # TEMPTING: also has an exports: key! Same structure pattern. But this
+  # is a DIFFERENT subchart — the diff only imports from backend.
+  - "frontend-app"
+  - 'apiUrl: "http://backend:8080"'
+  # --- values.yaml: parent values with no config: key yet ---
+  - "repository: myapp"
+
+must_not_include_files:
+  - charts/backend/templates/deployment.yaml
+  - charts/backend/Chart.yaml
+  - charts/frontend/values.yaml
+  - values.yaml
+
+max_fragments: 8
+max_files: 4
+add_garbage_files: false
+skip_garbage_check: true

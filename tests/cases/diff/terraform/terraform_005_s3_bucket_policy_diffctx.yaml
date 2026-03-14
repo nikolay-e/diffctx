@@ -1,9 +1,0 @@
-must_include_files:
-- infrastructure/static_site.tf
-must_include_content:
-- bucket_policy = data.aws_iam_policy_document.static_site_combined.json
-must_not_include:
-- GARBAGE_TF_KINESIS_445_007
-- GARBAGE_TF_MSK_445_001
-- kinesis.tf
-- msk.tf

@@ -1,0 +1,275 @@
+# Scenario: package.json modernizes build/test scripts and adds lint.
+#   Only package.json is changed.
+#
+# Diff shows:
+#   - build: "webpack" → "webpack --mode production"
+#   - test: "jest" → "jest --coverage"
+#   - NEW script "lint": "eslint src"
+#   - NEW devDependency "eslint": "^8.45.0"
+#
+# Reviewer questions:
+#   Q1: "Does the webpack config already set a mode? Will --mode production
+#        conflict or override?"
+#       -> Needs webpack.config.js: it does NOT set mode, so the CLI
+#         flag will work as the sole mode source. Without seeing this,
+#         the reviewer cannot verify there's no `mode: 'development'`
+#         in the config that would conflict.
+#
+#   Q2: "What exactly changed in each script?"
+#       -> Answerable from the diff: build adds --mode production,
+#         test adds --coverage, lint is new.
+#
+# Not needed for comprehension:
+#   - .eslintrc.js: The eslint configuration (rules, extends, parser).
+#     The diff adds `"lint": "eslint src"` — the reviewer question
+#     about package.json is "was a lint script added and what does it
+#     target?" not "what specific lint rules are enforced." The eslint
+#     config is what lint DOES, not what the package.json change IS.
+#
+#   - jest.config.js: Jest configuration (test paths, transforms, thresholds).
+#     The diff changes test from "jest" to "jest --coverage". The --coverage
+#     flag works independently of jest.config.js. Knowing the test timeout
+#     or transform settings doesn't help review the script change.
+#
+#   - .github/workflows/ci.yml: CI workflow that runs `npm run lint`,
+#     `npm run test`, `npm run build`. It consumes these scripts but
+#     doesn't explain what the scripts do. Same reasoning as the
+#     Makefile/ci.yml pattern: CI orchestration != script definitions.
+#
+#   - Dockerfile: Multi-stage build that runs `npm run build` and
+#     `npm start`. Structural reference to package.json scripts,
+#     but Docker layer caching and COPY commands don't help review
+#     what the build script change does.
+#
+#   - src/index.js: The application code. Unchanged, not a build
+#     concern.
+
+initial:
+  package.json: |
+    {
+      "name": "myapp",
+      "version": "1.0.0",
+      "description": "Web application with build pipeline",
+      "scripts": {
+        "build": "webpack",
+        "test": "jest",
+        "start": "node dist/server.js"
+      },
+      "dependencies": {
+        "express": "^4.18.0",
+        "lodash": "^4.17.21"
+      },
+      "devDependencies": {
+        "webpack": "^5.88.0",
+        "webpack-cli": "^5.1.0",
+        "jest": "^29.6.0"
+      }
+    }
+
+  webpack.config.js: |
+    const path = require('path');
+
+    module.exports = {
+        entry: './src/index.js',
+        output: {
+            filename: 'bundle.js',
+            path: path.resolve(__dirname, 'dist'),
+            clean: true,
+        },
+        module: {
+            rules: [
+                {
+                    test: /\.js$/,
+                    exclude: /node_modules/,
+                    use: 'babel-loader',
+                },
+            ],
+        },
+        resolve: {
+            extensions: ['.js', '.json'],
+        },
+    };
+
+  src/index.js: |
+    const express = require('express');
+    const { merge } = require('lodash');
+
+    const defaultConfig = { port: 3000, host: 'localhost' };
+
+    function createApp(userConfig) {
+        const config = merge({}, defaultConfig, userConfig);
+        const app = express();
+
+        app.get('/health', (req, res) => {
+            res.json({ status: 'ok', uptime: process.uptime() });
+        });
+
+        app.listen(config.port, config.host, () => {
+            console.log(`Server running on ${config.host}:${config.port}`);
+        });
+
+        return app;
+    }
+
+    module.exports = { createApp };
+
+  .eslintrc.js: |
+    module.exports = {
+        env: {
+            node: true,
+            es2021: true,
+            jest: true,
+        },
+        extends: ['eslint:recommended'],
+        parserOptions: {
+            ecmaVersion: 'latest',
+            sourceType: 'module',
+        },
+        rules: {
+            'no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
+            'no-console': 'off',
+            'prefer-const': 'error',
+            'eqeqeq': ['error', 'always'],
+        },
+    };
+
+  jest.config.js: |
+    module.exports = {
+        testEnvironment: 'node',
+        testMatch: ['**/__tests__/**/*.js', '**/?(*.)+(spec|test).js'],
+        transform: {},
+        collectCoverageFrom: [
+            'src/**/*.js',
+            '!src/index.js',
+        ],
+        coverageThresholds: {
+            global: {
+                branches: 80,
+                functions: 80,
+                lines: 80,
+            },
+        },
+        moduleFileExtensions: ['js', 'json'],
+        verbose: true,
+    };
+
+  .github/workflows/ci.yml: |
+    name: CI
+    on: [push, pull_request]
+    jobs:
+      quality:
+        runs-on: ubuntu-latest
+        steps:
+          - uses: actions/checkout@v4
+          - uses: actions/setup-node@v4
+            with:
+              node-version: '20'
+              cache: 'npm'
+          - run: npm ci
+          - run: npm run lint
+          - run: npm run test
+          - run: npm run build
+          - uses: actions/upload-artifact@v4
+            with:
+              name: dist
+              path: dist/
+
+  Dockerfile: |
+    FROM node:20-alpine AS builder
+    WORKDIR /app
+    COPY package*.json ./
+    RUN npm ci
+    COPY . .
+    RUN npm run build
+
+    FROM node:20-alpine
+    WORKDIR /app
+    COPY --from=builder /app/dist ./dist
+    COPY --from=builder /app/node_modules ./node_modules
+    COPY package.json ./
+    EXPOSE 3000
+    CMD ["npm", "start"]
+
+changed:
+  package.json: |
+    {
+      "name": "myapp",
+      "version": "1.0.0",
+      "description": "Web application with build pipeline",
+      "scripts": {
+        "build": "webpack --mode production",
+        "test": "jest --coverage",
+        "lint": "eslint src",
+        "start": "node dist/server.js"
+      },
+      "dependencies": {
+        "express": "^4.18.0",
+        "lodash": "^4.17.21"
+      },
+      "devDependencies": {
+        "webpack": "^5.88.0",
+        "webpack-cli": "^5.1.0",
+        "jest": "^29.6.0",
+        "eslint": "^8.45.0"
+      }
+    }
+
+must_include_files:
+  - package.json
+  # Q1: build script now passes --mode production to webpack.
+  # Reviewer must see the webpack config to verify it doesn't already
+  # set mode (it doesn't — no `mode:` key anywhere). Without this,
+  # the reviewer cannot rule out a conflicting mode setting.
+  - webpack.config.js
+
+must_include_content_from:
+  package.json:
+    - '"build": "webpack --mode production"'
+    - '"test": "jest --coverage"'
+    - '"lint": "eslint src"'
+    - '"eslint": "^8.45.0"'
+  webpack.config.js:
+    - "entry: './src/index.js'"
+    - "filename: 'bundle.js'"
+
+must_not_include:
+  # --- .eslintrc.js: config for the NEW lint script ---
+  # Structural edge: `eslint src` consumes this config.
+  # But reviewing "was a lint script added to package.json" does not
+  # require knowing the specific lint rules. The reviewer question
+  # is about the package.json change, not about eslint behavior.
+  - eslint:recommended
+  - argsIgnorePattern
+  - eqeqeq
+  # --- jest.config.js: jest config, test script adds --coverage ---
+  # --coverage is a CLI flag independent of jest.config.js settings.
+  # Knowing coverage thresholds or transforms doesn't help review
+  # the package.json script change.
+  - testEnvironment
+  - collectCoverageFrom
+  - coverageThresholds
+  # --- CI workflow: consumes these scripts, doesn't define them ---
+  - actions/checkout@v4
+  - actions/setup-node@v4
+  - actions/upload-artifact@v4
+  # --- Dockerfile: runs `npm run build` / `npm start` ---
+  # Structural reference to package.json scripts, but Docker layer
+  # caching and multi-stage builds are container concerns.
+  - "FROM node:20-alpine"
+  - "npm ci"
+  - "EXPOSE 3000"
+  # --- src/index.js: application code, not build tooling ---
+  - createApp
+  - process.uptime
+
+must_not_include_files:
+  - .eslintrc.js
+  - jest.config.js
+  - .github/workflows/ci.yml
+  - Dockerfile
+  - src/index.js
+
+max_fragments: 5
+max_files: 2
+add_garbage_files: false
+skip_garbage_check: true

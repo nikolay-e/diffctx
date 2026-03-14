@@ -198,12 +198,18 @@ class TreeSitterStrategy:
 
         sym_name = self._extract_symbol_name(node)
 
+        parent = node.parent
+        if parent is not None and parent.type in ("export_statement", "decorated_definition"):
+            parent_start = parent.start_point[0] + 1
+            if parent_start < start:
+                start = parent_start
+
         if kind in _CONTAINER_KINDS and self._try_container_split(
             node, code_bytes, path, lines, definition_types, fragments, covered, added_ends, depth, start, end, kind, sym_name
         ):
             return
 
-        self._add_leaf_definition(node, code_bytes, path, start, end, kind, sym_name, fragments, covered, added_ends)
+        self._add_leaf_definition(path, lines, start, end, kind, sym_name, fragments, covered, added_ends)
         self._recurse_children(node, code_bytes, path, lines, definition_types, fragments, covered, added_ends, depth)
 
     def _try_container_split(
@@ -244,9 +250,8 @@ class TreeSitterStrategy:
 
     @staticmethod
     def _add_leaf_definition(
-        node: Node,
-        code_bytes: bytes,
         path: Path,
+        lines: list[str],
         start: int,
         end: int,
         kind: str,
@@ -257,9 +262,9 @@ class TreeSitterStrategy:
     ) -> None:
         if end - start + 1 < MIN_FRAGMENT_LINES:
             return
-        snippet = code_bytes[node.start_byte : node.end_byte].decode("utf-8", errors="replace")
-        if not snippet.endswith("\n"):
-            snippet += "\n"
+        snippet = create_snippet(lines, start, end)
+        if snippet is None:
+            return
         fragments.append(
             Fragment(
                 id=FragmentId(path=path, start_line=start, end_line=end),

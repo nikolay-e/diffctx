@@ -1,0 +1,176 @@
+initial:
+  utils.py: |
+    def format_date(date):
+        return date.strftime("%Y-%m-%d")
+  reports/generator.py: |
+    from utils import format_date
+
+    def generate_report(today):
+        formatted = format_date(today)
+        return f"Report for {formatted}"
+  api/views.py: |
+    from utils import format_date
+
+    def get_created_date(created_at):
+        return format_date(created_at)
+
+  # --- Tricky: also imports format_date from utils (same-import consumer) ---
+  exports/csv_export.py: |
+    from utils import format_date
+    GARBAGE_DEP_013_CSV_IMPORT_C = "csv_exporter"
+    GARBAGE_DEP_013_CSV_BATCH_D = 5000
+
+    class CsvExporter:
+        GARBAGE_DEP_013_CSV_CLASS_E = True
+
+        def export_row(self, record: dict) -> str:
+            date_str = format_date(record["created_at"])
+            return f"{record['id']},{date_str},{record['name']}"
+
+        def export_all(self, records: list) -> str:
+            return "\n".join(self.export_row(r) for r in records)
+
+  # --- Tricky: has own format_date function (name collision) ---
+  helpers/date_utils.py: |
+    GARBAGE_DEP_013_DATEUTIL_MOD_F = "date_utilities"
+    GARBAGE_DEP_013_DATEUTIL_VER_G = "2.0"
+
+    def format_date(date, timezone=None) -> str:
+        GARBAGE_DEP_013_DATEUTIL_FMT_H = True
+        if timezone:
+            date = date.astimezone(timezone)
+        return date.strftime("%d/%m/%Y")
+
+    def parse_date(date_str: str):
+        GARBAGE_DEP_013_DATEUTIL_PARSE_I = True
+        from datetime import datetime
+        return datetime.strptime(date_str, "%Y-%m-%d")
+
+  # --- Plain garbage ---
+  garbage/weather_GARBAGE_DEP_013_WEATHER_A.py: |
+    GARBAGE_DEP_013_WEATHER_A = "forecast"
+
+    def predict_temperature(city: str) -> float:
+        return 20.0
+
+    class WeatherStation_GARBAGE_DEP_013_WEATHER_A:
+        def __init__(self, location: str):
+            self.location = location
+  garbage/music_GARBAGE_DEP_013_MUSIC_B.py: |
+    GARBAGE_DEP_013_MUSIC_B = "playlist"
+
+    def shuffle_tracks(tracks: list) -> list:
+        return tracks[::-1]
+
+    class Playlist_GARBAGE_DEP_013_MUSIC_B:
+        def __init__(self, name: str):
+            self.name = name
+            self.tracks = []
+changed:
+  utils.py: |
+    def format_date(date, timezone=None):
+        if timezone:
+            date = date.astimezone(timezone)
+        return date.strftime("%Y-%m-%d")
+  reports/generator.py: |
+    from utils import format_date
+
+    def generate_report(today):
+        formatted = format_date(today)
+        return f"Report for {formatted}"
+  api/views.py: |
+    from utils import format_date
+
+    def get_created_date(created_at):
+        return format_date(created_at)
+  exports/csv_export.py: |
+    from utils import format_date
+    GARBAGE_DEP_013_CSV_IMPORT_C = "csv_exporter"
+    GARBAGE_DEP_013_CSV_BATCH_D = 5000
+
+    class CsvExporter:
+        GARBAGE_DEP_013_CSV_CLASS_E = True
+
+        def export_row(self, record: dict) -> str:
+            date_str = format_date(record["created_at"])
+            return f"{record['id']},{date_str},{record['name']}"
+
+        def export_all(self, records: list) -> str:
+            return "\n".join(self.export_row(r) for r in records)
+  helpers/date_utils.py: |
+    GARBAGE_DEP_013_DATEUTIL_MOD_F = "date_utilities"
+    GARBAGE_DEP_013_DATEUTIL_VER_G = "2.0"
+
+    def format_date(date, timezone=None) -> str:
+        GARBAGE_DEP_013_DATEUTIL_FMT_H = True
+        if timezone:
+            date = date.astimezone(timezone)
+        return date.strftime("%d/%m/%Y")
+
+    def parse_date(date_str: str):
+        GARBAGE_DEP_013_DATEUTIL_PARSE_I = True
+        from datetime import datetime
+        return datetime.strptime(date_str, "%Y-%m-%d")
+  garbage/weather_GARBAGE_DEP_013_WEATHER_A.py: |
+    GARBAGE_DEP_013_WEATHER_A = "forecast"
+
+    def predict_temperature(city: str) -> float:
+        return 20.0
+
+    class WeatherStation_GARBAGE_DEP_013_WEATHER_A:
+        def __init__(self, location: str):
+            self.location = location
+  garbage/music_GARBAGE_DEP_013_MUSIC_B.py: |
+    GARBAGE_DEP_013_MUSIC_B = "playlist"
+
+    def shuffle_tracks(tracks: list) -> list:
+        return tracks[::-1]
+
+    class Playlist_GARBAGE_DEP_013_MUSIC_B:
+        def __init__(self, name: str):
+            self.name = name
+            self.tracks = []
+
+# === Assertions ===
+
+must_include_files:
+- utils.py
+- reports/generator.py
+- api/views.py
+
+must_include_content_from:
+  utils.py:
+    - 'def format_date(date, timezone=None):'
+    - date.astimezone(timezone)
+  reports/generator.py:
+    - from utils import format_date
+    - 'def generate_report(today):'
+    - format_date(today)
+  api/views.py:
+    - from utils import format_date
+    - format_date(created_at)
+
+must_not_include:
+# Plain garbage
+- GARBAGE_DEP_013_WEATHER_A
+- GARBAGE_DEP_013_MUSIC_B
+# Tricky: also imports format_date from utils
+- GARBAGE_DEP_013_CSV_IMPORT_C
+- GARBAGE_DEP_013_CSV_BATCH_D
+- GARBAGE_DEP_013_CSV_CLASS_E
+# Tricky: own format_date(date, timezone=None) with identical signature
+- GARBAGE_DEP_013_DATEUTIL_MOD_F
+- GARBAGE_DEP_013_DATEUTIL_VER_G
+- GARBAGE_DEP_013_DATEUTIL_FMT_H
+- GARBAGE_DEP_013_DATEUTIL_PARSE_I
+
+must_not_include_files:
+- exports/csv_export.py
+- helpers/date_utils.py
+- garbage/weather_GARBAGE_DEP_013_WEATHER_A.py
+- garbage/music_GARBAGE_DEP_013_MUSIC_B.py
+
+max_fragments: 8
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

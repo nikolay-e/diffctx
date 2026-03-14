@@ -1,4 +1,0 @@
-useCounter.ts: "import { useState } from 'react';\n\nexport function useCounter(initial = 0) {\n    const [count, setCount] = useState(initial);\n    const increment = () => setCount(c => c + 1);\n    const\
-  \ decrement = () => setCount(c => c - 1);\n    return { count, increment, decrement };\n}\n\n// js_garbage_marker_011\n"
-Counter.tsx: "import { useCounter } from './useCounter';\n\nexport function Counter() {\n    const { count, increment, decrement } = useCounter(0);\n    return (\n        <div>\n            <span>{count}</span>\n\
-  \            <button onClick={increment}>+</button>\n            <button onClick={decrement}>-</button>\n        </div>\n    );\n}\n"

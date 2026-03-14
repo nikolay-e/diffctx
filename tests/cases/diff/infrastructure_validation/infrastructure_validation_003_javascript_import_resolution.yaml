@@ -1,0 +1,168 @@
+# Scenario: Rewriting src/main.ts from a simple console.log to an async
+#   function that imports and calls fetchUser from ./utils. Only src/main.ts
+#   is changed.
+#
+# Reviewer questions:
+#   Q1: "What does fetchUser return? Is the await usage correct?"
+#       -> Needs src/utils.ts: fetchUser(id: string) returns
+#         Promise<UserResponse>. The diff does `await fetchUser('123')` —
+#         reviewer must verify the parameter type (string) and return type.
+#
+#   Q2: "What is UserResponse? What fields does the logged user object have?"
+#       -> Same file: UserResponse has id, name, email. The diff does
+#         console.log(user) — reviewer should know what's being logged.
+#
+# Not needed for comprehension:
+#   - src/api.ts: Also imports from ./utils (fetchUser, fetchUsers,
+#     UserResponse). HARDEST TRAP: same imports, same module. But api.ts
+#     is an EXISTING consumer — its code doesn't help review whether
+#     main.ts correctly uses fetchUser. The reviewer needs the DEFINITION,
+#     not another caller.
+#
+#   - scripts/build.sh: Build script. No connection to import resolution.
+#
+#   - tests/utils.test.ts: Tests for utils module. Same module reference.
+#     But test stubs don't help review fetchUser's return type.
+#
+#   - docs/api-reference.md: Documentation file.
+#
+#   - config/tsconfig.json: Empty TypeScript config. Doesn't affect
+#     import resolution at the semantic level.
+
+initial:
+  src/utils.ts: |
+    export interface UserResponse {
+        id: string;
+        name: string;
+        email: string;
+    }
+
+    export function fetchUser(id: string): Promise<UserResponse> {
+        return fetch(`/api/users/${id}`).then(res => res.json());
+    }
+
+    export function fetchUsers(): Promise<UserResponse[]> {
+        return fetch('/api/users').then(res => res.json());
+    }
+
+    export function formatUserName(user: UserResponse): string {
+        return `${user.name} <${user.email}>`;
+    }
+  src/api.ts: |
+    import { fetchUser, fetchUsers, UserResponse } from './utils';
+
+    export async function getUserProfile(id: string): Promise<UserResponse> {
+        const user = await fetchUser(id);
+        return user;
+    }
+
+    export async function listActiveUsers(): Promise<UserResponse[]> {
+        const users = await fetchUsers();
+        return users.filter(u => u.email.includes('@'));
+    }
+  src/main.ts: |
+    console.log("initial");
+  scripts/build.sh: |
+    #!/bin/bash
+    tsc --outDir dist
+  tests/utils.test.ts: |
+    describe('utils', () => { it('passes', () => {}); });
+  docs/api-reference.md: |
+    # API Reference
+  config/tsconfig.json: |
+    {
+    }
+
+changed:
+  src/utils.ts: |
+    export interface UserResponse {
+        id: string;
+        name: string;
+        email: string;
+    }
+
+    export function fetchUser(id: string): Promise<UserResponse> {
+        return fetch(`/api/users/${id}`).then(res => res.json());
+    }
+
+    export function fetchUsers(): Promise<UserResponse[]> {
+        return fetch('/api/users').then(res => res.json());
+    }
+
+    export function formatUserName(user: UserResponse): string {
+        return `${user.name} <${user.email}>`;
+    }
+  src/api.ts: |
+    import { fetchUser, fetchUsers, UserResponse } from './utils';
+
+    export async function getUserProfile(id: string): Promise<UserResponse> {
+        const user = await fetchUser(id);
+        return user;
+    }
+
+    export async function listActiveUsers(): Promise<UserResponse[]> {
+        const users = await fetchUsers();
+        return users.filter(u => u.email.includes('@'));
+    }
+  src/main.ts: |
+    import { fetchUser } from './utils';
+
+    async function main() {
+        const user = await fetchUser('123');
+        console.log(user);
+    }
+
+    main();
+  scripts/build.sh: |
+    #!/bin/bash
+    tsc --outDir dist
+  tests/utils.test.ts: |
+    describe('utils', () => { it('passes', () => {}); });
+  docs/api-reference.md: |
+    # API Reference
+  config/tsconfig.json: |
+    {
+    }
+
+must_include_files:
+  - src/main.ts
+  # Q1+Q2: fetchUser returns Promise<UserResponse>. UserResponse has
+  # id, name, email. Reviewer needs the function signature and return type.
+  - src/utils.ts
+
+must_include_content_from:
+  src/main.ts:
+    - "import { fetchUser } from './utils'"
+    - "await fetchUser('123')"
+  src/utils.ts:
+    - "export function fetchUser(id: string): Promise<UserResponse>"
+    - "export interface UserResponse"
+
+must_not_include:
+  # --- src/api.ts: another consumer of fetchUser from ./utils ---
+  # HARDEST TRAP: imports fetchUser, fetchUsers, UserResponse from the
+  # SAME module. getUserProfile even does `await fetchUser(id)` — near
+  # identical pattern to the diff. But this is another CALLER, not the
+  # definition. Reviewer needs the source, not a sibling consumer.
+  - getUserProfile
+  - listActiveUsers
+  # --- scripts/build.sh: build script ---
+  - "tsc --outDir"
+  # --- tests/utils.test.ts: test stub ---
+  - "describe('utils'"
+  # --- docs/api-reference.md: documentation ---
+  - "# API Reference"
+  # --- config/tsconfig.json: empty config ---
+  - tsconfig
+
+must_not_include_files:
+  - src/api.ts
+  - scripts/build.sh
+  - tests/utils.test.ts
+  - docs/api-reference.md
+  - config/tsconfig.json
+
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

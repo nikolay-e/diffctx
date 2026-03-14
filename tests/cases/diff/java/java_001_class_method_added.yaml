@@ -1,0 +1,461 @@
+# Scenario: Calculator class gains multiply, subtract, divide methods
+#   and a MathContext-based constructor. Only Calculator.java is changed.
+#
+# Diff shows:
+#   - Added MathContext field and constructor
+#   - Added multiply(BigDecimal, BigDecimal), subtract, divide methods
+#   - Added divide-by-zero guard
+#   - Existing add() now uses mathContext parameter
+#
+# Reviewer questions:
+#   Q1: "Does the existing add() call site in Main.java still work?"
+#       -> Yes — Main calls calc.add(BigDecimal, BigDecimal) which still
+#         exists. But Main does NOT need to be in context: the method
+#         signature is unchanged, so call-site compatibility is visible
+#         from the diff alone.
+#
+#   Q2: "Are the new methods consistent with existing add() behavior?"
+#       -> Yes — all use mathContext and setScale. The diff is self-contained
+#         for this question since all methods are in Calculator.java.
+#
+# Not needed for comprehension:
+#   - Main.java: Calls calc.add() — direct structural edge as a consumer
+#     of the changed class. But the add() signature is unchanged, so the
+#     call site doesn't help review the new methods. Including it would
+#     add noise without aiding comprehension.
+#
+#   - StatisticsService.java: Spring @Service that @Autowires Calculator
+#     and calls add(), multiply(). HARD TRAP: direct dependency on the
+#     changed class via Spring DI. But it's a consumer — reviewing it
+#     doesn't help verify Calculator's correctness.
+#
+#   - ScientificCalculator.java: Extends Calculator, overrides add().
+#     HARDEST TRAP: subclass relationship with the changed class.
+#     But understanding the subclass doesn't help review whether the
+#     new methods in Calculator are correct.
+
+initial:
+  src/main/java/com/mathengine/core/Calculator.java: |
+    package com.mathengine.core;
+
+    import java.math.BigDecimal;
+    import java.math.RoundingMode;
+
+    public class Calculator {
+        private static final int DEFAULT_SCALE = 10;
+        private final int scale;
+
+        public Calculator() {
+            this.scale = DEFAULT_SCALE;
+        }
+
+        public Calculator(int scale) {
+            if (scale < 0) {
+                throw new IllegalArgumentException("Scale must be non-negative");
+            }
+            this.scale = scale;
+        }
+
+        public BigDecimal add(BigDecimal a, BigDecimal b) {
+            validateInputs(a, b);
+            return a.add(b).setScale(scale, RoundingMode.HALF_UP);
+        }
+
+        public BigDecimal add(double a, double b) {
+            return add(BigDecimal.valueOf(a), BigDecimal.valueOf(b));
+        }
+
+        private void validateInputs(BigDecimal... values) {
+            for (BigDecimal value : values) {
+                if (value == null) {
+                    throw new IllegalArgumentException("Input values cannot be null");
+                }
+            }
+        }
+
+        public int getScale() {
+            return scale;
+        }
+    }
+
+  src/main/java/com/mathengine/Main.java: |
+    package com.mathengine;
+
+    import com.mathengine.core.Calculator;
+    import java.math.BigDecimal;
+
+    public class Main {
+        public static void main(String[] args) {
+            Calculator calc = new Calculator();
+            BigDecimal result = calc.add(BigDecimal.valueOf(1.5), BigDecimal.valueOf(2.5));
+            System.out.println("Result: " + result);
+        }
+    }
+
+  src/main/java/com/mathengine/core/ScientificCalculator.java: |
+    package com.mathengine.core;
+
+    import java.math.BigDecimal;
+    import java.math.MathContext;
+    import java.math.RoundingMode;
+
+    public class ScientificCalculator extends Calculator {
+        private final MathContext context;
+
+        public ScientificCalculator(int scale, MathContext context) {
+            super(scale);
+            this.context = context;
+        }
+
+        @Override
+        public BigDecimal add(BigDecimal a, BigDecimal b) {
+            return a.add(b, context).setScale(getScale(), RoundingMode.HALF_UP);
+        }
+
+        public BigDecimal power(BigDecimal base, int exponent) {
+            return base.pow(exponent, context).setScale(getScale(), RoundingMode.HALF_UP);
+        }
+
+        public BigDecimal sqrt(BigDecimal value) {
+            return value.sqrt(context).setScale(getScale(), RoundingMode.HALF_UP);
+        }
+    }
+
+  src/main/java/com/mathengine/service/StatisticsService.java: |
+    package com.mathengine.service;
+
+    import com.mathengine.core.Calculator;
+    import org.springframework.stereotype.Service;
+    import java.math.BigDecimal;
+    import java.util.List;
+
+    @Service
+    public class StatisticsService {
+        private final Calculator calculator;
+
+        public StatisticsService(Calculator calculator) {
+            this.calculator = calculator;
+        }
+
+        public BigDecimal computeSum(List<BigDecimal> values) {
+            BigDecimal sum = BigDecimal.ZERO;
+            for (BigDecimal v : values) {
+                sum = calculator.add(sum, v);
+            }
+            return sum;
+        }
+
+        public BigDecimal computeAverage(List<BigDecimal> values) {
+            if (values.isEmpty()) {
+                throw new ArithmeticException("Cannot compute average of empty list");
+            }
+            BigDecimal sum = computeSum(values);
+            return calculator.divide(sum, BigDecimal.valueOf(values.size()));
+        }
+
+        public BigDecimal computeVariance(List<BigDecimal> values) {
+            BigDecimal avg = computeAverage(values);
+            BigDecimal sumSquaredDiff = BigDecimal.ZERO;
+            for (BigDecimal v : values) {
+                BigDecimal diff = calculator.subtract(v, avg);
+                sumSquaredDiff = calculator.add(sumSquaredDiff, calculator.multiply(diff, diff));
+            }
+            return calculator.divide(sumSquaredDiff, BigDecimal.valueOf(values.size()));
+        }
+    }
+
+  src/test/java/com/mathengine/core/CalculatorTest.java: |
+    package com.mathengine.core;
+
+    import org.junit.jupiter.api.Test;
+    import java.math.BigDecimal;
+    import java.math.MathContext;
+    import static org.junit.jupiter.api.Assertions.*;
+
+    class CalculatorTest {
+        private final Calculator calculator = new Calculator();
+
+        @Test
+        void testAddTwoPositiveNumbers() {
+            BigDecimal result = calculator.add(BigDecimal.valueOf(1.5), BigDecimal.valueOf(2.5));
+            assertEquals(new BigDecimal("4.0000000000"), result);
+        }
+
+        @Test
+        void testAddWithNullThrows() {
+            assertThrows(IllegalArgumentException.class,
+                () -> calculator.add(null, BigDecimal.ONE));
+        }
+
+        @Test
+        void testDivideByZeroThrows() {
+            assertThrows(ArithmeticException.class,
+                () -> calculator.divide(BigDecimal.ONE, BigDecimal.ZERO));
+        }
+
+        @Test
+        void testMultiply() {
+            BigDecimal result = calculator.multiply(BigDecimal.valueOf(3), BigDecimal.valueOf(4));
+            assertEquals(new BigDecimal("12.0000000000"), result);
+        }
+    }
+
+changed:
+  src/main/java/com/mathengine/core/Calculator.java: |
+    package com.mathengine.core;
+
+    import java.math.BigDecimal;
+    import java.math.RoundingMode;
+    import java.math.MathContext;
+
+    public class Calculator {
+        private static final int DEFAULT_SCALE = 10;
+        private static final MathContext DEFAULT_CONTEXT = MathContext.DECIMAL128;
+        private final int scale;
+        private final MathContext mathContext;
+
+        public Calculator() {
+            this.scale = DEFAULT_SCALE;
+            this.mathContext = DEFAULT_CONTEXT;
+        }
+
+        public Calculator(int scale) {
+            if (scale < 0) {
+                throw new IllegalArgumentException("Scale must be non-negative");
+            }
+            this.scale = scale;
+            this.mathContext = DEFAULT_CONTEXT;
+        }
+
+        public Calculator(int scale, MathContext mathContext) {
+            if (scale < 0) {
+                throw new IllegalArgumentException("Scale must be non-negative");
+            }
+            this.scale = scale;
+            this.mathContext = mathContext;
+        }
+
+        public BigDecimal add(BigDecimal a, BigDecimal b) {
+            validateInputs(a, b);
+            return a.add(b, mathContext).setScale(scale, RoundingMode.HALF_UP);
+        }
+
+        public BigDecimal add(double a, double b) {
+            return add(BigDecimal.valueOf(a), BigDecimal.valueOf(b));
+        }
+
+        public BigDecimal multiply(BigDecimal a, BigDecimal b) {
+            validateInputs(a, b);
+            return a.multiply(b, mathContext).setScale(scale, RoundingMode.HALF_UP);
+        }
+
+        public BigDecimal multiply(double a, double b) {
+            return multiply(BigDecimal.valueOf(a), BigDecimal.valueOf(b));
+        }
+
+        public BigDecimal subtract(BigDecimal a, BigDecimal b) {
+            validateInputs(a, b);
+            return a.subtract(b, mathContext).setScale(scale, RoundingMode.HALF_UP);
+        }
+
+        public BigDecimal subtract(double a, double b) {
+            return subtract(BigDecimal.valueOf(a), BigDecimal.valueOf(b));
+        }
+
+        public BigDecimal divide(BigDecimal a, BigDecimal b) {
+            validateInputs(a, b);
+            if (b.compareTo(BigDecimal.ZERO) == 0) {
+                throw new ArithmeticException("Division by zero");
+            }
+            return a.divide(b, scale, RoundingMode.HALF_UP);
+        }
+
+        public BigDecimal divide(double a, double b) {
+            return divide(BigDecimal.valueOf(a), BigDecimal.valueOf(b));
+        }
+
+        private void validateInputs(BigDecimal... values) {
+            for (BigDecimal value : values) {
+                if (value == null) {
+                    throw new IllegalArgumentException("Input values cannot be null");
+                }
+            }
+        }
+
+        public int getScale() {
+            return scale;
+        }
+
+        public MathContext getMathContext() {
+            return mathContext;
+        }
+    }
+
+  src/main/java/com/mathengine/Main.java: |
+    package com.mathengine;
+
+    import com.mathengine.core.Calculator;
+    import java.math.BigDecimal;
+
+    public class Main {
+        public static void main(String[] args) {
+            Calculator calc = new Calculator();
+            BigDecimal result = calc.add(BigDecimal.valueOf(1.5), BigDecimal.valueOf(2.5));
+            System.out.println("Result: " + result);
+        }
+    }
+
+  src/main/java/com/mathengine/core/ScientificCalculator.java: |
+    package com.mathengine.core;
+
+    import java.math.BigDecimal;
+    import java.math.MathContext;
+    import java.math.RoundingMode;
+
+    public class ScientificCalculator extends Calculator {
+        private final MathContext context;
+
+        public ScientificCalculator(int scale, MathContext context) {
+            super(scale);
+            this.context = context;
+        }
+
+        @Override
+        public BigDecimal add(BigDecimal a, BigDecimal b) {
+            return a.add(b, context).setScale(getScale(), RoundingMode.HALF_UP);
+        }
+
+        public BigDecimal power(BigDecimal base, int exponent) {
+            return base.pow(exponent, context).setScale(getScale(), RoundingMode.HALF_UP);
+        }
+
+        public BigDecimal sqrt(BigDecimal value) {
+            return value.sqrt(context).setScale(getScale(), RoundingMode.HALF_UP);
+        }
+    }
+
+  src/main/java/com/mathengine/service/StatisticsService.java: |
+    package com.mathengine.service;
+
+    import com.mathengine.core.Calculator;
+    import org.springframework.stereotype.Service;
+    import java.math.BigDecimal;
+    import java.util.List;
+
+    @Service
+    public class StatisticsService {
+        private final Calculator calculator;
+
+        public StatisticsService(Calculator calculator) {
+            this.calculator = calculator;
+        }
+
+        public BigDecimal computeSum(List<BigDecimal> values) {
+            BigDecimal sum = BigDecimal.ZERO;
+            for (BigDecimal v : values) {
+                sum = calculator.add(sum, v);
+            }
+            return sum;
+        }
+
+        public BigDecimal computeAverage(List<BigDecimal> values) {
+            if (values.isEmpty()) {
+                throw new ArithmeticException("Cannot compute average of empty list");
+            }
+            BigDecimal sum = computeSum(values);
+            return calculator.divide(sum, BigDecimal.valueOf(values.size()));
+        }
+
+        public BigDecimal computeVariance(List<BigDecimal> values) {
+            BigDecimal avg = computeAverage(values);
+            BigDecimal sumSquaredDiff = BigDecimal.ZERO;
+            for (BigDecimal v : values) {
+                BigDecimal diff = calculator.subtract(v, avg);
+                sumSquaredDiff = calculator.add(sumSquaredDiff, calculator.multiply(diff, diff));
+            }
+            return calculator.divide(sumSquaredDiff, BigDecimal.valueOf(values.size()));
+        }
+    }
+
+  src/test/java/com/mathengine/core/CalculatorTest.java: |
+    package com.mathengine.core;
+
+    import org.junit.jupiter.api.Test;
+    import java.math.BigDecimal;
+    import java.math.MathContext;
+    import static org.junit.jupiter.api.Assertions.*;
+
+    class CalculatorTest {
+        private final Calculator calculator = new Calculator();
+
+        @Test
+        void testAddTwoPositiveNumbers() {
+            BigDecimal result = calculator.add(BigDecimal.valueOf(1.5), BigDecimal.valueOf(2.5));
+            assertEquals(new BigDecimal("4.0000000000"), result);
+        }
+
+        @Test
+        void testAddWithNullThrows() {
+            assertThrows(IllegalArgumentException.class,
+                () -> calculator.add(null, BigDecimal.ONE));
+        }
+
+        @Test
+        void testDivideByZeroThrows() {
+            assertThrows(ArithmeticException.class,
+                () -> calculator.divide(BigDecimal.ONE, BigDecimal.ZERO));
+        }
+
+        @Test
+        void testMultiply() {
+            BigDecimal result = calculator.multiply(BigDecimal.valueOf(3), BigDecimal.valueOf(4));
+            assertEquals(new BigDecimal("12.0000000000"), result);
+        }
+    }
+
+must_include_files:
+  - src/main/java/com/mathengine/core/Calculator.java
+
+must_include_content_from:
+  src/main/java/com/mathengine/core/Calculator.java:
+    - "private static final MathContext DEFAULT_CONTEXT = MathContext.DECIMAL128"
+    - "public BigDecimal multiply(BigDecimal a, BigDecimal b)"
+    - "public BigDecimal divide(BigDecimal a, BigDecimal b)"
+    - 'throw new ArithmeticException("Division by zero")'
+
+must_not_include:
+  # --- ScientificCalculator.java: subclass of Calculator ---
+  # HARDEST TRAP. Extends Calculator, overrides add(), uses MathContext
+  # (same type added to Calculator in this diff). Same package. But
+  # reviewing the subclass doesn't help verify the new methods.
+  - ScientificCalculator
+  - "extends Calculator"
+  - power
+  - sqrt
+  # --- StatisticsService.java: @Autowires Calculator, calls all methods ---
+  # Direct consumer of add(), multiply(), subtract(), divide() — exact
+  # methods being added. Spring @Service in the same project. But it's
+  # a consumer, not needed to verify Calculator's implementation.
+  - StatisticsService
+  - computeSum
+  - computeAverage
+  - computeVariance
+  # --- CalculatorTest.java: tests the changed class ---
+  # Imports Calculator, calls add(), multiply(), divide(). But test
+  # assertions verify behavior, not implementation correctness.
+  - CalculatorTest
+  - testAddTwoPositiveNumbers
+  - testDivideByZeroThrows
+  # --- Main.java: call site for Calculator ---
+  - "calc.add"
+
+must_not_include_files:
+  - src/main/java/com/mathengine/core/ScientificCalculator.java
+  - src/main/java/com/mathengine/service/StatisticsService.java
+  - src/test/java/com/mathengine/core/CalculatorTest.java
+  - src/main/java/com/mathengine/Main.java
+
+max_fragments: 8
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

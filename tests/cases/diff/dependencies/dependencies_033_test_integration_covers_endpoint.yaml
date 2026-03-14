@@ -1,0 +1,123 @@
+initial:
+  api/users.py: |
+    def list_users():
+        return [{"id": 1, "name": "Alice"}]
+  tests/integration/test_api.py: |
+    from api.users import list_users
+
+    def test_list_users_endpoint():
+        users = list_users()
+        assert len(users) == 1
+        assert users[0]["name"] == "Alice"
+
+  # --- Tricky: same function name list_users (name collision) ---
+  api/admin_users.py: |
+    GARBAGE_DEP033_ADMIN_API_A = "admin_users_api"
+    GARBAGE_DEP033_ADMIN_LIST_B = True
+
+    def list_users(role="admin"):
+        GARBAGE_DEP033_ADMIN_FETCH_C = "fetching_admins"
+        return [{"id": 1, "name": "SuperAdmin", "role": role}]
+
+    def list_users_paginated(page=1, limit=10):
+        return list_users()[:limit]
+
+  # --- Tricky: same import pattern, similar test structure ---
+  tests/integration/test_admin_api.py: |
+    from api.admin_users import list_users
+    GARBAGE_DEP033_ADMINTEST_D = "admin_api_tests"
+    GARBAGE_DEP033_ADMINTEST_RUN_E = True
+
+    def test_list_users_endpoint():
+        GARBAGE_DEP033_ADMINTEST_ASSERT_F = "asserting"
+        users = list_users(role="admin")
+        assert len(users) == 1
+        assert users[0]["role"] == "admin"
+
+  # --- Tricky: same api/ directory, pagination parameters match diff ---
+  api/products.py: |
+    GARBAGE_DEP033_PRODUCTS_G = "products_api"
+    GARBAGE_DEP033_PRODUCTS_LIST_H = True
+
+    def list_products(page=1, limit=10):
+        GARBAGE_DEP033_PRODUCTS_FETCH_I = "fetching"
+        products = [{"id": 1, "name": "Widget"}]
+        return products[(page-1)*limit:page*limit]
+
+changed:
+  api/users.py: |
+    def list_users(page=1, limit=10):
+        users = [{"id": 1, "name": "Alice"}]
+        return users[(page-1)*limit:page*limit]
+  tests/integration/test_api.py: |
+    from api.users import list_users
+
+    def test_list_users_endpoint():
+        users = list_users()
+        assert len(users) == 1
+        assert users[0]["name"] == "Alice"
+  api/admin_users.py: |
+    GARBAGE_DEP033_ADMIN_API_A = "admin_users_api"
+    GARBAGE_DEP033_ADMIN_LIST_B = True
+
+    def list_users(role="admin"):
+        GARBAGE_DEP033_ADMIN_FETCH_C = "fetching_admins"
+        return [{"id": 1, "name": "SuperAdmin", "role": role}]
+
+    def list_users_paginated(page=1, limit=10):
+        return list_users()[:limit]
+  tests/integration/test_admin_api.py: |
+    from api.admin_users import list_users
+    GARBAGE_DEP033_ADMINTEST_D = "admin_api_tests"
+    GARBAGE_DEP033_ADMINTEST_RUN_E = True
+
+    def test_list_users_endpoint():
+        GARBAGE_DEP033_ADMINTEST_ASSERT_F = "asserting"
+        users = list_users(role="admin")
+        assert len(users) == 1
+        assert users[0]["role"] == "admin"
+  api/products.py: |
+    GARBAGE_DEP033_PRODUCTS_G = "products_api"
+    GARBAGE_DEP033_PRODUCTS_LIST_H = True
+
+    def list_products(page=1, limit=10):
+        GARBAGE_DEP033_PRODUCTS_FETCH_I = "fetching"
+        products = [{"id": 1, "name": "Widget"}]
+        return products[(page-1)*limit:page*limit]
+
+# === Assertions ===
+
+must_include_files:
+- api/users.py
+- tests/integration/test_api.py
+
+must_include_content_from:
+  api/users.py:
+    - 'def list_users(page=1, limit=10):'
+    - users[(page-1)*limit:page*limit]
+  tests/integration/test_api.py:
+    - 'def test_list_users_endpoint():'
+
+must_not_include:
+# Tricky: same function name list_users with same param names (name collision)
+- GARBAGE_DEP033_ADMIN_API_A
+- GARBAGE_DEP033_ADMIN_LIST_B
+- GARBAGE_DEP033_ADMIN_FETCH_C
+# Tricky: same test name test_list_users_endpoint, same import pattern
+- GARBAGE_DEP033_ADMINTEST_D
+- GARBAGE_DEP033_ADMINTEST_RUN_E
+- GARBAGE_DEP033_ADMINTEST_ASSERT_F
+# Tricky: same page/limit params and slice pattern as the diff
+- GARBAGE_DEP033_PRODUCTS_G
+- GARBAGE_DEP033_PRODUCTS_LIST_H
+- GARBAGE_DEP033_PRODUCTS_FETCH_I
+
+must_not_include_files:
+- api/admin_users.py
+- tests/integration/test_admin_api.py
+- api/products.py
+
+max_fragments: 5
+max_files: 2
+add_garbage_files: false
+skip_garbage_check: true

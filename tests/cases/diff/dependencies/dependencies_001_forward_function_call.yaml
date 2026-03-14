@@ -1,0 +1,250 @@
+initial:
+  utils/math.py: |
+    def calculate_tax(amount: float, region: str = "US") -> float:
+        rate = get_tax_rate(region)
+        tax = amount * rate
+        return round(tax, 2)
+
+    def get_tax_rate(region: str) -> float:
+        rates = {
+            "US": 0.15,
+            "EU": 0.20,
+            "UK": 0.17,
+        }
+        return rates.get(region, 0.10)
+
+    def format_tax_amount(tax: float) -> str:
+        return f"${tax:,.2f}"
+  main.py: |
+    def process():
+        pass
+  services/invoice.py: |
+    from utils.math import calculate_tax, format_tax_amount
+
+    class InvoiceService:
+        def __init__(self, region: str = "US"):
+            self.region = region
+            self.line_items = []
+
+        def add_item(self, description: str, amount: float) -> None:
+            self.line_items.append({"description": description, "amount": amount})
+
+        def compute_totals(self) -> dict:
+            subtotal = sum(item["amount"] for item in self.line_items)
+            tax = calculate_tax(subtotal, self.region)
+            return {
+                "subtotal": subtotal,
+                "tax": tax,
+                "tax_display": format_tax_amount(tax),
+                "total": subtotal + tax,
+            }
+
+  # --- Tricky: also imports and calls calculate_tax with region="US" ---
+  services/checkout.py: |
+    from utils.math import calculate_tax
+    GARBAGE_DEP_001_CHECKOUT_C = "checkout_flow"
+
+    class CheckoutService:
+        GARBAGE_DEP_001_CHECKOUT_CLASS_D = True
+
+        def finalize(self, cart_items: list) -> dict:
+            amount = sum(item["price"] for item in cart_items)
+            tax = calculate_tax(amount, region="US")
+            GARBAGE_DEP_001_CHECKOUT_FINAL_E = "done"
+            return {"amount": amount, "tax": tax, "total": amount + tax}
+
+  # --- Tricky: different calculate_tax function (name collision) ---
+  utils/eu_tax.py: |
+    GARBAGE_DEP_001_EU_TAX_F = "eu_tax_module"
+
+    def calculate_tax(amount: float, country: str = "DE") -> float:
+        GARBAGE_DEP_001_EU_CALC_G = True
+        vat_rates = {
+            "DE": 0.19,
+            "FR": 0.20,
+            "NL": 0.21,
+        }
+        rate = vat_rates.get(country, 0.20)
+        return round(amount * rate, 2)
+
+    def get_tax_rate(country: str) -> float:
+        GARBAGE_DEP_001_EU_RATE_H = "vat"
+        return 0.20
+
+  # --- Tricky: test file with same call pattern ---
+  tests/test_main.py: |
+    from utils.math import calculate_tax
+    GARBAGE_DEP_001_TEST_MAIN_I = "test_process"
+
+    def test_process():
+        GARBAGE_DEP_001_TEST_RUN_J = True
+        amount = 100.0
+        tax = calculate_tax(amount, region="US")
+        assert tax == 15.0
+        assert amount + tax == 115.0
+
+    def test_process_eu():
+        GARBAGE_DEP_001_TEST_EU_K = True
+        tax = calculate_tax(200.0, region="EU")
+        assert tax == 40.0
+
+  # --- Plain garbage ---
+  garbage/weather_forecast.py: |
+    GARBAGE_DEP_001_WEATHER_A = "forecast"
+
+    def predict_temperature(city: str) -> float:
+        return 20.0
+
+  garbage/astronomy_calc.py: |
+    GARBAGE_DEP_001_ASTRO_B = "orbital"
+
+    def orbital_period(semi_major_axis: float) -> float:
+        return (semi_major_axis ** 1.5) * 365.25
+
+changed:
+  utils/math.py: |
+    def calculate_tax(amount: float, region: str = "US") -> float:
+        rate = get_tax_rate(region)
+        tax = amount * rate
+        return round(tax, 2)
+
+    def get_tax_rate(region: str) -> float:
+        rates = {
+            "US": 0.15,
+            "EU": 0.20,
+            "UK": 0.17,
+        }
+        return rates.get(region, 0.10)
+
+    def format_tax_amount(tax: float) -> str:
+        return f"${tax:,.2f}"
+  main.py: |
+    from utils.math import calculate_tax
+
+    def process():
+        amount = 100.0
+        tax = calculate_tax(amount, region="US")
+        return {"amount": amount, "tax": tax, "total": amount + tax}
+  services/invoice.py: |
+    from utils.math import calculate_tax, format_tax_amount
+
+    class InvoiceService:
+        def __init__(self, region: str = "US"):
+            self.region = region
+            self.line_items = []
+
+        def add_item(self, description: str, amount: float) -> None:
+            self.line_items.append({"description": description, "amount": amount})
+
+        def compute_totals(self) -> dict:
+            subtotal = sum(item["amount"] for item in self.line_items)
+            tax = calculate_tax(subtotal, self.region)
+            return {
+                "subtotal": subtotal,
+                "tax": tax,
+                "tax_display": format_tax_amount(tax),
+                "total": subtotal + tax,
+            }
+  services/checkout.py: |
+    from utils.math import calculate_tax
+    GARBAGE_DEP_001_CHECKOUT_C = "checkout_flow"
+
+    class CheckoutService:
+        GARBAGE_DEP_001_CHECKOUT_CLASS_D = True
+
+        def finalize(self, cart_items: list) -> dict:
+            amount = sum(item["price"] for item in cart_items)
+            tax = calculate_tax(amount, region="US")
+            GARBAGE_DEP_001_CHECKOUT_FINAL_E = "done"
+            return {"amount": amount, "tax": tax, "total": amount + tax}
+  utils/eu_tax.py: |
+    GARBAGE_DEP_001_EU_TAX_F = "eu_tax_module"
+
+    def calculate_tax(amount: float, country: str = "DE") -> float:
+        GARBAGE_DEP_001_EU_CALC_G = True
+        vat_rates = {
+            "DE": 0.19,
+            "FR": 0.20,
+            "NL": 0.21,
+        }
+        rate = vat_rates.get(country, 0.20)
+        return round(amount * rate, 2)
+
+    def get_tax_rate(country: str) -> float:
+        GARBAGE_DEP_001_EU_RATE_H = "vat"
+        return 0.20
+  tests/test_main.py: |
+    from utils.math import calculate_tax
+    GARBAGE_DEP_001_TEST_MAIN_I = "test_process"
+
+    def test_process():
+        GARBAGE_DEP_001_TEST_RUN_J = True
+        amount = 100.0
+        tax = calculate_tax(amount, region="US")
+        assert tax == 15.0
+        assert amount + tax == 115.0
+
+    def test_process_eu():
+        GARBAGE_DEP_001_TEST_EU_K = True
+        tax = calculate_tax(200.0, region="EU")
+        assert tax == 40.0
+  garbage/weather_forecast.py: |
+    GARBAGE_DEP_001_WEATHER_A = "forecast"
+
+    def predict_temperature(city: str) -> float:
+        return 20.0
+  garbage/astronomy_calc.py: |
+    GARBAGE_DEP_001_ASTRO_B = "orbital"
+
+    def orbital_period(semi_major_axis: float) -> float:
+        return (semi_major_axis ** 1.5) * 365.25
+
+# === Assertions ===
+
+must_include_files:
+- main.py
+- utils/math.py
+
+must_include_content_from:
+  main.py:
+    # Import + all new body lines
+    - from utils.math import calculate_tax
+    - amount = 100.0
+    - 'tax = calculate_tax(amount, region="US")'
+    - 'return {"amount": amount, "tax": tax, "total": amount + tax}'
+    - 'def process():'
+  utils/math.py:
+    # Forward dep — definition of called function + its dependency
+    - 'def calculate_tax(amount: float, region: str = "US") -> float:'
+    - return round(tax, 2)
+    - 'def get_tax_rate(region: str) -> float:'
+
+must_not_include:
+# Plain garbage
+- GARBAGE_DEP_001_WEATHER_A
+- GARBAGE_DEP_001_ASTRO_B
+# Tricky: same import, same call pattern (calculate_tax(amount, region="US"))
+- GARBAGE_DEP_001_CHECKOUT_C
+- GARBAGE_DEP_001_CHECKOUT_CLASS_D
+- GARBAGE_DEP_001_CHECKOUT_FINAL_E
+# Tricky: function named calculate_tax + get_tax_rate (full name collision)
+- GARBAGE_DEP_001_EU_TAX_F
+- GARBAGE_DEP_001_EU_CALC_G
+- GARBAGE_DEP_001_EU_RATE_H
+# Tricky: test with same import, amount=100.0, calculate_tax(amount, region="US")
+- GARBAGE_DEP_001_TEST_MAIN_I
+- GARBAGE_DEP_001_TEST_RUN_J
+- GARBAGE_DEP_001_TEST_EU_K
+
+must_not_include_files:
+- services/checkout.py
+- utils/eu_tax.py
+- tests/test_main.py
+- services/invoice.py
+- garbage/weather_forecast.py
+- garbage/astronomy_calc.py
+
+max_fragments: 6
+max_files: 2
+add_garbage_files: false
+skip_garbage_check: true

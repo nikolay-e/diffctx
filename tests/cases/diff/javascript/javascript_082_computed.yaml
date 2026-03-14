@@ -1,0 +1,181 @@
+# Scenario: Profile.vue is rewritten from a stub to a Vue 3 component using
+#   computed() to derive fullName from formatName imported from utils.ts.
+#   Only Profile.vue is changed; utils.ts is unchanged.
+#
+# Diff shows:
+#   - <template><div>initial</div></template>
+#   + <script setup lang="ts"> with computed(() => formatName(...))
+#   + Uses firstName/lastName refs passed to formatName
+#
+# Reviewer questions:
+#   Q1: "What does formatName return — does the computed property produce the
+#        expected string?"
+#       -> utils.ts: formatName concatenates first + " " + last. The computed
+#          passes firstName.value and lastName.value, producing "John Doe".
+#
+#   Q2: "Does formatName accept two separate strings or a name object?"
+#       -> utils.ts: signature is (first: string, last: string) -> string.
+#          Matches the call site formatName(firstName.value, lastName.value).
+#
+# Not needed for comprehension:
+#   - ProfileCard.vue: Parent component that renders Profile. Direct consumer
+#     edge — imports Profile.vue. But HOW the parent uses Profile doesn't
+#     help review whether the computed property correctly calls formatName.
+#
+#   - name-validator.ts: Validation for name strings (minLength, maxLength,
+#     allowed characters). Same "name" domain. HARD TRAP: operates on the same
+#     first/last name strings. But not imported by Profile.vue.
+#
+#   - ProfileAvatar.vue: Sibling component with same computed() pattern that
+#     derives initials from a name. Same Vue 3 composition pattern.
+#     HARD TRAP: identical reactive structure, different derivation.
+
+initial:
+  utils.ts: |
+    export function formatName(first: string, last: string): string {
+        return `${first} ${last}`;
+    }
+
+    export function formatInitials(first: string, last: string): string {
+        return `${first[0]}${last[0]}`.toUpperCase();
+    }
+  Profile.vue: |
+    <template><div>initial</div></template>
+  ProfileCard.vue: |
+    <script setup lang="ts">
+    import Profile from './Profile.vue';
+
+    const user = { first: 'John', last: 'Doe' };
+    </script>
+
+    <template>
+        <div class="profile-card">
+            <Profile />
+        </div>
+    </template>
+  name-validator.ts: |
+    export function validateName(name: string): { valid: boolean; error?: string } {
+        if (name.length < 1) return { valid: false, error: 'Name required' };
+        if (name.length > 50) return { valid: false, error: 'Name too long' };
+        if (!/^[a-zA-Z\s'-]+$/.test(name)) return { valid: false, error: 'Invalid characters' };
+        return { valid: true };
+    }
+
+    export function sanitizeName(name: string): string {
+        return name.trim().replace(/\s+/g, ' ');
+    }
+  ProfileAvatar.vue: |
+    <script setup lang="ts">
+    import { ref, computed } from 'vue';
+    import { formatInitials } from './utils';
+
+    const firstName = ref('Jane');
+    const lastName = ref('Smith');
+
+    const initials = computed(() => formatInitials(firstName.value, lastName.value));
+    </script>
+
+    <template>
+        <div class="avatar">{{ initials }}</div>
+    </template>
+
+changed:
+  utils.ts: |
+    export function formatName(first: string, last: string): string {
+        return `${first} ${last}`;
+    }
+
+    export function formatInitials(first: string, last: string): string {
+        return `${first[0]}${last[0]}`.toUpperCase();
+    }
+  Profile.vue: |
+    <script setup lang="ts">
+    import { ref, computed } from 'vue';
+    import { formatName } from './utils';
+
+    const firstName = ref('John');
+    const lastName = ref('Doe');
+
+    const fullName = computed(() => formatName(firstName.value, lastName.value));
+    </script>
+
+    <template>
+        <div>{{ fullName }}</div>
+    </template>
+  ProfileCard.vue: |
+    <script setup lang="ts">
+    import Profile from './Profile.vue';
+
+    const user = { first: 'John', last: 'Doe' };
+    </script>
+
+    <template>
+        <div class="profile-card">
+            <Profile />
+        </div>
+    </template>
+  name-validator.ts: |
+    export function validateName(name: string): { valid: boolean; error?: string } {
+        if (name.length < 1) return { valid: false, error: 'Name required' };
+        if (name.length > 50) return { valid: false, error: 'Name too long' };
+        if (!/^[a-zA-Z\s'-]+$/.test(name)) return { valid: false, error: 'Invalid characters' };
+        return { valid: true };
+    }
+
+    export function sanitizeName(name: string): string {
+        return name.trim().replace(/\s+/g, ' ');
+    }
+  ProfileAvatar.vue: |
+    <script setup lang="ts">
+    import { ref, computed } from 'vue';
+    import { formatInitials } from './utils';
+
+    const firstName = ref('Jane');
+    const lastName = ref('Smith');
+
+    const initials = computed(() => formatInitials(firstName.value, lastName.value));
+    </script>
+
+    <template>
+        <div class="avatar">{{ initials }}</div>
+    </template>
+
+must_include_files:
+  - Profile.vue
+  # Q1+Q2: utils.ts defines formatName — reviewer needs to see the signature
+  # and return value to verify the computed property works correctly.
+  - utils.ts
+
+must_include_content_from:
+  Profile.vue:
+    - "import { formatName } from './utils'"
+    - "computed(() => formatName(firstName.value, lastName.value))"
+  utils.ts:
+    - "function formatName(first: string, last: string): string"
+
+must_not_include:
+  # --- ProfileCard.vue: parent component that renders Profile ---
+  # Direct consumer edge — imports Profile.vue. But the parent's rendering
+  # doesn't help review whether computed correctly calls formatName.
+  - ProfileCard
+  - profile-card
+  # --- name-validator.ts: name validation, same name domain ---
+  # HARD TRAP: operates on same first/last name strings but not imported.
+  - validateName
+  - sanitizeName
+  # --- ProfileAvatar.vue: sibling with identical computed() pattern ---
+  # HARD TRAP: same Vue 3 computed pattern, same utils.ts import location.
+  # But uses formatInitials not formatName.
+  - ProfileAvatar
+  - formatInitials
+  - initials
+
+must_not_include_files:
+  - ProfileCard.vue
+  - name-validator.ts
+  - ProfileAvatar.vue
+
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

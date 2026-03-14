@@ -1,0 +1,206 @@
+# Scenario: registration.rb starts using the CustomerProfile class, accessing
+# its full_name and contact_email attributes.
+# customer_profile.rb defines CustomerProfile with attr_accessor for full_name
+# and contact_email.
+#
+# Diff: registration.rb changes from a simple puts to creating a CustomerProfile,
+# reading profile.full_name, and writing profile.contact_email — exercising
+# both getter and setter from attr_accessor.
+#
+# Reviewer questions:
+#   Q1: "What attributes does CustomerProfile expose for reading and writing?"
+#       -> customer_profile.rb (UNCHANGED) has `attr_accessor :full_name, :contact_email`
+#          — reviewer sees both are readable and writable.
+#   Q2: "What does CustomerProfile's constructor require?"
+#       -> customer_profile.rb shows `initialize(full_name:, contact_email:)` with
+#          keyword args, matching the call in registration.rb.
+#
+# Not needed:
+#   - email_validator.rb: validates email format with regex. Related to email
+#     concept but doesn't import CustomerProfile — no require edge.
+#   - shipping_address.rb: another data class with attr_accessor for street/city.
+#     Similar pattern but completely independent — no relationship.
+#   - profile_updater.rb: also requires customer_profile.rb and writes to
+#     profile.contact_email. DIRECT structural edge (same class, same attr)
+#     but is a different consumer updating existing profiles.
+#   - contact_form.rb: creates objects with full_name and email fields.
+#     Same attribute names but uses its own struct — no CustomerProfile import.
+#   - lib/serializable.rb: module that serializes attr_accessor fields to JSON.
+#     Same mechanism (attr_accessor) but independent — no import to CustomerProfile.
+
+initial:
+  customer_profile.rb: |
+    class CustomerProfile
+      attr_accessor :full_name, :contact_email, :phone_number
+
+      def initialize(full_name:, contact_email:, phone_number: nil)
+        @full_name = full_name
+        @contact_email = contact_email
+        @phone_number = phone_number
+      end
+
+      def display_name
+        full_name.split(' ').first
+      end
+    end
+  registration.rb: |
+    puts 'Registration starting'
+  email_validator.rb: |
+    module EmailValidator
+      PATTERN = /\A[^@\s]+@[^@\s]+\.[^@\s]+\z/
+
+      def self.valid?(address)
+        !!(address =~ PATTERN)
+      end
+
+      def self.normalize(address)
+        address.strip.downcase
+      end
+
+      def self.domain(address)
+        address.split('@').last
+      end
+    end
+  shipping_address.rb: |
+    class ShippingAddress
+      attr_accessor :street, :city, :zip_code, :country
+
+      def initialize(street:, city:, zip_code:, country: 'US')
+        @street = street
+        @city = city
+        @zip_code = zip_code
+        @country = country
+      end
+
+      def full_address
+        "#{street}, #{city} #{zip_code}, #{country}"
+      end
+
+      def domestic?
+        country == 'US'
+      end
+    end
+  profile_updater.rb: |
+    require_relative 'customer_profile'
+
+    class ProfileUpdater
+      def initialize(profile)
+        @profile = profile
+      end
+
+      def update_email(new_email)
+        @profile.contact_email = new_email
+      end
+
+      def update_name(new_name)
+        @profile.full_name = new_name
+      end
+
+      def update_phone(new_phone)
+        @profile.phone_number = new_phone
+      end
+
+      def apply_changes(params)
+        update_email(params[:email]) if params[:email]
+        update_name(params[:name]) if params[:name]
+        update_phone(params[:phone]) if params[:phone]
+      end
+    end
+  contact_form.rb: |
+    ContactForm = Struct.new(:full_name, :email, :message, keyword_init: true) do
+      def valid?
+        !full_name.nil? && !email.nil? && !message.nil?
+      end
+
+      def to_hash
+        { full_name: full_name, email: email, message: message }
+      end
+
+      def summary
+        "From: #{full_name} <#{email}>"
+      end
+    end
+  lib/serializable.rb: |
+    module Serializable
+      def to_json
+        vars = instance_variables.map do |var|
+          key = var.to_s.delete('@')
+          value = instance_variable_get(var)
+          "\"#{key}\": \"#{value}\""
+        end
+        "{ #{vars.join(', ')} }"
+      end
+
+      def from_hash(hash)
+        hash.each do |key, value|
+          setter = "#{key}="
+          send(setter, value) if respond_to?(setter)
+        end
+        self
+      end
+    end
+
+changed:
+  customer_profile.rb: |
+    class CustomerProfile
+      attr_accessor :full_name, :contact_email, :phone_number
+
+      def initialize(full_name:, contact_email:, phone_number: nil)
+        @full_name = full_name
+        @contact_email = contact_email
+        @phone_number = phone_number
+      end
+
+      def display_name
+        full_name.split(' ').first
+      end
+    end
+  registration.rb: |
+    require_relative 'customer_profile'
+
+    profile = CustomerProfile.new(full_name: 'John', contact_email: 'john@example.com')
+    puts profile.full_name
+    profile.contact_email = 'new@example.com'
+
+must_include_files:
+  # Q1: customer_profile.rb defines attr_accessor used by registration.rb
+  - customer_profile.rb
+must_include_content_from:
+  customer_profile.rb:
+    - "attr_accessor :full_name, :contact_email"
+    - "def initialize(full_name:, contact_email:"
+  registration.rb:
+    - "CustomerProfile.new"
+    - "profile.full_name"
+must_not_include:
+  # email_validator.rb: email validation logic, no require edge
+  - EmailValidator
+  - normalize
+  - PATTERN
+  # shipping_address.rb: independent data class, not referenced
+  - ShippingAddress
+  - full_address
+  - zip_code
+  - domestic?
+  # profile_updater.rb: HARDEST TRAP — requires customer_profile.rb, writes
+  # to contact_email — same class, same attr, but different consumer
+  - ProfileUpdater
+  - update_email
+  - update_name
+  - apply_changes
+  # contact_form.rb: same attribute names (full_name, email) but own struct
+  - ContactForm
+  - summary
+  # lib/serializable.rb: attr_accessor mechanism but independent module
+  - Serializable
+  - from_hash
+must_not_include_files:
+  - email_validator.rb
+  - shipping_address.rb
+  - profile_updater.rb
+  - contact_form.rb
+  - lib/serializable.rb
+max_fragments: 5
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

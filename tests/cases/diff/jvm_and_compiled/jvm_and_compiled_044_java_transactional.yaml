@@ -1,0 +1,158 @@
+# Scenario: OrderService refines @Transactional with explicit propagation, isolation,
+# and rollback settings, plus adds a read-only getOrder method.
+#
+# Diff: OrderService.java changes @Transactional to include propagation=REQUIRED,
+# isolation=READ_COMMITTED, rollbackFor, and adds inventoryService.updateStock() call.
+# A new @Transactional(readOnly=true) getOrder method is added.
+#
+# Reviewer questions:
+#   Q1: "What transaction attributes are now applied to createOrder?"
+#       -> OrderService.java (CHANGED) shows propagation, isolation, rollbackFor.
+#
+# Not needed:
+#   - src/main/java/com/example/InventoryService.java: manages stock.
+#     Called by OrderService but not changed; the edge is outgoing from changed code.
+#     For diff context we need the caller, not the callee's implementation.
+#   - src/main/java/com/example/PaymentService.java: processes payments.
+#     Same transaction domain vocabulary but no reference from OrderService.
+
+initial:
+  src/main/java/com/example/OrderService.java: |
+    package com.example;
+
+    import org.springframework.stereotype.Service;
+    import org.springframework.transaction.annotation.Transactional;
+
+    @Service
+    public class OrderService {
+        @Transactional
+        public Order createOrder(Order order) {
+            return orderRepository.save(order);
+        }
+    }
+  src/main/java/com/example/InventoryService.java: |
+    package com.example;
+
+    import org.springframework.stereotype.Service;
+    import org.springframework.transaction.annotation.Transactional;
+    import java.util.List;
+
+    @Service
+    public class InventoryService {
+        @Transactional
+        public void updateStock(List<OrderItem> items) {
+            for (OrderItem item : items) {
+                reduceQuantity(item.getProductId(), item.getQuantity());
+            }
+        }
+
+        private void reduceQuantity(Long productId, int quantity) {
+            System.out.println("Reducing stock for product " + productId);
+        }
+    }
+  src/main/java/com/example/PaymentService.java: |
+    package com.example;
+
+    import org.springframework.stereotype.Service;
+    import org.springframework.transaction.annotation.Transactional;
+
+    @Service
+    public class PaymentService {
+        @Transactional
+        public void processPayment(Long orderId, double amount) {
+            System.out.println("Processing payment for order " + orderId);
+        }
+
+        @Transactional(readOnly = true)
+        public boolean verifyPayment(Long paymentId) {
+            return true;
+        }
+    }
+
+changed:
+  src/main/java/com/example/OrderService.java: |
+    package com.example;
+
+    import org.springframework.stereotype.Service;
+    import org.springframework.transaction.annotation.Transactional;
+    import org.springframework.transaction.annotation.Propagation;
+    import org.springframework.transaction.annotation.Isolation;
+
+    @Service
+    public class OrderService {
+        @Transactional(
+            propagation = Propagation.REQUIRED,
+            isolation = Isolation.READ_COMMITTED,
+            rollbackFor = Exception.class
+        )
+        public Order createOrder(Order order) {
+            Order saved = orderRepository.save(order);
+            inventoryService.updateStock(order.getItems());
+            return saved;
+        }
+
+        @Transactional(readOnly = true)
+        public Order getOrder(Long id) {
+            return orderRepository.findById(id).orElse(null);
+        }
+    }
+  src/main/java/com/example/InventoryService.java: |
+    package com.example;
+
+    import org.springframework.stereotype.Service;
+    import org.springframework.transaction.annotation.Transactional;
+    import java.util.List;
+
+    @Service
+    public class InventoryService {
+        @Transactional
+        public void updateStock(List<OrderItem> items) {
+            for (OrderItem item : items) {
+                reduceQuantity(item.getProductId(), item.getQuantity());
+            }
+        }
+
+        private void reduceQuantity(Long productId, int quantity) {
+            System.out.println("Reducing stock for product " + productId);
+        }
+    }
+  src/main/java/com/example/PaymentService.java: |
+    package com.example;
+
+    import org.springframework.stereotype.Service;
+    import org.springframework.transaction.annotation.Transactional;
+
+    @Service
+    public class PaymentService {
+        @Transactional
+        public void processPayment(Long orderId, double amount) {
+            System.out.println("Processing payment for order " + orderId);
+        }
+
+        @Transactional(readOnly = true)
+        public boolean verifyPayment(Long paymentId) {
+            return true;
+        }
+    }
+
+must_include_files:
+  - src/main/java/com/example/OrderService.java
+must_include_content_from:
+  src/main/java/com/example/OrderService.java:
+    - "import org.springframework.transaction.annotation.Propagation;"
+    - "@Transactional("
+must_not_include:
+  # InventoryService.java: callee of OrderService, but not needed for diff review
+  - InventoryService
+  - reduceQuantity
+  # PaymentService.java: same transaction vocabulary, no dependency from OrderService
+  - PaymentService
+  - processPayment
+  - verifyPayment
+must_not_include_files:
+  - src/main/java/com/example/InventoryService.java
+  - src/main/java/com/example/PaymentService.java
+max_fragments: 4
+max_files: 2
+add_garbage_files: false
+skip_garbage_check: true

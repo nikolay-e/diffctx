@@ -1,0 +1,74 @@
+initial:
+  models/user.py: |
+    class User:
+        def __init__(self, name: str, email: str):
+            self.name = name
+            self.email = email
+
+        def greet(self) -> str:
+            return f"Hello, {self.name}"
+  services/auth.py: |
+    from models.user import User
+
+    class AuthService:
+        def login(self, email: str, password: str) -> User:
+            return User(name="test", email=email)
+  garbage_int066_metrics.py: |
+    GARBAGE_INT066_METRICS_MARKER_A = "metrics_garbage_a"
+    class MetricsCollector:
+        GARBAGE_INT066_METRICS_MARKER_B = "metrics_garbage_b"
+        def collect(self):
+            return "GARBAGE_INT066_METRICS_MARKER_C"
+  garbage_int066_cache.py: |
+    GARBAGE_INT066_CACHE_MARKER_A = "cache_garbage_a"
+    def warm_cache():
+        return "GARBAGE_INT066_CACHE_MARKER_B"
+changed:
+  models/user.py: |
+    class User:
+        def __init__(self, name: str, email: str, role: str = "viewer"):
+            self.name = name
+            self.email = email
+            self.role = role
+
+        def greet(self) -> str:
+            return f"Hello, {self.name}"
+
+        def is_admin(self) -> bool:
+            return self.role == "admin"
+  services/auth.py: |
+    from models.user import User
+
+    class AuthService:
+        def login(self, email: str, password: str) -> User:
+            return User(name="test", email=email)
+
+        def check_permission(self, user: User, action: str) -> bool:
+            return user.is_admin() or action == "read"
+  garbage_int066_metrics.py: |
+    GARBAGE_INT066_METRICS_MARKER_A = "metrics_garbage_a"
+    class MetricsCollector:
+        GARBAGE_INT066_METRICS_MARKER_B = "metrics_garbage_b"
+        def collect(self):
+            return "GARBAGE_INT066_METRICS_MARKER_C"
+  garbage_int066_cache.py: |
+    GARBAGE_INT066_CACHE_MARKER_A = "cache_garbage_a"
+    def warm_cache():
+        return "GARBAGE_INT066_CACHE_MARKER_B"
+must_include_files:
+- models/user.py
+- services/auth.py
+must_include_content_from:
+  models/user.py:
+  - 'def is_admin(self) -> bool:'
+  - role
+  services/auth.py:
+  - 'def check_permission(self, user: User, action: str) -> bool:'
+must_not_include:
+- GARBAGE_INT066_METRICS_MARKER_A
+- GARBAGE_INT066_METRICS_MARKER_B
+- GARBAGE_INT066_METRICS_MARKER_C
+- GARBAGE_INT066_CACHE_MARKER_A
+- GARBAGE_INT066_CACHE_MARKER_B
+add_garbage_files: false
+skip_garbage_check: true

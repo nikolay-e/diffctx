@@ -1,0 +1,242 @@
+# Scenario: Extending Point from 2D to 3D and adding a Rectangle struct
+# Changed: src/models.rs — Point gains z field, distance_to updated, Rectangle added
+# Reviewer questions: Are all Point constructors updated for 3D? Does Display show z?
+# Trap files:
+#   - src/color.rs: RGBA color struct — similar "multi-field numeric struct" pattern but unrelated
+#   - src/transform.rs: Affine transform matrices — geometry-adjacent vocabulary but no import edge
+initial:
+  src/lib.rs: |
+    pub mod models;
+    pub mod color;
+    pub mod transform;
+  src/models.rs: |
+    use std::fmt;
+
+    #[derive(Debug, Clone, PartialEq)]
+    pub struct Point {
+        pub x: f64,
+        pub y: f64,
+    }
+
+    impl Point {
+        pub fn new(x: f64, y: f64) -> Self {
+            Self { x, y }
+        }
+
+        pub fn origin() -> Self {
+            Self::new(0.0, 0.0)
+        }
+
+        pub fn distance_to(&self, other: &Point) -> f64 {
+            let dx = self.x - other.x;
+            let dy = self.y - other.y;
+            (dx * dx + dy * dy).sqrt()
+        }
+    }
+
+    impl fmt::Display for Point {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(f, "({}, {})", self.x, self.y)
+        }
+    }
+
+    impl Default for Point {
+        fn default() -> Self {
+            Self::origin()
+        }
+    }
+  src/color.rs: |
+    #[derive(Debug, Clone, PartialEq)]
+    pub struct Color {
+        pub r: u8,
+        pub g: u8,
+        pub b: u8,
+        pub a: u8,
+    }
+
+    impl Color {
+        pub fn new(r: u8, g: u8, b: u8, a: u8) -> Self {
+            Self { r, g, b, a }
+        }
+
+        pub fn white() -> Self {
+            Self::new(255, 255, 255, 255)
+        }
+
+        pub fn black() -> Self {
+            Self::new(0, 0, 0, 255)
+        }
+
+        pub fn to_hex(&self) -> String {
+            format!("#{:02x}{:02x}{:02x}{:02x}", self.r, self.g, self.b, self.a)
+        }
+    }
+  src/transform.rs: |
+    pub struct AffineTransform {
+        matrix: [[f64; 3]; 3],
+    }
+
+    impl AffineTransform {
+        pub fn identity() -> Self {
+            Self {
+                matrix: [
+                    [1.0, 0.0, 0.0],
+                    [0.0, 1.0, 0.0],
+                    [0.0, 0.0, 1.0],
+                ],
+            }
+        }
+
+        pub fn translate(dx: f64, dy: f64) -> Self {
+            let mut t = Self::identity();
+            t.matrix[0][2] = dx;
+            t.matrix[1][2] = dy;
+            t
+        }
+
+        pub fn scale(sx: f64, sy: f64) -> Self {
+            let mut t = Self::identity();
+            t.matrix[0][0] = sx;
+            t.matrix[1][1] = sy;
+            t
+        }
+    }
+changed:
+  src/lib.rs: |
+    pub mod models;
+    pub mod color;
+    pub mod transform;
+  src/models.rs: |
+    use std::fmt;
+
+    #[derive(Debug, Clone, PartialEq)]
+    pub struct Point {
+        pub x: f64,
+        pub y: f64,
+        pub z: f64,
+    }
+
+    impl Point {
+        pub fn new(x: f64, y: f64, z: f64) -> Self {
+            Self { x, y, z }
+        }
+
+        pub fn origin() -> Self {
+            Self::new(0.0, 0.0, 0.0)
+        }
+
+        pub fn distance_to(&self, other: &Point) -> f64 {
+            let dx = self.x - other.x;
+            let dy = self.y - other.y;
+            let dz = self.z - other.z;
+            (dx * dx + dy * dy + dz * dz).sqrt()
+        }
+    }
+
+    impl fmt::Display for Point {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(f, "({}, {}, {})", self.x, self.y, self.z)
+        }
+    }
+
+    impl Default for Point {
+        fn default() -> Self {
+            Self::origin()
+        }
+    }
+
+    #[derive(Debug, Clone, PartialEq)]
+    pub struct Rectangle {
+        pub width: f64,
+        pub height: f64,
+    }
+
+    impl Rectangle {
+        pub fn new(width: f64, height: f64) -> Self {
+            Self { width, height }
+        }
+
+        pub fn area(&self) -> f64 {
+            self.width * self.height
+        }
+
+        pub fn perimeter(&self) -> f64 {
+            2.0 * (self.width + self.height)
+        }
+
+        pub fn is_square(&self) -> bool {
+            (self.width - self.height).abs() < f64::EPSILON
+        }
+    }
+  src/color.rs: |
+    #[derive(Debug, Clone, PartialEq)]
+    pub struct Color {
+        pub r: u8,
+        pub g: u8,
+        pub b: u8,
+        pub a: u8,
+    }
+
+    impl Color {
+        pub fn new(r: u8, g: u8, b: u8, a: u8) -> Self {
+            Self { r, g, b, a }
+        }
+
+        pub fn white() -> Self {
+            Self::new(255, 255, 255, 255)
+        }
+
+        pub fn black() -> Self {
+            Self::new(0, 0, 0, 255)
+        }
+
+        pub fn to_hex(&self) -> String {
+            format!("#{:02x}{:02x}{:02x}{:02x}", self.r, self.g, self.b, self.a)
+        }
+    }
+  src/transform.rs: |
+    pub struct AffineTransform {
+        matrix: [[f64; 3]; 3],
+    }
+
+    impl AffineTransform {
+        pub fn identity() -> Self {
+            Self {
+                matrix: [
+                    [1.0, 0.0, 0.0],
+                    [0.0, 1.0, 0.0],
+                    [0.0, 0.0, 1.0],
+                ],
+            }
+        }
+
+        pub fn translate(dx: f64, dy: f64) -> Self {
+            let mut t = Self::identity();
+            t.matrix[0][2] = dx;
+            t.matrix[1][2] = dy;
+            t
+        }
+
+        pub fn scale(sx: f64, sy: f64) -> Self {
+            let mut t = Self::identity();
+            t.matrix[0][0] = sx;
+            t.matrix[1][1] = sy;
+            t
+        }
+    }
+must_include_files:
+- src/models.rs
+must_include_content:
+- 'pub fn new(x: f64, y: f64, z: f64) -> Self {'
+- let dz = self.z - other.z;
+must_not_include:
+- AffineTransform
+- to_hex
+- color.rs
+- transform.rs
+must_not_include_files:
+- src/color.rs
+- src/transform.rs
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

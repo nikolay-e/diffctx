@@ -1,0 +1,182 @@
+# Scenario: UserProcessor imports implicit conversions and uses them —
+# String-to-User, Int-to-User, and User-to-UserProfile conversions.
+#
+# Diff: src/services/UserProcessor.scala imports Implicits._ and adds methods
+# that rely on implicit conversions: "John" becomes User, 42 becomes User,
+# user becomes UserProfile.
+#
+# Reviewer questions:
+#   Q1: "What implicit conversions exist?" -> src/conversions/Implicits.scala
+#        (UNCHANGED) defines stringToUser, intToUser, userToProfile.
+#   Q2: "What is UserProfile?" -> same file defines case class UserProfile.
+#
+# Trap files (plausible but no dependency on Implicits or UserProcessor):
+#   - src/conversions/JsonCodec.scala: implicit JSON encoders/decoders. Same
+#     "implicits" domain but for serialization, not type conversion.
+#   - src/services/ProfileRenderer.scala: renders UserProfile to strings.
+#     Shares "UserProfile" vocabulary but doesn't use implicit conversions.
+
+initial:
+  src/conversions/Implicits.scala: |
+    package conversions
+
+    case class User(name: String, age: Int)
+    case class UserProfile(displayName: String, isMinor: Boolean)
+
+    object Implicits {
+      implicit def stringToUser(s: String): User = User(s, 0)
+
+      implicit def intToUser(id: Int): User = User(s"user-$id", id)
+
+      implicit def userToProfile(u: User): UserProfile =
+        UserProfile(u.name, u.age < 18)
+    }
+  src/services/UserProcessor.scala: |
+    package services
+
+    import conversions.User
+
+    class UserProcessor {
+      def greet(user: User): String = s"Hello, ${user.name}"
+    }
+  src/conversions/JsonCodec.scala: |
+    package conversions
+
+    trait JsonEncoder[T] {
+      def encode(value: T): String
+    }
+
+    trait JsonDecoder[T] {
+      def decode(json: String): Option[T]
+    }
+
+    object JsonCodec {
+      implicit val stringEncoder: JsonEncoder[String] = (value: String) =>
+        s""""$value""""
+
+      implicit val intEncoder: JsonEncoder[Int] = (value: Int) =>
+        value.toString
+
+      def toJson[T](value: T)(implicit encoder: JsonEncoder[T]): String =
+        encoder.encode(value)
+    }
+  src/services/ProfileRenderer.scala: |
+    package services
+
+    import conversions.UserProfile
+
+    class ProfileRenderer {
+      def render(profile: UserProfile): String = {
+        val status = if (profile.isMinor) "Minor" else "Adult"
+        s"${profile.displayName} ($status)"
+      }
+
+      def renderBadge(profile: UserProfile): String = {
+        s"[${profile.displayName}]"
+      }
+    }
+
+changed:
+  src/conversions/Implicits.scala: |
+    package conversions
+
+    case class User(name: String, age: Int)
+    case class UserProfile(displayName: String, isMinor: Boolean)
+
+    object Implicits {
+      implicit def stringToUser(s: String): User = User(s, 0)
+
+      implicit def intToUser(id: Int): User = User(s"user-$id", id)
+
+      implicit def userToProfile(u: User): UserProfile =
+        UserProfile(u.name, u.age < 18)
+    }
+  src/services/UserProcessor.scala: |
+    package services
+
+    import conversions.{User, Implicits}
+    import Implicits._
+
+    class UserProcessor {
+      def greet(user: User): String = s"Hello, ${user.name}"
+
+      def processString(): String = {
+        val user: User = "John"
+        greet(user)
+      }
+
+      def processId(): String = {
+        val user: User = 42
+        greet(user)
+      }
+
+      def getProfile(user: User): String = {
+        val profile: conversions.UserProfile = user
+        if (profile.isMinor) s"${profile.displayName} is a minor"
+        else s"${profile.displayName} is an adult"
+      }
+    }
+  src/conversions/JsonCodec.scala: |
+    package conversions
+
+    trait JsonEncoder[T] {
+      def encode(value: T): String
+    }
+
+    trait JsonDecoder[T] {
+      def decode(json: String): Option[T]
+    }
+
+    object JsonCodec {
+      implicit val stringEncoder: JsonEncoder[String] = (value: String) =>
+        s""""$value""""
+
+      implicit val intEncoder: JsonEncoder[Int] = (value: Int) =>
+        value.toString
+
+      def toJson[T](value: T)(implicit encoder: JsonEncoder[T]): String =
+        encoder.encode(value)
+    }
+  src/services/ProfileRenderer.scala: |
+    package services
+
+    import conversions.UserProfile
+
+    class ProfileRenderer {
+      def render(profile: UserProfile): String = {
+        val status = if (profile.isMinor) "Minor" else "Adult"
+        s"${profile.displayName} ($status)"
+      }
+
+      def renderBadge(profile: UserProfile): String = {
+        s"[${profile.displayName}]"
+      }
+    }
+
+must_include_files:
+  # Changed: imports implicit conversions and uses them
+  - src/services/UserProcessor.scala
+  # Unchanged but essential: defines the implicit conversions used
+  - src/conversions/Implicits.scala
+must_include_content_from:
+  src/services/UserProcessor.scala:
+    - "import conversions.{User, Implicits}"
+    - "import Implicits._"
+  src/conversions/Implicits.scala:
+    - "implicit def stringToUser"
+    - "implicit def userToProfile"
+must_not_include:
+  # JsonCodec.scala: implicit encoders/decoders, not type conversions
+  - JsonEncoder
+  - JsonDecoder
+  - toJson
+  # ProfileRenderer.scala: renders UserProfile but no implicit conversion usage
+  - ProfileRenderer
+  - renderBadge
+must_not_include_files:
+  - src/conversions/JsonCodec.scala
+  - src/services/ProfileRenderer.scala
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

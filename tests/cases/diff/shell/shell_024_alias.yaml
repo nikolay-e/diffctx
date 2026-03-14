@@ -1,0 +1,246 @@
+# Scenario: interactive.sh sources aliases.sh and uses ll, gs, df aliases.
+# The diff replaces a simple "Aliases loaded" message with actual alias
+# invocations for directory listing, git status, and disk usage.
+#
+# Reviewer questions:
+#   Q1: "What does `ll` expand to?"
+#       -> aliases.sh: alias ll='ls -la'. Reviewer verifies expansion.
+#   Q2: "What does `gs` expand to?"
+#       -> aliases.sh: alias gs='git status'. Reviewer confirms usage.
+#   Q3: "What does `df` expand to?"
+#       -> aliases.sh: alias df='df -h'. Human-readable disk format.
+#
+# Not needed:
+#   - completions.sh: bash completion functions for custom commands.
+#     "Shell enhancement" pattern but no source edge from interactive.sh.
+#   - keybindings.sh: readline key bindings (bind commands).
+#     Interactive shell config but independent setup, not sourced.
+#   - scripts/git_workflow.sh: HARDEST TRAP — sources aliases.sh,
+#     uses gs, gc, gp, gl aliases in a workflow. Same source edge,
+#     same aliases. But a workflow script, not alias definitions.
+#   - scripts/shell_setup.sh: master setup that sources aliases.sh,
+#     completions.sh, and keybindings.sh. Same source edge but
+#     orchestrator, not individual alias definitions.
+#   - lib/git_aliases.sh: git-only aliases (gd, gb, gco, gst).
+#     Same "alias" mechanism, same directory. But different alias set,
+#     not sourced by interactive.sh.
+
+initial:
+  lib/aliases.sh: |
+    #!/bin/bash
+
+    alias ll='ls -la'
+    alias la='ls -A'
+    alias grep='grep --color=auto'
+    alias df='df -h'
+
+    alias gs='git status'
+    alias gc='git commit'
+    alias gp='git push'
+    alias gl='git log --oneline -10'
+  interactive.sh: |
+    #!/bin/bash
+    shopt -s expand_aliases
+    source ./lib/aliases.sh
+
+    echo "Aliases loaded successfully"
+  completions.sh: |
+    #!/bin/bash
+
+    _complete_deploy() {
+        local cur="${COMP_WORDS[COMP_CWORD]}"
+        COMPREPLY=( $(compgen -W "staging production canary" -- "$cur") )
+    }
+    complete -F _complete_deploy deploy
+
+    _complete_service() {
+        local cur="${COMP_WORDS[COMP_CWORD]}"
+        COMPREPLY=( $(compgen -W "start stop restart status" -- "$cur") )
+    }
+    complete -F _complete_service svc
+  keybindings.sh: |
+    #!/bin/bash
+
+    bind '"\e[A": history-search-backward'
+    bind '"\e[B": history-search-forward'
+    bind '"\C-r": reverse-search-history'
+
+    setup_vi_mode() {
+        set -o vi
+        bind -m vi-insert '"\C-l": clear-screen'
+    }
+  scripts/git_workflow.sh: |
+    #!/bin/bash
+    shopt -s expand_aliases
+    source ./lib/aliases.sh
+
+    echo "=== Daily Git Workflow ==="
+    gs
+    echo "---"
+    gl
+
+    read -p "Commit message: " msg
+    gc -m "$msg"
+    gp
+
+    echo "=== Updated Status ==="
+    gs
+  scripts/shell_setup.sh: |
+    #!/bin/bash
+    shopt -s expand_aliases
+
+    echo "Loading shell environment..."
+    source ./lib/aliases.sh
+    source ./completions.sh
+    source ./keybindings.sh
+
+    echo "Shell setup complete"
+    echo "Aliases: ll, la, gs, gc, gp, gl"
+    echo "Completions: deploy, svc"
+    echo "Keybindings: vi-mode ready"
+  lib/git_aliases.sh: |
+    #!/bin/bash
+
+    alias gd='git diff'
+    alias gds='git diff --staged'
+    alias gb='git branch'
+    alias gco='git checkout'
+    alias gst='git stash'
+    alias gsp='git stash pop'
+    alias glog='git log --graph --oneline --all'
+
+changed:
+  lib/aliases.sh: |
+    #!/bin/bash
+
+    alias ll='ls -la'
+    alias la='ls -A'
+    alias grep='grep --color=auto'
+    alias df='df -h'
+
+    alias gs='git status'
+    alias gc='git commit'
+    alias gp='git push'
+    alias gl='git log --oneline -10'
+  interactive.sh: |
+    #!/bin/bash
+    shopt -s expand_aliases
+    source ./lib/aliases.sh
+
+    echo "=== Directory listing ==="
+    ll /tmp
+
+    echo "=== Git status ==="
+    gs
+
+    echo "=== Disk usage ==="
+    df
+  completions.sh: |
+    #!/bin/bash
+
+    _complete_deploy() {
+        local cur="${COMP_WORDS[COMP_CWORD]}"
+        COMPREPLY=( $(compgen -W "staging production canary" -- "$cur") )
+    }
+    complete -F _complete_deploy deploy
+
+    _complete_service() {
+        local cur="${COMP_WORDS[COMP_CWORD]}"
+        COMPREPLY=( $(compgen -W "start stop restart status" -- "$cur") )
+    }
+    complete -F _complete_service svc
+  keybindings.sh: |
+    #!/bin/bash
+
+    bind '"\e[A": history-search-backward'
+    bind '"\e[B": history-search-forward'
+    bind '"\C-r": reverse-search-history'
+
+    setup_vi_mode() {
+        set -o vi
+        bind -m vi-insert '"\C-l": clear-screen'
+    }
+  scripts/git_workflow.sh: |
+    #!/bin/bash
+    shopt -s expand_aliases
+    source ./lib/aliases.sh
+
+    echo "=== Daily Git Workflow ==="
+    gs
+    echo "---"
+    gl
+
+    read -p "Commit message: " msg
+    gc -m "$msg"
+    gp
+
+    echo "=== Updated Status ==="
+    gs
+  scripts/shell_setup.sh: |
+    #!/bin/bash
+    shopt -s expand_aliases
+
+    echo "Loading shell environment..."
+    source ./lib/aliases.sh
+    source ./completions.sh
+    source ./keybindings.sh
+
+    echo "Shell setup complete"
+    echo "Aliases: ll, la, gs, gc, gp, gl"
+    echo "Completions: deploy, svc"
+    echo "Keybindings: vi-mode ready"
+  lib/git_aliases.sh: |
+    #!/bin/bash
+
+    alias gd='git diff'
+    alias gds='git diff --staged'
+    alias gb='git branch'
+    alias gco='git checkout'
+    alias gst='git stash'
+    alias gsp='git stash pop'
+    alias glog='git log --graph --oneline --all'
+
+must_include_files:
+  - lib/aliases.sh
+  - interactive.sh
+
+must_include_content_from:
+  lib/aliases.sh:
+    - "alias ll='ls -la'"
+    - "alias gs='git status'"
+    - "alias df='df -h'"
+  interactive.sh:
+    - "source ./lib/aliases.sh"
+    - "ll /tmp"
+
+must_not_include:
+  # --- completions.sh: bash completion, no source edge ---
+  - _complete_deploy
+  - _complete_service
+  - "compgen -W"
+  # --- keybindings.sh: readline bindings, independent ---
+  - history-search-backward
+  - setup_vi_mode
+  # --- git_workflow.sh: HARDEST TRAP, sources aliases.sh, uses gs/gc/gp ---
+  - "Daily Git Workflow"
+  - "Commit message:"
+  - "Updated Status"
+  # --- shell_setup.sh: orchestrator sourcing aliases.sh ---
+  - "Loading shell environment"
+  - "Shell setup complete"
+  # --- git_aliases.sh: sibling in lib/, same alias mechanism ---
+  - "alias gd="
+  - "alias gco="
+  - "alias glog="
+
+must_not_include_files:
+  - completions.sh
+  - keybindings.sh
+  - scripts/git_workflow.sh
+  - scripts/shell_setup.sh
+  - lib/git_aliases.sh
+
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

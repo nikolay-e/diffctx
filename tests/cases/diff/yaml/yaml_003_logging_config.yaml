@@ -1,0 +1,264 @@
+# Scenario: Logging config changes level to DEBUG and adds syslog handler
+#
+# Diff: logging.yaml changes level INFO->DEBUG, adds syslog to handlers list.
+#
+# Reviewer questions:
+#   Q1: "Does the code support a syslog handler?"
+#       -> src/logger.py (UNCHANGED) uses logging.basicConfig() which only
+#         supports console output. Adding "syslog" to the YAML handler list
+#         requires code changes that don't exist -- the config is inert.
+#   Q2: "Will DEBUG level actually take effect?"
+#       -> logger.py defaults to "INFO" and uses basicConfig(level=...).
+#         If config is loaded, it works. But the function signature shows
+#         the default is still "INFO".
+#   Q3: "How does the config reach setup_logging?"
+#       -> src/app.py (UNCHANGED) calls setup_logging with values from
+#         the config file, showing the actual call site.
+#
+# Not needed:
+#   - config/alerts.yaml: Notification channels (Slack, email) with alert
+#     thresholds. Same operational domain (monitoring), but alerting is
+#     about sending notifications, not application log routing.
+#
+#   - src/audit.py: Records events to database with timestamps. Contains
+#     "logging" import and a logger instance. Direct structural edge: uses
+#     the same logging module. But audit records go to a database, not
+#     the logging handlers being configured.
+#
+#   - src/metrics.py: Prometheus metrics collector that logs metric values.
+#     Uses logger.debug() calls, which will produce more output with DEBUG.
+#     But metrics collection is downstream -- it doesn't control handlers.
+#
+#   - config/monitoring.yaml: Prometheus scrape config with endpoints and
+#     intervals. Same config directory, same monitoring domain. But metric
+#     collection endpoints are unrelated to log handler configuration.
+#
+#   - tests/test_logger.py: Tests setup_logging() function. Direct structural
+#     edge: calls the exact function. But test assertions verify level setting,
+#     not handler support.
+
+initial:
+  logging.yaml: |
+    logging:
+      level: INFO
+      handlers:
+        - console
+        - file
+      format: "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+      file_path: /var/log/app/application.log
+  src/logger.py: |
+    import logging
+
+    def setup_logging(level: str = "INFO", file_path: str = None):
+        logging.basicConfig(
+            level=getattr(logging, level),
+            format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        )
+        logger = logging.getLogger(__name__)
+        if file_path:
+            handler = logging.FileHandler(file_path)
+            handler.setLevel(getattr(logging, level))
+            logger.addHandler(handler)
+        return logger
+
+    def get_logger(name: str) -> logging.Logger:
+        return logging.getLogger(name)
+  src/app.py: |
+    from src.logger import setup_logging
+    from src.config_loader import load_config
+    import yaml
+
+    def create_app():
+        with open("logging.yaml") as f:
+            config = yaml.safe_load(f)
+        log_config = config.get("logging", {})
+        logger = setup_logging(
+            level=log_config.get("level", "INFO"),
+            file_path=log_config.get("file_path"),
+        )
+        logger.info("Application started")
+        return App(logger=logger)
+
+    class App:
+        def __init__(self, logger):
+            self.logger = logger
+  config/alerts.yaml: |
+    alerts:
+      channels:
+        - type: slack
+          webhook_url: https://hooks.slack.com/services/xxx
+        - type: email
+          recipients:
+            - ops@example.com
+      rules:
+        - name: high_error_rate
+          threshold: 100
+          window_minutes: 5
+        - name: slow_response
+          threshold: 2000
+          window_minutes: 10
+  src/audit.py: |
+    import logging
+    from datetime import datetime
+
+    logger = logging.getLogger("audit")
+
+    class AuditLog:
+        def __init__(self, db_connection):
+            self.db = db_connection
+
+        def record(self, user_id: str, action: str, resource: str):
+            logger.info(f"Audit: user={user_id} action={action} resource={resource}")
+            self.db.insert("audit_log", {
+                "user_id": user_id,
+                "action": action,
+                "resource": resource,
+                "timestamp": datetime.utcnow(),
+            })
+
+        def get_recent(self, limit: int = 100):
+            return self.db.query(
+                "SELECT * FROM audit_log ORDER BY timestamp DESC LIMIT %s", [limit]
+            )
+  src/metrics.py: |
+    import logging
+    from collections import defaultdict
+
+    logger = logging.getLogger("metrics")
+
+    class MetricsCollector:
+        def __init__(self):
+            self.counters = defaultdict(int)
+            self.gauges = defaultdict(float)
+
+        def increment(self, name: str, value: int = 1):
+            self.counters[name] += value
+            logger.debug(f"Counter {name}: {self.counters[name]}")
+
+        def set_gauge(self, name: str, value: float):
+            self.gauges[name] = value
+            logger.debug(f"Gauge {name}: {value}")
+
+        def report(self) -> dict:
+            return {"counters": dict(self.counters), "gauges": dict(self.gauges)}
+  config/monitoring.yaml: |
+    monitoring:
+      prometheus:
+        scrape_interval: 15s
+        endpoints:
+          - path: /metrics
+            port: 9090
+      healthcheck:
+        path: /health
+        interval: 30s
+  tests/test_logger.py: |
+    import logging
+    from src.logger import setup_logging, get_logger
+
+    class TestLogger:
+        def test_setup_logging_default_level(self):
+            logger = setup_logging()
+            assert logger.level == logging.INFO
+
+        def test_setup_logging_debug_level(self):
+            logger = setup_logging(level="DEBUG")
+            assert logger.level == logging.DEBUG
+
+        def test_get_logger_returns_named(self):
+            logger = get_logger("test.module")
+            assert logger.name == "test.module"
+
+changed:
+  logging.yaml: |
+    logging:
+      level: DEBUG
+      handlers:
+        - console
+        - file
+        - syslog
+      format: "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+      file_path: /var/log/app/application.log
+  src/logger.py: |
+    import logging
+
+    def setup_logging(level: str = "INFO", file_path: str = None):
+        logging.basicConfig(
+            level=getattr(logging, level),
+            format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        )
+        logger = logging.getLogger(__name__)
+        if file_path:
+            handler = logging.FileHandler(file_path)
+            handler.setLevel(getattr(logging, level))
+            logger.addHandler(handler)
+        return logger
+
+    def get_logger(name: str) -> logging.Logger:
+        return logging.getLogger(name)
+  src/app.py: |
+    from src.logger import setup_logging
+    from src.config_loader import load_config
+    import yaml
+
+    def create_app():
+        with open("logging.yaml") as f:
+            config = yaml.safe_load(f)
+        log_config = config.get("logging", {})
+        logger = setup_logging(
+            level=log_config.get("level", "INFO"),
+            file_path=log_config.get("file_path"),
+        )
+        logger.info("Application started")
+        return App(logger=logger)
+
+    class App:
+        def __init__(self, logger):
+            self.logger = logger
+
+must_include_files:
+  # Q1+Q2: The code uses basicConfig -- no syslog support.
+  # Without seeing logger.py, the reviewer thinks adding "syslog"
+  # to the handler list works. With it, they see it's a dead config.
+  - src/logger.py
+  # Q3: The call site that reads config and passes to setup_logging.
+  # Note handlers list from YAML is never passed -- config gap.
+  - src/app.py
+must_include_content_from:
+  src/logger.py:
+    # basicConfig cannot handle syslog -- reveals the config gap
+    - "logging.basicConfig("
+    # Default still says INFO
+    - 'level: str = "INFO"'
+  src/app.py:
+    # Shows the config-to-code pipeline: handlers list is never used
+    - 'level=log_config.get("level", "INFO")'
+    - "setup_logging("
+must_not_include:
+  # --- alerts.yaml: notification channels, not logging ---
+  - webhook_url
+  - high_error_rate
+  - window_minutes
+  # --- audit.py: database audit records that use logging module ---
+  - AuditLog
+  - get_recent
+  - audit_log
+  # --- metrics.py: uses logger.debug() but is downstream consumer ---
+  - MetricsCollector
+  - increment
+  - set_gauge
+  # --- monitoring.yaml: Prometheus scrape config, not log handlers ---
+  - scrape_interval
+  - prometheus
+  # --- test_logger.py: tests the function but not handler support ---
+  - test_setup_logging_default_level
+  - test_setup_logging_debug_level
+must_not_include_files:
+  - config/alerts.yaml
+  - src/audit.py
+  - src/metrics.py
+  - config/monitoring.yaml
+  - tests/test_logger.py
+max_fragments: 5
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

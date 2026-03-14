@@ -1,0 +1,232 @@
+# Scenario: Web-frontend deployment replicas bumped from 2 to 5 for traffic scaling
+# Changed: k8s/apps/web-frontend/deployment.yaml increases replicas from 2 to 5
+# Reviewer questions: Does the HPA already manage scaling — will static replicas conflict? Are resource limits adequate for 5 pods?
+# Trap 1: k8s/infra/cluster-autoscaler.yaml — cluster autoscaler config, shares scaling vocabulary but no dep
+# Trap 2: k8s/apps/web-frontend/network-policy.yaml — network policy for same app, shares labels but no dep on replicas
+initial:
+  k8s/apps/web-frontend/deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: web-frontend
+      namespace: production
+      labels:
+        app: web-frontend
+        tier: frontend
+    spec:
+      replicas: 2
+      selector:
+        matchLabels:
+          app: web-frontend
+      strategy:
+        type: RollingUpdate
+        rollingUpdate:
+          maxSurge: 1
+          maxUnavailable: 0
+      template:
+        metadata:
+          labels:
+            app: web-frontend
+            tier: frontend
+        spec:
+          containers:
+          - name: nginx
+            image: nginx:1.25-alpine
+            ports:
+            - containerPort: 80
+            resources:
+              requests:
+                memory: "64Mi"
+                cpu: "100m"
+              limits:
+                memory: "128Mi"
+                cpu: "200m"
+            livenessProbe:
+              httpGet:
+                path: /health
+                port: 80
+              initialDelaySeconds: 10
+              periodSeconds: 5
+  k8s/apps/web-frontend/hpa.yaml: |
+    apiVersion: autoscaling/v2
+    kind: HorizontalPodAutoscaler
+    metadata:
+      name: web-frontend-hpa
+      namespace: production
+    spec:
+      scaleTargetRef:
+        apiVersion: apps/v1
+        kind: Deployment
+        name: web-frontend
+      minReplicas: 2
+      maxReplicas: 20
+      metrics:
+      - type: Resource
+        resource:
+          name: cpu
+          target:
+            type: Utilization
+            averageUtilization: 70
+  k8s/infra/cluster-autoscaler.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: cluster-autoscaler
+      namespace: kube-system
+    spec:
+      replicas: 1
+      selector:
+        matchLabels:
+          app: cluster-autoscaler
+      template:
+        spec:
+          containers:
+          - name: autoscaler
+            image: registry.k8s.io/autoscaling/cluster-autoscaler:v1.28.0
+            command:
+            - ./cluster-autoscaler
+            - --cloud-provider=aws
+            - --scale-down-delay-after-add=10m
+            - --scale-down-unneeded-time=5m
+  k8s/apps/web-frontend/network-policy.yaml: |
+    apiVersion: networking.k8s.io/v1
+    kind: NetworkPolicy
+    metadata:
+      name: web-frontend-netpol
+      namespace: production
+    spec:
+      podSelector:
+        matchLabels:
+          app: web-frontend
+      policyTypes:
+      - Ingress
+      ingress:
+      - from:
+        - namespaceSelector:
+            matchLabels:
+              name: ingress-nginx
+        ports:
+        - port: 80
+          protocol: TCP
+changed:
+  k8s/apps/web-frontend/deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: web-frontend
+      namespace: production
+      labels:
+        app: web-frontend
+        tier: frontend
+    spec:
+      replicas: 5
+      selector:
+        matchLabels:
+          app: web-frontend
+      strategy:
+        type: RollingUpdate
+        rollingUpdate:
+          maxSurge: 1
+          maxUnavailable: 0
+      template:
+        metadata:
+          labels:
+            app: web-frontend
+            tier: frontend
+        spec:
+          containers:
+          - name: nginx
+            image: nginx:1.25-alpine
+            ports:
+            - containerPort: 80
+            resources:
+              requests:
+                memory: "64Mi"
+                cpu: "100m"
+              limits:
+                memory: "128Mi"
+                cpu: "200m"
+            livenessProbe:
+              httpGet:
+                path: /health
+                port: 80
+              initialDelaySeconds: 10
+              periodSeconds: 5
+  k8s/apps/web-frontend/hpa.yaml: |
+    apiVersion: autoscaling/v2
+    kind: HorizontalPodAutoscaler
+    metadata:
+      name: web-frontend-hpa
+      namespace: production
+    spec:
+      scaleTargetRef:
+        apiVersion: apps/v1
+        kind: Deployment
+        name: web-frontend
+      minReplicas: 2
+      maxReplicas: 20
+      metrics:
+      - type: Resource
+        resource:
+          name: cpu
+          target:
+            type: Utilization
+            averageUtilization: 70
+  k8s/infra/cluster-autoscaler.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: cluster-autoscaler
+      namespace: kube-system
+    spec:
+      replicas: 1
+      selector:
+        matchLabels:
+          app: cluster-autoscaler
+      template:
+        spec:
+          containers:
+          - name: autoscaler
+            image: registry.k8s.io/autoscaling/cluster-autoscaler:v1.28.0
+            command:
+            - ./cluster-autoscaler
+            - --cloud-provider=aws
+            - --scale-down-delay-after-add=10m
+            - --scale-down-unneeded-time=5m
+  k8s/apps/web-frontend/network-policy.yaml: |
+    apiVersion: networking.k8s.io/v1
+    kind: NetworkPolicy
+    metadata:
+      name: web-frontend-netpol
+      namespace: production
+    spec:
+      podSelector:
+        matchLabels:
+          app: web-frontend
+      policyTypes:
+      - Ingress
+      ingress:
+      - from:
+        - namespaceSelector:
+            matchLabels:
+              name: ingress-nginx
+        ports:
+        - port: 80
+          protocol: TCP
+must_include_files:
+- k8s/apps/web-frontend/deployment.yaml
+must_include_content_from:
+  k8s/apps/web-frontend/deployment.yaml:
+  - 'replicas: 5'
+must_not_include:
+- cluster-autoscaler
+- scale-down-delay
+- web-frontend-netpol
+- ingress-nginx
+must_not_include_files:
+- k8s/infra/cluster-autoscaler.yaml
+- k8s/apps/web-frontend/network-policy.yaml
+add_garbage_files: false
+skip_garbage_check: true
+max_fragments: 8
+max_files: 5

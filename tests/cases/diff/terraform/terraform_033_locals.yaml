@@ -1,0 +1,86 @@
+# Scenario: Extracting hardcoded tags into a locals block and using
+#   merge() to apply common_tags across resources.
+# Reviewer questions:
+#   1. What variable does Environment use? (var.environment -- not defined in this diff)
+#   2. What other resources could adopt common_tags? (only main.tf instance for now)
+# Traps:
+#   - monitoring/tags.tf: similar locals block but for monitoring resources (same pattern)
+#   - networking/vpc.tf: uses tags but for a different resource type (VPC, not instance)
+
+initial:
+  main.tf: |
+    resource "aws_instance" "web" {
+      tags = {
+        Name = "web-server"
+        Environment = "prod"
+      }
+    }
+  monitoring/tags.tf: |
+    locals {
+      monitoring_tags = {
+        Project     = "monitoring"
+        Environment = var.environment
+        ManagedBy   = "terraform"
+      }
+    }
+
+    resource "aws_instance" "grafana" {
+      ami  = "ami-99999"
+      tags = local.monitoring_tags
+    }
+  networking/vpc.tf: |
+    resource "aws_vpc" "secondary" {
+      cidr_block           = "172.16.0.0/16"
+      enable_dns_hostnames = true
+      enable_dns_support   = true
+
+      tags = {
+        Name = "secondary-vpc"
+        Team = "platform"
+      }
+    }
+
+changed:
+  main.tf: |
+    locals {
+      common_tags = {
+        Project     = "myapp"
+        Environment = var.environment
+        ManagedBy   = "terraform"
+      }
+    }
+
+    resource "aws_instance" "web" {
+      tags = merge(local.common_tags, {
+        Name = "web-server"
+      })
+    }
+
+# The diff is self-contained: main.tf introduces locals and updates the
+# instance to use merge(). No unchanged files are strictly required.
+# Assert on changed file content.
+must_include_files:
+  - main.tf
+
+must_include_content:
+  - common_tags = {
+  - merge(local.common_tags, {
+  - ManagedBy   = "terraform"
+
+must_not_include:
+  # Monitoring locals have similar tag pattern but for monitoring stack
+  - monitoring_tags
+  - Project     = "monitoring"
+  - ami-99999
+  # VPC uses tags but is a different resource/concern
+  - secondary-vpc
+  - Team = "platform"
+
+must_not_include_files:
+  - monitoring/tags.tf
+  - networking/vpc.tf
+
+max_fragments: 3
+max_files: 1
+add_garbage_files: false
+skip_garbage_check: true

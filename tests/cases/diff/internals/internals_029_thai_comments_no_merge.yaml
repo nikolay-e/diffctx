@@ -1,0 +1,13 @@
+initial:
+  thai_comments.py: |
+    x = 0
+changed:
+  thai_comments.py: |
+    # นี่คือความคิดเห็น
+    result = calculate(value)
+must_include_files:
+- thai_comments.py
+must_include_content:
+- result = calculate(value)
+add_garbage_files: false
+skip_garbage_check: true

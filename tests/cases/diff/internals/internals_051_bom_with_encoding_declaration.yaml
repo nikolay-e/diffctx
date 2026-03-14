@@ -1,0 +1,16 @@
+initial:
+  bom_encoding.py: |
+    pass
+changed:
+  bom_encoding.py: |
+    # -*- coding: utf-8 -*-
+    import sys
+
+    def check():
+        return sys.version
+must_include_files:
+- bom_encoding.py
+must_include_content:
+- return sys.version
+add_garbage_files: false
+skip_garbage_check: true

@@ -1,0 +1,112 @@
+# Scenario: Test uses jest.spyOn on an imported logger — reviewer needs both modules.
+#
+# Diff: app.test.ts is written from scratch. It imports processData from app.ts and
+# logger from logger.ts, then uses jest.spyOn(logger, 'log') to verify processData
+# logs a message when called.
+#
+# Reviewer questions:
+#   Q1: "What does processData do with the logger?"
+#       -> app.ts (UNCHANGED) calls logger.log(`Processing: ${data}`) and returns
+#          data.toUpperCase(). The spy assertion 'Processing: test' matches this.
+#   Q2: "Does the logger object have a 'log' method to spy on?"
+#       -> logger.ts (UNCHANGED) exports { log, error }. The spy targets 'log'.
+#
+# Not needed:
+#   - formatter.ts: string formatting utility in the same directory.
+#     processData does its own toUpperCase, doesn't use formatter.
+#   - error-handler.ts: uses logger.error, but that's a different method.
+#     Not relevant to the 'log' spy assertion.
+
+initial:
+  logger.ts: |
+    export const logger = {
+        log: (message: string) => console.log(message),
+        error: (message: string) => console.error(message),
+    };
+  app.ts: |
+    import { logger } from './logger';
+
+    export function processData(data: string) {
+        logger.log(`Processing: ${data}`);
+        return data.toUpperCase();
+    }
+  app.test.ts: |
+    console.log('initial');
+  formatter.ts: |
+    export function formatCurrency(amount: number, currency: string = 'USD'): string {
+        return new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(amount);
+    }
+
+    export function formatDate(date: Date): string {
+        return date.toISOString().split('T')[0];
+    }
+  error-handler.ts: |
+    import { logger } from './logger';
+
+    export function handleError(error: Error): void {
+        logger.error(`Unhandled: ${error.message}`);
+    }
+
+changed:
+  logger.ts: |
+    export const logger = {
+        log: (message: string) => console.log(message),
+        error: (message: string) => console.error(message),
+    };
+  app.ts: |
+    import { logger } from './logger';
+
+    export function processData(data: string) {
+        logger.log(`Processing: ${data}`);
+        return data.toUpperCase();
+    }
+  app.test.ts: |
+    import { processData } from './app';
+    import { logger } from './logger';
+
+    describe('App', () => {
+        it('should log when processing', () => {
+            const spy = jest.spyOn(logger, 'log');
+            processData('test');
+            expect(spy).toHaveBeenCalledWith('Processing: test');
+            spy.mockRestore();
+        });
+    });
+  formatter.ts: |
+    export function formatCurrency(amount: number, currency: string = 'USD'): string {
+        return new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(amount);
+    }
+
+    export function formatDate(date: Date): string {
+        return date.toISOString().split('T')[0];
+    }
+  error-handler.ts: |
+    import { logger } from './logger';
+
+    export function handleError(error: Error): void {
+        logger.error(`Unhandled: ${error.message}`);
+    }
+
+must_include_files:
+  # Q1: app.ts shows what processData does with the logger
+  - app.ts
+  # Q2: logger.ts defines the logger object the spy targets
+  - logger.ts
+must_include_content_from:
+  app.ts:
+    - "logger.log(`Processing: ${data}`)"
+  logger.ts:
+    - "log: (message: string) => console.log(message)"
+must_not_include:
+  # formatter.ts: unrelated formatting utility, not used by processData
+  - formatCurrency
+  - formatDate
+  # error-handler.ts: uses logger.error, but the test spies on logger.log
+  - handleError
+must_not_include_files:
+  - formatter.ts
+  - error-handler.ts
+max_fragments: 6
+max_files: 4
+add_garbage_files: false
+skip_garbage_check: true

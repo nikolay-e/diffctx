@@ -1,0 +1,269 @@
+# Test 001: UserController adds methods that instantiate User model
+#           — reviewer needs User class to understand constructor signature
+#
+# Scenario: UserController gains store() and show() methods that create User
+# instances via `new User(...)`. The diff adds `use App\Models\User` and two
+# new methods calling User's constructor and getters.
+#
+# Reviewer questions:
+#   Q1: "What parameters does User's constructor accept?"
+#       -> User.__construct takes (string $name, string $email, int $age).
+#       Reviewer needs this to verify the store() and show() calls are correct.
+#   Q2: "What does isAdult() return — is the string formatting in show() right?"
+#       -> isAdult() returns bool based on age >= 18, used in ternary.
+#
+# Trap files (plausible but unrelated):
+#   - src/Models/Product.php: another model class in same namespace with similar
+#     constructor pattern, but never referenced by UserController.
+#   - src/Controllers/OrderController.php: sibling controller that also has
+#     store/show methods, but operates on a different model entirely.
+#   - src/Validators/UserValidator.php: shares "User" in name and validates
+#     email/name fields, but is not imported or used by UserController.
+
+initial:
+  src/Models/User.php: |
+    <?php
+    namespace App\Models;
+
+    class User {
+        private string $name;
+        private string $email;
+        private int $age;
+
+        public function __construct(string $name, string $email, int $age) {
+            $this->name = $name;
+            $this->email = $email;
+            $this->age = $age;
+        }
+
+        public function getName(): string {
+            return $this->name;
+        }
+
+        public function getEmail(): string {
+            return $this->email;
+        }
+
+        public function getAge(): int {
+            return $this->age;
+        }
+
+        public function isAdult(): bool {
+            return $this->age >= 18;
+        }
+    }
+  src/Controllers/UserController.php: |
+    <?php
+    namespace App\Controllers;
+
+    class UserController {
+        public function index(): array {
+            return ['status' => 'ok'];
+        }
+    }
+  src/Models/Product.php: |
+    <?php
+    namespace App\Models;
+
+    class Product {
+        private string $name;
+        private float $price;
+        private string $sku;
+
+        public function __construct(string $name, float $price, string $sku) {
+            $this->name = $name;
+            $this->price = $price;
+            $this->sku = $sku;
+        }
+
+        public function getName(): string {
+            return $this->name;
+        }
+
+        public function getPrice(): float {
+            return $this->price;
+        }
+
+        public function getSku(): string {
+            return $this->sku;
+        }
+    }
+  src/Controllers/OrderController.php: |
+    <?php
+    namespace App\Controllers;
+
+    use App\Models\Product;
+
+    class OrderController {
+        public function store(array $items): array {
+            return ['order' => $items, 'status' => 'created'];
+        }
+
+        public function show(int $orderId): array {
+            return ['order_id' => $orderId, 'status' => 'found'];
+        }
+    }
+  src/Validators/UserValidator.php: |
+    <?php
+    namespace App\Validators;
+
+    class UserValidator {
+        public function validateEmail(string $email): bool {
+            return filter_var($email, FILTER_VALIDATE_EMAIL) !== false;
+        }
+
+        public function validateName(string $name): bool {
+            return strlen($name) >= 2 && strlen($name) <= 100;
+        }
+
+        public function validateAge(int $age): bool {
+            return $age >= 0 && $age <= 150;
+        }
+    }
+
+changed:
+  src/Models/User.php: |
+    <?php
+    namespace App\Models;
+
+    class User {
+        private string $name;
+        private string $email;
+        private int $age;
+
+        public function __construct(string $name, string $email, int $age) {
+            $this->name = $name;
+            $this->email = $email;
+            $this->age = $age;
+        }
+
+        public function getName(): string {
+            return $this->name;
+        }
+
+        public function getEmail(): string {
+            return $this->email;
+        }
+
+        public function getAge(): int {
+            return $this->age;
+        }
+
+        public function isAdult(): bool {
+            return $this->age >= 18;
+        }
+    }
+  src/Controllers/UserController.php: |
+    <?php
+    namespace App\Controllers;
+
+    use App\Models\User;
+
+    class UserController {
+        public function index(): array {
+            return ['status' => 'ok'];
+        }
+
+        public function store(array $data): User {
+            $user = new User($data['name'], $data['email'], $data['age']);
+            return $user;
+        }
+
+        public function show(string $name): string {
+            $user = new User($name, 'unknown@example.com', 25);
+            return $user->getName() . ' (adult: ' . ($user->isAdult() ? 'yes' : 'no') . ')';
+        }
+    }
+  src/Models/Product.php: |
+    <?php
+    namespace App\Models;
+
+    class Product {
+        private string $name;
+        private float $price;
+        private string $sku;
+
+        public function __construct(string $name, float $price, string $sku) {
+            $this->name = $name;
+            $this->price = $price;
+            $this->sku = $sku;
+        }
+
+        public function getName(): string {
+            return $this->name;
+        }
+
+        public function getPrice(): float {
+            return $this->price;
+        }
+
+        public function getSku(): string {
+            return $this->sku;
+        }
+    }
+  src/Controllers/OrderController.php: |
+    <?php
+    namespace App\Controllers;
+
+    use App\Models\Product;
+
+    class OrderController {
+        public function store(array $items): array {
+            return ['order' => $items, 'status' => 'created'];
+        }
+
+        public function show(int $orderId): array {
+            return ['order_id' => $orderId, 'status' => 'found'];
+        }
+    }
+  src/Validators/UserValidator.php: |
+    <?php
+    namespace App\Validators;
+
+    class UserValidator {
+        public function validateEmail(string $email): bool {
+            return filter_var($email, FILTER_VALIDATE_EMAIL) !== false;
+        }
+
+        public function validateName(string $name): bool {
+            return strlen($name) >= 2 && strlen($name) <= 100;
+        }
+
+        public function validateAge(int $age): bool {
+            return $age >= 0 && $age <= 150;
+        }
+    }
+
+must_include_files:
+  - src/Controllers/UserController.php
+  # Q1: Reviewer needs User constructor signature to verify store()/show() calls
+  - src/Models/User.php
+
+must_include_content_from:
+  src/Controllers/UserController.php:
+    - "new User($data['name'], $data['email'], $data['age'])"
+    - "use App\\Models\\User"
+  src/Models/User.php:
+    - "public function __construct(string $name, string $email, int $age)"
+
+must_not_include:
+  # --- Product.php: sibling model, similar pattern but not referenced ---
+  - "class Product"
+  - "private float $price"
+  - "getSku"
+  # --- OrderController.php: sibling controller with store/show but different model ---
+  - "class OrderController"
+  - "order_id"
+  # --- UserValidator.php: shares "User" name but not imported ---
+  - "class UserValidator"
+  - "FILTER_VALIDATE_EMAIL"
+
+must_not_include_files:
+  - src/Models/Product.php
+  - src/Controllers/OrderController.php
+  - src/Validators/UserValidator.php
+
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

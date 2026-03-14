@@ -1,0 +1,155 @@
+# Test 034: CacheManager switches _serialize/_deserialize from str to json
+#           — reviewer needs public get/set methods that call the private ones
+#
+# Scenario: _serialize changes from `str(value)` to `json.dumps(value)`,
+# _deserialize from `data` passthrough to `json.loads(data)`. The public
+# get() and set() methods call these private methods unchanged.
+#
+# Reviewer questions:
+#   Q1: "Which public methods are affected by the serialization change?"
+#       -> get() calls _deserialize(), set() calls _serialize().
+#   Q2: "Will existing cached data break with the new format?"
+#       -> Old str() data won't json.loads() correctly — potential issue.
+#
+# Trap files (plausible but unrelated):
+#   - session_store.py: another cache-like class with get/set and
+#     serialization but uses pickle, not json.
+#   - json_utils.py: json helper functions (dumps/loads wrappers)
+#     but not imported by CacheManager.
+
+initial:
+  cache.py: |
+    class CacheManager:
+        def __init__(self):
+            self._data = {}
+
+        def _serialize(self, value):
+            return str(value)
+
+        def _deserialize(self, data):
+            return data
+
+        def get(self, key):
+            raw = self._data.get(key)
+            if raw:
+                return self._deserialize(raw)
+            return None
+
+        def set(self, key, value):
+            self._data[key] = self._serialize(value)
+  session_store.py: |
+    import pickle
+
+    class SessionStore:
+        def __init__(self):
+            self._sessions = {}
+
+        def _serialize(self, data):
+            return pickle.dumps(data)
+
+        def _deserialize(self, raw):
+            return pickle.loads(raw)
+
+        def get(self, session_id):
+            raw = self._sessions.get(session_id)
+            return self._deserialize(raw) if raw else None
+
+        def set(self, session_id, data):
+            self._sessions[session_id] = self._serialize(data)
+  json_utils.py: |
+    import json
+
+    def safe_dumps(data, default=None):
+        try:
+            return json.dumps(data, default=default)
+        except TypeError:
+            return str(data)
+
+    def safe_loads(text):
+        try:
+            return json.loads(text)
+        except (json.JSONDecodeError, TypeError):
+            return None
+
+changed:
+  cache.py: |
+    import json
+
+    class CacheManager:
+        def __init__(self):
+            self._data = {}
+
+        def _serialize(self, value):
+            return json.dumps(value)
+
+        def _deserialize(self, data):
+            return json.loads(data)
+
+        def get(self, key):
+            raw = self._data.get(key)
+            if raw:
+                return self._deserialize(raw)
+            return None
+
+        def set(self, key, value):
+            self._data[key] = self._serialize(value)
+  session_store.py: |
+    import pickle
+
+    class SessionStore:
+        def __init__(self):
+            self._sessions = {}
+
+        def _serialize(self, data):
+            return pickle.dumps(data)
+
+        def _deserialize(self, raw):
+            return pickle.loads(raw)
+
+        def get(self, session_id):
+            raw = self._sessions.get(session_id)
+            return self._deserialize(raw) if raw else None
+
+        def set(self, session_id, data):
+            self._sessions[session_id] = self._serialize(data)
+  json_utils.py: |
+    import json
+
+    def safe_dumps(data, default=None):
+        try:
+            return json.dumps(data, default=default)
+        except TypeError:
+            return str(data)
+
+    def safe_loads(text):
+        try:
+            return json.loads(text)
+        except (json.JSONDecodeError, TypeError):
+            return None
+
+must_include_files:
+  - cache.py
+
+must_include_content_from:
+  cache.py:
+    - "return json.dumps(value)"
+    - "return json.loads(data)"
+
+must_not_include:
+  # --- session_store.py: similar get/set/_serialize pattern but uses pickle ---
+  - "class SessionStore"
+  - "pickle.dumps"
+  - "pickle.loads"
+  # --- json_utils.py: json helpers but not imported by CacheManager ---
+  - "safe_dumps"
+  - "safe_loads"
+  - "JSONDecodeError"
+
+must_not_include_files:
+  - session_store.py
+  - json_utils.py
+
+max_fragments: 4
+max_files: 1
+add_garbage_files: false
+skip_garbage_check: true

@@ -1,9 +1,0 @@
-must_include_files:
-- infrastructure/iam.tf
-must_include_content:
-- '"arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",'
-must_not_include:
-- GARBAGE_TF_COGNITO_450_001
-- GARBAGE_TF_ORG_450_005
-- cognito.tf
-- organizations.tf

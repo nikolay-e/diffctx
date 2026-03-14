@@ -1,0 +1,222 @@
+# Test: UsersController calls User class methods (find/all/where/create)
+#
+# Scenario: app/controllers/users_controller.rb is rewritten to require User
+# and call User.find, User.all, User.where, User.create. User (UNCHANGED)
+# defines these class methods.
+#
+# Reviewer questions:
+#   Q1: "What does User.find return? What's the data shape?"
+#       -> app/models/user.rb (UNCHANGED) defines self.find, self.all, etc.
+#   Q2: "What fields does User.create accept?"
+#       -> User.create(**attrs) delegates to new(**attrs), reviewer needs
+#          the initialize signature.
+#
+# Trap files (plausible but unrelated):
+#   - lib/user_serializer.rb: serializes User to JSON/API format — same domain
+#     but controller doesn't use a serializer yet.
+#   - app/services/notification_service.rb: sends notifications to users — same
+#     "user" domain but no dependency from controller.
+
+initial:
+  app/models/user.rb: |
+    class User
+      attr_reader :id, :name, :email, :role
+
+      def self.find(id)
+        new(id: id, name: "User #{id}")
+      end
+
+      def self.all
+        @records ||= []
+      end
+
+      def self.where(role:)
+        all.select { |u| u.role == role }
+      end
+
+      def self.create(attrs)
+        user = new(**attrs)
+        all << user
+        user
+      end
+
+      def initialize(id: nil, name: nil, email: nil, role: 'user')
+        @id = id
+        @name = name
+        @email = email
+        @role = role
+      end
+    end
+  app/controllers/users_controller.rb: |
+    class UsersController
+      def index
+        "list"
+      end
+    end
+  lib/user_serializer.rb: |
+    class UserSerializer
+      def initialize(user)
+        @user = user
+      end
+
+      def to_json
+        {
+          id: @user.id,
+          name: @user.name,
+          email: @user.email,
+          role: @user.role
+        }.to_json
+      end
+
+      def to_api_response
+        { data: { type: 'user', attributes: to_hash } }
+      end
+
+      private
+
+      def to_hash
+        { id: @user.id, name: @user.name, email: @user.email }
+      end
+    end
+  app/services/notification_service.rb: |
+    class NotificationService
+      def initialize(mailer:, sms_gateway: nil)
+        @mailer = mailer
+        @sms_gateway = sms_gateway
+      end
+
+      def notify_user(user_id, message, channel: :email)
+        case channel
+        when :email
+          @mailer.send_email(user_id, message)
+        when :sms
+          @sms_gateway&.send_sms(user_id, message)
+        end
+      end
+
+      def broadcast(user_ids, message)
+        user_ids.each { |uid| notify_user(uid, message) }
+      end
+    end
+changed:
+  app/models/user.rb: |
+    class User
+      attr_reader :id, :name, :email, :role
+
+      def self.find(id)
+        new(id: id, name: "User #{id}")
+      end
+
+      def self.all
+        @records ||= []
+      end
+
+      def self.where(role:)
+        all.select { |u| u.role == role }
+      end
+
+      def self.create(attrs)
+        user = new(**attrs)
+        all << user
+        user
+      end
+
+      def initialize(id: nil, name: nil, email: nil, role: 'user')
+        @id = id
+        @name = name
+        @email = email
+        @role = role
+      end
+    end
+  app/controllers/users_controller.rb: |
+    require_relative '../models/user'
+
+    class UsersController
+      def show(id)
+        @user = User.find(id)
+      end
+
+      def index
+        @users = User.all
+      end
+
+      def admins
+        @admins = User.where(role: 'admin')
+      end
+
+      def create(params)
+        @user = User.create(params)
+        @user
+      end
+    end
+  lib/user_serializer.rb: |
+    class UserSerializer
+      def initialize(user)
+        @user = user
+      end
+
+      def to_json
+        {
+          id: @user.id,
+          name: @user.name,
+          email: @user.email,
+          role: @user.role
+        }.to_json
+      end
+
+      def to_api_response
+        { data: { type: 'user', attributes: to_hash } }
+      end
+
+      private
+
+      def to_hash
+        { id: @user.id, name: @user.name, email: @user.email }
+      end
+    end
+  app/services/notification_service.rb: |
+    class NotificationService
+      def initialize(mailer:, sms_gateway: nil)
+        @mailer = mailer
+        @sms_gateway = sms_gateway
+      end
+
+      def notify_user(user_id, message, channel: :email)
+        case channel
+        when :email
+          @mailer.send_email(user_id, message)
+        when :sms
+          @sms_gateway&.send_sms(user_id, message)
+        end
+      end
+
+      def broadcast(user_ids, message)
+        user_ids.each { |uid| notify_user(uid, message) }
+      end
+    end
+must_include_files:
+  - app/controllers/users_controller.rb
+  # Q1/Q2: User defines the class methods the controller calls
+  - app/models/user.rb
+must_include_content_from:
+  app/controllers/users_controller.rb:
+    - "@user = User.find(id)"
+    - "@user = User.create(params)"
+  app/models/user.rb:
+    - "def self.find(id)"
+    - "def self.create(attrs)"
+must_not_include:
+  # lib/user_serializer.rb: serialization — controller doesn't serialize yet
+  - UserSerializer
+  - to_api_response
+  # app/services/notification_service.rb: notifications — no dependency
+  - NotificationService
+  - notify_user
+  - broadcast
+must_not_include_files:
+  - lib/user_serializer.rb
+  - app/services/notification_service.rb
+max_fragments: 5
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

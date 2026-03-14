@@ -1,0 +1,163 @@
+# Scenario: Kotlin UserService adds a suspend function getUserWithRetry
+# that wraps repository calls with exponential backoff.
+#
+# Diff: UserService.kt imports kotlinx.coroutines.delay and adds
+# getUserWithRetry(id, retries) with a repeat/try/catch/delay pattern.
+#
+# Reviewer questions:
+#   Q1: "What is the existing suspend API?"
+#       -> UserService.kt (CHANGED) already has suspend fun getUser(id).
+#   Q2: "How does the controller call the service?"
+#       -> UserController.kt (UNCHANGED) uses runBlocking { service.getUser(id) }.
+#
+# Not needed:
+#   - src/main/kotlin/com/example/UserCache.kt: in-memory cache for users.
+#     Shares User/repository vocabulary but no dependency on UserService.
+#   - src/main/kotlin/com/example/RetryPolicy.kt: generic retry configuration.
+#     Retry-related naming but UserService uses inline retry, not this class.
+
+initial:
+  src/main/kotlin/com/example/UserService.kt: |
+    package com.example
+
+    class UserService(private val repository: UserRepository) {
+        suspend fun getUser(id: Long): User? {
+            return repository.findById(id)
+        }
+    }
+  src/main/kotlin/com/example/UserController.kt: |
+    package com.example
+
+    import kotlinx.coroutines.runBlocking
+
+    class UserController(private val service: UserService) {
+        fun getUser(id: Long): User? = runBlocking {
+            service.getUser(id)
+        }
+    }
+  src/main/kotlin/com/example/UserCache.kt: |
+    package com.example
+
+    import java.util.concurrent.ConcurrentHashMap
+
+    class UserCache {
+        private val cache = ConcurrentHashMap<Long, User>()
+
+        fun get(id: Long): User? = cache[id]
+
+        fun put(user: User) {
+            cache[user.id] = user
+        }
+
+        fun invalidate(id: Long) {
+            cache.remove(id)
+        }
+
+        fun clear() {
+            cache.clear()
+        }
+    }
+  src/main/kotlin/com/example/RetryPolicy.kt: |
+    package com.example
+
+    data class RetryPolicy(
+        val maxAttempts: Int = 3,
+        val initialDelayMs: Long = 1000,
+        val backoffMultiplier: Double = 2.0,
+        val maxDelayMs: Long = 30000
+    ) {
+        fun delayForAttempt(attempt: Int): Long {
+            val delay = (initialDelayMs * Math.pow(backoffMultiplier, attempt.toDouble())).toLong()
+            return minOf(delay, maxDelayMs)
+        }
+    }
+
+changed:
+  src/main/kotlin/com/example/UserService.kt: |
+    package com.example
+
+    import kotlinx.coroutines.delay
+
+    class UserService(private val repository: UserRepository) {
+        suspend fun getUser(id: Long): User? {
+            return repository.findById(id)
+        }
+
+        suspend fun getUserWithRetry(id: Long, retries: Int = 3): User? {
+            repeat(retries) { attempt ->
+                try {
+                    return repository.findById(id)
+                } catch (e: Exception) {
+                    delay(1000L * (attempt + 1))
+                }
+            }
+            return null
+        }
+    }
+  src/main/kotlin/com/example/UserController.kt: |
+    package com.example
+
+    import kotlinx.coroutines.runBlocking
+
+    class UserController(private val service: UserService) {
+        fun getUser(id: Long): User? = runBlocking {
+            service.getUser(id)
+        }
+    }
+  src/main/kotlin/com/example/UserCache.kt: |
+    package com.example
+
+    import java.util.concurrent.ConcurrentHashMap
+
+    class UserCache {
+        private val cache = ConcurrentHashMap<Long, User>()
+
+        fun get(id: Long): User? = cache[id]
+
+        fun put(user: User) {
+            cache[user.id] = user
+        }
+
+        fun invalidate(id: Long) {
+            cache.remove(id)
+        }
+
+        fun clear() {
+            cache.clear()
+        }
+    }
+  src/main/kotlin/com/example/RetryPolicy.kt: |
+    package com.example
+
+    data class RetryPolicy(
+        val maxAttempts: Int = 3,
+        val initialDelayMs: Long = 1000,
+        val backoffMultiplier: Double = 2.0,
+        val maxDelayMs: Long = 30000
+    ) {
+        fun delayForAttempt(attempt: Int): Long {
+            val delay = (initialDelayMs * Math.pow(backoffMultiplier, attempt.toDouble())).toLong()
+            return minOf(delay, maxDelayMs)
+        }
+    }
+
+must_include_files:
+  - src/main/kotlin/com/example/UserService.kt
+must_include_content_from:
+  src/main/kotlin/com/example/UserService.kt:
+    - "import kotlinx.coroutines.delay"
+must_not_include:
+  # UserCache.kt: caching layer, no dependency on UserService retry changes
+  - UserCache
+  - invalidate
+  # RetryPolicy.kt: generic retry config, not used by UserService inline retry
+  - RetryPolicy
+  - backoffMultiplier
+  - delayForAttempt
+must_not_include_files:
+  - src/main/kotlin/com/example/UserCache.kt
+  - src/main/kotlin/com/example/RetryPolicy.kt
+max_fragments: 4
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

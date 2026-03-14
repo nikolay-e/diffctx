@@ -1,0 +1,150 @@
+initial:
+  shared.py: |
+    SHARED_VALUE = 100
+
+    def get_shared():
+        return SHARED_VALUE
+  user_a.py: |
+    from shared import get_shared
+
+    def use_shared_a():
+        return get_shared() + 1
+  user_b.py: |
+    from shared import get_shared
+
+    def use_shared_b():
+        return get_shared() + 2
+
+  # --- Tricky garbage: also defines SHARED_VALUE and get_shared but no import ---
+  garbage_alt_shared.py: |
+    GARBAGE_PPR_017_ALT_SHARED_A = "alt_shared"
+    GARBAGE_PPR_017_ALT_VALUE_B = 100
+
+    SHARED_VALUE = 999
+
+    def get_shared():
+        return SHARED_VALUE
+
+    class SharedManager:
+        GARBAGE_PPR_017_ALT_MGR_C = True
+
+        def reset(self):
+            pass
+
+  # --- Tricky garbage: similar pattern of constant + getter ---
+  garbage_global_state.py: |
+    GARBAGE_PPR_017_STATE_NAME_D = "global_state"
+    GARBAGE_PPR_017_STATE_VER_E = "1.0"
+
+    GLOBAL_VALUE = 500
+
+    def get_global():
+        return GLOBAL_VALUE
+
+    class StateHolder:
+        GARBAGE_PPR_017_STATE_HOLD_F = True
+
+        def snapshot(self):
+            return get_global()
+
+  # --- Plain garbage: no overlap ---
+  garbage_metrics.py: |
+    GARBAGE_PPR_017_METRICS_HOST_G = "localhost:9090"
+    GARBAGE_PPR_017_METRICS_PORT_H = 9090
+
+    class MetricsCollector:
+        def collect(self):
+            pass
+
+changed:
+  shared.py: |
+    SHARED_VALUE = 200
+
+    def get_shared():
+        return SHARED_VALUE
+  user_a.py: |
+    from shared import get_shared
+
+    def use_shared_a():
+        return get_shared() + 1
+  user_b.py: |
+    from shared import get_shared
+
+    def use_shared_b():
+        return get_shared() + 2
+
+  garbage_alt_shared.py: |
+    GARBAGE_PPR_017_ALT_SHARED_A = "alt_shared"
+    GARBAGE_PPR_017_ALT_VALUE_B = 100
+
+    SHARED_VALUE = 999
+
+    def get_shared():
+        return SHARED_VALUE
+
+    class SharedManager:
+        GARBAGE_PPR_017_ALT_MGR_C = True
+
+        def reset(self):
+            pass
+
+  garbage_global_state.py: |
+    GARBAGE_PPR_017_STATE_NAME_D = "global_state"
+    GARBAGE_PPR_017_STATE_VER_E = "1.0"
+
+    GLOBAL_VALUE = 500
+
+    def get_global():
+        return GLOBAL_VALUE
+
+    class StateHolder:
+        GARBAGE_PPR_017_STATE_HOLD_F = True
+
+        def snapshot(self):
+            return get_global()
+
+  garbage_metrics.py: |
+    GARBAGE_PPR_017_METRICS_HOST_G = "localhost:9090"
+    GARBAGE_PPR_017_METRICS_PORT_H = 9090
+
+    class MetricsCollector:
+        def collect(self):
+            pass
+
+# === Assertions ===
+
+must_include:
+- SHARED_VALUE
+- get_shared
+- '200'
+
+must_include_files:
+- shared.py
+
+must_include_content_from:
+  shared.py:
+    - SHARED_VALUE = 200
+    - 'def get_shared():'
+
+must_not_include:
+# Plain garbage markers
+- GARBAGE_PPR_017_METRICS_HOST_G
+- GARBAGE_PPR_017_METRICS_PORT_H
+# Tricky: also defines SHARED_VALUE and get_shared
+- GARBAGE_PPR_017_ALT_SHARED_A
+- GARBAGE_PPR_017_ALT_VALUE_B
+- GARBAGE_PPR_017_ALT_MGR_C
+# Tricky: similar constant + getter pattern
+- GARBAGE_PPR_017_STATE_NAME_D
+- GARBAGE_PPR_017_STATE_VER_E
+- GARBAGE_PPR_017_STATE_HOLD_F
+
+must_not_include_files:
+- garbage_alt_shared.py
+- garbage_global_state.py
+- garbage_metrics.py
+
+max_fragments: 8
+max_files: 4
+add_garbage_files: false
+skip_garbage_check: true

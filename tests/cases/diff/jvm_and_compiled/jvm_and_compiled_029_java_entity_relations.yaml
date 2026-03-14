@@ -1,0 +1,422 @@
+# Scenario: Order JPA entity gains totalAmount (BigDecimal) and status
+#   (OrderStatus enum) fields, with @Column and @Enumerated annotations.
+#   Order already has @ManyToOne to Customer and @OneToMany to OrderItem.
+#
+# Diff shows:
+#   - Order with id, customer, items
+#   + import BigDecimal, @Column totalAmount, @Enumerated status
+#
+# Reviewer questions:
+#   Q1: "What is Customer — does the @ManyToOne relation make sense?"
+#       -> Needs Customer.java: @Entity with @OneToMany(mappedBy="customer")
+#          back to Order. Reviewer must verify bidirectional mapping.
+#
+#   Q2: "What is OrderStatus — the enum used in @Enumerated?"
+#       -> Needs OrderStatus.java to verify enum values exist.
+#
+# Not needed for comprehension:
+#   - Product.java: Another JPA @Entity in the same package. Same
+#     @Entity, @Table, @Id annotations. But Product has no relation
+#     to Order. HARDEST TRAP: same JPA vocabulary, sibling entity.
+#
+#   - OrderRepository.java: JPA repository for Order. Direct data access
+#     layer for the changed entity. But repository queries don't help
+#     review whether the new fields are correctly annotated.
+#
+#   - OrderService.java: Business logic creating and querying Orders.
+#     Uses Order and Customer types. But service logic doesn't help
+#     review entity field annotations.
+#
+#   - OrderItem.java: The @ManyToOne target — items relation target.
+#     Already referenced in the pre-existing Order fields (not the diff).
+#     The diff adds totalAmount and status, not item relations.
+#
+#   - AuditEntity.java: @MappedSuperclass with createdAt/updatedAt.
+#     Same JPA annotation patterns. Not extended by Order.
+
+initial:
+  src/main/java/com/example/Order.java: |
+    package com.example;
+
+    import javax.persistence.*;
+    import java.util.List;
+
+    @Entity
+    @Table(name = "orders")
+    public class Order {
+        @Id
+        @GeneratedValue(strategy = GenerationType.IDENTITY)
+        private Long id;
+
+        @ManyToOne
+        @JoinColumn(name = "customer_id")
+        private Customer customer;
+
+        @OneToMany(mappedBy = "order", cascade = CascadeType.ALL)
+        private List<OrderItem> items;
+    }
+  src/main/java/com/example/Customer.java: |
+    package com.example;
+
+    import javax.persistence.*;
+    import java.util.List;
+
+    @Entity
+    @Table(name = "customers")
+    public class Customer {
+        @Id
+        @GeneratedValue(strategy = GenerationType.IDENTITY)
+        private Long id;
+
+        private String name;
+        private String email;
+
+        @OneToMany(mappedBy = "customer")
+        private List<Order> orders;
+
+        public Long getId() { return id; }
+        public String getName() { return name; }
+        public String getEmail() { return email; }
+    }
+  src/main/java/com/example/OrderStatus.java: |
+    package com.example;
+
+    public enum OrderStatus {
+        PENDING,
+        CONFIRMED,
+        SHIPPED,
+        DELIVERED,
+        CANCELLED;
+
+        public boolean isTerminal() {
+            return this == DELIVERED || this == CANCELLED;
+        }
+    }
+  src/main/java/com/example/Product.java: |
+    package com.example;
+
+    import javax.persistence.*;
+    import java.math.BigDecimal;
+
+    @Entity
+    @Table(name = "products")
+    public class Product {
+        @Id
+        @GeneratedValue(strategy = GenerationType.IDENTITY)
+        private Long id;
+
+        private String name;
+
+        @Column(precision = 10, scale = 2)
+        private BigDecimal price;
+
+        private String category;
+        private boolean available;
+
+        public Long getId() { return id; }
+        public String getName() { return name; }
+        public BigDecimal getPrice() { return price; }
+    }
+  src/main/java/com/example/OrderRepository.java: |
+    package com.example;
+
+    import org.springframework.data.jpa.repository.JpaRepository;
+    import org.springframework.stereotype.Repository;
+    import java.util.List;
+
+    @Repository
+    public interface OrderRepository extends JpaRepository<Order, Long> {
+        List<Order> findByCustomerId(Long customerId);
+        List<Order> findByStatus(OrderStatus status);
+    }
+  src/main/java/com/example/OrderService.java: |
+    package com.example;
+
+    import org.springframework.stereotype.Service;
+    import java.util.List;
+
+    @Service
+    public class OrderService {
+        private final OrderRepository orderRepository;
+
+        public OrderService(OrderRepository orderRepository) {
+            this.orderRepository = orderRepository;
+        }
+
+        public Order createOrder(Customer customer) {
+            Order order = new Order();
+            return orderRepository.save(order);
+        }
+
+        public List<Order> getOrdersByCustomer(Long customerId) {
+            return orderRepository.findByCustomerId(customerId);
+        }
+    }
+  src/main/java/com/example/OrderItem.java: |
+    package com.example;
+
+    import javax.persistence.*;
+    import java.math.BigDecimal;
+
+    @Entity
+    @Table(name = "order_items")
+    public class OrderItem {
+        @Id
+        @GeneratedValue(strategy = GenerationType.IDENTITY)
+        private Long id;
+
+        @ManyToOne
+        @JoinColumn(name = "order_id")
+        private Order order;
+
+        @ManyToOne
+        @JoinColumn(name = "product_id")
+        private Product product;
+
+        private int quantity;
+        private BigDecimal unitPrice;
+
+        public Long getId() { return id; }
+        public Order getOrder() { return order; }
+    }
+  src/main/java/com/example/AuditEntity.java: |
+    package com.example;
+
+    import javax.persistence.*;
+    import java.time.LocalDateTime;
+
+    @MappedSuperclass
+    public abstract class AuditEntity {
+        @Column(name = "created_at")
+        private LocalDateTime createdAt;
+
+        @Column(name = "updated_at")
+        private LocalDateTime updatedAt;
+
+        @PrePersist
+        protected void onCreate() { createdAt = LocalDateTime.now(); }
+
+        @PreUpdate
+        protected void onUpdate() { updatedAt = LocalDateTime.now(); }
+    }
+
+changed:
+  src/main/java/com/example/Order.java: |
+    package com.example;
+
+    import javax.persistence.*;
+    import java.util.List;
+    import java.math.BigDecimal;
+
+    @Entity
+    @Table(name = "orders")
+    public class Order {
+        @Id
+        @GeneratedValue(strategy = GenerationType.IDENTITY)
+        private Long id;
+
+        @ManyToOne
+        @JoinColumn(name = "customer_id")
+        private Customer customer;
+
+        @OneToMany(mappedBy = "order", cascade = CascadeType.ALL)
+        private List<OrderItem> items;
+
+        @Column(name = "total_amount")
+        private BigDecimal totalAmount;
+
+        @Enumerated(EnumType.STRING)
+        private OrderStatus status;
+    }
+  src/main/java/com/example/Customer.java: |
+    package com.example;
+
+    import javax.persistence.*;
+    import java.util.List;
+
+    @Entity
+    @Table(name = "customers")
+    public class Customer {
+        @Id
+        @GeneratedValue(strategy = GenerationType.IDENTITY)
+        private Long id;
+
+        private String name;
+        private String email;
+
+        @OneToMany(mappedBy = "customer")
+        private List<Order> orders;
+
+        public Long getId() { return id; }
+        public String getName() { return name; }
+        public String getEmail() { return email; }
+    }
+  src/main/java/com/example/OrderStatus.java: |
+    package com.example;
+
+    public enum OrderStatus {
+        PENDING,
+        CONFIRMED,
+        SHIPPED,
+        DELIVERED,
+        CANCELLED;
+
+        public boolean isTerminal() {
+            return this == DELIVERED || this == CANCELLED;
+        }
+    }
+  src/main/java/com/example/Product.java: |
+    package com.example;
+
+    import javax.persistence.*;
+    import java.math.BigDecimal;
+
+    @Entity
+    @Table(name = "products")
+    public class Product {
+        @Id
+        @GeneratedValue(strategy = GenerationType.IDENTITY)
+        private Long id;
+
+        private String name;
+
+        @Column(precision = 10, scale = 2)
+        private BigDecimal price;
+
+        private String category;
+        private boolean available;
+
+        public Long getId() { return id; }
+        public String getName() { return name; }
+        public BigDecimal getPrice() { return price; }
+    }
+  src/main/java/com/example/OrderRepository.java: |
+    package com.example;
+
+    import org.springframework.data.jpa.repository.JpaRepository;
+    import org.springframework.stereotype.Repository;
+    import java.util.List;
+
+    @Repository
+    public interface OrderRepository extends JpaRepository<Order, Long> {
+        List<Order> findByCustomerId(Long customerId);
+        List<Order> findByStatus(OrderStatus status);
+    }
+  src/main/java/com/example/OrderService.java: |
+    package com.example;
+
+    import org.springframework.stereotype.Service;
+    import java.util.List;
+
+    @Service
+    public class OrderService {
+        private final OrderRepository orderRepository;
+
+        public OrderService(OrderRepository orderRepository) {
+            this.orderRepository = orderRepository;
+        }
+
+        public Order createOrder(Customer customer) {
+            Order order = new Order();
+            return orderRepository.save(order);
+        }
+
+        public List<Order> getOrdersByCustomer(Long customerId) {
+            return orderRepository.findByCustomerId(customerId);
+        }
+    }
+  src/main/java/com/example/OrderItem.java: |
+    package com.example;
+
+    import javax.persistence.*;
+    import java.math.BigDecimal;
+
+    @Entity
+    @Table(name = "order_items")
+    public class OrderItem {
+        @Id
+        @GeneratedValue(strategy = GenerationType.IDENTITY)
+        private Long id;
+
+        @ManyToOne
+        @JoinColumn(name = "order_id")
+        private Order order;
+
+        @ManyToOne
+        @JoinColumn(name = "product_id")
+        private Product product;
+
+        private int quantity;
+        private BigDecimal unitPrice;
+
+        public Long getId() { return id; }
+        public Order getOrder() { return order; }
+    }
+  src/main/java/com/example/AuditEntity.java: |
+    package com.example;
+
+    import javax.persistence.*;
+    import java.time.LocalDateTime;
+
+    @MappedSuperclass
+    public abstract class AuditEntity {
+        @Column(name = "created_at")
+        private LocalDateTime createdAt;
+
+        @Column(name = "updated_at")
+        private LocalDateTime updatedAt;
+
+        @PrePersist
+        protected void onCreate() { createdAt = LocalDateTime.now(); }
+
+        @PreUpdate
+        protected void onUpdate() { updatedAt = LocalDateTime.now(); }
+    }
+
+must_include_files:
+  - src/main/java/com/example/Order.java
+  - src/main/java/com/example/Customer.java
+
+must_include_content_from:
+  src/main/java/com/example/Order.java:
+    - '@Column(name = "total_amount")'
+    - "@Enumerated(EnumType.STRING)"
+    - "private OrderStatus status"
+    - "import java.math.BigDecimal"
+  src/main/java/com/example/Customer.java:
+    - '@OneToMany(mappedBy = "customer")'
+    - "private List<Order> orders"
+
+must_not_include:
+  # Product.java: sibling JPA entity, same annotations, no relation to Order changes
+  - "products"
+  - "available"
+  - "category"
+  # OrderRepository.java: data access, doesn't help review entity field annotations
+  - OrderRepository
+  - findByCustomerId
+  - findByStatus
+  # OrderService.java: business logic, doesn't help review entity design
+  - OrderService
+  - createOrder
+  - getOrdersByCustomer
+  # OrderItem.java: pre-existing relation, not related to the new diff fields
+  - OrderItem
+  - "order_items"
+  - unitPrice
+  # AuditEntity.java: MappedSuperclass, not extended by Order
+  - AuditEntity
+  - "@PrePersist"
+  - "@PreUpdate"
+
+must_not_include_files:
+  - src/main/java/com/example/Product.java
+  - src/main/java/com/example/OrderRepository.java
+  - src/main/java/com/example/OrderService.java
+  - src/main/java/com/example/OrderItem.java
+  - src/main/java/com/example/AuditEntity.java
+
+max_fragments: 7
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

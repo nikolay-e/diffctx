@@ -1,0 +1,90 @@
+initial:
+  chart/Chart.yaml: |
+    apiVersion: v2
+    name: scaling-app
+    description: Application with replica scaling
+    type: application
+    version: 1.0.0
+  chart/values.yaml: |
+    replicaCount: 1
+    image:
+      repository: scaling-app
+      tag: "1.0.0"
+    service:
+      type: ClusterIP
+      port: 80
+  chart/templates/deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: {{ .Release.Name }}-{{ .Chart.Name }}
+    spec:
+      replicas: {{ .Values.replicaCount }}
+      selector:
+        matchLabels:
+          app: {{ .Chart.Name }}
+      template:
+        spec:
+          containers:
+            - name: {{ .Chart.Name }}
+              image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+              ports:
+                - containerPort: 8080
+  chart/templates/keda-scaledobject.yaml: |
+    apiVersion: keda.sh/v1alpha1
+    kind: ScaledObject
+    metadata:
+    spec:
+      scaleTargetRef:
+      triggers:
+  chart/docs/scaling-strategy.md: |
+    # Scaling Strategy
+    ## Load Testing Results
+changed:
+  chart/Chart.yaml: |
+    apiVersion: v2
+    name: scaling-app
+    description: Application with replica scaling
+    type: application
+    version: 1.0.0
+  chart/values.yaml: |
+    replicaCount: 3
+    image:
+      repository: scaling-app
+      tag: "1.0.0"
+    service:
+      type: ClusterIP
+      port: 80
+  chart/templates/deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: {{ .Release.Name }}-{{ .Chart.Name }}
+    spec:
+      replicas: {{ .Values.replicaCount }}
+      selector:
+        matchLabels:
+          app: {{ .Chart.Name }}
+      template:
+        spec:
+          containers:
+            - name: {{ .Chart.Name }}
+              image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+              ports:
+                - containerPort: 8080
+  chart/templates/keda-scaledobject.yaml: |
+    apiVersion: keda.sh/v1alpha1
+    kind: ScaledObject
+    metadata:
+    spec:
+      scaleTargetRef:
+      triggers:
+  chart/docs/scaling-strategy.md: |
+    # Scaling Strategy
+    ## Load Testing Results
+must_include_files:
+- chart/values.yaml
+must_include_content:
+- 'replicaCount: 3'
+add_garbage_files: false
+skip_garbage_check: true

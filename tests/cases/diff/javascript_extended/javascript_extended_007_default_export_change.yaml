@@ -1,0 +1,190 @@
+# Test: Default export gains post() method and baseUrl param — reviewer needs caller
+#
+# Scenario: src/api.ts default export apiClient() adds a post() method to the
+# returned ApiClient interface and accepts an optional baseUrl parameter.
+# The caller src/service.ts is unchanged but uses the default import.
+#
+# Reviewer questions:
+#   Q1: "Who calls apiClient() and will they break?"
+#       → src/service.ts: imports `client` (default export), calls
+#         client() then api.get(). The new baseUrl param defaults to '',
+#         so existing callers compile. But service.ts doesn't use post()
+#         yet — is that expected?
+#   Q2: "What methods did ApiClient have before?"
+#       → src/api.ts: only get(). Now adds post(). The reviewer can
+#         verify the interface expansion makes sense.
+#
+# Not needed:
+#   - src/unrelated/featureFlags.ts: feature flag toggling. Different
+#     infrastructure concern (feature management vs HTTP client).
+#   - src/unrelated/rateLimit.ts: rate limiting logic. Different
+#     infrastructure concern (throttling vs API shape).
+
+initial:
+  src/api.ts: |
+    interface ApiClient {
+        get(url: string): Promise<Response>;
+    }
+
+    export default function apiClient(): ApiClient {
+        return {
+            get: (url: string) => fetch(url),
+        };
+    }
+
+    export function createHeaders(token?: string): Record<string, string> {
+        const headers: Record<string, string> = {
+            'Content-Type': 'application/json',
+        };
+        if (token) {
+            headers['Authorization'] = `Bearer ${token}`;
+        }
+        return headers;
+    }
+  src/service.ts: |
+    import client from './api';
+
+    export async function getData(url: string) {
+        const api = client();
+        const response = await api.get(url);
+        return response.json();
+    }
+
+    export async function getStatus(): Promise<string> {
+        const api = client();
+        const response = await api.get('/api/health');
+        const data = await response.json();
+        return data.status;
+    }
+  # --- Not needed: feature flag toggling, different concern ---
+  src/unrelated/featureFlags.ts: |
+    export class FeatureFlagService {
+        private flags: Record<string, boolean> = {};
+
+        isEnabled(flag: string): boolean {
+            return this.flags[flag] ?? false;
+        }
+
+        setFlag(flag: string, value: boolean): void {
+            this.flags[flag] = value;
+        }
+    }
+
+    export function evaluateFlags(userId: string): Record<string, boolean> {
+        return { darkMode: false, betaFeatures: true };
+    }
+  # --- Not needed: rate limiting, different infrastructure concern ---
+  src/unrelated/rateLimit.ts: |
+    interface RateLimitConfig {
+        maxRequests: number;
+        windowMs: number;
+    }
+
+    export class RateLimiter {
+        private count = 0;
+
+        check(): boolean {
+            return this.count < 100;
+        }
+
+        increment(): void {
+            this.count++;
+        }
+    }
+
+    export function resetLimits(limiter: RateLimiter): void {
+        console.log('resetting rate limits');
+    }
+changed:
+  src/api.ts: |
+    interface ApiClient {
+        get(url: string): Promise<Response>;
+        post(url: string, data: unknown): Promise<Response>;
+    }
+
+    export default function apiClient(baseUrl = ''): ApiClient {
+        return {
+            get: (url: string) => fetch(baseUrl + url),
+            post: (url: string, data: unknown) => fetch(baseUrl + url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data),
+            }),
+        };
+    }
+
+    export function createHeaders(token?: string): Record<string, string> {
+        const headers: Record<string, string> = {
+            'Content-Type': 'application/json',
+        };
+        if (token) {
+            headers['Authorization'] = `Bearer ${token}`;
+        }
+        return headers;
+    }
+  src/service.ts: |
+    import client from './api';
+
+    export async function getData(url: string) {
+        const api = client();
+        const response = await api.get(url);
+        return response.json();
+    }
+
+    export async function getStatus(): Promise<string> {
+        const api = client();
+        const response = await api.get('/api/health');
+        const data = await response.json();
+        return data.status;
+    }
+  src/unrelated/featureFlags.ts: |
+    export class FeatureFlagService {
+        private flags: Record<string, boolean> = {};
+
+        isEnabled(flag: string): boolean {
+            return this.flags[flag] ?? false;
+        }
+
+        setFlag(flag: string, value: boolean): void {
+            this.flags[flag] = value;
+        }
+    }
+
+    export function evaluateFlags(userId: string): Record<string, boolean> {
+        return { darkMode: false, betaFeatures: true };
+    }
+  src/unrelated/rateLimit.ts: |
+    interface RateLimitConfig {
+        maxRequests: number;
+        windowMs: number;
+    }
+
+    export class RateLimiter {
+        private count = 0;
+
+        check(): boolean {
+            return this.count < 100;
+        }
+
+        increment(): void {
+            this.count++;
+        }
+    }
+
+    export function resetLimits(limiter: RateLimiter): void {
+        console.log('resetting rate limits');
+    }
+must_include_files:
+- src/api.ts
+must_include_content:
+- 'post(url: string, data: unknown): Promise<Response>;'
+- '(url: string) => fetch(baseUrl + url)'
+must_not_include:
+  # featureFlags.ts: feature management, unrelated to HTTP client
+  - FeatureFlagService
+  - evaluateFlags
+  # rateLimit.ts: request throttling, different infrastructure concern
+  - RateLimiter
+  - resetLimits
+add_garbage_files: false
+skip_garbage_check: true

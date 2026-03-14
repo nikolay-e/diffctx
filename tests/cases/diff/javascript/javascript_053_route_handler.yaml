@@ -1,0 +1,98 @@
+# Scenario: routes.ts is rewritten to import getUserHandler from userHandler.ts
+# and wire it to GET /users/:id.
+#
+# Diff: routes.ts adds `import { getUserHandler } from './userHandler'`, creates
+# a Router, and registers `router.get('/users/:id', getUserHandler)`.
+#
+# Reviewer questions:
+#   Q1: "What does getUserHandler do with the request?"
+#       -> userHandler.ts (UNCHANGED) extracts req.params.id and returns JSON
+#          with { id, name: 'User' }. Reviewer verifies the handler matches
+#          the route path parameter :id.
+#
+# Not needed:
+#   - postHandler.ts: handler for POST /users (createUserHandler). Same handler
+#     pattern but for a different HTTP method, not wired in this change.
+#   - route-config.ts: declarative route configuration objects. Different approach
+#     to routing (data-driven), not used by routes.ts.
+
+initial:
+  userHandler.ts: |
+    import { Request, Response } from 'express';
+
+    export async function getUserHandler(req: Request, res: Response) {
+        const { id } = req.params;
+        res.json({ id, name: 'User' });
+    }
+  routes.ts: |
+    console.log('initial');
+  postHandler.ts: |
+    import { Request, Response } from 'express';
+
+    export async function createUserHandler(req: Request, res: Response) {
+        const { name, email } = req.body;
+        res.status(201).json({ id: Date.now().toString(), name, email });
+    }
+  route-config.ts: |
+    interface RouteDefinition {
+        method: 'get' | 'post' | 'put' | 'delete';
+        path: string;
+        handler: string;
+    }
+
+    export const routeDefinitions: RouteDefinition[] = [
+        { method: 'get', path: '/users/:id', handler: 'getUserHandler' },
+        { method: 'post', path: '/users', handler: 'createUserHandler' },
+    ];
+changed:
+  userHandler.ts: |
+    import { Request, Response } from 'express';
+
+    export async function getUserHandler(req: Request, res: Response) {
+        const { id } = req.params;
+        res.json({ id, name: 'User' });
+    }
+  routes.ts: |
+    import { Router } from 'express';
+    import { getUserHandler } from './userHandler';
+
+    export const router = Router();
+    router.get('/users/:id', getUserHandler);
+  postHandler.ts: |
+    import { Request, Response } from 'express';
+
+    export async function createUserHandler(req: Request, res: Response) {
+        const { name, email } = req.body;
+        res.status(201).json({ id: Date.now().toString(), name, email });
+    }
+  route-config.ts: |
+    interface RouteDefinition {
+        method: 'get' | 'post' | 'put' | 'delete';
+        path: string;
+        handler: string;
+    }
+
+    export const routeDefinitions: RouteDefinition[] = [
+        { method: 'get', path: '/users/:id', handler: 'getUserHandler' },
+        { method: 'post', path: '/users', handler: 'createUserHandler' },
+    ];
+must_include_files:
+  # Q1: userHandler.ts is imported by routes.ts — reviewer needs handler logic
+  - userHandler.ts
+must_include_content_from:
+  userHandler.ts:
+    - "function getUserHandler(req: Request, res: Response)"
+    - "req.params"
+must_not_include:
+  # postHandler.ts: different handler for POST, not wired in this change
+  - createUserHandler
+  # route-config.ts: declarative config objects, not used by routes.ts
+  - RouteDefinition
+  - routeDefinitions
+must_not_include_files:
+  - postHandler.ts
+  - route-config.ts
+max_fragments: 5
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

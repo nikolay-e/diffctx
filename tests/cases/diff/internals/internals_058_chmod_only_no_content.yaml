@@ -1,0 +1,21 @@
+initial:
+  script.py: |
+    #!/usr/bin/env python3
+    def main():
+        print("Hello")
+
+    if __name__ == "__main__":
+        main()
+changed:
+  script.py: |
+    #!/usr/bin/env python3
+    def main():
+        print("Hello")
+
+    if __name__ == "__main__":
+        main()
+    # Added comment
+must_include_files:
+- script.py
+add_garbage_files: false
+skip_garbage_check: true

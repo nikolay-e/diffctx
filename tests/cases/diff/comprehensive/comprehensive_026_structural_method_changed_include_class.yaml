@@ -1,0 +1,27 @@
+initial:
+  service.py: |
+    class PaymentService:
+        def __init__(self):
+            self.payments = []
+
+        def process_payment(self):
+            return "processed"
+changed:
+  service.py: |
+    class PaymentService:
+        def __init__(self):
+            self.payments = []
+
+        def process_payment(self):
+            self.validate()
+            return "processed with validation"
+
+        def validate(self):
+            return True
+must_include_files:
+- service.py
+must_include_content:
+- self.validate()
+- 'def validate(self):'
+add_garbage_files: false
+skip_garbage_check: true

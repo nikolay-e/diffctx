@@ -1,0 +1,200 @@
+# Scenario: Create a Lambda IAM role with fine-grained policy document
+#
+# Reviewer questions:
+#   1. What outputs expose this role for consumers? (outputs.tf)
+#   2. Are there other IAM roles that might conflict? (ecs_iam.tf)
+#
+# The diff replaces placeholder iam.tf with a Lambda role including assume-role
+# policy, execution policy (CloudWatch, S3, DynamoDB, KMS, Secrets Manager),
+# and managed policy attachments. outputs.tf exposes the role ARN and name.
+# Both changed files are free. The unchanged ecs_iam.tf is a trap -- it uses
+# the same resource types but for ECS tasks (different principal).
+#
+# Traps: ecs_iam.tf has same aws_iam_role and aws_iam_role_policy but for ECS.
+# deprecated/old_roles.tf is legacy IAM config.
+
+initial:
+  iam.tf: |
+    # IAM resources placeholder
+  outputs.tf: |
+    # Outputs placeholder
+  ecs_iam.tf: |
+    data "aws_iam_policy_document" "ecs_assume_role" {
+      statement {
+        effect  = "Allow"
+        actions = ["sts:AssumeRole"]
+
+        principals {
+          type        = "Service"
+          identifiers = ["ecs-tasks.amazonaws.com"]
+        }
+      }
+    }
+
+    resource "aws_iam_role" "ecs_task" {
+      name               = "${var.environment}-ecs-task-role"
+      assume_role_policy = data.aws_iam_policy_document.ecs_assume_role.json
+    }
+
+    resource "aws_iam_role_policy" "ecs_task_execution" {
+      name   = "${var.environment}-ecs-task-execution-policy"
+      role   = aws_iam_role.ecs_task.id
+      policy = jsonencode({
+        Version = "2012-10-17"
+        Statement = [{
+          Effect   = "Allow"
+          Action   = ["ecr:GetAuthorizationToken", "ecr:BatchGetImage"]
+          Resource = "*"
+        }]
+      })
+    }
+  deprecated/old_roles.tf: |
+    resource "aws_iam_role" "legacy_admin" {
+      name = "legacy-admin-role"
+      assume_role_policy = jsonencode({
+        Version = "2012-10-17"
+        Statement = [{
+          Effect    = "Allow"
+          Principal = { Service = "ec2.amazonaws.com" }
+          Action    = "sts:AssumeRole"
+        }]
+      })
+    }
+
+changed:
+  iam.tf: |
+    data "aws_iam_policy_document" "lambda_assume_role" {
+      statement {
+        effect  = "Allow"
+        actions = ["sts:AssumeRole"]
+
+        principals {
+          type        = "Service"
+          identifiers = ["lambda.amazonaws.com"]
+        }
+      }
+    }
+
+    data "aws_iam_policy_document" "lambda_execution" {
+      statement {
+        sid     = "CloudWatchLogs"
+        effect  = "Allow"
+        actions = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"]
+        resources = ["arn:aws:logs:*:*:*"]
+      }
+
+      statement {
+        sid     = "S3ReadAccess"
+        effect  = "Allow"
+        actions = ["s3:GetObject", "s3:ListBucket"]
+        resources = [var.data_bucket_arn, "${var.data_bucket_arn}/*"]
+      }
+
+      statement {
+        sid     = "DynamoDBAccess"
+        effect  = "Allow"
+        actions = ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:Query"]
+        resources = [var.dynamodb_table_arn]
+      }
+
+      statement {
+        sid     = "KMSDecrypt"
+        effect  = "Allow"
+        actions = ["kms:Decrypt", "kms:GenerateDataKey"]
+        resources = [var.kms_key_arn]
+      }
+    }
+
+    resource "aws_iam_role" "lambda_exec" {
+      name               = "${var.environment}-lambda-role"
+      assume_role_policy = data.aws_iam_policy_document.lambda_assume_role.json
+    }
+
+    resource "aws_iam_role_policy" "lambda_execution" {
+      name   = "${var.environment}-lambda-policy"
+      role   = aws_iam_role.lambda_exec.id
+      policy = data.aws_iam_policy_document.lambda_execution.json
+    }
+
+    resource "aws_iam_role_policy_attachment" "lambda_xray" {
+      role       = aws_iam_role.lambda_exec.name
+      policy_arn = "arn:aws:iam::aws:policy/AWSXRayDaemonWriteAccess"
+    }
+  outputs.tf: |
+    output "lambda_role_arn" {
+      value = aws_iam_role.lambda_exec.arn
+    }
+
+    output "lambda_role_name" {
+      value = aws_iam_role.lambda_exec.name
+    }
+  ecs_iam.tf: |
+    data "aws_iam_policy_document" "ecs_assume_role" {
+      statement {
+        effect  = "Allow"
+        actions = ["sts:AssumeRole"]
+
+        principals {
+          type        = "Service"
+          identifiers = ["ecs-tasks.amazonaws.com"]
+        }
+      }
+    }
+
+    resource "aws_iam_role" "ecs_task" {
+      name               = "${var.environment}-ecs-task-role"
+      assume_role_policy = data.aws_iam_policy_document.ecs_assume_role.json
+    }
+
+    resource "aws_iam_role_policy" "ecs_task_execution" {
+      name   = "${var.environment}-ecs-task-execution-policy"
+      role   = aws_iam_role.ecs_task.id
+      policy = jsonencode({
+        Version = "2012-10-17"
+        Statement = [{
+          Effect   = "Allow"
+          Action   = ["ecr:GetAuthorizationToken", "ecr:BatchGetImage"]
+          Resource = "*"
+        }]
+      })
+    }
+  deprecated/old_roles.tf: |
+    resource "aws_iam_role" "legacy_admin" {
+      name = "legacy-admin-role"
+      assume_role_policy = jsonencode({
+        Version = "2012-10-17"
+        Statement = [{
+          Effect    = "Allow"
+          Principal = { Service = "ec2.amazonaws.com" }
+          Action    = "sts:AssumeRole"
+        }]
+      })
+    }
+
+must_include_files:
+- iam.tf
+- outputs.tf
+
+must_include_content_from:
+  iam.tf:
+    - resource "aws_iam_role" "lambda_exec" {
+    - resource "aws_iam_role_policy" "lambda_execution" {
+  outputs.tf:
+    - output "lambda_role_arn" {
+
+must_not_include:
+# ECS IAM role: same resource types but different service principal
+- ecs-tasks.amazonaws.com
+- ecs_task_execution
+- ecr:GetAuthorizationToken
+# Deprecated roles: legacy admin, different concern
+- legacy-admin-role
+
+must_not_include_files:
+- ecs_iam.tf  # same IAM patterns, different service (ECS)
+- deprecated/old_roles.tf  # legacy roles, not related to Lambda
+
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

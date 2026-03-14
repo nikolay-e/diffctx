@@ -1,0 +1,539 @@
+# Scenario: PaymentResult is refactored from a class to a record with a new
+#   transactionId field. AsyncPaymentService is added as a large new service
+#   with CompletableFuture chains using PaymentResult, PaymentRequest,
+#   PaymentGateway, FraudCheckService, NotificationService.
+#
+# Diff shows:
+#   PaymentResult.java: class -> record, new transactionId field,
+#     constructor changes, getter removal
+#   AsyncPaymentService.java: NEW file with processPaymentAsync(),
+#     validate/fraud/authorize/capture chain, retry, batch, timeout
+#   + PaymentRequest.java, PaymentMethod.java, AuthorizationResult.java,
+#     CaptureResult.java, PaymentException.java, PaymentGateway.java,
+#     FraudCheckService.java, NotificationService.java (all new records/interfaces)
+#
+# Reviewer questions:
+#   Q1: "Does PaymentService.processPayment still work after PaymentResult
+#       became a record with 4 fields?"
+#       -> PaymentService.java (UNCHANGED) constructs PaymentResult(orderId,
+#          success, message) with 3 args. But the new record has 4 fields.
+#          CRITICAL: this is a compile error reviewer must catch.
+#
+#   Q2: "Does AsyncPaymentService correctly chain the CompletableFuture stages?"
+#       -> AuthorizationResult.java and CaptureResult.java define the records
+#          passed between stages. PaymentGateway.java defines authorize/capture
+#          interfaces. Reviewer needs all these to trace the chain.
+#
+# Not needed for comprehension:
+#   - BpmCalculator.java: Music tempo calculator. Completely unrelated domain.
+#
+#   - WateringScheduler.java: Plant watering schedule. Completely unrelated domain.
+#
+#   - QuizScorer.java: Trivia quiz scoring. Completely unrelated domain.
+
+initial:
+  src/main/java/com/payment/service/PaymentService.java: |
+    package com.payment.service;
+
+    import java.math.BigDecimal;
+
+    public class PaymentService {
+        public PaymentResult processPayment(String orderId, BigDecimal amount) {
+            validatePayment(orderId, amount);
+            boolean success = chargeCard(amount);
+            return new PaymentResult(orderId, success, success ? "Payment processed" : "Payment failed");
+        }
+
+        private void validatePayment(String orderId, BigDecimal amount) {
+            if (orderId == null || orderId.isBlank()) {
+                throw new IllegalArgumentException("Order ID required");
+            }
+            if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
+                throw new IllegalArgumentException("Invalid amount");
+            }
+        }
+
+        private boolean chargeCard(BigDecimal amount) {
+            return true;
+        }
+    }
+  src/main/java/com/payment/service/PaymentResult.java: |
+    package com.payment.service;
+
+    import java.time.Instant;
+
+    public class PaymentResult {
+        private final String orderId;
+        private final boolean success;
+        private final String message;
+        private final Instant processedAt;
+
+        public PaymentResult(String orderId, boolean success, String message) {
+            this.orderId = orderId;
+            this.success = success;
+            this.message = message;
+            this.processedAt = Instant.now();
+        }
+
+        public String getOrderId() { return orderId; }
+        public boolean isSuccess() { return success; }
+        public String getMessage() { return message; }
+        public Instant getProcessedAt() { return processedAt; }
+    }
+  src/main/java/com/unrelated/music/BpmCalculator.java: |
+    package com.unrelated.music;
+
+    public class BpmCalculator {
+        public int calculateBpm(long[] tapTimestamps) {
+            if (tapTimestamps.length < 2) return 0;
+            long totalInterval = tapTimestamps[tapTimestamps.length - 1] - tapTimestamps[0];
+            long avgInterval = totalInterval / (tapTimestamps.length - 1);
+            return (int) (60000 / avgInterval);
+        }
+
+        public long millisecondsPerBeat(int bpm) {
+            return 60000 / bpm;
+        }
+    }
+  src/main/java/com/unrelated/plants/WateringScheduler.java: |
+    package com.unrelated.plants;
+
+    public class WateringScheduler {
+        public int daysUntilWatering(String plantType, int daysSinceLastWater) {
+            int wateringInterval = getWateringInterval(plantType);
+            return Math.max(0, wateringInterval - daysSinceLastWater);
+        }
+
+        public int getWateringInterval(String plantType) {
+            return switch (plantType.toLowerCase()) {
+                case "cactus" -> 14;
+                case "fern" -> 3;
+                case "succulent" -> 10;
+                default -> 7;
+            };
+        }
+    }
+  src/main/java/com/unrelated/trivia/QuizScorer.java: |
+    package com.unrelated.trivia;
+
+    public class QuizScorer {
+        public int calculateScore(int correct, int total, int timeBonusSeconds) {
+            int baseScore = correct * 100;
+            int timeBonus = Math.max(0, timeBonusSeconds * 5);
+            return baseScore + timeBonus;
+        }
+
+        public String getGrade(int scorePercent) {
+            if (scorePercent >= 90) return "A";
+            if (scorePercent >= 80) return "B";
+            if (scorePercent >= 70) return "C";
+            if (scorePercent >= 60) return "D";
+            return "F";
+        }
+    }
+
+changed:
+  src/main/java/com/payment/service/PaymentService.java: |
+    package com.payment.service;
+
+    import java.math.BigDecimal;
+
+    public class PaymentService {
+        public PaymentResult processPayment(String orderId, BigDecimal amount) {
+            validatePayment(orderId, amount);
+            boolean success = chargeCard(amount);
+            return new PaymentResult(orderId, success, success ? "Payment processed" : "Payment failed");
+        }
+
+        private void validatePayment(String orderId, BigDecimal amount) {
+            if (orderId == null || orderId.isBlank()) {
+                throw new IllegalArgumentException("Order ID required");
+            }
+            if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
+                throw new IllegalArgumentException("Invalid amount");
+            }
+        }
+
+        private boolean chargeCard(BigDecimal amount) {
+            return true;
+        }
+    }
+  src/main/java/com/payment/service/PaymentResult.java: |
+    package com.payment.service;
+
+    import java.time.Instant;
+
+    public record PaymentResult(
+        String orderId,
+        boolean success,
+        String message,
+        String transactionId
+    ) {
+        private static final Instant processedAt = Instant.now();
+
+        public boolean isSuccess() {
+            return success;
+        }
+    }
+  src/main/java/com/payment/service/AsyncPaymentService.java: |
+    package com.payment.service;
+
+    import org.slf4j.Logger;
+    import org.slf4j.LoggerFactory;
+    import org.springframework.stereotype.Service;
+
+    import java.math.BigDecimal;
+    import java.time.Duration;
+    import java.util.List;
+    import java.util.concurrent.*;
+    import java.util.function.Function;
+    import java.util.stream.Collectors;
+
+    @Service
+    public class AsyncPaymentService {
+        private static final Logger log = LoggerFactory.getLogger(AsyncPaymentService.class);
+
+        private final ExecutorService executor;
+        private final PaymentGateway paymentGateway;
+        private final FraudCheckService fraudCheckService;
+        private final NotificationService notificationService;
+
+        public AsyncPaymentService(PaymentGateway paymentGateway, FraudCheckService fraudCheckService,
+                                   NotificationService notificationService) {
+            this.executor = Executors.newFixedThreadPool(10);
+            this.paymentGateway = paymentGateway;
+            this.fraudCheckService = fraudCheckService;
+            this.notificationService = notificationService;
+        }
+
+        public CompletableFuture<PaymentResult> processPaymentAsync(PaymentRequest request) {
+            return validateRequest(request)
+                .thenCompose(this::checkFraud)
+                .thenCompose(this::authorizePayment)
+                .thenCompose(this::capturePayment)
+                .thenApply(this::createSuccessResult)
+                .exceptionally(this::handlePaymentFailure);
+        }
+
+        private CompletableFuture<PaymentRequest> validateRequest(PaymentRequest request) {
+            return CompletableFuture.supplyAsync(() -> {
+                log.info("Validating payment request: {}", request.orderId());
+                if (request.orderId() == null || request.orderId().isBlank()) {
+                    throw new PaymentException("Order ID is required");
+                }
+                if (request.amount() == null || request.amount().compareTo(BigDecimal.ZERO) <= 0) {
+                    throw new PaymentException("Invalid payment amount");
+                }
+                return request;
+            }, executor);
+        }
+
+        private CompletableFuture<PaymentRequest> checkFraud(PaymentRequest request) {
+            return CompletableFuture.supplyAsync(() -> {
+                log.info("Checking fraud for order: {}", request.orderId());
+                boolean isFraudulent = fraudCheckService.check(request);
+                if (isFraudulent) {
+                    throw new PaymentException("Payment flagged as potentially fraudulent");
+                }
+                return request;
+            }, executor);
+        }
+
+        private CompletableFuture<AuthorizationResult> authorizePayment(PaymentRequest request) {
+            return CompletableFuture.supplyAsync(() -> {
+                log.info("Authorizing payment for order: {}", request.orderId());
+                return paymentGateway.authorize(request);
+            }, executor);
+        }
+
+        private CompletableFuture<CaptureResult> capturePayment(AuthorizationResult authResult) {
+            return CompletableFuture.supplyAsync(() -> {
+                log.info("Capturing payment: {}", authResult.authorizationCode());
+                return paymentGateway.capture(authResult);
+            }, executor);
+        }
+
+        private PaymentResult createSuccessResult(CaptureResult captureResult) {
+            return new PaymentResult(
+                captureResult.orderId(),
+                true,
+                "Payment processed successfully",
+                captureResult.transactionId()
+            );
+        }
+
+        private PaymentResult handlePaymentFailure(Throwable ex) {
+            log.error("Payment processing failed", ex);
+            String message = ex.getCause() != null ? ex.getCause().getMessage() : ex.getMessage();
+            return new PaymentResult(null, false, message, null);
+        }
+
+        public CompletableFuture<PaymentResult> processWithTimeout(PaymentRequest request, Duration timeout) {
+            return processPaymentAsync(request)
+                .orTimeout(timeout.toMillis(), TimeUnit.MILLISECONDS)
+                .exceptionally(ex -> {
+                    if (ex instanceof TimeoutException) {
+                        return new PaymentResult(request.orderId(), false, "Payment timed out", null);
+                    }
+                    return handlePaymentFailure(ex);
+                });
+        }
+
+        public CompletableFuture<PaymentResult> processWithRetry(PaymentRequest request, int maxRetries) {
+            return processWithRetry(request, maxRetries, 0);
+        }
+
+        private CompletableFuture<PaymentResult> processWithRetry(PaymentRequest request, int maxRetries, int attempt) {
+            return processPaymentAsync(request)
+                .thenCompose(result -> {
+                    if (!result.isSuccess() && attempt < maxRetries) {
+                        log.info("Retrying payment, attempt {}", attempt + 1);
+                        return delay(Duration.ofSeconds(1))
+                            .thenCompose(v -> processWithRetry(request, maxRetries, attempt + 1));
+                    }
+                    return CompletableFuture.completedFuture(result);
+                });
+        }
+
+        private CompletableFuture<Void> delay(Duration duration) {
+            return CompletableFuture.runAsync(() -> {
+                try {
+                    Thread.sleep(duration.toMillis());
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            }, executor);
+        }
+
+        public CompletableFuture<List<PaymentResult>> processBatch(List<PaymentRequest> requests) {
+            List<CompletableFuture<PaymentResult>> futures = requests.stream()
+                .map(this::processPaymentAsync)
+                .toList();
+
+            return CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]))
+                .thenApply(v -> futures.stream()
+                    .map(CompletableFuture::join)
+                    .collect(Collectors.toList()));
+        }
+
+        public CompletableFuture<PaymentResult> processWithNotification(PaymentRequest request) {
+            return processPaymentAsync(request)
+                .thenCompose(result -> notifyAndReturn(result, request.customerEmail()));
+        }
+
+        private CompletableFuture<PaymentResult> notifyAndReturn(PaymentResult result, String email) {
+            return notificationService.sendConfirmation(email, result)
+                .thenApply(sent -> result)
+                .exceptionally(ex -> {
+                    log.warn("Failed to send notification", ex);
+                    return result;
+                });
+        }
+
+        public CompletableFuture<PaymentResult> processFirstSuccess(PaymentRequest... requests) {
+            List<CompletableFuture<PaymentResult>> futures = java.util.Arrays.stream(requests)
+                .map(this::processPaymentAsync)
+                .toList();
+
+            CompletableFuture<PaymentResult> result = new CompletableFuture<>();
+
+            futures.forEach(future -> future.thenAccept(r -> {
+                if (r.isSuccess() && !result.isDone()) {
+                    result.complete(r);
+                }
+            }));
+
+            CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]))
+                .thenRun(() -> {
+                    if (!result.isDone()) {
+                        result.complete(new PaymentResult(null, false, "All payment attempts failed", null));
+                    }
+                });
+
+            return result;
+        }
+
+        public void shutdown() {
+            executor.shutdown();
+            try {
+                if (!executor.awaitTermination(60, TimeUnit.SECONDS)) {
+                    executor.shutdownNow();
+                }
+            } catch (InterruptedException e) {
+                executor.shutdownNow();
+                Thread.currentThread().interrupt();
+            }
+        }
+    }
+  src/main/java/com/payment/service/PaymentRequest.java: |
+    package com.payment.service;
+
+    import java.math.BigDecimal;
+
+    public record PaymentRequest(
+        String orderId,
+        String customerId,
+        String customerEmail,
+        BigDecimal amount,
+        String currency,
+        PaymentMethod method
+    ) {}
+  src/main/java/com/payment/service/PaymentMethod.java: |
+    package com.payment.service;
+
+    public enum PaymentMethod {
+        CREDIT_CARD,
+        DEBIT_CARD,
+        BANK_TRANSFER,
+        DIGITAL_WALLET
+    }
+  src/main/java/com/payment/service/AuthorizationResult.java: |
+    package com.payment.service;
+
+    import java.math.BigDecimal;
+
+    public record AuthorizationResult(
+        String orderId,
+        String authorizationCode,
+        BigDecimal authorizedAmount,
+        boolean approved
+    ) {}
+  src/main/java/com/payment/service/CaptureResult.java: |
+    package com.payment.service;
+
+    import java.math.BigDecimal;
+
+    public record CaptureResult(
+        String orderId,
+        String transactionId,
+        BigDecimal capturedAmount,
+        boolean success
+    ) {}
+  src/main/java/com/payment/service/PaymentException.java: |
+    package com.payment.service;
+
+    public class PaymentException extends RuntimeException {
+        public PaymentException(String message) {
+            super(message);
+        }
+
+        public PaymentException(String message, Throwable cause) {
+            super(message, cause);
+        }
+    }
+  src/main/java/com/payment/service/PaymentGateway.java: |
+    package com.payment.service;
+
+    public interface PaymentGateway {
+        AuthorizationResult authorize(PaymentRequest request);
+        CaptureResult capture(AuthorizationResult authorization);
+        void voidAuthorization(String authorizationCode);
+    }
+  src/main/java/com/payment/service/FraudCheckService.java: |
+    package com.payment.service;
+
+    public interface FraudCheckService {
+        boolean check(PaymentRequest request);
+    }
+  src/main/java/com/payment/service/NotificationService.java: |
+    package com.payment.service;
+
+    import java.util.concurrent.CompletableFuture;
+
+    public interface NotificationService {
+        CompletableFuture<Boolean> sendConfirmation(String email, PaymentResult result);
+    }
+  src/main/java/com/unrelated/music/BpmCalculator.java: |
+    package com.unrelated.music;
+
+    public class BpmCalculator {
+        public int calculateBpm(long[] tapTimestamps) {
+            if (tapTimestamps.length < 2) return 0;
+            long totalInterval = tapTimestamps[tapTimestamps.length - 1] - tapTimestamps[0];
+            long avgInterval = totalInterval / (tapTimestamps.length - 1);
+            return (int) (60000 / avgInterval);
+        }
+
+        public long millisecondsPerBeat(int bpm) {
+            return 60000 / bpm;
+        }
+    }
+  src/main/java/com/unrelated/plants/WateringScheduler.java: |
+    package com.unrelated.plants;
+
+    public class WateringScheduler {
+        public int daysUntilWatering(String plantType, int daysSinceLastWater) {
+            int wateringInterval = getWateringInterval(plantType);
+            return Math.max(0, wateringInterval - daysSinceLastWater);
+        }
+
+        public int getWateringInterval(String plantType) {
+            return switch (plantType.toLowerCase()) {
+                case "cactus" -> 14;
+                case "fern" -> 3;
+                case "succulent" -> 10;
+                default -> 7;
+            };
+        }
+    }
+  src/main/java/com/unrelated/trivia/QuizScorer.java: |
+    package com.unrelated.trivia;
+
+    public class QuizScorer {
+        public int calculateScore(int correct, int total, int timeBonusSeconds) {
+            int baseScore = correct * 100;
+            int timeBonus = Math.max(0, timeBonusSeconds * 5);
+            return baseScore + timeBonus;
+        }
+
+        public String getGrade(int scorePercent) {
+            if (scorePercent >= 90) return "A";
+            if (scorePercent >= 80) return "B";
+            if (scorePercent >= 70) return "C";
+            if (scorePercent >= 60) return "D";
+            return "F";
+        }
+    }
+
+must_include_files:
+  - src/main/java/com/payment/service/AsyncPaymentService.java
+  - src/main/java/com/payment/service/AuthorizationResult.java
+  - src/main/java/com/payment/service/CaptureResult.java
+  - src/main/java/com/payment/service/NotificationService.java
+  - src/main/java/com/payment/service/PaymentException.java
+  - src/main/java/com/payment/service/PaymentGateway.java
+  - src/main/java/com/payment/service/PaymentMethod.java
+  - src/main/java/com/payment/service/PaymentRequest.java
+  - src/main/java/com/payment/service/PaymentResult.java
+
+must_include_content_from:
+  src/main/java/com/payment/service/PaymentResult.java:
+    - "public record PaymentResult"
+    - "String transactionId"
+  src/main/java/com/payment/service/AsyncPaymentService.java:
+    - "public CompletableFuture<PaymentResult> processPaymentAsync(PaymentRequest request)"
+    - "thenCompose(this::checkFraud)"
+
+must_not_include:
+  # --- BpmCalculator.java: music tempo, completely unrelated ---
+  - BpmCalculator
+  - calculateBpm
+  - millisecondsPerBeat
+  # --- WateringScheduler.java: plant care, completely unrelated ---
+  - WateringScheduler
+  - daysUntilWatering
+  - getWateringInterval
+  # --- QuizScorer.java: trivia scoring, completely unrelated ---
+  - QuizScorer
+  - calculateScore
+  - getGrade
+
+must_not_include_files:
+  - src/main/java/com/unrelated/music/BpmCalculator.java
+  - src/main/java/com/unrelated/plants/WateringScheduler.java
+  - src/main/java/com/unrelated/trivia/QuizScorer.java
+
+max_fragments: 20
+max_files: 12
+add_garbage_files: false
+skip_garbage_check: true

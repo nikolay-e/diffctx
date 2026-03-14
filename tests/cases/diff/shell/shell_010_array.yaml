@@ -1,0 +1,203 @@
+# Scenario: deploy.sh switches from a flat server list to associative arrays
+# mapping servers to roles. It sources inventory.sh which defines server groups.
+#
+# Diff: deploy.sh adds declare -A server_roles, iterates WEB_SERVERS and
+# DB_SERVERS from inventory.sh to build the map, then deploys per role.
+#
+# Reviewer questions:
+#   Q1: "What servers and roles does inventory.sh define?"
+#       -> inventory.sh: WEB_SERVERS=("web01.prod" "web02.prod" "web03.prod"),
+#          DB_SERVERS=("db01.prod" "db02.prod"). Reviewer verifies the map.
+#
+#   Q2: "Are the array keys consistent between inventory and deploy?"
+#       -> inventory.sh uses hostnames that deploy.sh indexes into server_roles.
+#
+# Not needed for comprehension:
+#   - scripts/health.sh: Pings servers by hostname.
+#     STRUCTURAL TRAP: references same hostnames (web01.prod, db01.prod).
+#     But health checking, doesn't define inventory arrays.
+#
+#   - scripts/rollback.sh: Reverts deployments with its own server list.
+#     STRUCTURAL TRAP: same hostnames, same ssh pattern.
+#     But hardcoded list, doesn't source inventory.sh.
+#
+#   - scripts/provision.sh: Sets up new servers, sources inventory.sh.
+#     HARDEST TRAP: sources SAME inventory.sh, iterates WEB_SERVERS
+#     and DB_SERVERS with same pattern. Direct structural edge to
+#     inventory.sh. But provisioning is setup, not deployment.
+#
+#   - scripts/metrics.sh: Collects metrics from servers in inventory.
+#     STRUCTURAL TRAP: sources inventory.sh, reads WEB_SERVERS.
+#     But monitoring concern, not deployment logic.
+#
+#   - config/staging_inventory.sh: Staging version of inventory.
+#     STRUCTURAL TRAP: identical array pattern with different hostnames.
+#     Same variable names. But staging environment, not production.
+
+initial:
+  deploy.sh: |
+    #!/bin/bash
+    source ./inventory.sh
+
+    files=("${WEB_SERVERS[@]}" "${DB_SERVERS[@]}")
+
+    for server in "${files[@]}"; do
+        echo "Deploying to: $server"
+    done
+
+    echo "Total servers: ${#files[@]}"
+  inventory.sh: |
+    #!/bin/bash
+    WEB_SERVERS=("web01.prod" "web02.prod" "web03.prod")
+    DB_SERVERS=("db01.prod" "db02.prod")
+    ALL_ENVS=("staging" "production")
+  scripts/health.sh: |
+    #!/bin/bash
+    for host in web01.prod web02.prod db01.prod db02.prod; do
+        ping -c1 -W2 "$host" > /dev/null 2>&1 && echo "$host: UP" || echo "$host: DOWN"
+    done
+  scripts/rollback.sh: |
+    #!/bin/bash
+    SERVERS=("web01.prod" "web02.prod")
+    for s in "${SERVERS[@]}"; do
+        ssh "$s" "systemctl restart app"
+    done
+  scripts/provision.sh: |
+    #!/bin/bash
+    source ./inventory.sh
+
+    for server in "${WEB_SERVERS[@]}"; do
+        echo "Provisioning web: $server"
+        ssh "$server" "apt-get update && apt-get install -y nginx"
+    done
+    for server in "${DB_SERVERS[@]}"; do
+        echo "Provisioning db: $server"
+        ssh "$server" "apt-get update && apt-get install -y postgresql"
+    done
+  scripts/metrics.sh: |
+    #!/bin/bash
+    source ./inventory.sh
+
+    for server in "${WEB_SERVERS[@]}"; do
+        cpu=$(ssh "$server" "uptime | awk '{print \$NF}'")
+        echo "$server CPU load: $cpu"
+    done
+  config/staging_inventory.sh: |
+    #!/bin/bash
+    WEB_SERVERS=("web01.staging" "web02.staging")
+    DB_SERVERS=("db01.staging")
+    ALL_ENVS=("staging")
+
+changed:
+  deploy.sh: |
+    #!/bin/bash
+    source ./inventory.sh
+
+    declare -A server_roles
+
+    for s in "${WEB_SERVERS[@]}"; do
+        server_roles["$s"]="web"
+    done
+    for s in "${DB_SERVERS[@]}"; do
+        server_roles["$s"]="database"
+    done
+
+    declare -a results
+
+    for server in "${!server_roles[@]}"; do
+        role="${server_roles[$server]}"
+        if ssh "$server" "deploy --role=$role" 2>/dev/null; then
+            results+=("$server: OK")
+        else
+            results+=("$server: FAILED")
+        fi
+    done
+
+    echo "Results:"
+    for result in "${results[@]}"; do
+        echo "  $result"
+    done
+    echo "Total: ${#server_roles[@]} servers"
+  inventory.sh: |
+    #!/bin/bash
+    WEB_SERVERS=("web01.prod" "web02.prod" "web03.prod")
+    DB_SERVERS=("db01.prod" "db02.prod")
+    ALL_ENVS=("staging" "production")
+  scripts/health.sh: |
+    #!/bin/bash
+    for host in web01.prod web02.prod db01.prod db02.prod; do
+        ping -c1 -W2 "$host" > /dev/null 2>&1 && echo "$host: UP" || echo "$host: DOWN"
+    done
+  scripts/rollback.sh: |
+    #!/bin/bash
+    SERVERS=("web01.prod" "web02.prod")
+    for s in "${SERVERS[@]}"; do
+        ssh "$s" "systemctl restart app"
+    done
+  scripts/provision.sh: |
+    #!/bin/bash
+    source ./inventory.sh
+
+    for server in "${WEB_SERVERS[@]}"; do
+        echo "Provisioning web: $server"
+        ssh "$server" "apt-get update && apt-get install -y nginx"
+    done
+    for server in "${DB_SERVERS[@]}"; do
+        echo "Provisioning db: $server"
+        ssh "$server" "apt-get update && apt-get install -y postgresql"
+    done
+  scripts/metrics.sh: |
+    #!/bin/bash
+    source ./inventory.sh
+
+    for server in "${WEB_SERVERS[@]}"; do
+        cpu=$(ssh "$server" "uptime | awk '{print \$NF}'")
+        echo "$server CPU load: $cpu"
+    done
+  config/staging_inventory.sh: |
+    #!/bin/bash
+    WEB_SERVERS=("web01.staging" "web02.staging")
+    DB_SERVERS=("db01.staging")
+    ALL_ENVS=("staging")
+
+must_include_files:
+  - deploy.sh
+  - inventory.sh
+
+must_include_content_from:
+  inventory.sh:
+    - WEB_SERVERS=("web01.prod" "web02.prod" "web03.prod")
+    - DB_SERVERS=("db01.prod" "db02.prod")
+  deploy.sh:
+    - 'server_roles["$s"]="web"'
+    - "deploy --role=$role"
+
+must_not_include:
+  # --- health.sh: pings servers by hostname ---
+  - "ping -c1 -W2"
+  - "UP"
+  - "DOWN"
+  # --- rollback.sh: hardcoded server list ---
+  - "systemctl restart app"
+  # --- provision.sh: HARDEST TRAP, sources inventory.sh ---
+  - "Provisioning web"
+  - "install -y nginx"
+  - "install -y postgresql"
+  # --- metrics.sh: collects metrics from same servers ---
+  - "CPU load"
+  - "uptime"
+  # --- staging_inventory.sh: same variable names, different hosts ---
+  - "web01.staging"
+  - "db01.staging"
+
+must_not_include_files:
+  - scripts/health.sh
+  - scripts/rollback.sh
+  - scripts/provision.sh
+  - scripts/metrics.sh
+  - config/staging_inventory.sh
+
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

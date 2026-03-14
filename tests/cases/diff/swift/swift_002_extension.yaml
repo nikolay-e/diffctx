@@ -1,0 +1,308 @@
+# Scenario: Validator gains validateEmail and validateNonEmpty methods that call
+# extension methods on String (isValidEmail, trimmed). The reviewer sees
+# email.trimmed.isValidEmail() in the diff and needs to understand what these do.
+#
+# Diff: Sources/Validators/Validator.swift changes from a single validate() stub
+# to validateEmail() and validateNonEmpty() using .trimmed and .isValidEmail()
+# from StringExtensions.swift.
+#
+# Reviewer questions:
+#   Q1: "What does isValidEmail() actually check?"
+#       -> Sources/Extensions/StringExtensions.swift: regex pattern matching
+#          [A-Z0-9a-z._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}.
+#          Reviewer must verify the regex is correct for email validation.
+#
+#   Q2: "What does .trimmed return?"
+#       -> Same file: trimmingCharacters(in: .whitespacesAndNewlines).
+#          Reviewer verifies trimmed is applied before isValidEmail check.
+#
+# Not needed for comprehension:
+#   - Sources/Helpers/DateFormatter.swift: Utility in nearby directory.
+#     STRUCTURAL TRAP: similar "helper" pattern, imported by other validators.
+#     But formats dates, not strings.
+#
+#   - Sources/Helpers/NumberFormatter.swift: Another utility helper.
+#     STRUCTURAL TRAP: same Helpers/ directory, similar static formatting methods.
+#     But formats currency, no string validation.
+#
+#   - Sources/Extensions/CollectionExtensions.swift: Extension file in the SAME
+#     Extensions/ directory. HARDEST TRAP: sibling extension file, same pattern
+#     of extending stdlib types with utility methods. But extends Collection,
+#     not String.
+#
+#   - Sources/Validators/PasswordValidator.swift: Sibling validator in the SAME
+#     directory. STRUCTURAL TRAP: same pattern (struct with validate methods),
+#     even imports StringExtensions and uses .trimmed. But validates passwords,
+#     not emails — the reviewer doesn't need password rules.
+#
+#   - Sources/Extensions/URLExtensions.swift: Another extension file in Extensions/.
+#     STRUCTURAL TRAP: extends URL with isSecure, host properties — similar
+#     "extension on Foundation type" pattern. Unrelated to string validation.
+
+initial:
+  Sources/Extensions/StringExtensions.swift: |
+    extension String {
+        func isValidEmail() -> Bool {
+            let pattern = "[A-Z0-9a-z._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}"
+            return self.range(of: pattern, options: .regularExpression) != nil
+        }
+
+        var trimmed: String {
+            trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+
+        var isBlank: Bool {
+            trimmed.isEmpty
+        }
+    }
+  Sources/Validators/Validator.swift: |
+    struct Validator {
+        func validate(_ input: String) -> Bool {
+            return !input.isEmpty
+        }
+    }
+  Sources/Helpers/DateFormatter.swift: |
+    import Foundation
+
+    struct AppDateFormatter {
+        static let iso8601: DateFormatter = {
+            let formatter = DateFormatter()
+            formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ssZ"
+            return formatter
+        }()
+
+        static func format(_ date: Date) -> String {
+            return iso8601.string(from: date)
+        }
+    }
+  Sources/Helpers/NumberFormatter.swift: |
+    import Foundation
+
+    struct AppNumberFormatter {
+        static func formatCurrency(_ amount: Double) -> String {
+            let formatter = NumberFormatter()
+            formatter.numberStyle = .currency
+            return formatter.string(from: NSNumber(value: amount)) ?? "$0.00"
+        }
+    }
+  Sources/Extensions/CollectionExtensions.swift: |
+    extension Collection {
+        var isNotEmpty: Bool {
+            !isEmpty
+        }
+
+        func element(at index: Index) -> Element? {
+            indices.contains(index) ? self[index] : nil
+        }
+
+        func chunked(into size: Int) -> [[Element]] {
+            var chunks: [[Element]] = []
+            var current: [Element] = []
+            for element in self {
+                current.append(element)
+                if current.count == size {
+                    chunks.append(current)
+                    current = []
+                }
+            }
+            if !current.isEmpty { chunks.append(current) }
+            return chunks
+        }
+    }
+  Sources/Validators/PasswordValidator.swift: |
+    struct PasswordValidator {
+        private let minLength = 8
+
+        func validate(_ password: String) -> [String] {
+            var errors: [String] = []
+            let cleaned = password.trimmed
+            if cleaned.count < minLength {
+                errors.append("Password must be at least \(minLength) characters")
+            }
+            if cleaned.rangeOfCharacter(from: .uppercaseLetters) == nil {
+                errors.append("Password must contain an uppercase letter")
+            }
+            if cleaned.rangeOfCharacter(from: .decimalDigits) == nil {
+                errors.append("Password must contain a digit")
+            }
+            return errors
+        }
+    }
+  Sources/Extensions/URLExtensions.swift: |
+    import Foundation
+
+    extension URL {
+        var isSecure: Bool {
+            scheme == "https"
+        }
+
+        var hostWithoutPort: String? {
+            host
+        }
+
+        func appendingQueryItem(name: String, value: String) -> URL? {
+            var components = URLComponents(url: self, resolvingAgainstBaseURL: false)
+            var items = components?.queryItems ?? []
+            items.append(URLQueryItem(name: name, value: value))
+            components?.queryItems = items
+            return components?.url
+        }
+    }
+
+changed:
+  Sources/Extensions/StringExtensions.swift: |
+    extension String {
+        func isValidEmail() -> Bool {
+            let pattern = "[A-Z0-9a-z._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}"
+            return self.range(of: pattern, options: .regularExpression) != nil
+        }
+
+        var trimmed: String {
+            trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+
+        var isBlank: Bool {
+            trimmed.isEmpty
+        }
+    }
+  Sources/Validators/Validator.swift: |
+    struct Validator {
+        func validateEmail(_ email: String) -> Bool {
+            return email.trimmed.isValidEmail()
+        }
+
+        func validateNonEmpty(_ value: String) -> Bool {
+            return !value.trimmed.isEmpty
+        }
+    }
+  Sources/Helpers/DateFormatter.swift: |
+    import Foundation
+
+    struct AppDateFormatter {
+        static let iso8601: DateFormatter = {
+            let formatter = DateFormatter()
+            formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ssZ"
+            return formatter
+        }()
+
+        static func format(_ date: Date) -> String {
+            return iso8601.string(from: date)
+        }
+    }
+  Sources/Helpers/NumberFormatter.swift: |
+    import Foundation
+
+    struct AppNumberFormatter {
+        static func formatCurrency(_ amount: Double) -> String {
+            let formatter = NumberFormatter()
+            formatter.numberStyle = .currency
+            return formatter.string(from: NSNumber(value: amount)) ?? "$0.00"
+        }
+    }
+  Sources/Extensions/CollectionExtensions.swift: |
+    extension Collection {
+        var isNotEmpty: Bool {
+            !isEmpty
+        }
+
+        func element(at index: Index) -> Element? {
+            indices.contains(index) ? self[index] : nil
+        }
+
+        func chunked(into size: Int) -> [[Element]] {
+            var chunks: [[Element]] = []
+            var current: [Element] = []
+            for element in self {
+                current.append(element)
+                if current.count == size {
+                    chunks.append(current)
+                    current = []
+                }
+            }
+            if !current.isEmpty { chunks.append(current) }
+            return chunks
+        }
+    }
+  Sources/Validators/PasswordValidator.swift: |
+    struct PasswordValidator {
+        private let minLength = 8
+
+        func validate(_ password: String) -> [String] {
+            var errors: [String] = []
+            let cleaned = password.trimmed
+            if cleaned.count < minLength {
+                errors.append("Password must be at least \(minLength) characters")
+            }
+            if cleaned.rangeOfCharacter(from: .uppercaseLetters) == nil {
+                errors.append("Password must contain an uppercase letter")
+            }
+            if cleaned.rangeOfCharacter(from: .decimalDigits) == nil {
+                errors.append("Password must contain a digit")
+            }
+            return errors
+        }
+    }
+  Sources/Extensions/URLExtensions.swift: |
+    import Foundation
+
+    extension URL {
+        var isSecure: Bool {
+            scheme == "https"
+        }
+
+        var hostWithoutPort: String? {
+            host
+        }
+
+        func appendingQueryItem(name: String, value: String) -> URL? {
+            var components = URLComponents(url: self, resolvingAgainstBaseURL: false)
+            var items = components?.queryItems ?? []
+            items.append(URLQueryItem(name: name, value: value))
+            components?.queryItems = items
+            return components?.url
+        }
+    }
+
+must_include_files:
+  - Sources/Validators/Validator.swift
+  - Sources/Extensions/StringExtensions.swift
+
+must_include_content_from:
+  Sources/Validators/Validator.swift:
+    - "email.trimmed.isValidEmail()"
+    - "!value.trimmed.isEmpty"
+  Sources/Extensions/StringExtensions.swift:
+    - "func isValidEmail()"
+    - "var trimmed: String"
+
+must_not_include:
+  # --- DateFormatter.swift: date formatting utility ---
+  - AppDateFormatter
+  - iso8601
+  # --- NumberFormatter.swift: currency formatting ---
+  - AppNumberFormatter
+  - formatCurrency
+  # --- CollectionExtensions.swift: sibling extension, same directory ---
+  - isNotEmpty
+  - chunked
+  - "element(at"
+  # --- PasswordValidator.swift: HARDEST TRAP, uses .trimmed too ---
+  - PasswordValidator
+  - "must contain an uppercase"
+  - "must contain a digit"
+  # --- URLExtensions.swift: another extension file in Extensions/ ---
+  - isSecure
+  - hostWithoutPort
+  - appendingQueryItem
+
+must_not_include_files:
+  - Sources/Helpers/DateFormatter.swift
+  - Sources/Helpers/NumberFormatter.swift
+  - Sources/Extensions/CollectionExtensions.swift
+  - Sources/Validators/PasswordValidator.swift
+  - Sources/Extensions/URLExtensions.swift
+
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

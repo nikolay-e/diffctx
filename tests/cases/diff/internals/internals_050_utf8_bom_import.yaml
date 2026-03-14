@@ -1,0 +1,15 @@
+initial:
+  bom.py: |
+    pass
+changed:
+  bom.py: |
+    import os
+
+    def main():
+        return os.getcwd()
+must_include_files:
+- bom.py
+must_include_content:
+- return os.getcwd()
+add_garbage_files: false
+skip_garbage_check: true

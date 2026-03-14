@@ -1,0 +1,256 @@
+initial:
+  utils/helper.py: |
+    def process(data: list) -> list:
+        return [x * 2 for x in data]
+
+    def transform(data: list, factor: float = 1.5) -> list:
+        return [x * factor for x in data]
+
+    def validate_input(data: list) -> bool:
+        return all(isinstance(x, (int, float)) for x in data)
+
+    class DataPipeline:
+        def __init__(self):
+            self.steps = []
+
+        def add_step(self, func) -> None:
+            self.steps.append(func)
+
+        def run(self, data: list) -> list:
+            result = data
+            for step in self.steps:
+                result = step(result)
+            return result
+  app.py: |
+    def run():
+        pass
+
+  # --- Tricky: also imports utils.helper with alias (same-import consumer) ---
+  analytics/pipeline.py: |
+    from utils import helper as h
+    GARBAGE_DEP_004_ANALYTICS_IMPORT_C = "analytics_pipeline"
+    GARBAGE_DEP_004_ANALYTICS_BATCH_D = 1000
+
+    class AnalyticsPipeline:
+        GARBAGE_DEP_004_ANALYTICS_CLASS_E = True
+
+        def analyze(self, data: list) -> list:
+            if h.validate_input(data):
+                return h.process(data)
+            return []
+
+        def transform_data(self, data: list) -> list:
+            return h.transform(data, factor=3.0)
+
+  # --- Tricky: has own process/transform/validate_input functions (name collision) ---
+  utils/data_ops.py: |
+    GARBAGE_DEP_004_DATAOPS_MOD_F = "data_operations"
+    GARBAGE_DEP_004_DATAOPS_VER_G = "1.0"
+
+    def process(data: list) -> list:
+        GARBAGE_DEP_004_DATAOPS_PROC_H = True
+        return [str(x) for x in data]
+
+    def transform(data: list, factor: float = 2.0) -> list:
+        return [x + factor for x in data]
+
+    def validate_input(data: list) -> bool:
+        GARBAGE_DEP_004_DATAOPS_VALID_I = True
+        return len(data) > 0
+
+  # --- Tricky: file in same directory with similar structure ---
+  utils/formatter.py: |
+    GARBAGE_DEP_004_FORMATTER_MOD_J = "formatting"
+    GARBAGE_DEP_004_FORMATTER_VER_K = "2.0"
+
+    def process(items: list) -> list:
+        return [f"[{x}]" for x in items]
+
+    class DataPipeline:
+        GARBAGE_DEP_004_FORMATTER_PIPE_L = True
+
+        def __init__(self):
+            self.steps = []
+
+        def run(self, data: list) -> list:
+            return data
+
+  # --- Plain garbage ---
+  garbage/chess_engine_GARBAGE_DEP_004_CHESS_A.py: |
+    def evaluate_position_GARBAGE_DEP_004_CHESS_A(board: list) -> float:
+        return sum(sum(row) for row in board)
+
+    def legal_moves_GARBAGE_DEP_004_CHESS_A(piece: str, position: tuple) -> list:
+        return [(position[0] + 1, position[1]), (position[0], position[1] + 1)]
+
+    class ChessBoard_GARBAGE_DEP_004_CHESS_A:
+        def __init__(self):
+            self.board = [[0] * 8 for _ in range(8)]
+
+        def place_piece(self, piece: str, row: int, col: int) -> None:
+            self.board[row][col] = piece
+  garbage/currency_converter_GARBAGE_DEP_004_CURRENCY_B.py: |
+    RATES_GARBAGE_DEP_004_CURRENCY_B = {"USD": 1.0, "EUR": 0.85, "GBP": 0.73}
+
+    def convert_GARBAGE_DEP_004_CURRENCY_B(amount: float, from_curr: str, to_curr: str) -> float:
+        usd = amount / RATES_GARBAGE_DEP_004_CURRENCY_B[from_curr]
+        return usd * RATES_GARBAGE_DEP_004_CURRENCY_B[to_curr]
+
+    class ExchangeService_GARBAGE_DEP_004_CURRENCY_B:
+        def __init__(self):
+            self.rates = RATES_GARBAGE_DEP_004_CURRENCY_B.copy()
+
+        def update_rate(self, currency: str, rate: float) -> None:
+            self.rates[currency] = rate
+changed:
+  utils/helper.py: |
+    def process(data: list) -> list:
+        return [x * 2 for x in data]
+
+    def transform(data: list, factor: float = 1.5) -> list:
+        return [x * factor for x in data]
+
+    def validate_input(data: list) -> bool:
+        return all(isinstance(x, (int, float)) for x in data)
+
+    class DataPipeline:
+        def __init__(self):
+            self.steps = []
+
+        def add_step(self, func) -> None:
+            self.steps.append(func)
+
+        def run(self, data: list) -> list:
+            result = data
+            for step in self.steps:
+                result = step(result)
+            return result
+  app.py: |
+    from utils import helper as h
+
+    def run():
+        data = [1, 2, 3, 4, 5]
+        if h.validate_input(data):
+            result = h.process(data)
+            transformed = h.transform(result, factor=2.0)
+            return transformed
+        return []
+  analytics/pipeline.py: |
+    from utils import helper as h
+    GARBAGE_DEP_004_ANALYTICS_IMPORT_C = "analytics_pipeline"
+    GARBAGE_DEP_004_ANALYTICS_BATCH_D = 1000
+
+    class AnalyticsPipeline:
+        GARBAGE_DEP_004_ANALYTICS_CLASS_E = True
+
+        def analyze(self, data: list) -> list:
+            if h.validate_input(data):
+                return h.process(data)
+            return []
+
+        def transform_data(self, data: list) -> list:
+            return h.transform(data, factor=3.0)
+  utils/data_ops.py: |
+    GARBAGE_DEP_004_DATAOPS_MOD_F = "data_operations"
+    GARBAGE_DEP_004_DATAOPS_VER_G = "1.0"
+
+    def process(data: list) -> list:
+        GARBAGE_DEP_004_DATAOPS_PROC_H = True
+        return [str(x) for x in data]
+
+    def transform(data: list, factor: float = 2.0) -> list:
+        return [x + factor for x in data]
+
+    def validate_input(data: list) -> bool:
+        GARBAGE_DEP_004_DATAOPS_VALID_I = True
+        return len(data) > 0
+  utils/formatter.py: |
+    GARBAGE_DEP_004_FORMATTER_MOD_J = "formatting"
+    GARBAGE_DEP_004_FORMATTER_VER_K = "2.0"
+
+    def process(items: list) -> list:
+        return [f"[{x}]" for x in items]
+
+    class DataPipeline:
+        GARBAGE_DEP_004_FORMATTER_PIPE_L = True
+
+        def __init__(self):
+            self.steps = []
+
+        def run(self, data: list) -> list:
+            return data
+  garbage/chess_engine_GARBAGE_DEP_004_CHESS_A.py: |
+    def evaluate_position_GARBAGE_DEP_004_CHESS_A(board: list) -> float:
+        return sum(sum(row) for row in board)
+
+    def legal_moves_GARBAGE_DEP_004_CHESS_A(piece: str, position: tuple) -> list:
+        return [(position[0] + 1, position[1]), (position[0], position[1] + 1)]
+
+    class ChessBoard_GARBAGE_DEP_004_CHESS_A:
+        def __init__(self):
+            self.board = [[0] * 8 for _ in range(8)]
+
+        def place_piece(self, piece: str, row: int, col: int) -> None:
+            self.board[row][col] = piece
+  garbage/currency_converter_GARBAGE_DEP_004_CURRENCY_B.py: |
+    RATES_GARBAGE_DEP_004_CURRENCY_B = {"USD": 1.0, "EUR": 0.85, "GBP": 0.73}
+
+    def convert_GARBAGE_DEP_004_CURRENCY_B(amount: float, from_curr: str, to_curr: str) -> float:
+        usd = amount / RATES_GARBAGE_DEP_004_CURRENCY_B[from_curr]
+        return usd * RATES_GARBAGE_DEP_004_CURRENCY_B[to_curr]
+
+    class ExchangeService_GARBAGE_DEP_004_CURRENCY_B:
+        def __init__(self):
+            self.rates = RATES_GARBAGE_DEP_004_CURRENCY_B.copy()
+
+        def update_rate(self, currency: str, rate: float) -> None:
+            self.rates[currency] = rate
+
+# === Assertions ===
+
+must_include_files:
+- app.py
+- utils/helper.py
+
+must_include_content_from:
+  app.py:
+    - from utils import helper as h
+    - data = [1, 2, 3, 4, 5]
+    - h.validate_input(data)
+    - h.process(data)
+    - h.transform(result, factor=2.0)
+    - 'def run():'
+  utils/helper.py:
+    - 'def process(data: list) -> list:'
+    - 'def transform(data: list, factor: float = 1.5) -> list:'
+    - 'def validate_input(data: list) -> bool:'
+
+must_not_include:
+# Plain garbage
+- GARBAGE_DEP_004_CHESS_A
+- GARBAGE_DEP_004_CURRENCY_B
+# Tricky: same alias import "from utils import helper as h" with same call pattern
+- GARBAGE_DEP_004_ANALYTICS_IMPORT_C
+- GARBAGE_DEP_004_ANALYTICS_BATCH_D
+- GARBAGE_DEP_004_ANALYTICS_CLASS_E
+# Tricky: same function names process/transform/validate_input
+- GARBAGE_DEP_004_DATAOPS_MOD_F
+- GARBAGE_DEP_004_DATAOPS_VER_G
+- GARBAGE_DEP_004_DATAOPS_PROC_H
+- GARBAGE_DEP_004_DATAOPS_VALID_I
+# Tricky: same directory, same class name DataPipeline, same process function
+- GARBAGE_DEP_004_FORMATTER_MOD_J
+- GARBAGE_DEP_004_FORMATTER_VER_K
+- GARBAGE_DEP_004_FORMATTER_PIPE_L
+
+must_not_include_files:
+- analytics/pipeline.py
+- utils/data_ops.py
+- utils/formatter.py
+- garbage/chess_engine_GARBAGE_DEP_004_CHESS_A.py
+- garbage/currency_converter_GARBAGE_DEP_004_CURRENCY_B.py
+
+max_fragments: 6
+max_files: 2
+add_garbage_files: false
+skip_garbage_check: true

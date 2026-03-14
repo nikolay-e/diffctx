@@ -1,0 +1,408 @@
+# Scenario: UserRepository adds typed methods with nullable User returns
+#   — reviewer needs User model to understand property access patterns
+#
+# Diff shows:
+#   - class UserRepository { save(array): bool }
+#   + use App\Models\User; find(int): ?User, save(User): void,
+#     findByName(string): ?User iterating store and accessing $user->name, $user->id
+#
+# Reviewer questions:
+#   Q1: "What public properties does User have for the repository to access?"
+#       -> User has public int $id, string $name, ?string $avatar.
+#   Q2: "Is $user->name a string for === comparison in findByName?"
+#       -> Yes, public string $name. Comparison is type-safe.
+#   Q3: "What does save() store as the key — is $user->id always set?"
+#       -> Constructor requires int $id. Always set.
+#
+# Not needed for comprehension:
+#   - src/Repositories/ProductRepository.php: sibling repository with IDENTICAL
+#     find/save interface. Same Repositories namespace. Has find(int): ?array
+#     and save(array). HARDEST TRAP: structurally identical sibling repo.
+#     But operates on arrays, not User objects.
+#
+#   - src/Models/Address.php: user-adjacent model in same Models namespace.
+#     Has similar property pattern (public int $id, string $street, ?string).
+#     HARD TRAP: same namespace, similar nullable property pattern. But not
+#     referenced by UserRepository.
+#
+#   - src/Repositories/OrderRepository.php: another repository in same namespace.
+#     Has find(int) and save() methods. Same interface pattern. But operates
+#     on Order model, not User.
+#
+#   - src/Models/UserSettings.php: user-adjacent model with user_id reference.
+#     Same Models namespace. Has getUserId() method. Domain overlap with User.
+#     But not accessed by UserRepository.
+#
+#   - src/Services/UserService.php: consumes UserRepository. Calls find() and
+#     save(). Direct structural edge — it's the consumer of the changed code.
+#     But HOW the service uses the repo doesn't help verify property access.
+
+initial:
+  src/Models/User.php: |
+    <?php
+    namespace App\Models;
+
+    class User {
+        public int $id;
+        public string $name;
+        public ?string $avatar;
+
+        public function __construct(int $id, string $name, ?string $avatar = null) {
+            $this->id = $id;
+            $this->name = $name;
+            $this->avatar = $avatar;
+        }
+
+        public function getAvatarUrl(): ?string {
+            return $this->avatar ? "/avatars/{$this->avatar}" : null;
+        }
+
+        public function hasAvatar(): bool {
+            return $this->avatar !== null;
+        }
+    }
+  src/Repositories/UserRepository.php: |
+    <?php
+    namespace App\Repositories;
+
+    class UserRepository {
+        private array $store = [];
+
+        public function save(array $data): bool {
+            $this->store[] = $data;
+            return true;
+        }
+    }
+  src/Repositories/ProductRepository.php: |
+    <?php
+    namespace App\Repositories;
+
+    class ProductRepository {
+        private array $products = [];
+
+        public function find(int $id): ?array {
+            return $this->products[$id] ?? null;
+        }
+
+        public function save(array $product): void {
+            $this->products[$product['id']] = $product;
+        }
+
+        public function findByCategory(string $category): array {
+            return array_filter($this->products, fn($p) => $p['category'] === $category);
+        }
+
+        public function count(): int {
+            return count($this->products);
+        }
+    }
+  src/Models/Address.php: |
+    <?php
+    namespace App\Models;
+
+    class Address {
+        public int $id;
+        public string $street;
+        public string $city;
+        public ?string $zipCode;
+
+        public function __construct(int $id, string $street, string $city, ?string $zipCode = null) {
+            $this->id = $id;
+            $this->street = $street;
+            $this->city = $city;
+            $this->zipCode = $zipCode;
+        }
+
+        public function getFullAddress(): string {
+            $parts = [$this->street, $this->city];
+            if ($this->zipCode) {
+                $parts[] = $this->zipCode;
+            }
+            return implode(', ', $parts);
+        }
+    }
+  src/Repositories/OrderRepository.php: |
+    <?php
+    namespace App\Repositories;
+
+    class OrderRepository {
+        private array $orders = [];
+
+        public function find(int $id): ?array {
+            return $this->orders[$id] ?? null;
+        }
+
+        public function save(array $order): void {
+            $this->orders[$order['id']] = $order;
+        }
+
+        public function findByStatus(string $status): array {
+            return array_filter($this->orders, fn($o) => $o['status'] === $status);
+        }
+
+        public function delete(int $id): bool {
+            if (isset($this->orders[$id])) {
+                unset($this->orders[$id]);
+                return true;
+            }
+            return false;
+        }
+    }
+  src/Models/UserSettings.php: |
+    <?php
+    namespace App\Models;
+
+    class UserSettings {
+        private int $userId;
+        private array $preferences;
+
+        public function __construct(int $userId, array $preferences = []) {
+            $this->userId = $userId;
+            $this->preferences = $preferences;
+        }
+
+        public function getUserId(): int {
+            return $this->userId;
+        }
+
+        public function get(string $key, mixed $default = null): mixed {
+            return $this->preferences[$key] ?? $default;
+        }
+
+        public function set(string $key, mixed $value): void {
+            $this->preferences[$key] = $value;
+        }
+    }
+  src/Services/UserService.php: |
+    <?php
+    namespace App\Services;
+
+    use App\Repositories\UserRepository;
+
+    class UserService {
+        public function __construct(private UserRepository $repo) {}
+
+        public function getUser(int $id): ?array {
+            $user = $this->repo->find($id);
+            return $user ? ['id' => $user->id, 'name' => $user->name] : null;
+        }
+
+        public function registerUser(string $name, string $email): void {
+            $this->repo->save(['name' => $name, 'email' => $email]);
+        }
+    }
+
+changed:
+  src/Models/User.php: |
+    <?php
+    namespace App\Models;
+
+    class User {
+        public int $id;
+        public string $name;
+        public ?string $avatar;
+
+        public function __construct(int $id, string $name, ?string $avatar = null) {
+            $this->id = $id;
+            $this->name = $name;
+            $this->avatar = $avatar;
+        }
+
+        public function getAvatarUrl(): ?string {
+            return $this->avatar ? "/avatars/{$this->avatar}" : null;
+        }
+
+        public function hasAvatar(): bool {
+            return $this->avatar !== null;
+        }
+    }
+  src/Repositories/UserRepository.php: |
+    <?php
+    namespace App\Repositories;
+
+    use App\Models\User;
+
+    class UserRepository {
+        private array $store = [];
+
+        public function find(int $id): ?User {
+            return $this->store[$id] ?? null;
+        }
+
+        public function save(User $user): void {
+            $this->store[$user->id] = $user;
+        }
+
+        public function findByName(string $name): ?User {
+            foreach ($this->store as $user) {
+                if ($user->name === $name) {
+                    return $user;
+                }
+            }
+            return null;
+        }
+    }
+  src/Repositories/ProductRepository.php: |
+    <?php
+    namespace App\Repositories;
+
+    class ProductRepository {
+        private array $products = [];
+
+        public function find(int $id): ?array {
+            return $this->products[$id] ?? null;
+        }
+
+        public function save(array $product): void {
+            $this->products[$product['id']] = $product;
+        }
+
+        public function findByCategory(string $category): array {
+            return array_filter($this->products, fn($p) => $p['category'] === $category);
+        }
+
+        public function count(): int {
+            return count($this->products);
+        }
+    }
+  src/Models/Address.php: |
+    <?php
+    namespace App\Models;
+
+    class Address {
+        public int $id;
+        public string $street;
+        public string $city;
+        public ?string $zipCode;
+
+        public function __construct(int $id, string $street, string $city, ?string $zipCode = null) {
+            $this->id = $id;
+            $this->street = $street;
+            $this->city = $city;
+            $this->zipCode = $zipCode;
+        }
+
+        public function getFullAddress(): string {
+            $parts = [$this->street, $this->city];
+            if ($this->zipCode) {
+                $parts[] = $this->zipCode;
+            }
+            return implode(', ', $parts);
+        }
+    }
+  src/Repositories/OrderRepository.php: |
+    <?php
+    namespace App\Repositories;
+
+    class OrderRepository {
+        private array $orders = [];
+
+        public function find(int $id): ?array {
+            return $this->orders[$id] ?? null;
+        }
+
+        public function save(array $order): void {
+            $this->orders[$order['id']] = $order;
+        }
+
+        public function findByStatus(string $status): array {
+            return array_filter($this->orders, fn($o) => $o['status'] === $status);
+        }
+
+        public function delete(int $id): bool {
+            if (isset($this->orders[$id])) {
+                unset($this->orders[$id]);
+                return true;
+            }
+            return false;
+        }
+    }
+  src/Models/UserSettings.php: |
+    <?php
+    namespace App\Models;
+
+    class UserSettings {
+        private int $userId;
+        private array $preferences;
+
+        public function __construct(int $userId, array $preferences = []) {
+            $this->userId = $userId;
+            $this->preferences = $preferences;
+        }
+
+        public function getUserId(): int {
+            return $this->userId;
+        }
+
+        public function get(string $key, mixed $default = null): mixed {
+            return $this->preferences[$key] ?? $default;
+        }
+
+        public function set(string $key, mixed $value): void {
+            $this->preferences[$key] = $value;
+        }
+    }
+  src/Services/UserService.php: |
+    <?php
+    namespace App\Services;
+
+    use App\Repositories\UserRepository;
+
+    class UserService {
+        public function __construct(private UserRepository $repo) {}
+
+        public function getUser(int $id): ?array {
+            $user = $this->repo->find($id);
+            return $user ? ['id' => $user->id, 'name' => $user->name] : null;
+        }
+
+        public function registerUser(string $name, string $email): void {
+            $this->repo->save(['name' => $name, 'email' => $email]);
+        }
+    }
+
+must_include_files:
+  - src/Repositories/UserRepository.php
+  # Q1/Q2/Q3: Reviewer needs User model to verify property access ($user->id, $user->name)
+  - src/Models/User.php
+
+must_include_content_from:
+  src/Repositories/UserRepository.php:
+    - "public function find(int $id): ?User"
+    - "$user->name === $name"
+    - "$this->store[$user->id] = $user"
+  src/Models/User.php:
+    - "public int $id"
+    - "public string $name"
+    - "public ?string $avatar"
+
+must_not_include:
+  # --- ProductRepository.php: HARDEST TRAP — sibling repo, same find/save interface ---
+  - "class ProductRepository"
+  - "findByCategory"
+  # --- Address.php: same Models namespace, similar property pattern ---
+  - "class Address"
+  - "getFullAddress"
+  - "zipCode"
+  # --- OrderRepository.php: another repo in same namespace with find/save ---
+  - "class OrderRepository"
+  - "findByStatus"
+  # --- UserSettings.php: user-adjacent model in same namespace ---
+  - "class UserSettings"
+  - "getUserId"
+  - "preferences"
+  # --- UserService.php: consumer of UserRepository, direct structural edge ---
+  - "class UserService"
+  - "registerUser"
+
+must_not_include_files:
+  - src/Repositories/ProductRepository.php
+  - src/Models/Address.php
+  - src/Repositories/OrderRepository.php
+  - src/Models/UserSettings.php
+  - src/Services/UserService.php
+
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

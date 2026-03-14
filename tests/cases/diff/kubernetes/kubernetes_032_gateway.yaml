@@ -1,0 +1,356 @@
+# Scenario: Istio Gateway upgraded from HTTP-only to HTTPS with TLS config,
+#   cipher suites, HTTP->HTTPS redirect, second host, and labels.
+#
+# Diff shows:
+#   - single HTTP server on port 80 for api.example.com
+#   + HTTPS server on 443 with SIMPLE TLS, credential, cipher suites, minProtocolVersion
+#   + HTTP server on 80 with httpsRedirect: true
+#   + api-internal.example.com added to both servers
+#   + labels on metadata
+#
+# Reviewer questions:
+#   Q1: "Does the VirtualService reference this gateway by name?"
+#       -> Needs k8s/base/virtual-service.yaml: VirtualService with
+#          gateways: [api-gateway], confirming the gateway name matches.
+#
+#   Q2: "Are the TLS hosts consistent with the VirtualService hosts?"
+#       -> VirtualService hosts: api.example.com, api-internal.example.com.
+#          Gateway servers host both domains. Consistent.
+#
+#   Q3: "Is SIMPLE TLS mode correct, or should it be MUTUAL?"
+#       -> Needs k8s/base/peer-authentication.yaml: PeerAuthentication with
+#          mtls mode: STRICT. This is mesh-internal mTLS. The gateway uses
+#          SIMPLE for external clients. Reviewer can verify these are
+#          complementary, not contradictory.
+#
+# Not needed for comprehension:
+#   - k8s/base/deployment.yaml: The api-service deployment. The gateway
+#     routes traffic to services via VirtualService, not directly to pods.
+#     Deployment details don't help review TLS/redirect configuration.
+#
+#   - k8s/base/service.yaml: Service with ports 80/443. The gateway doesn't
+#     reference the service directly — the VirtualService does. Port mapping
+#     doesn't help review gateway TLS config.
+#
+#   - k8s/mesh/envoy-ratelimit.yaml: EnvoyFilter for rate limiting on
+#     ingressgateway. Shares the istio: ingressgateway selector label.
+#     HARD TRAP: same workloadSelector as the gateway's selector. But the
+#     EnvoyFilter patches HTTP filters, not TLS configuration.
+#
+#   - k8s/mesh/istio-telemetry.yaml: Telemetry config for access logging
+#     and metrics in istio-system. Shares Istio vocabulary but configures
+#     observability, not routing or TLS.
+
+initial:
+  k8s/base/deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: api-service
+      namespace: production
+      labels:
+        app: api-service
+        tier: backend
+    spec:
+      replicas: 3
+      selector:
+        matchLabels:
+          app: api-service
+      template:
+        metadata:
+          labels:
+            app: api-service
+            tier: backend
+          annotations:
+            sidecar.istio.io/inject: "true"
+        spec:
+          containers:
+          - name: api
+            image: registry.example.com/api-service:v1.5.0
+            ports:
+            - containerPort: 8080
+              name: http
+            - containerPort: 8443
+              name: https
+            resources:
+              requests:
+                memory: "512Mi"
+                cpu: "500m"
+              limits:
+                memory: "1Gi"
+                cpu: "1000m"
+  k8s/base/service.yaml: |
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: api-service
+      namespace: production
+    spec:
+      selector:
+        app: api-service
+      ports:
+      - name: http
+        port: 80
+        targetPort: 8080
+      - name: https
+        port: 443
+        targetPort: 8443
+  k8s/base/virtual-service.yaml: |
+    apiVersion: networking.istio.io/v1beta1
+    kind: VirtualService
+    metadata:
+      name: api-service
+      namespace: production
+    spec:
+      hosts:
+      - api.example.com
+      - api-internal.example.com
+      gateways:
+      - api-gateway
+      http:
+      - route:
+        - destination:
+            host: api-service
+            port:
+              number: 80
+  k8s/base/gateway.yaml: |
+    apiVersion: networking.istio.io/v1beta1
+    kind: Gateway
+    metadata:
+      name: api-gateway
+      namespace: production
+    spec:
+      selector:
+        istio: ingressgateway
+      servers:
+      - port:
+          number: 80
+          name: http
+          protocol: HTTP
+        hosts:
+        - api.example.com
+  k8s/base/peer-authentication.yaml: |
+    apiVersion: security.istio.io/v1beta1
+    kind: PeerAuthentication
+    metadata:
+      name: default
+      namespace: production
+    spec:
+      mtls:
+        mode: STRICT
+  k8s/mesh/envoy-ratelimit.yaml: |
+    apiVersion: networking.istio.io/v1alpha3
+    kind: EnvoyFilter
+    metadata:
+      name: ratelimit-filter
+      namespace: istio-system
+    spec:
+      workloadSelector:
+        labels:
+          istio: ingressgateway
+      configPatches:
+      - applyTo: HTTP_FILTER
+        match:
+          context: GATEWAY
+        patch:
+          operation: INSERT_BEFORE
+          value:
+            name: envoy.filters.http.ratelimit
+  k8s/mesh/istio-telemetry.yaml: |
+    apiVersion: telemetry.istio.io/v1alpha1
+    kind: Telemetry
+    metadata:
+      name: mesh-default
+      namespace: istio-system
+    spec:
+      accessLogging:
+      - providers:
+        - name: envoy
+      metrics:
+      - providers:
+        - name: prometheus
+
+changed:
+  k8s/base/deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: api-service
+      namespace: production
+      labels:
+        app: api-service
+        tier: backend
+    spec:
+      replicas: 3
+      selector:
+        matchLabels:
+          app: api-service
+      template:
+        metadata:
+          labels:
+            app: api-service
+            tier: backend
+          annotations:
+            sidecar.istio.io/inject: "true"
+        spec:
+          containers:
+          - name: api
+            image: registry.example.com/api-service:v1.5.0
+            ports:
+            - containerPort: 8080
+              name: http
+            - containerPort: 8443
+              name: https
+            resources:
+              requests:
+                memory: "512Mi"
+                cpu: "500m"
+              limits:
+                memory: "1Gi"
+                cpu: "1000m"
+  k8s/base/service.yaml: |
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: api-service
+      namespace: production
+    spec:
+      selector:
+        app: api-service
+      ports:
+      - name: http
+        port: 80
+        targetPort: 8080
+      - name: https
+        port: 443
+        targetPort: 8443
+  k8s/base/virtual-service.yaml: |
+    apiVersion: networking.istio.io/v1beta1
+    kind: VirtualService
+    metadata:
+      name: api-service
+      namespace: production
+    spec:
+      hosts:
+      - api.example.com
+      - api-internal.example.com
+      gateways:
+      - api-gateway
+      http:
+      - route:
+        - destination:
+            host: api-service
+            port:
+              number: 80
+  k8s/base/gateway.yaml: |
+    apiVersion: networking.istio.io/v1beta1
+    kind: Gateway
+    metadata:
+      name: api-gateway
+      namespace: production
+      labels:
+        app: api-gateway
+    spec:
+      selector:
+        istio: ingressgateway
+      servers:
+      - port:
+          number: 443
+          name: https
+          protocol: HTTPS
+        tls:
+          mode: SIMPLE
+          credentialName: api-tls-cert
+          minProtocolVersion: TLSV1_2
+          cipherSuites:
+          - ECDHE-RSA-AES256-GCM-SHA384
+          - ECDHE-RSA-AES128-GCM-SHA256
+        hosts:
+        - api.example.com
+        - api-internal.example.com
+      - port:
+          number: 80
+          name: http
+          protocol: HTTP
+        tls:
+          httpsRedirect: true
+        hosts:
+        - api.example.com
+        - api-internal.example.com
+  k8s/base/peer-authentication.yaml: |
+    apiVersion: security.istio.io/v1beta1
+    kind: PeerAuthentication
+    metadata:
+      name: default
+      namespace: production
+    spec:
+      mtls:
+        mode: STRICT
+  k8s/mesh/envoy-ratelimit.yaml: |
+    apiVersion: networking.istio.io/v1alpha3
+    kind: EnvoyFilter
+    metadata:
+      name: ratelimit-filter
+      namespace: istio-system
+    spec:
+      workloadSelector:
+        labels:
+          istio: ingressgateway
+      configPatches:
+      - applyTo: HTTP_FILTER
+        match:
+          context: GATEWAY
+        patch:
+          operation: INSERT_BEFORE
+          value:
+            name: envoy.filters.http.ratelimit
+  k8s/mesh/istio-telemetry.yaml: |
+    apiVersion: telemetry.istio.io/v1alpha1
+    kind: Telemetry
+    metadata:
+      name: mesh-default
+      namespace: istio-system
+    spec:
+      accessLogging:
+      - providers:
+        - name: envoy
+      metrics:
+      - providers:
+        - name: prometheus
+
+must_include_files:
+  - k8s/base/gateway.yaml
+
+must_include_content_from:
+  k8s/base/gateway.yaml:
+    - "credentialName: api-tls-cert"
+    - "httpsRedirect: true"
+    - "ECDHE-RSA-AES256-GCM-SHA384"
+    - "api-internal.example.com"
+
+must_not_include:
+  # --- deployment: pod config not needed for gateway TLS review ---
+  - "api-service:v1.5.0"
+  - "sidecar.istio.io/inject"
+  # --- service: port mapping doesn't help review gateway config ---
+  - "targetPort: 8080"
+  - "targetPort: 8443"
+  # --- envoy ratelimit: HARD TRAP — same ingressgateway selector,
+  #     but EnvoyFilter patches HTTP filters, not TLS ---
+  - ratelimit-filter
+  - envoy.filters.http.ratelimit
+  - INSERT_BEFORE
+  # --- istio telemetry: observability config, not routing/TLS ---
+  - mesh-default
+  - accessLogging
+
+must_not_include_files:
+  - k8s/base/deployment.yaml
+  - k8s/base/service.yaml
+  - k8s/mesh/envoy-ratelimit.yaml
+  - k8s/mesh/istio-telemetry.yaml
+
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

@@ -1,0 +1,13 @@
+initial:
+  null_byte.py: |
+    x = 0
+changed:
+  null_byte.py: |
+    s = "hello\x00world"
+    result = process(s)
+must_include_files:
+- null_byte.py
+must_include_content:
+- s = "hello\x00world"
+add_garbage_files: false
+skip_garbage_check: true

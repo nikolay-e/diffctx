@@ -1,0 +1,304 @@
+# Scenario: Task queue config switches broker from Redis to RabbitMQ,
+#   updates backend host, adds prefetch_count.
+#   Only config/queue.yaml is changed.
+#
+# Diff shows:
+#   - broker: redis://localhost:6379 → amqp://rabbitmq:5672
+#   - backend: redis://localhost:6379 → redis://redis:6379
+#   + prefetch_count: 4 (NEW key)
+#
+# Reviewer questions:
+#   Q1: "Does the code actually support AMQP as a broker protocol?"
+#       -> Needs src/tasks.py: create_celery_app() passes broker URL
+#         directly to Celery() constructor. Celery natively supports
+#         both redis:// and amqp:// protocols, so the broker swap works
+#         without code changes. The reviewer must see this to confirm
+#         no protocol-specific logic exists (e.g., no redis.from_url()
+#         calls on the broker).
+#
+#   Q2: "Is prefetch_count actually wired into the Celery configuration?"
+#       -> Needs src/tasks.py: create_celery_app() only passes broker
+#         and backend — there is NO prefetch_count parameter, no
+#         app.conf.worker_prefetch_multiplier setting. The new config
+#         field is completely inert. This is THE critical review finding:
+#         the config advertises a setting the code ignores.
+#
+#   Q3: "What changed in the config values?"
+#       -> Answerable from the diff: broker protocol switch, backend
+#         host change, new prefetch_count key.
+#
+# Not needed for comprehension:
+#   - src/config_loader.py: Reads queue.yaml and passes values to
+#     create_celery_app(). Direct structural edge: it's the bridge
+#     between the changed config and the Celery app. But understanding
+#     HOW yaml is loaded (file paths, parsing, defaults) doesn't help
+#     answer "does AMQP work" or "is prefetch_count wired." Both are
+#     answered by tasks.py's Celery() call alone.
+#
+#   - src/health/broker_health.py: A health check that connects to
+#     the broker URL to verify connectivity. Direct structural edge:
+#     it reads the broker URL from config. But knowing that a health
+#     check pings the broker doesn't help review whether the broker
+#     protocol switch is correct or whether prefetch_count takes effect.
+#
+#   - docker-compose.yaml: Defines rabbitmq and redis services with
+#     the exact hostnames from the new config (rabbitmq:5672, redis:6379).
+#     Structural overlap: same hostnames and ports. But container
+#     orchestration doesn't help review whether the Celery code handles
+#     the protocol change.
+#
+#   - src/scheduler_jobs.py: Periodic task schedules via beat_schedule.
+#     Uses the Celery app but configures schedules, not the broker.
+#
+#   - config/workers.yaml: Worker scaling config (concurrency, autoscale).
+#     Same config/ directory, same YAML format. But concurrency settings
+#     are orthogonal to broker connection.
+#
+#   - src/tasks/email_tasks.py: Individual task definitions decorated
+#     with @app.task. Uses the Celery app instance but doesn't configure
+#     broker or prefetch. The reviewer question is about app construction,
+#     not task definitions.
+
+initial:
+  config/queue.yaml: |
+    queue:
+      broker: redis://localhost:6379
+      backend: redis://localhost:6379
+
+  src/tasks.py: |
+    from celery import Celery
+    from typing import Optional
+    import logging
+
+    logger = logging.getLogger(__name__)
+
+    def create_celery_app(broker: str, backend: str) -> Celery:
+        app = Celery(__name__, broker=broker, backend=backend)
+        app.conf.update(
+            task_serializer='json',
+            accept_content=['json'],
+            result_serializer='json',
+            timezone='UTC',
+            enable_utc=True,
+        )
+        logger.info(f"Celery app created with broker={broker}")
+        return app
+
+    def send_email_task(to: str, subject: str, body: str) -> None:
+        logger.info(f"Sending email to {to}: {subject}")
+
+    def generate_report_task(report_id: str) -> dict:
+        logger.info(f"Generating report {report_id}")
+        return {"report_id": report_id, "status": "complete"}
+
+  src/config_loader.py: |
+    import yaml
+    import os
+    from typing import Any, Dict
+
+    CONFIG_DIR = os.path.join(os.path.dirname(__file__), '..', 'config')
+
+    def load_yaml(filename: str) -> Dict[str, Any]:
+        path = os.path.join(CONFIG_DIR, filename)
+        with open(path) as f:
+            return yaml.safe_load(f)
+
+    def load_queue_config() -> Dict[str, str]:
+        raw = load_yaml('queue.yaml')
+        queue = raw.get('queue', {})
+        return {
+            'broker': queue.get('broker', 'redis://localhost:6379'),
+            'backend': queue.get('backend', 'redis://localhost:6379'),
+        }
+
+    def load_worker_config() -> Dict[str, Any]:
+        return load_yaml('workers.yaml').get('workers', {})
+
+  src/health/broker_health.py: |
+    import socket
+    from urllib.parse import urlparse
+    import logging
+
+    logger = logging.getLogger(__name__)
+
+    class BrokerHealthCheck:
+        def __init__(self, broker_url: str):
+            self.broker_url = broker_url
+            parsed = urlparse(broker_url)
+            self.host = parsed.hostname or 'localhost'
+            self.port = parsed.port or 5672
+
+        def check(self) -> dict:
+            try:
+                sock = socket.create_connection((self.host, self.port), timeout=5)
+                sock.close()
+                return {"status": "healthy", "broker": self.broker_url}
+            except (socket.timeout, ConnectionRefusedError) as e:
+                logger.error(f"Broker health check failed: {e}")
+                return {"status": "unhealthy", "error": str(e)}
+
+        def is_healthy(self) -> bool:
+            return self.check()["status"] == "healthy"
+
+  docker-compose.yaml: |
+    version: "3.8"
+    services:
+      rabbitmq:
+        image: rabbitmq:3.12-management
+        ports:
+          - "5672:5672"
+          - "15672:15672"
+        environment:
+          RABBITMQ_DEFAULT_USER: guest
+          RABBITMQ_DEFAULT_PASS: guest
+        healthcheck:
+          test: rabbitmq-diagnostics -q ping
+          interval: 30s
+          timeout: 10s
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - "6379:6379"
+        command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+
+      worker:
+        build: .
+        command: celery -A app worker --loglevel=info
+        depends_on:
+          - rabbitmq
+          - redis
+        environment:
+          BROKER_URL: amqp://rabbitmq:5672
+          BACKEND_URL: redis://redis:6379
+
+  src/scheduler_jobs.py: |
+    from datetime import timedelta
+    import logging
+
+    logger = logging.getLogger(__name__)
+
+    class ScheduledJobs:
+        def __init__(self, app):
+            self.app = app
+
+        def register_periodic_tasks(self):
+            self.app.conf.beat_schedule = {
+                "cleanup-expired": {
+                    "task": "tasks.cleanup_expired",
+                    "schedule": timedelta(hours=1),
+                },
+                "send-digest": {
+                    "task": "tasks.send_digest",
+                    "schedule": timedelta(days=1),
+                },
+                "health-check": {
+                    "task": "tasks.broker_health_check",
+                    "schedule": timedelta(minutes=5),
+                },
+            }
+            logger.info(f"Registered {len(self.app.conf.beat_schedule)} periodic tasks")
+
+  config/workers.yaml: |
+    workers:
+      concurrency: 4
+      autoscale:
+        min: 2
+        max: 8
+      queues:
+        - default
+        - priority
+        - email
+      loglevel: info
+      prefetch_multiplier: 1
+
+  src/tasks/email_tasks.py: |
+    import logging
+
+    logger = logging.getLogger(__name__)
+
+    def send_welcome_email(user_email: str) -> None:
+        logger.info(f"Sending welcome email to {user_email}")
+
+    def send_password_reset(user_email: str, reset_token: str) -> None:
+        logger.info(f"Sending password reset to {user_email}")
+
+    def send_notification(user_email: str, message: str) -> None:
+        logger.info(f"Sending notification to {user_email}: {message}")
+
+changed:
+  config/queue.yaml: |
+    queue:
+      broker: amqp://rabbitmq:5672
+      backend: redis://redis:6379
+      prefetch_count: 4
+
+must_include_files:
+  # Q1: Celery() constructor receives broker URL directly. Celery
+  # supports amqp:// natively — no protocol-specific code exists.
+  # Q2: create_celery_app() only passes broker and backend. There is
+  # NO prefetch_count parameter, no worker_prefetch_multiplier setting.
+  # The new config key is inert. This is the critical review finding.
+  - src/tasks.py
+
+must_include_content_from:
+  src/tasks.py:
+    # Only broker and backend are passed — no prefetch_count anywhere
+    - "Celery(__name__, broker=broker, backend=backend)"
+    # Confirms no protocol-specific logic — just passes URL through
+    - "def create_celery_app(broker: str, backend: str) -> Celery:"
+    # Shows what IS configured — serializers, timezone, but NOT prefetch
+    - "task_serializer='json'"
+
+must_not_include:
+  # --- config_loader.py: reads queue.yaml, passes to create_celery_app ---
+  # Direct structural bridge between the changed config and the Celery app.
+  # But HOW yaml is loaded (file paths, .get() defaults, parsing) doesn't
+  # help answer "does AMQP work" or "is prefetch_count wired."
+  - load_queue_config
+  - load_yaml
+  - CONFIG_DIR
+  - "yaml.safe_load"
+  # --- broker_health.py: connects to broker URL ---
+  # Direct structural edge: uses the same broker URL from config.
+  # But a TCP health check doesn't help review whether the protocol
+  # switch or prefetch_count are handled correctly by Celery.
+  - BrokerHealthCheck
+  - is_healthy
+  - create_connection
+  # --- docker-compose.yaml: defines rabbitmq and redis services ---
+  # Same hostnames and ports as the new config (rabbitmq:5672, redis:6379).
+  # But container definitions don't help review Celery configuration.
+  - "rabbitmq:3.12-management"
+  - "redis:7-alpine"
+  - RABBITMQ_DEFAULT_USER
+  - "rabbitmq-diagnostics"
+  # --- scheduler_jobs.py: periodic task schedules ---
+  - ScheduledJobs
+  - beat_schedule
+  - cleanup-expired
+  - send-digest
+  # --- workers.yaml: worker scaling, same config/ dir ---
+  # Note: workers.yaml has prefetch_multiplier: 1 — lexical overlap
+  # with the new prefetch_count in queue.yaml. Different setting,
+  # different purpose.
+  - autoscale
+  - concurrency
+  - prefetch_multiplier
+  # --- email_tasks.py: task definitions, not broker config ---
+  - send_welcome_email
+  - send_password_reset
+  - send_notification
+
+must_not_include_files:
+  - src/config_loader.py
+  - src/health/broker_health.py
+  - docker-compose.yaml
+  - src/scheduler_jobs.py
+  - config/workers.yaml
+  - src/tasks/email_tasks.py
+
+max_fragments: 5
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

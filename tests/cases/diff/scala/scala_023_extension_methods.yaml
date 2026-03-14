@@ -1,0 +1,158 @@
+# Scenario: Calculator starts using extension methods from IntExtensions —
+# squared, isEven, and times — on Int values.
+#
+# Diff: Calculator.scala changes from empty class to one that imports
+# IntExtensions._ and uses _.squared, _.isEven, and n.times(action).
+#
+# Reviewer questions:
+#   Q1: "What are .squared, .isEven, and .times? Where are they defined?"
+#       -> IntExtensions.scala: defines extension (n: Int) with squared,
+#          isEven, and times. Reviewer confirms the methods exist and
+#          their implementations match Calculator's usage.
+#   Q2: "Does times accept a by-name parameter? Is repeatAction correct?"
+#       -> IntExtensions.scala: times(f: => Unit) takes a by-name param.
+#          Calculator's repeatAction(n, action) passes action as => Unit,
+#          which is compatible.
+#
+# Not needed:
+#   - StringExtensions.scala: extension methods on String. Same extension
+#     pattern, same object wrapper. But different target type, not used.
+#   - DoubleExtensions.scala: extension methods on Double. Same pattern,
+#     numeric domain overlap (squared exists on Double too). Not imported.
+#   - MathUtils.scala: standalone math functions including square(). Same
+#     "squaring" operation but as a standalone function, not extension method.
+#   - NumberFormatter.scala: formats numbers including Int. Uses Int values
+#     but no extension method dependency.
+#   - CalculatorTest.scala: tests Calculator's squareSum, countEven, repeatAction.
+#     Uses the exact same API from the diff but test expectations don't define
+#     the extension methods.
+
+initial:
+  IntExtensions.scala: |
+    object IntExtensions {
+      extension (n: Int) {
+        def squared: Int = n * n
+        def isEven: Boolean = n % 2 == 0
+        def times(f: => Unit): Unit = (1 to n).foreach(_ => f)
+        def isPositive: Boolean = n > 0
+        def factorial: BigInt = (1 to n).foldLeft(BigInt(1))(_ * _)
+      }
+    }
+  Calculator.scala: |
+    class Calculator {}
+  StringExtensions.scala: |
+    object StringExtensions {
+      extension (s: String) {
+        def toSlug: String = s.toLowerCase.replaceAll("\\s+", "-")
+        def words: List[String] = s.split("\\s+").toList
+        def truncate(maxLen: Int): String =
+          if (s.length <= maxLen) s else s.take(maxLen - 3) + "..."
+        def reversed: String = s.reverse
+      }
+    }
+  DoubleExtensions.scala: |
+    object DoubleExtensions {
+      extension (d: Double) {
+        def squared: Double = d * d
+        def rounded(places: Int): Double = {
+          val factor = math.pow(10, places)
+          (d * factor).round / factor
+        }
+        def isPositive: Boolean = d > 0.0
+        def percent: String = f"${d * 100}%.1f%%"
+      }
+    }
+  MathUtils.scala: |
+    object MathUtils {
+      def square(n: Int): Int = n * n
+
+      def factorial(n: Int): BigInt = {
+        if (n <= 1) BigInt(1) else BigInt(n) * factorial(n - 1)
+      }
+
+      def gcd(a: Int, b: Int): Int = {
+        if (b == 0) a else gcd(b, a % b)
+      }
+
+      def isPrime(n: Int): Boolean = {
+        if (n < 2) false
+        else (2 to math.sqrt(n).toInt).forall(n % _ != 0)
+      }
+    }
+  NumberFormatter.scala: |
+    object NumberFormatter {
+      def format(n: Int): String = f"$n%,d"
+      def formatPercent(n: Double): String = f"${n * 100}%.1f%%"
+      def formatCurrency(amount: Double, symbol: String = "$"): String =
+        f"$symbol$amount%.2f"
+      def padLeft(n: Int, width: Int): String = f"$n%${width}d"
+    }
+  CalculatorTest.scala: |
+    import org.scalatest.flatspec.AnyFlatSpec
+    import org.scalatest.matchers.should.Matchers
+
+    class CalculatorTest extends AnyFlatSpec with Matchers {
+      val calc = new Calculator
+
+      "squareSum" should "sum squares" in {
+        calc.squareSum(List(2, 3, 4)) should be(29)
+      }
+
+      "countEven" should "count even numbers" in {
+        calc.countEven(List(1, 2, 3, 4, 5)) should be(2)
+      }
+    }
+changed:
+  Calculator.scala: |
+    import IntExtensions._
+
+    class Calculator {
+      def squareSum(nums: List[Int]): Int = {
+        nums.map(_.squared).sum
+      }
+
+      def countEven(nums: List[Int]): Int = {
+        nums.count(_.isEven)
+      }
+
+      def repeatAction(n: Int, action: => Unit): Unit = {
+        n.times(action)
+      }
+    }
+must_include_files:
+  # Q1+Q2: IntExtensions defines squared, isEven, times used by Calculator
+  - IntExtensions.scala
+must_include_content_from:
+  IntExtensions.scala:
+    - "def squared: Int = n * n"
+    - "def isEven: Boolean = n % 2 == 0"
+    - "def times(f: => Unit): Unit"
+must_not_include:
+  # StringExtensions.scala: extensions on String, not Int
+  - "object StringExtensions"
+  - toSlug
+  - "def words"
+  # DoubleExtensions.scala: extensions on Double, also has squared!
+  - "object DoubleExtensions"
+  - "def rounded"
+  - "def percent"
+  # MathUtils.scala: standalone square() function, same operation
+  - "object MathUtils"
+  - "def square"
+  - isPrime
+  # NumberFormatter.scala: formats numbers but no extension dependency
+  - "object NumberFormatter"
+  - "formatCurrency"
+  # CalculatorTest.scala: tests the changed class
+  - "class CalculatorTest"
+  - "sum squares"
+must_not_include_files:
+  - StringExtensions.scala
+  - DoubleExtensions.scala
+  - MathUtils.scala
+  - NumberFormatter.scala
+  - CalculatorTest.scala
+max_fragments: 5
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

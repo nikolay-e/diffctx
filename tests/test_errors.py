@@ -45,7 +45,7 @@ def test_unreadable_file(temp_project, run_mapper, set_perms, caplog):
     unreadable_file.write_text("secret")
     set_perms(unreadable_file, 0o000)
     output_path = temp_project / "output_unreadable.yaml"
-    with caplog.at_level(logging.ERROR):
+    with caplog.at_level(logging.ERROR, logger="treemapper"):
         assert run_mapper([".", "-o", str(output_path)])
     assert output_path.exists(), f"Output file {output_path} was not created"
     result = load_yaml(output_path)
@@ -71,7 +71,7 @@ def test_unwritable_output_dir(temp_project, run_mapper, set_perms, caplog):
     read_execute_perms = stat.S_IRUSR | stat.S_IXUSR | stat.S_IRGRP | stat.S_IXGRP | stat.S_IROTH | stat.S_IXOTH
     set_perms(unwritable_dir, read_execute_perms)
     output_path = unwritable_dir / "output.yaml"
-    with caplog.at_level(logging.ERROR):
+    with caplog.at_level(logging.ERROR, logger="treemapper"):
         run_mapper([".", "-o", str(output_path)])
     assert any(
         "Unable to write to file" in record.message and str(output_path) in record.message
@@ -150,66 +150,66 @@ def test_oserror_accessing_directory(temp_project, monkeypatch, capsys):
 def test_logger_with_existing_handlers(caplog):
     import logging
 
-    from treemapper.logger import setup_logging
+    from treemapper.logger import PACKAGE_LOGGER_NAME, setup_logging
 
-    root_logger = logging.getLogger()
-    original_handlers = root_logger.handlers[:]
-    original_level = root_logger.level
+    pkg_logger = logging.getLogger(PACKAGE_LOGGER_NAME)
+    original_handlers = pkg_logger.handlers[:]
+    original_level = pkg_logger.level
 
     try:
         test_handler = logging.StreamHandler()
-        root_logger.addHandler(test_handler)
+        pkg_logger.addHandler(test_handler)
 
         setup_logging(3)
 
         assert test_handler.level == logging.DEBUG
         assert test_handler.formatter is not None
     finally:
-        root_logger.handlers = original_handlers
-        root_logger.setLevel(original_level)
+        pkg_logger.handlers = original_handlers
+        pkg_logger.setLevel(original_level)
 
 
 def test_logger_with_handler_without_formatter():
     import logging
 
-    from treemapper.logger import setup_logging
+    from treemapper.logger import PACKAGE_LOGGER_NAME, setup_logging
 
-    root_logger = logging.getLogger()
-    original_handlers = root_logger.handlers[:]
-    original_level = root_logger.level
+    pkg_logger = logging.getLogger(PACKAGE_LOGGER_NAME)
+    original_handlers = pkg_logger.handlers[:]
+    original_level = pkg_logger.level
 
     try:
-        root_logger.handlers.clear()
+        pkg_logger.handlers.clear()
         test_handler = logging.StreamHandler()
-        root_logger.addHandler(test_handler)
+        pkg_logger.addHandler(test_handler)
 
         setup_logging(2)
 
         assert test_handler.formatter is not None
     finally:
-        root_logger.handlers = original_handlers
-        root_logger.setLevel(original_level)
+        pkg_logger.handlers = original_handlers
+        pkg_logger.setLevel(original_level)
 
 
 def test_logger_no_handlers():
     import logging
 
-    from treemapper.logger import setup_logging
+    from treemapper.logger import PACKAGE_LOGGER_NAME, setup_logging
 
-    root_logger = logging.getLogger()
-    original_handlers = root_logger.handlers[:]
-    original_level = root_logger.level
+    pkg_logger = logging.getLogger(PACKAGE_LOGGER_NAME)
+    original_handlers = pkg_logger.handlers[:]
+    original_level = pkg_logger.level
 
     try:
-        root_logger.handlers.clear()
+        pkg_logger.handlers.clear()
 
         setup_logging(1)
 
-        assert len(root_logger.handlers) == 1
-        assert root_logger.handlers[0].level == logging.WARNING
+        assert len(pkg_logger.handlers) == 1
+        assert pkg_logger.handlers[0].level == logging.WARNING
     finally:
-        root_logger.handlers = original_handlers
-        root_logger.setLevel(original_level)
+        pkg_logger.handlers = original_handlers
+        pkg_logger.setLevel(original_level)
 
 
 # --- tree.py coverage tests ---
@@ -243,7 +243,7 @@ def test_file_with_null_bytes_detected_as_binary(temp_project, run_mapper, caplo
     file_with_nulls.write_bytes(b"hello\x00world\x00test")
 
     output_path = temp_project / "output.yaml"
-    with caplog.at_level(logging.WARNING):
+    with caplog.at_level(logging.WARNING, logger="treemapper"):
         assert run_mapper([".", "-o", str(output_path)])
 
     result = load_yaml(output_path)
@@ -286,7 +286,7 @@ def test_oserror_during_read(temp_project, run_mapper, monkeypatch, caplog):
     monkeypatch.setattr(Path, "open", mock_open)
 
     output_path = temp_project / "output.yaml"
-    with caplog.at_level(logging.ERROR):
+    with caplog.at_level(logging.ERROR, logger="treemapper"):
         assert run_mapper([".", "-o", str(output_path)])
 
     result = load_yaml(output_path)
@@ -321,7 +321,7 @@ def test_read_ignore_file_ioerror(temp_project, monkeypatch, caplog):
 
     monkeypatch.setattr(Path, "open", mock_open)
 
-    with caplog.at_level(logging.WARNING):
+    with caplog.at_level(logging.WARNING, logger="treemapper"):
         result = read_ignore_file(ignore_file)
 
     assert result == []
@@ -393,7 +393,7 @@ def test_process_entry_oserror(temp_project, monkeypatch, caplog):
 
     monkeypatch.setattr(Path, "relative_to", mock_relative_to)
 
-    with caplog.at_level(logging.WARNING):
+    with caplog.at_level(logging.WARNING, logger="treemapper"):
         result = _process_entry(test_file, ctx, 0)
 
     assert result is None
@@ -420,7 +420,7 @@ def test_create_node_exception(temp_project, monkeypatch, caplog):
 
     monkeypatch.setattr(Path, "open", mock_open)
 
-    with caplog.at_level(logging.ERROR):
+    with caplog.at_level(logging.ERROR, logger="treemapper"):
         result = _create_node(test_file, ctx, 0, is_dir=False)
 
     assert result is not None

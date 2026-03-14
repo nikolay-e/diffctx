@@ -1,0 +1,191 @@
+# Test: app.rb uses DynamicStruct's method_missing for dynamic attribute access
+#
+# Scenario: app.rb is rewritten to require DynamicStruct and use dynamic
+# getter/setter/predicate methods (config.host, config.debug=, config.debug?).
+# DynamicStruct (UNCHANGED) implements method_missing and respond_to_missing?.
+#
+# Reviewer questions:
+#   Q1: "How does config.debug? work? What does the ? suffix do?"
+#       -> lib/dynamic_struct.rb (UNCHANGED) handles '?' suffix in method_missing
+#          by returning !!@data[key].
+#   Q2: "What happens if an undefined attribute is accessed?"
+#       -> method_missing falls through to super for unknown keys.
+#
+# Trap files (plausible but unrelated):
+#   - lib/config_loader.rb: loads configuration from YAML files — same domain
+#     (configuration) but DynamicStruct is a generic data structure.
+#   - lib/open_struct_ext.rb: extends OpenStruct — similar dynamic attribute
+#     concept but completely independent implementation.
+
+initial:
+  lib/dynamic_struct.rb: |
+    class DynamicStruct
+      def initialize(hash = {})
+        @data = hash.transform_keys(&:to_sym)
+      end
+
+      def method_missing(name, *args)
+        key = name.to_s
+        if key.end_with?('=')
+          @data[key.chop.to_sym] = args.first
+        elsif key.end_with?('?')
+          !!@data[key.chop.to_sym]
+        elsif @data.key?(name)
+          @data[name]
+        else
+          super
+        end
+      end
+
+      def respond_to_missing?(name, include_private = false)
+        key = name.to_s
+        key.end_with?('=') || key.end_with?('?') || @data.key?(name) || super
+      end
+
+      def to_h
+        @data.dup
+      end
+    end
+  app.rb: |
+    puts 'Hello'
+  lib/config_loader.rb: |
+    require 'yaml'
+
+    class ConfigLoader
+      def self.load(file_path)
+        raw = YAML.safe_load(File.read(file_path), permitted_classes: [Symbol])
+        raw.transform_keys(&:to_sym)
+      end
+
+      def self.load_with_defaults(file_path, defaults)
+        config = load(file_path)
+        defaults.merge(config)
+      rescue Errno::ENOENT
+        defaults
+      end
+
+      def self.write(file_path, config)
+        File.write(file_path, YAML.dump(config.transform_keys(&:to_s)))
+      end
+    end
+  lib/open_struct_ext.rb: |
+    require 'ostruct'
+
+    class OpenStructExt < OpenStruct
+      def to_hash
+        to_h.transform_keys(&:to_sym)
+      end
+
+      def freeze_deep
+        each_pair { |_, v| v.freeze if v.respond_to?(:freeze) }
+        freeze
+      end
+
+      def merge(other)
+        self.class.new(to_h.merge(other.to_h))
+      end
+    end
+changed:
+  lib/dynamic_struct.rb: |
+    class DynamicStruct
+      def initialize(hash = {})
+        @data = hash.transform_keys(&:to_sym)
+      end
+
+      def method_missing(name, *args)
+        key = name.to_s
+        if key.end_with?('=')
+          @data[key.chop.to_sym] = args.first
+        elsif key.end_with?('?')
+          !!@data[key.chop.to_sym]
+        elsif @data.key?(name)
+          @data[name]
+        else
+          super
+        end
+      end
+
+      def respond_to_missing?(name, include_private = false)
+        key = name.to_s
+        key.end_with?('=') || key.end_with?('?') || @data.key?(name) || super
+      end
+
+      def to_h
+        @data.dup
+      end
+    end
+  app.rb: |
+    require_relative 'lib/dynamic_struct'
+
+    config = DynamicStruct.new(host: 'localhost', port: 3000, debug: false)
+    puts config.host
+    puts config.port
+
+    config.debug = true
+    puts config.debug?
+
+    config.name = 'my_app'
+    puts config.to_h.inspect
+  lib/config_loader.rb: |
+    require 'yaml'
+
+    class ConfigLoader
+      def self.load(file_path)
+        raw = YAML.safe_load(File.read(file_path), permitted_classes: [Symbol])
+        raw.transform_keys(&:to_sym)
+      end
+
+      def self.load_with_defaults(file_path, defaults)
+        config = load(file_path)
+        defaults.merge(config)
+      rescue Errno::ENOENT
+        defaults
+      end
+
+      def self.write(file_path, config)
+        File.write(file_path, YAML.dump(config.transform_keys(&:to_s)))
+      end
+    end
+  lib/open_struct_ext.rb: |
+    require 'ostruct'
+
+    class OpenStructExt < OpenStruct
+      def to_hash
+        to_h.transform_keys(&:to_sym)
+      end
+
+      def freeze_deep
+        each_pair { |_, v| v.freeze if v.respond_to?(:freeze) }
+        freeze
+      end
+
+      def merge(other)
+        self.class.new(to_h.merge(other.to_h))
+      end
+    end
+must_include_files:
+  - app.rb
+  # Q1/Q2: DynamicStruct implements method_missing that app.rb relies on
+  - lib/dynamic_struct.rb
+must_include_content_from:
+  app.rb:
+    - "config = DynamicStruct.new(host: 'localhost', port: 3000, debug: false)"
+    - "config.debug?"
+  lib/dynamic_struct.rb:
+    - "def method_missing(name, *args)"
+    - "def respond_to_missing?"
+must_not_include:
+  # lib/config_loader.rb: YAML config loading — not used by app.rb
+  - ConfigLoader
+  - load_with_defaults
+  - YAML.safe_load
+  # lib/open_struct_ext.rb: different dynamic struct implementation
+  - OpenStructExt
+  - freeze_deep
+must_not_include_files:
+  - lib/config_loader.rb
+  - lib/open_struct_ext.rb
+max_fragments: 5
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

@@ -1,0 +1,104 @@
+# Scenario: app.ts is rewritten to import authMiddleware and use it globally,
+# then define a protected route.
+#
+# Diff: app.ts adds `import { authMiddleware } from './authMiddleware'`, creates
+# an express app, applies authMiddleware with app.use(), and adds GET /protected.
+#
+# Reviewer questions:
+#   Q1: "What does authMiddleware check?"
+#       -> authMiddleware.ts (UNCHANGED) checks req.headers.authorization and returns
+#          401 if missing. Reviewer verifies the /protected route is actually secured.
+#
+# Not needed:
+#   - cors-middleware.ts: CORS configuration middleware. Same middleware signature
+#     (req, res, next) but handles cross-origin headers, not authentication.
+#   - error-handler.ts: Express error handling middleware. Different concern
+#     (error formatting with 4 params), not related to auth.
+
+initial:
+  authMiddleware.ts: |
+    import { Request, Response, NextFunction } from 'express';
+
+    export function authMiddleware(req: Request, res: Response, next: NextFunction) {
+        const token = req.headers.authorization;
+        if (!token) {
+            return res.status(401).json({ error: 'Unauthorized' });
+        }
+        next();
+    }
+  app.ts: |
+    console.log('initial');
+  cors-middleware.ts: |
+    import { Request, Response, NextFunction } from 'express';
+
+    export function corsMiddleware(req: Request, res: Response, next: NextFunction) {
+        res.header('Access-Control-Allow-Origin', '*');
+        res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE');
+        res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+        next();
+    }
+  error-handler.ts: |
+    import { Request, Response, NextFunction } from 'express';
+
+    export function errorHandler(err: Error, req: Request, res: Response, next: NextFunction) {
+        console.error(err.stack);
+        res.status(500).json({ error: 'Internal Server Error' });
+    }
+changed:
+  authMiddleware.ts: |
+    import { Request, Response, NextFunction } from 'express';
+
+    export function authMiddleware(req: Request, res: Response, next: NextFunction) {
+        const token = req.headers.authorization;
+        if (!token) {
+            return res.status(401).json({ error: 'Unauthorized' });
+        }
+        next();
+    }
+  app.ts: |
+    import express from 'express';
+    import { authMiddleware } from './authMiddleware';
+
+    const app = express();
+    app.use(authMiddleware);
+
+    app.get('/protected', (req, res) => {
+        res.json({ message: 'Protected content' });
+    });
+  cors-middleware.ts: |
+    import { Request, Response, NextFunction } from 'express';
+
+    export function corsMiddleware(req: Request, res: Response, next: NextFunction) {
+        res.header('Access-Control-Allow-Origin', '*');
+        res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE');
+        res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+        next();
+    }
+  error-handler.ts: |
+    import { Request, Response, NextFunction } from 'express';
+
+    export function errorHandler(err: Error, req: Request, res: Response, next: NextFunction) {
+        console.error(err.stack);
+        res.status(500).json({ error: 'Internal Server Error' });
+    }
+must_include_files:
+  # Q1: authMiddleware.ts is imported by app.ts — reviewer needs to see what it checks
+  - authMiddleware.ts
+must_include_content_from:
+  authMiddleware.ts:
+    - "function authMiddleware(req: Request, res: Response, next: NextFunction)"
+    - "req.headers.authorization"
+must_not_include:
+  # cors-middleware.ts: CORS handling, different middleware concern
+  - corsMiddleware
+  - Access-Control-Allow-Origin
+  # error-handler.ts: error formatting middleware, not auth
+  - errorHandler
+  - Internal Server Error
+must_not_include_files:
+  - cors-middleware.ts
+  - error-handler.ts
+max_fragments: 5
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

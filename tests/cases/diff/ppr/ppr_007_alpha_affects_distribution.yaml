@@ -1,0 +1,135 @@
+# Scenario: func0 in a 5-function chain gets return value — tests alpha effect on score distribution
+# Changed: test.py — func0() returns 1, chain func0->func1->...->func4
+# Reviewer needs: test.py (changed, entire chain is in one file)
+# Trap: alt_chain.py — defines func0() with different implementation, name collision
+# Trap: result_consumer.py — consumes function outputs with similar naming pattern
+# Trap: parallel_chain.py — sibling chain structure (sibling_func0->sibling_func1->sibling_func2)
+
+initial:
+  test.py: |
+    def func0():
+        pass
+
+    def func1():
+        func0()
+
+    def func2():
+        func1()
+
+    def func3():
+        func2()
+
+    def func4():
+        func3()
+  alt_chain.py: |
+    def func0():
+        return "totally_different_func0"
+
+    def func0_extended():
+        return func0() + "_extended"
+
+    class AltChainRunner:
+        def execute(self):
+            return func0_extended()
+  result_consumer.py: |
+    def consume_func_output(result):
+        return result + "_consumed"
+
+    class FuncResultProcessor:
+        def process(self, data):
+            return len(data)
+
+        def summarize(self, results):
+            return {"count": len(results), "processed": True}
+  parallel_chain.py: |
+    def sibling_func0():
+        return "sibling_base"
+
+    def sibling_func1():
+        return sibling_func0()
+
+    def sibling_func2():
+        return sibling_func1()
+
+    class ParallelChainRunner:
+        def run(self):
+            return sibling_func2()
+
+changed:
+  test.py: |
+    def func0():
+        return 1
+
+    def func1():
+        func0()
+
+    def func2():
+        func1()
+
+    def func3():
+        func2()
+
+    def func4():
+        func3()
+  alt_chain.py: |
+    def func0():
+        return "totally_different_func0"
+
+    def func0_extended():
+        return func0() + "_extended"
+
+    class AltChainRunner:
+        def execute(self):
+            return func0_extended()
+  result_consumer.py: |
+    def consume_func_output(result):
+        return result + "_consumed"
+
+    class FuncResultProcessor:
+        def process(self, data):
+            return len(data)
+
+        def summarize(self, results):
+            return {"count": len(results), "processed": True}
+  parallel_chain.py: |
+    def sibling_func0():
+        return "sibling_base"
+
+    def sibling_func1():
+        return sibling_func0()
+
+    def sibling_func2():
+        return sibling_func1()
+
+    class ParallelChainRunner:
+        def run(self):
+            return sibling_func2()
+
+# === Assertions ===
+
+must_include_files:
+- test.py
+
+must_include_content_from:
+  test.py:
+    - 'def func0():'
+    - return 1
+
+must_not_include:
+- AltChainRunner
+- totally_different_func0
+- func0_extended
+- FuncResultProcessor
+- consume_func_output
+- ParallelChainRunner
+- sibling_func0
+
+must_not_include_files:
+- alt_chain.py
+- result_consumer.py
+- parallel_chain.py
+
+max_fragments: 4
+max_files: 2
+add_garbage_files: false
+skip_garbage_check: true

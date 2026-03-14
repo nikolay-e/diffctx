@@ -9,11 +9,9 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any, TextIO
 
-from treemapper.diffctx.languages import (
-    EXTENSION_TO_LANGUAGE,
-    FILENAME_TO_LANGUAGE,
-    get_language_for_file,
-)
+from .diffctx.languages import get_language_for_file
+
+logger = logging.getLogger(__name__)
 
 YAML_PROBLEMATIC_CHARS = frozenset({"\r", "\x00", "\x85", "\u2028", "\u2029"})
 
@@ -43,11 +41,16 @@ _YAML_CONTENT_ESCAPE_MAP = {
 }
 
 _BACKTICK_RUN_PATTERN = re.compile(r"`+")
+_MD_SPECIAL_CHARS = re.compile(r"([\\`*_\[\]()#>+\-~|{}!])")
 
 _MAX_MARKDOWN_HEADING_DEPTH = 5  # depth 0-5 → ## to ###### (6 levels), deeper uses list items
 
-EXTENSION_TO_LANG = EXTENSION_TO_LANGUAGE
-FILENAME_TO_LANG = FILENAME_TO_LANGUAGE
+_FORMAT_ALIASES = {
+    "yaml": "yaml",
+    "json": "json",
+    "txt": "txt",
+    "md": "md",
+}
 
 PLACEHOLDER_PATTERNS = [
     "<unreadable content>",
@@ -69,6 +72,10 @@ def _escape_yaml_content(s: str) -> str:
 
 def _has_problematic_chars(s: str) -> bool:
     return any(c in s for c in YAML_PROBLEMATIC_CHARS)
+
+
+def _escape_markdown(s: str) -> str:
+    return _MD_SPECIAL_CHARS.sub(r"\\\1", s)
 
 
 def _write_yaml_content(file: TextIO, content: str, base_indent: str) -> None:
@@ -133,24 +140,34 @@ def write_tree_json(file: TextIO, tree: dict[str, Any]) -> None:
     file.write("\n")
 
 
-def _write_tree_text_node(file: TextIO, node: dict[str, Any], indent: str = "") -> None:
+_TREE_BRANCH = "├── "
+_TREE_LAST = "└── "
+_TREE_PIPE = "│   "
+_TREE_SPACE = "    "
+
+
+def _write_tree_text_node(file: TextIO, node: dict[str, Any], prefix: str, connector: str) -> None:
     name = node.get("name", "")
     node_type = node.get("type", "")
 
-    if node_type == "directory":
-        file.write(f"{indent}{name}/\n")
-    else:
-        file.write(f"{indent}{name}\n")
+    display_name = f"{name}/" if node_type == "directory" else name
+    file.write(f"{prefix}{connector}{display_name}\n")
 
-    if node.get("content"):
+    is_last = connector == _TREE_LAST
+    child_prefix = prefix + (_TREE_SPACE if is_last else _TREE_PIPE)
+
+    if "content" in node:
         content = node["content"]
-        content_indent = indent + "  "
-        for line in content.rstrip("\n").split("\n"):
-            file.write(f"{content_indent}{line}\n")
+        if not content:
+            file.write(f"{child_prefix}(empty file)\n")
+        else:
+            for line in content.rstrip("\n").split("\n"):
+                file.write(f"{child_prefix}{line}\n")
 
-    if node.get("children"):
-        for child in node["children"]:
-            _write_tree_text_node(file, child, indent + "  ")
+    children = node.get("children", [])
+    for i, child in enumerate(children):
+        child_connector = _TREE_LAST if i == len(children) - 1 else _TREE_BRANCH
+        _write_tree_text_node(file, child, child_prefix, child_connector)
 
 
 def _write_text_fragment(file: TextIO, frag: dict[str, Any], indent: str = "") -> None:
@@ -175,14 +192,21 @@ def _write_text_fragment(file: TextIO, frag: dict[str, Any], indent: str = "") -
 
 def write_tree_text(file: TextIO, tree: dict[str, Any]) -> None:
     name = tree.get("name", "")
-    file.write(f"{name}/\n")
+    tree_type = tree.get("type", "")
 
-    if tree.get("type") == "diff_context" and tree.get("fragments"):
+    if tree_type == "diff_context":
+        file.write(f"diff context: {name}\n")
+    else:
+        file.write(f"{name}/\n")
+
+    if tree_type == "diff_context" and tree.get("fragments"):
         for frag in tree["fragments"]:
             _write_text_fragment(file, frag, "  ")
     elif tree.get("children"):
-        for child in tree["children"]:
-            _write_tree_text_node(file, child, "  ")
+        children = tree["children"]
+        for i, child in enumerate(children):
+            connector = _TREE_LAST if i == len(children) - 1 else _TREE_BRANCH
+            _write_tree_text_node(file, child, "", connector)
 
 
 def _is_placeholder(content: str) -> bool:
@@ -229,6 +253,7 @@ def _write_md_code_block(file: TextIO, content: str, lang: str, indent: str) -> 
 def _write_md_content(file: TextIO, node: dict[str, Any], name: str, content_indent: str) -> None:
     content = node["content"]
     if not content:
+        file.write(f"{content_indent}_(empty file)_\n\n")
         return
     if _is_placeholder(content):
         file.write(f"{content_indent}_{content.strip()}_\n\n")
@@ -257,17 +282,26 @@ def _write_markdown_node(file: TextIO, node: dict[str, Any], depth: int) -> None
         _write_markdown_node(file, child, depth + 1)
 
 
+def _escape_md_inline_code(s: str) -> str:
+    if "`" not in s:
+        return f"`{s}`"
+    matches = _BACKTICK_RUN_PATTERN.findall(s)
+    max_run = max(len(m) for m in matches) if matches else 0
+    fence = "`" * (max_run + 1)
+    return f"{fence} {s} {fence}"
+
+
 def _write_markdown_fragment(file: TextIO, frag: dict[str, Any]) -> None:
     path = frag.get("path", "")
     lines = frag.get("lines", "")
     kind = frag.get("kind", "")
     symbol = frag.get("symbol", "")
 
-    header = f"`{path}:{lines}`"
+    header = _escape_md_inline_code(f"{path}:{lines}")
     if symbol:
-        header += f" **{symbol}**"
+        header += f" **{_escape_markdown(symbol)}**"
     if kind:
-        header += f" _{kind}_"
+        header += f" _{_escape_markdown(kind)}_"
     file.write(f"## {header}\n\n")
 
     if frag.get("content"):
@@ -277,9 +311,13 @@ def _write_markdown_fragment(file: TextIO, frag: dict[str, Any]) -> None:
 
 def write_tree_markdown(file: TextIO, tree: dict[str, Any]) -> None:
     name = tree.get("name", "")
-    file.write(f"# {name}/\n\n")
+    tree_type = tree.get("type", "")
+    if tree_type == "diff_context":
+        file.write(f"# diff context: {name}\n\n")
+    else:
+        file.write(f"# {name}/\n\n")
 
-    if tree.get("type") == "diff_context" and tree.get("fragments"):
+    if tree_type == "diff_context" and tree.get("fragments"):
         for frag in tree["fragments"]:
             _write_markdown_fragment(file, frag)
     elif tree.get("children"):
@@ -288,19 +326,20 @@ def write_tree_markdown(file: TextIO, tree: dict[str, Any]) -> None:
 
 
 def tree_to_string(tree: dict[str, Any], output_format: str = "yaml") -> str:
+    canonical = _FORMAT_ALIASES.get(output_format, output_format)
     buf = io.StringIO()
-    if output_format == "json":
+    if canonical == "json":
         write_tree_json(buf, tree)
-    elif output_format == "txt":
+    elif canonical == "txt":
         write_tree_text(buf, tree)
-    elif output_format == "md":
+    elif canonical == "md":
         write_tree_markdown(buf, tree)
     else:
         write_tree_yaml(buf, tree)
     return buf.getvalue()
 
 
-def _write_to_stdout_with_wrapper(writer: Callable[[TextIO], None]) -> None:
+def _write_to_stdout_with_wrapper(writer: Callable[[TextIO], None]) -> bool:
     try:
         buf = sys.stdout.buffer
     except AttributeError:
@@ -317,25 +356,26 @@ def _write_to_stdout_with_wrapper(writer: Callable[[TextIO], None]) -> None:
         else:
             writer(sys.stdout)
             sys.stdout.flush()
+        return True
     except BrokenPipeError:
-        pass
+        return False
 
 
 def _write_to_file_path(output_file: Path, writer: Callable[[TextIO], None]) -> None:
     output_file.parent.mkdir(parents=True, exist_ok=True)
 
     if output_file.is_dir():
-        logging.error("Cannot write to '%s': is a directory", output_file)
+        logger.error("Cannot write to '%s': is a directory", output_file)
         raise IsADirectoryError(f"Is a directory: {output_file}")
 
     try:
         with output_file.open("w", encoding="utf-8") as f:
             writer(f)
     except PermissionError:
-        logging.error("Unable to write to file '%s': Permission denied", output_file)
+        logger.error("Unable to write to file '%s': permission denied", output_file)
         raise
     except OSError as e:
-        logging.error("Unable to write to file '%s': %s", output_file, e)
+        logger.error("Unable to write to file '%s': %s", output_file, e)
         raise
 
 
@@ -344,11 +384,14 @@ def write_string_to_file(content: str, output_file: Path | None, output_format: 
         f.write(content)
 
     if output_file is None:
-        _write_to_stdout_with_wrapper(writer)
-        logging.info("Directory tree written to stdout in %s format", output_format)
+        ok = _write_to_stdout_with_wrapper(writer)
+        if ok:
+            logger.info("Output written to stdout in %s format", output_format)
+        else:
+            logger.debug("Stdout pipe broken, output truncated")
     else:
         _write_to_file_path(output_file, writer)
-        logging.info("Directory tree saved to %s in %s format", output_file, output_format)
+        logger.info("Output saved to %s in %s format", output_file, output_format)
 
 
 def write_tree_to_file(tree: dict[str, Any], output_file: Path | None, output_format: str = "yaml") -> None:
@@ -363,8 +406,11 @@ def write_tree_to_file(tree: dict[str, Any], output_file: Path | None, output_fo
             write_tree_yaml(f, tree)
 
     if output_file is None:
-        _write_to_stdout_with_wrapper(writer)
-        logging.info("Directory tree written to stdout in %s format", output_format)
+        ok = _write_to_stdout_with_wrapper(writer)
+        if ok:
+            logger.info("Output written to stdout in %s format", output_format)
+        else:
+            logger.debug("Stdout pipe broken, output truncated")
     else:
         _write_to_file_path(output_file, writer)
-        logging.info("Directory tree saved to %s in %s format", output_file, output_format)
+        logger.info("Output saved to %s in %s format", output_file, output_format)

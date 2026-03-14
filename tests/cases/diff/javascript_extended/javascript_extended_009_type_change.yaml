@@ -1,0 +1,241 @@
+# Scenario: src/types.ts Config type gains retries, debug?, and logLevel? fields;
+#   createDefaultConfig() is updated to include retries: 3, debug: false.
+#   Only src/types.ts is changed.
+#
+# Diff shows:
+#   + retries: number (new required field)
+#   + debug?: boolean (new optional field)
+#   + logLevel?: LogLevel (new optional field referencing existing type)
+#   + retries: 3, debug: false in createDefaultConfig()
+#
+# Reviewer questions:
+#   Q1: "Who uses Config — will existing callers break with the new required 'retries' field?"
+#       -> src/app.ts: imports Config, Environment, createDefaultConfig. It calls
+#          createDefaultConfig() which now provides retries: 3, so existing code
+#          that uses the factory won't break. But any code constructing Config
+#          literals would need updating. Reviewer verifies impact.
+#
+#   Q2: "What is LogLevel — does Config's new logLevel? field reference a valid type?"
+#       -> Same file (src/types.ts): LogLevel = 'debug' | 'info' | 'warn' | 'error'.
+#          Already existed before the change. Reviewer confirms it's valid.
+#
+# Not needed for comprehension:
+#   - src/services/configPersistence.ts: Saves/loads Config to localStorage.
+#     Imports Config from types.ts — direct structural edge. But persistence
+#     logic doesn't help review whether the new fields are correctly typed.
+#
+#   - src/middleware/requestConfig.ts: Injects Config into Express requests.
+#     Imports Config from types.ts — same import source. But middleware
+#     plumbing doesn't help review the type change itself.
+#
+#   - src/utils/envParser.ts: Parses environment variables into partial Config.
+#     Imports Config type. Lexical overlap with "debug" and "logLevel" fields.
+#     But env parsing is a separate concern from type shape correctness.
+
+initial:
+  src/types.ts: |
+    export type Config = {
+        apiUrl: string;
+        timeout: number;
+    };
+
+    export type Environment = 'development' | 'staging' | 'production';
+
+    export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
+
+    export function createDefaultConfig(): Config {
+        return {
+            apiUrl: 'http://localhost:3000',
+            timeout: 5000,
+        };
+    }
+  src/app.ts: |
+    import { Config, Environment, createDefaultConfig } from './types';
+
+    export function initApp(env: Environment): Config {
+        const config = createDefaultConfig();
+        if (env === 'production') {
+            config.apiUrl = 'https://api.example.com';
+        }
+        return config;
+    }
+
+    export function getApiUrl(config: Config): string {
+        return config.apiUrl;
+    }
+  # --- Not needed: persists Config to storage, same import but storage concern ---
+  src/services/configPersistence.ts: |
+    import { Config, createDefaultConfig } from '../types';
+
+    const STORAGE_KEY = 'app_config';
+
+    export function saveConfig(config: Config): void {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
+    }
+
+    export function loadConfig(): Config {
+        const stored = localStorage.getItem(STORAGE_KEY);
+        if (!stored) return createDefaultConfig();
+        return JSON.parse(stored) as Config;
+    }
+
+    export function clearConfig(): void {
+        localStorage.removeItem(STORAGE_KEY);
+    }
+  # --- Not needed: injects Config into request, middleware concern ---
+  src/middleware/requestConfig.ts: |
+    import { Request, Response, NextFunction } from 'express';
+    import { Config } from '../types';
+
+    export function attachConfig(config: Config) {
+        return (req: Request, _res: Response, next: NextFunction) => {
+            (req as any).config = config;
+            next();
+        };
+    }
+
+    export function getRequestConfig(req: Request): Config {
+        return (req as any).config;
+    }
+  # --- Not needed: parses env vars, lexical overlap with debug/logLevel ---
+  src/utils/envParser.ts: |
+    import { Config, LogLevel } from '../types';
+
+    export function parseEnvConfig(): Partial<Config> {
+        const result: Partial<Config> = {};
+        if (process.env.API_URL) result.apiUrl = process.env.API_URL;
+        if (process.env.TIMEOUT) result.timeout = parseInt(process.env.TIMEOUT);
+        if (process.env.DEBUG) result.debug = process.env.DEBUG === 'true';
+        if (process.env.LOG_LEVEL) result.logLevel = process.env.LOG_LEVEL as LogLevel;
+        return result;
+    }
+
+    export function validateEnvConfig(partial: Partial<Config>): string[] {
+        const errors: string[] = [];
+        if (partial.timeout !== undefined && partial.timeout < 0) errors.push('timeout must be positive');
+        return errors;
+    }
+
+changed:
+  src/types.ts: |
+    export type Config = {
+        apiUrl: string;
+        timeout: number;
+        retries: number;
+        debug?: boolean;
+        logLevel?: LogLevel;
+    };
+
+    export type Environment = 'development' | 'staging' | 'production';
+
+    export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
+
+    export function createDefaultConfig(): Config {
+        return {
+            apiUrl: 'http://localhost:3000',
+            timeout: 5000,
+            retries: 3,
+            debug: false,
+        };
+    }
+  src/app.ts: |
+    import { Config, Environment, createDefaultConfig } from './types';
+
+    export function initApp(env: Environment): Config {
+        const config = createDefaultConfig();
+        if (env === 'production') {
+            config.apiUrl = 'https://api.example.com';
+        }
+        return config;
+    }
+
+    export function getApiUrl(config: Config): string {
+        return config.apiUrl;
+    }
+  src/services/configPersistence.ts: |
+    import { Config, createDefaultConfig } from '../types';
+
+    const STORAGE_KEY = 'app_config';
+
+    export function saveConfig(config: Config): void {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
+    }
+
+    export function loadConfig(): Config {
+        const stored = localStorage.getItem(STORAGE_KEY);
+        if (!stored) return createDefaultConfig();
+        return JSON.parse(stored) as Config;
+    }
+
+    export function clearConfig(): void {
+        localStorage.removeItem(STORAGE_KEY);
+    }
+  src/middleware/requestConfig.ts: |
+    import { Request, Response, NextFunction } from 'express';
+    import { Config } from '../types';
+
+    export function attachConfig(config: Config) {
+        return (req: Request, _res: Response, next: NextFunction) => {
+            (req as any).config = config;
+            next();
+        };
+    }
+
+    export function getRequestConfig(req: Request): Config {
+        return (req as any).config;
+    }
+  src/utils/envParser.ts: |
+    import { Config, LogLevel } from '../types';
+
+    export function parseEnvConfig(): Partial<Config> {
+        const result: Partial<Config> = {};
+        if (process.env.API_URL) result.apiUrl = process.env.API_URL;
+        if (process.env.TIMEOUT) result.timeout = parseInt(process.env.TIMEOUT);
+        if (process.env.DEBUG) result.debug = process.env.DEBUG === 'true';
+        if (process.env.LOG_LEVEL) result.logLevel = process.env.LOG_LEVEL as LogLevel;
+        return result;
+    }
+
+    export function validateEnvConfig(partial: Partial<Config>): string[] {
+        const errors: string[] = [];
+        if (partial.timeout !== undefined && partial.timeout < 0) errors.push('timeout must be positive');
+        return errors;
+    }
+
+must_include_files:
+  - src/types.ts
+
+must_include_content_from:
+  src/types.ts:
+    - "type Config = {"
+    - "retries: number"
+    - "debug?: boolean"
+    - "type Environment = 'development' | 'staging' | 'production'"
+
+must_not_include:
+  # --- configPersistence.ts: imports Config + createDefaultConfig ---
+  # Same import source. But localStorage persistence doesn't help
+  # review the type change itself.
+  - saveConfig
+  - loadConfig
+  - clearConfig
+  - STORAGE_KEY
+  # --- requestConfig.ts: imports Config, middleware plumbing ---
+  - attachConfig
+  - getRequestConfig
+  # --- envParser.ts: imports Config + LogLevel, lexical "debug" overlap ---
+  # HARDEST TRAP: references the exact new fields (debug, logLevel) that
+  # the diff adds to Config. But env parsing is runtime concern, not
+  # needed to verify the type shape is correct.
+  - parseEnvConfig
+  - validateEnvConfig
+
+must_not_include_files:
+  - src/services/configPersistence.ts
+  - src/middleware/requestConfig.ts
+  - src/utils/envParser.ts
+
+max_fragments: 8
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

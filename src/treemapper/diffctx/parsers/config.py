@@ -7,6 +7,8 @@ from pathlib import Path
 from ..types import Fragment
 from .base import MIN_FRAGMENT_LINES, YAML_EXTENSIONS, check_library_available, create_fragment_from_lines
 
+logger = logging.getLogger(__name__)
+
 
 def _import_ruamel_yaml() -> None:
     from ruamel.yaml import YAML  # noqa: F401
@@ -36,11 +38,11 @@ class RuamelYamlStrategy:
         try:
             data = yaml.load(content)
         except Exception as e:
-            logging.debug("YAML parsing failed for %s: %s", path, e)
+            logger.debug("YAML parsing failed for %s: %s", path, e)
             return []
 
         if not hasattr(data, "lc") or not isinstance(data, dict):
-            logging.debug("YAML data lacks location info or is not a dict: %s", path)
+            logger.debug("YAML data lacks location info or is not a dict: %s", path)
             return []
 
         fragments: list[Fragment] = []
@@ -82,7 +84,7 @@ class ConfigStrategy:
         elif suffix == ".toml":
             key_re = re.compile(r"^\[([a-zA-Z_][a-zA-Z0-9_.-]*)\]")
         else:
-            key_re = re.compile(r'^\s{0,4}"([^"]+)":\s*')
+            key_re = re.compile(r'^\s*"([^"]+)":\s*')
 
         boundaries: list[int] = []
         for i, line in enumerate(lines):

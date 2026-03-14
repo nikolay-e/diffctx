@@ -1,6 +1,0 @@
-userSlice.ts: "import { createSlice, PayloadAction } from '@reduxjs/toolkit';\n\ninterface User {\n    id: string;\n    name: string;\n}\n\ninterface UserState {\n    users: User[];\n    loading: boolean;\n\
-  }\n\nconst initialState: UserState = { users: [], loading: false };\n\nexport const userSlice = createSlice({\n    name: 'users',\n    initialState,\n    reducers: {\n        addUser: (state, action:\
-  \ PayloadAction<User>) => {\n            state.users.push(action.payload);\n        },\n        removeUser: (state, action: PayloadAction<string>) => {\n            state.users = state.users.filter(u\
-  \ => u.id !== action.payload);\n        },\n    },\n});\n\nexport const { addUser, removeUser } = userSlice.actions;\n\n// react_adv_garbage_marker_010\n"
-UserForm.tsx: "import { useDispatch } from 'react-redux';\nimport { addUser } from './userSlice';\n\nexport function UserForm() {\n    const dispatch = useDispatch();\n\n    const handleAdd = () => {\n\
-  \        dispatch(addUser({ id: Date.now().toString(), name: 'New User' }));\n    };\n\n    return <button onClick={handleAdd}>Add User</button>;\n}\n"

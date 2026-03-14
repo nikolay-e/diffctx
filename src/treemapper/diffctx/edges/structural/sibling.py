@@ -11,6 +11,7 @@ from ..base import EdgeBuilder, EdgeDict
 class SiblingEdgeBuilder(EdgeBuilder):
     weight = EDGE_WEIGHTS["sibling"].forward
     reverse_weight_factor = EDGE_WEIGHTS["sibling"].reverse_factor
+    category = "sibling"
 
     def build(self, fragments: list[Fragment], repo_root: Path | None = None) -> EdgeDict:
         by_dir = self._group_files_by_dir(fragments)

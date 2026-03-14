@@ -1,0 +1,105 @@
+# Scenario: Brand new file added with no dependencies — tests PPR with new node
+# Changed: new_file.py is added (new func), existing files unchanged
+# Reviewer needs: new_file.py (the new addition is the only change)
+# Trap: item_factory.py — has "new" in naming, create_new_item function
+# Trap: existing_helper.py — structural sibling matching existing_a/existing_b naming
+# Trap: message_queue.py — completely unrelated module
+
+initial:
+  existing_a.py: |
+    def existing_a():
+        return "a"
+  existing_b.py: |
+    def existing_b():
+        return "b"
+  item_factory.py: |
+    def create_new_item():
+        return "created"
+
+    class NewItemHandler:
+        def handle(self):
+            return create_new_item()
+
+        def validate(self):
+            return True
+  existing_helper.py: |
+    def existing_c():
+        return "c"
+
+    class ExistingCProcessor:
+        def process(self):
+            return existing_c()
+  message_queue.py: |
+    QUEUE_SIZE = 256
+    QUEUE_TYPE = "fifo"
+
+    class MessageQueue:
+        def enqueue(self, item):
+            pass
+
+changed:
+  existing_a.py: |
+    def existing_a():
+        return "a"
+  existing_b.py: |
+    def existing_b():
+        return "b"
+  new_file.py: |
+    def new_func():
+        return "new"
+  item_factory.py: |
+    def create_new_item():
+        return "created"
+
+    class NewItemHandler:
+        def handle(self):
+            return create_new_item()
+
+        def validate(self):
+            return True
+  existing_helper.py: |
+    def existing_c():
+        return "c"
+
+    class ExistingCProcessor:
+        def process(self):
+            return existing_c()
+  message_queue.py: |
+    QUEUE_SIZE = 256
+    QUEUE_TYPE = "fifo"
+
+    class MessageQueue:
+        def enqueue(self, item):
+            pass
+
+# === Assertions ===
+
+must_include:
+- new_func
+- new
+
+must_include_files:
+- new_file.py
+
+must_include_content_from:
+  new_file.py:
+    - 'def new_func():'
+    - return "new"
+
+must_not_include:
+- NewItemHandler
+- create_new_item
+- ExistingCProcessor
+- existing_c
+- MessageQueue
+- QUEUE_SIZE
+
+must_not_include_files:
+- item_factory.py
+- existing_helper.py
+- message_queue.py
+
+max_fragments: 4
+max_files: 2
+add_garbage_files: false
+skip_garbage_check: true

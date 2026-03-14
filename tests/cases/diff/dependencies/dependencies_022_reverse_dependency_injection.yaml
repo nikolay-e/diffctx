@@ -1,0 +1,186 @@
+initial:
+  services/database.py: |
+    class DatabaseService:
+        def __init__(self, connection_string: str):
+            self.connection_string = connection_string
+            self.connected = False
+
+        def connect(self) -> bool:
+            self.connected = True
+            return True
+
+        def query(self, sql: str) -> list:
+            return []
+  repositories/user_repo.py: |
+    from services.database import DatabaseService
+
+    class UserRepository:
+        def __init__(self, db_service: DatabaseService):
+            self.db = db_service
+
+        def find_by_id(self, user_id: int) -> dict:
+            return self.db.query(f"SELECT * FROM users WHERE id = {user_id}")
+  repositories/order_repo.py: |
+    from services.database import DatabaseService
+
+    class OrderRepository:
+        def __init__(self, db_service: DatabaseService):
+            self.db = db_service
+
+        def get_orders(self, user_id: int) -> list:
+            return self.db.query(f"SELECT * FROM orders WHERE user_id = {user_id}")
+  handlers/api_handler.py: |
+    from services.database import DatabaseService
+
+    class ApiHandler:
+        def __init__(self, db_service: DatabaseService):
+            self.db = db_service
+
+        def handle(self, request: dict) -> dict:
+            self.db.connect()
+            return {"status": "ok"}
+
+  # --- Tricky: different DatabaseService class (name collision, no import link) ---
+  adapters/database.py: |
+    GARBAGE_DEP_022_ADAPTER_DB_A = "adapter_database"
+    GARBAGE_DEP_022_ADAPTER_CONN_B = True
+
+    class DatabaseService:
+        def __init__(self, connection_string: str, pool_size: int = 5):
+            self.connection_string = connection_string
+            self.pool_size = pool_size
+            GARBAGE_DEP_022_ADAPTER_INIT_C = "pool_init"
+
+        def connect(self) -> bool:
+            return True
+
+        def query(self, sql: str) -> list:
+            return []
+
+        def close(self) -> None:
+            pass
+
+  # --- Tricky: same repositories/ directory sibling, no import from services.database ---
+  repositories/product_repo.py: |
+    GARBAGE_DEP_022_PRODUCT_MOD_G = "product_sibling"
+    GARBAGE_DEP_022_PRODUCT_SKU_H = "inventory"
+
+    class ProductRepository:
+        GARBAGE_DEP_022_PRODUCT_CLASS_I = True
+
+        def __init__(self, storage):
+            self.storage = storage
+
+        def find_by_sku(self, sku: str) -> dict:
+            return {"sku": sku}
+
+changed:
+  services/database.py: |
+    class DatabaseService:
+        def __init__(self, connection_string: str, pool_size: int = 5):
+            self.connection_string = connection_string
+            self.pool_size = pool_size
+            self.connected = False
+            self.pool = []
+
+        def connect(self) -> bool:
+            self.pool = [None] * self.pool_size
+            self.connected = True
+            return True
+
+        def query(self, sql: str) -> list:
+            if not self.connected:
+                self.connect()
+            return []
+
+        def close(self) -> None:
+            self.pool.clear()
+            self.connected = False
+  repositories/user_repo.py: |
+    from services.database import DatabaseService
+
+    class UserRepository:
+        def __init__(self, db_service: DatabaseService):
+            self.db = db_service
+
+        def find_by_id(self, user_id: int) -> dict:
+            return self.db.query(f"SELECT * FROM users WHERE id = {user_id}")
+  repositories/order_repo.py: |
+    from services.database import DatabaseService
+
+    class OrderRepository:
+        def __init__(self, db_service: DatabaseService):
+            self.db = db_service
+
+        def get_orders(self, user_id: int) -> list:
+            return self.db.query(f"SELECT * FROM orders WHERE user_id = {user_id}")
+  handlers/api_handler.py: |
+    from services.database import DatabaseService
+
+    class ApiHandler:
+        def __init__(self, db_service: DatabaseService):
+            self.db = db_service
+
+        def handle(self, request: dict) -> dict:
+            self.db.connect()
+            return {"status": "ok"}
+  adapters/database.py: |
+    GARBAGE_DEP_022_ADAPTER_DB_A = "adapter_database"
+    GARBAGE_DEP_022_ADAPTER_CONN_B = True
+
+    class DatabaseService:
+        def __init__(self, connection_string: str, pool_size: int = 5):
+            self.connection_string = connection_string
+            self.pool_size = pool_size
+            GARBAGE_DEP_022_ADAPTER_INIT_C = "pool_init"
+
+        def connect(self) -> bool:
+            return True
+
+        def query(self, sql: str) -> list:
+            return []
+
+        def close(self) -> None:
+            pass
+  repositories/product_repo.py: |
+    GARBAGE_DEP_022_PRODUCT_MOD_G = "product_sibling"
+    GARBAGE_DEP_022_PRODUCT_SKU_H = "inventory"
+
+    class ProductRepository:
+        GARBAGE_DEP_022_PRODUCT_CLASS_I = True
+
+        def __init__(self, storage):
+            self.storage = storage
+
+        def find_by_sku(self, sku: str) -> dict:
+            return {"sku": sku}
+
+# === Assertions ===
+
+must_include_files:
+- services/database.py
+
+must_include_content_from:
+  services/database.py:
+    - 'def __init__(self, connection_string: str, pool_size: int = 5):'
+    - self.pool = [None] * self.pool_size
+    - 'class DatabaseService:'
+
+must_not_include:
+# Tricky: same class name DatabaseService with identical pool_size/close() signature
+- GARBAGE_DEP_022_ADAPTER_DB_A
+- GARBAGE_DEP_022_ADAPTER_CONN_B
+- GARBAGE_DEP_022_ADAPTER_INIT_C
+# Tricky: same repositories/ directory sibling
+- GARBAGE_DEP_022_PRODUCT_MOD_G
+- GARBAGE_DEP_022_PRODUCT_SKU_H
+- GARBAGE_DEP_022_PRODUCT_CLASS_I
+
+must_not_include_files:
+- adapters/database.py
+- repositories/product_repo.py
+
+max_fragments: 10
+max_files: 5
+add_garbage_files: false
+skip_garbage_check: true

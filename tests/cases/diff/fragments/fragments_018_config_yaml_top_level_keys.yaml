@@ -1,0 +1,74 @@
+initial:
+  config.yaml: |
+    database:
+      host: localhost
+      port: 5432
+      name: mydb
+      credentials:
+        user: admin
+        password: secret
+
+    server:
+      port: 8080
+      debug: true
+      workers: 4
+
+    garbage_section_a:
+      nested:
+
+    garbage_section_b:
+      list:
+
+    logging:
+  garbage_config_070.yaml: |
+    garbage_root:
+      key: GARBAGE_FRAG_garbroot_070
+      nested:
+        value: GARBAGE_FRAG_garbnested_070
+
+    another_garbage:
+      items:
+        - GARBAGE_FRAG_garbitem1_070
+        - GARBAGE_FRAG_garbitem2_070
+changed:
+  config.yaml: |
+    database:
+      host: localhost
+      port: 5433
+      name: mydb
+      credentials:
+        user: admin
+        password: secret
+
+    server:
+      port: 8080
+      debug: true
+      workers: 4
+
+    garbage_section_a:
+      nested:
+
+    garbage_section_b:
+      list:
+
+    logging:
+  garbage_config_070.yaml: |
+    garbage_root:
+      key: GARBAGE_FRAG_garbroot_070
+      nested:
+        value: GARBAGE_FRAG_garbnested_070
+
+    another_garbage:
+      items:
+        - GARBAGE_FRAG_garbitem1_070
+        - GARBAGE_FRAG_garbitem2_070
+must_include_files:
+- config.yaml
+must_not_include:
+- GARBAGE_FRAG_garbitem1_070
+- GARBAGE_FRAG_garbitem2_070
+- GARBAGE_FRAG_garbnested_070
+- GARBAGE_FRAG_garbroot_070
+- garbage_config_070.yaml
+add_garbage_files: false
+skip_garbage_check: true

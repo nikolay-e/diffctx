@@ -6,6 +6,8 @@ from collections import deque
 from .graph import Graph
 from .types import FragmentId
 
+logger = logging.getLogger(__name__)
+
 
 class _ReverseView:
     __slots__ = ("adjacency", "nodes")
@@ -28,13 +30,14 @@ def _init_seed_residuals(
         return {}
 
     if seed_weights:
-        total_sw = sum(seed_weights.get(s, 1.0) for s in valid_seeds)
+        epsilon = 0.1
+        total_sw = sum(seed_weights.get(s, epsilon) for s in valid_seeds)
         if total_sw <= 0:
-            return {s: 0.0 for s in valid_seeds}
-        return {s: seed_weights.get(s, 1.0) / total_sw for s in valid_seeds}
+            return dict.fromkeys(valid_seeds, 0.0)
+        return {s: seed_weights.get(s, epsilon) / total_sw for s in valid_seeds}
 
     weight = 1.0 / len(valid_seeds)
-    return {s: weight for s in valid_seeds}
+    return dict.fromkeys(valid_seeds, weight)
 
 
 def _propagate_residual(
@@ -106,7 +109,7 @@ def personalized_pagerank(
     seeds: set[FragmentId],
     alpha: float = 0.60,
     tol: float = 1e-4,
-    lam: float = 0.5,
+    lam: float = 0.4,
     seed_weights: dict[FragmentId, float] | None = None,
 ) -> dict[FragmentId, float]:
     if not graph.nodes:
@@ -132,7 +135,7 @@ def personalized_pagerank(
     if total > 0:
         return {n: s / total for n, s in combined.items()}
 
-    logging.debug(
+    logger.debug(
         "PPR sparse bidirectional: forward=%d backward=%d combined=%d nodes",
         len(forward_scores),
         len(backward_scores),

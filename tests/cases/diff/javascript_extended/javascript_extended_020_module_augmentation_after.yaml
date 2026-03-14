@@ -1,3 +1,0 @@
-original.ts: "export interface User {\n    id: string;\n    name: string;\n}\n\nexport function createUser(name: string): User {\n    return { id: Date.now().toString(), name };\n}\n\n// js_garbage_marker_015\n"
-augmentation.ts: "import { User } from './original';\n\ndeclare module './original' {\n    interface User {\n        email?: string;\n        role?: 'admin' | 'user';\n    }\n}\n\nexport function createUserWithEmail(name:\
-  \ string, email: string, role?: 'admin' | 'user'): User {\n    return { id: Date.now().toString(), name, email, role };\n}\n"

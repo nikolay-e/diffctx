@@ -1,0 +1,175 @@
+# Scenario: dto.ts is rewritten from a stub to import User from user.ts
+#   and use Pick<User, 'id' | 'name' | 'email'> to create a public DTO type.
+#   Only dto.ts is changed; user.ts is unchanged.
+#
+# Diff shows:
+#   - console.log('initial')
+#   + import { User } from './user'
+#   + type UserPublic = Pick<User, 'id' | 'name' | 'email'>
+#   + function toPublic(user: User): UserPublic that extracts three fields
+#
+# Reviewer questions:
+#   Q1: "What fields does User have — are id/name/email valid picks?"
+#       -> user.ts: User has id, name, email, password, createdAt. All three
+#          picked fields exist on User. password and createdAt are excluded.
+#
+#   Q2: "Does toPublic correctly extract only the picked fields?"
+#       -> user.ts: User.id is string, User.name is string, User.email is string.
+#          toPublic returns { id, name, email } — matches UserPublic exactly.
+#          password is correctly excluded from the return value.
+#
+# Not needed for comprehension:
+#   - user-repository.ts: Repository that stores and retrieves User objects.
+#     Direct type edge — imports User from user.ts. But CRUD operations don't
+#     help review the Pick type or the field extraction.
+#
+#   - user-serializer.ts: Serializes User to JSON with the same field selection.
+#     Same "expose subset of User" concern. HARD TRAP: does nearly the same
+#     thing as toPublic — extracts id, name, email — but is a separate module
+#     not referenced by dto.ts.
+#
+#   - admin-dto.ts: Similar DTO for admin users using Pick with different fields.
+#     Same Pick<User, ...> pattern. HARD TRAP: identical type utility usage
+#     but picks 'id' | 'name' | 'email' | 'password' — different set.
+
+initial:
+  user.ts: |
+    export interface User {
+        id: string;
+        name: string;
+        email: string;
+        password: string;
+        createdAt: Date;
+    }
+  dto.ts: |
+    console.log('initial');
+  user-repository.ts: |
+    import { User } from './user';
+
+    const store: User[] = [];
+
+    export function saveUser(user: User): void {
+        store.push(user);
+    }
+
+    export function findUserById(id: string): User | undefined {
+        return store.find(u => u.id === id);
+    }
+
+    export function findUserByEmail(email: string): User | undefined {
+        return store.find(u => u.email === email);
+    }
+  user-serializer.ts: |
+    import { User } from './user';
+
+    export function serializeUserForApi(user: User): string {
+        return JSON.stringify({ id: user.id, name: user.name, email: user.email });
+    }
+
+    export function serializeUserForLog(user: User): string {
+        return `[User ${user.id}] ${user.name} <${user.email}>`;
+    }
+  admin-dto.ts: |
+    import { User } from './user';
+
+    type AdminView = Pick<User, 'id' | 'name' | 'email' | 'createdAt'>;
+
+    export function toAdminView(user: User): AdminView {
+        return { id: user.id, name: user.name, email: user.email, createdAt: user.createdAt };
+    }
+
+changed:
+  user.ts: |
+    export interface User {
+        id: string;
+        name: string;
+        email: string;
+        password: string;
+        createdAt: Date;
+    }
+  dto.ts: |
+    import { User } from './user';
+
+    type UserPublic = Pick<User, 'id' | 'name' | 'email'>;
+
+    function toPublic(user: User): UserPublic {
+        return { id: user.id, name: user.name, email: user.email };
+    }
+  user-repository.ts: |
+    import { User } from './user';
+
+    const store: User[] = [];
+
+    export function saveUser(user: User): void {
+        store.push(user);
+    }
+
+    export function findUserById(id: string): User | undefined {
+        return store.find(u => u.id === id);
+    }
+
+    export function findUserByEmail(email: string): User | undefined {
+        return store.find(u => u.email === email);
+    }
+  user-serializer.ts: |
+    import { User } from './user';
+
+    export function serializeUserForApi(user: User): string {
+        return JSON.stringify({ id: user.id, name: user.name, email: user.email });
+    }
+
+    export function serializeUserForLog(user: User): string {
+        return `[User ${user.id}] ${user.name} <${user.email}>`;
+    }
+  admin-dto.ts: |
+    import { User } from './user';
+
+    type AdminView = Pick<User, 'id' | 'name' | 'email' | 'createdAt'>;
+
+    export function toAdminView(user: User): AdminView {
+        return { id: user.id, name: user.name, email: user.email, createdAt: user.createdAt };
+    }
+
+must_include_files:
+  - dto.ts
+  # Q1+Q2: user.ts defines User — reviewer needs to see all fields to verify
+  # that id/name/email are valid picks and password is correctly excluded.
+  - user.ts
+
+must_include_content_from:
+  dto.ts:
+    - "import { User } from './user'"
+    - "type UserPublic = Pick<User, 'id' | 'name' | 'email'>"
+    - "return { id: user.id, name: user.name, email: user.email }"
+  user.ts:
+    - "interface User {"
+    - "id: string"
+    - "email: string"
+    - "password: string"
+
+must_not_include:
+  # --- user-repository.ts: CRUD on User objects ---
+  # Direct type edge: imports User from user.ts. But storage operations
+  # don't help review the Pick type derivation.
+  - saveUser
+  - findUserById
+  - findUserByEmail
+  # --- user-serializer.ts: serializes same User fields ---
+  # HARD TRAP: extracts the SAME three fields (id, name, email) as toPublic.
+  # Nearly identical concern but is a separate module not referenced by dto.ts.
+  - serializeUserForApi
+  - serializeUserForLog
+  # --- admin-dto.ts: same Pick<User, ...> pattern with different fields ---
+  # HARD TRAP: identical utility type pattern. Same import, same Pick<User, ...>.
+  - AdminView
+  - toAdminView
+
+must_not_include_files:
+  - user-repository.ts
+  - user-serializer.ts
+  - admin-dto.ts
+
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

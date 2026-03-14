@@ -1,0 +1,392 @@
+# Scenario: UserRepository is implemented with nullable reference types,
+#   using User? returns, null-conditional operators, and null-coalescing
+#   patterns, all referencing User.Id and User.Name properties.
+#
+# Diff shows:
+#   - class UserRepository { }  (empty)
+#   + FindUser returning User?, Save using user.Id, GetOrCreate with
+#     null checks via `is null`, null-coalescing new User { Id, Name }.
+#
+# Reviewer questions:
+#   Q1: "What properties does User have — do Id and Name exist with these types?"
+#       -> Needs User.cs: has int Id and string Name properties.
+#          UserRepository constructs new User { Id = id, Name = name }
+#          — reviewer must verify these property names and types match.
+#
+#   Q2: "Is user.Id an int so it can be used as dictionary key?"
+#       -> Same file: Id is int, consistent with Dictionary<int, User>.
+#
+# Not needed for comprehension:
+#   - ProductRepository.cs: IDENTICAL nullable pattern — Dictionary<int, Product>,
+#     FindProduct returning Product?, Save, GetOrCreate with same null checks.
+#     HARDEST TRAP: structurally identical sibling repository.
+#
+#   - UserService.cs: Calls UserRepository.FindUser and handles the User?
+#     return. Direct consumer of the changed code. But how the service
+#     handles nullability doesn't help review the repository implementation.
+#
+#   - UserValidator.cs: Validates User properties, checks for null Name.
+#     References User.Name and null-checking patterns. But validation
+#     logic doesn't help review repository CRUD operations.
+#
+#   - NullableExtensions.cs: Extension methods for nullable types with
+#     OrDefault and ThrowIfNull. Same nullable vocabulary. Not called
+#     by UserRepository.
+#
+#   - UserMapper.cs: Maps User to UserDto, references User.Id and User.Name.
+#     Same property accesses as the diff. But mapping logic is independent.
+
+initial:
+  Models/User.cs: |
+    namespace App.Models
+    {
+        public class User
+        {
+            public int Id { get; set; }
+            public string Name { get; set; }
+            public string Email { get; set; }
+            public DateTime CreatedAt { get; set; }
+
+            public override string ToString()
+            {
+                return $"User({Id}, {Name})";
+            }
+        }
+    }
+  Repositories/UserRepository.cs: |
+    namespace App.Repositories
+    {
+        class UserRepository { }
+    }
+  Repositories/ProductRepository.cs: |
+    using System.Collections.Generic;
+
+    namespace App.Repositories
+    {
+        class ProductRepository
+        {
+            private readonly Dictionary<int, Product> _products = new();
+
+            public Product? FindProduct(int id)
+            {
+                return _products.TryGetValue(id, out var product) ? product : null;
+            }
+
+            public void Save(Product product)
+            {
+                _products[product.Id] = product;
+            }
+
+            public Product GetOrCreate(int id, string name)
+            {
+                var product = FindProduct(id);
+                if (product is null)
+                {
+                    product = new Product { Id = id, Name = name };
+                    Save(product);
+                }
+                return product;
+            }
+        }
+    }
+  Services/UserService.cs: |
+    namespace App.Services
+    {
+        class UserService
+        {
+            private readonly UserRepository _repository;
+
+            public UserService(UserRepository repository)
+            {
+                _repository = repository;
+            }
+
+            public string GetUserDisplayName(int id)
+            {
+                var user = _repository.FindUser(id);
+                return user?.Name ?? "Unknown";
+            }
+
+            public User EnsureUser(int id, string defaultName)
+            {
+                return _repository.GetOrCreate(id, defaultName);
+            }
+        }
+    }
+  Validators/UserValidator.cs: |
+    using System.Collections.Generic;
+
+    namespace App.Validators
+    {
+        class UserValidator
+        {
+            public List<string> Validate(User? user)
+            {
+                var errors = new List<string>();
+                if (user is null)
+                {
+                    errors.Add("User cannot be null");
+                    return errors;
+                }
+                if (string.IsNullOrEmpty(user.Name))
+                    errors.Add("Name is required");
+                return errors;
+            }
+        }
+    }
+  Extensions/NullableExtensions.cs: |
+    namespace App.Extensions
+    {
+        static class NullableExtensions
+        {
+            public static T OrDefault<T>(this T? value, T defaultValue) where T : class
+            {
+                return value ?? defaultValue;
+            }
+
+            public static T ThrowIfNull<T>(this T? value, string paramName) where T : class
+            {
+                return value ?? throw new ArgumentNullException(paramName);
+            }
+        }
+    }
+  Mappers/UserMapper.cs: |
+    namespace App.Mappers
+    {
+        class UserMapper
+        {
+            public UserDto ToDto(User user)
+            {
+                return new UserDto
+                {
+                    Id = user.Id,
+                    Name = user.Name,
+                    Email = user.Email
+                };
+            }
+
+            public User FromDto(UserDto dto)
+            {
+                return new User
+                {
+                    Id = dto.Id,
+                    Name = dto.Name,
+                    Email = dto.Email
+                };
+            }
+        }
+    }
+
+changed:
+  Models/User.cs: |
+    namespace App.Models
+    {
+        public class User
+        {
+            public int Id { get; set; }
+            public string Name { get; set; }
+            public string Email { get; set; }
+            public DateTime CreatedAt { get; set; }
+
+            public override string ToString()
+            {
+                return $"User({Id}, {Name})";
+            }
+        }
+    }
+  Repositories/UserRepository.cs: |
+    using System.Collections.Generic;
+
+    namespace App.Repositories
+    {
+        class UserRepository
+        {
+            private readonly Dictionary<int, User> _users = new();
+
+            public User? FindUser(int id)
+            {
+                return _users.TryGetValue(id, out var user) ? user : null;
+            }
+
+            public void Save(User user)
+            {
+                _users[user.Id] = user;
+            }
+
+            public User GetOrCreate(int id, string name)
+            {
+                var user = FindUser(id);
+                if (user is null)
+                {
+                    user = new User { Id = id, Name = name };
+                    Save(user);
+                }
+                return user;
+            }
+        }
+    }
+  Repositories/ProductRepository.cs: |
+    using System.Collections.Generic;
+
+    namespace App.Repositories
+    {
+        class ProductRepository
+        {
+            private readonly Dictionary<int, Product> _products = new();
+
+            public Product? FindProduct(int id)
+            {
+                return _products.TryGetValue(id, out var product) ? product : null;
+            }
+
+            public void Save(Product product)
+            {
+                _products[product.Id] = product;
+            }
+
+            public Product GetOrCreate(int id, string name)
+            {
+                var product = FindProduct(id);
+                if (product is null)
+                {
+                    product = new Product { Id = id, Name = name };
+                    Save(product);
+                }
+                return product;
+            }
+        }
+    }
+  Services/UserService.cs: |
+    namespace App.Services
+    {
+        class UserService
+        {
+            private readonly UserRepository _repository;
+
+            public UserService(UserRepository repository)
+            {
+                _repository = repository;
+            }
+
+            public string GetUserDisplayName(int id)
+            {
+                var user = _repository.FindUser(id);
+                return user?.Name ?? "Unknown";
+            }
+
+            public User EnsureUser(int id, string defaultName)
+            {
+                return _repository.GetOrCreate(id, defaultName);
+            }
+        }
+    }
+  Validators/UserValidator.cs: |
+    using System.Collections.Generic;
+
+    namespace App.Validators
+    {
+        class UserValidator
+        {
+            public List<string> Validate(User? user)
+            {
+                var errors = new List<string>();
+                if (user is null)
+                {
+                    errors.Add("User cannot be null");
+                    return errors;
+                }
+                if (string.IsNullOrEmpty(user.Name))
+                    errors.Add("Name is required");
+                return errors;
+            }
+        }
+    }
+  Extensions/NullableExtensions.cs: |
+    namespace App.Extensions
+    {
+        static class NullableExtensions
+        {
+            public static T OrDefault<T>(this T? value, T defaultValue) where T : class
+            {
+                return value ?? defaultValue;
+            }
+
+            public static T ThrowIfNull<T>(this T? value, string paramName) where T : class
+            {
+                return value ?? throw new ArgumentNullException(paramName);
+            }
+        }
+    }
+  Mappers/UserMapper.cs: |
+    namespace App.Mappers
+    {
+        class UserMapper
+        {
+            public UserDto ToDto(User user)
+            {
+                return new UserDto
+                {
+                    Id = user.Id,
+                    Name = user.Name,
+                    Email = user.Email
+                };
+            }
+
+            public User FromDto(UserDto dto)
+            {
+                return new User
+                {
+                    Id = dto.Id,
+                    Name = dto.Name,
+                    Email = dto.Email
+                };
+            }
+        }
+    }
+
+must_include_files:
+  - Repositories/UserRepository.cs
+  - Models/User.cs
+
+must_include_content_from:
+  Repositories/UserRepository.cs:
+    - "public User? FindUser(int id)"
+    - "_users[user.Id] = user"
+    - "new User { Id = id, Name = name }"
+    - "if (user is null)"
+  Models/User.cs:
+    - "public int Id { get; set; }"
+    - "public string Name { get; set; }"
+
+must_not_include:
+  # ProductRepository.cs: identical nullable repository pattern, different entity
+  - ProductRepository
+  - FindProduct
+  - "_products"
+  # UserService.cs: consumer of UserRepository, doesn't help review implementation
+  - UserService
+  - GetUserDisplayName
+  - EnsureUser
+  # UserValidator.cs: validates User, same null-checking vocabulary
+  - UserValidator
+  - "User cannot be null"
+  # NullableExtensions.cs: nullable utility methods, not called by UserRepository
+  - NullableExtensions
+  - OrDefault
+  - ThrowIfNull
+  # UserMapper.cs: maps User properties, independent of repository
+  - UserMapper
+  - ToDto
+  - FromDto
+
+must_not_include_files:
+  - Repositories/ProductRepository.cs
+  - Services/UserService.cs
+  - Validators/UserValidator.cs
+  - Extensions/NullableExtensions.cs
+  - Mappers/UserMapper.cs
+
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

@@ -1,0 +1,337 @@
+initial:
+  src/core/application.py: |
+    import os
+    import logging
+    from typing import Dict, Any, Optional
+
+    APP_NAME = "MyApplication"
+    VERSION = "1.0.0"
+    DEBUG = False
+
+    logger = logging.getLogger(__name__)
+
+    def initialize_config() -> Dict[str, Any]:
+        return {
+            "name": APP_NAME,
+            "version": VERSION,
+            "debug": DEBUG,
+        }
+
+    def setup_logging(level: str = "INFO") -> None:
+        logging.basicConfig(level=getattr(logging, level))
+        logger.info(f"Logging initialized at {level} level")
+
+    def validate_environment() -> bool:
+        required = ["DATABASE_URL", "SECRET_KEY"]
+        missing = [var for var in required if not os.getenv(var)]
+        if missing:
+            logger.error(f"Missing environment variables: {missing}")
+            return False
+        return True
+
+    class ApplicationContext:
+        def __init__(self, config: Dict[str, Any]):
+            self.config = config
+            self.initialized = False
+
+        def start(self) -> None:
+            if not self.initialized:
+                setup_logging()
+                self.initialized = True
+
+        def get_setting(self, key: str) -> Optional[Any]:
+            return self.config.get(key)
+
+  # --- Tricky garbage: name collision — another application module with same identifiers ---
+  src/core/worker_application.py: |
+    import os
+    import logging
+    from typing import Dict, Any, Optional, List
+    GARBAGE_ALGO_012_WORKER_APP_G = "worker"
+    GARBAGE_ALGO_012_WORKER_VERSION_H = "1.0.0"
+
+    APP_NAME = "WorkerApplication"
+    VERSION = "1.0.0"
+    DEBUG = os.getenv("WORKER_DEBUG", "false").lower() == "true"
+
+    logger = logging.getLogger(__name__)
+
+    def initialize_config() -> Dict[str, Any]:
+        return {
+            "name": APP_NAME,
+            "version": VERSION,
+            "debug": DEBUG,
+            "environment": os.getenv("ENVIRONMENT", "development"),
+        }
+
+    class ApplicationContext:
+        def __init__(self, config: Dict[str, Any]):
+            self.config = config
+            self.initialized = False
+            self.plugins: List[str] = []
+
+        def start(self) -> None:
+            if not self.initialized:
+                self.initialized = True
+                logger.info(f"Application {APP_NAME} v{VERSION} started")
+
+        def get_setting(self, key: str, default: Any = None) -> Optional[Any]:
+            return self.config.get(key, default)
+
+  # --- Tricky garbage: same-import consumer — imports os and logging, similar structure ---
+  src/core/scheduler.py: |
+    import os
+    import logging
+    from typing import Dict, Any, Optional
+    GARBAGE_ALGO_012_SCHEDULER_MARKER_I = "scheduler"
+    GARBAGE_ALGO_012_CRON_MARKER_J = True
+
+    APP_NAME = "SchedulerService"
+    VERSION = "2.0.0"
+    logger = logging.getLogger(__name__)
+
+    def setup_logging(level: str = "INFO") -> None:
+        logging.basicConfig(
+            level=getattr(logging, level),
+            format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+        )
+        logger.info(f"Logging initialized at {level} level")
+
+    def validate_environment() -> bool:
+        required = ["SCHEDULER_URL", "API_KEY"]
+        missing = [var for var in required if not os.getenv(var)]
+        if missing:
+            logger.error(f"Missing environment variables: {missing}")
+            return False
+        return True
+
+  # --- Tricky garbage: structural sibling in same directory ---
+  src/core/middleware.py: |
+    import logging
+    from typing import Dict, Any, Optional, List
+    GARBAGE_ALGO_012_MIDDLEWARE_MARKER_K = "middleware"
+    GARBAGE_ALGO_012_CHAIN_MARKER_L = True
+
+    logger = logging.getLogger(__name__)
+
+    class MiddlewareContext:
+        def __init__(self, config: Dict[str, Any]):
+            self.config = config
+            self.initialized = False
+            self.plugins: List[str] = []
+
+        def start(self) -> None:
+            if not self.initialized:
+                self.initialized = True
+
+        def get_setting(self, key: str, default: Any = None) -> Optional[Any]:
+            return self.config.get(key, default)
+
+  # --- Plain garbage ---
+  garbage_plugins.py: |
+    GARBAGE_ALGO_012_PLUGIN_MARKER_A = "plugin"
+    GARBAGE_ALGO_012_LOADER_MARKER_B = True
+
+    class PluginLoader:
+        GARBAGE_ALGO_012_REGISTRY_MARKER_C = {}
+
+        def load(self, name: str) -> None:
+            pass
+  garbage_extensions.py: |
+    GARBAGE_ALGO_012_EXT_MARKER_D = "extension"
+    GARBAGE_ALGO_012_HOOK_MARKER_E = []
+
+    class ExtensionManager:
+        GARBAGE_ALGO_012_ACTIVE_MARKER_F = True
+
+        def register(self, ext: str) -> None:
+            pass
+changed:
+  src/core/application.py: |
+    import os
+    import logging
+    from typing import Dict, Any, Optional, List
+
+    APP_NAME = "MyApplication"
+    VERSION = "2.0.0"
+    DEBUG = os.getenv("DEBUG", "false").lower() == "true"
+
+    logger = logging.getLogger(__name__)
+
+    def initialize_config() -> Dict[str, Any]:
+        return {
+            "name": APP_NAME,
+            "version": VERSION,
+            "debug": DEBUG,
+            "environment": os.getenv("ENVIRONMENT", "development"),
+        }
+
+    def setup_logging(level: str = "INFO") -> None:
+        logging.basicConfig(
+            level=getattr(logging, level),
+            format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+        )
+        logger.info(f"Logging initialized at {level} level")
+
+    def validate_environment() -> bool:
+        required = ["DATABASE_URL", "SECRET_KEY"]
+        missing = [var for var in required if not os.getenv(var)]
+        if missing:
+            logger.error(f"Missing environment variables: {missing}")
+            return False
+        return True
+
+    class ApplicationContext:
+        def __init__(self, config: Dict[str, Any]):
+            self.config = config
+            self.initialized = False
+            self.plugins: List[str] = []
+
+        def start(self) -> None:
+            if not self.initialized:
+                setup_logging(self.config.get("log_level", "INFO"))
+                self.initialized = True
+                logger.info(f"Application {APP_NAME} v{VERSION} started")
+
+        def get_setting(self, key: str, default: Any = None) -> Optional[Any]:
+            return self.config.get(key, default)
+  src/core/worker_application.py: |
+    import os
+    import logging
+    from typing import Dict, Any, Optional, List
+    GARBAGE_ALGO_012_WORKER_APP_G = "worker"
+    GARBAGE_ALGO_012_WORKER_VERSION_H = "1.0.0"
+
+    APP_NAME = "WorkerApplication"
+    VERSION = "1.0.0"
+    DEBUG = os.getenv("WORKER_DEBUG", "false").lower() == "true"
+
+    logger = logging.getLogger(__name__)
+
+    def initialize_config() -> Dict[str, Any]:
+        return {
+            "name": APP_NAME,
+            "version": VERSION,
+            "debug": DEBUG,
+            "environment": os.getenv("ENVIRONMENT", "development"),
+        }
+
+    class ApplicationContext:
+        def __init__(self, config: Dict[str, Any]):
+            self.config = config
+            self.initialized = False
+            self.plugins: List[str] = []
+
+        def start(self) -> None:
+            if not self.initialized:
+                self.initialized = True
+                logger.info(f"Application {APP_NAME} v{VERSION} started")
+
+        def get_setting(self, key: str, default: Any = None) -> Optional[Any]:
+            return self.config.get(key, default)
+  src/core/scheduler.py: |
+    import os
+    import logging
+    from typing import Dict, Any, Optional
+    GARBAGE_ALGO_012_SCHEDULER_MARKER_I = "scheduler"
+    GARBAGE_ALGO_012_CRON_MARKER_J = True
+
+    APP_NAME = "SchedulerService"
+    VERSION = "2.0.0"
+    logger = logging.getLogger(__name__)
+
+    def setup_logging(level: str = "INFO") -> None:
+        logging.basicConfig(
+            level=getattr(logging, level),
+            format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+        )
+        logger.info(f"Logging initialized at {level} level")
+
+    def validate_environment() -> bool:
+        required = ["SCHEDULER_URL", "API_KEY"]
+        missing = [var for var in required if not os.getenv(var)]
+        if missing:
+            logger.error(f"Missing environment variables: {missing}")
+            return False
+        return True
+  src/core/middleware.py: |
+    import logging
+    from typing import Dict, Any, Optional, List
+    GARBAGE_ALGO_012_MIDDLEWARE_MARKER_K = "middleware"
+    GARBAGE_ALGO_012_CHAIN_MARKER_L = True
+
+    logger = logging.getLogger(__name__)
+
+    class MiddlewareContext:
+        def __init__(self, config: Dict[str, Any]):
+            self.config = config
+            self.initialized = False
+            self.plugins: List[str] = []
+
+        def start(self) -> None:
+            if not self.initialized:
+                self.initialized = True
+
+        def get_setting(self, key: str, default: Any = None) -> Optional[Any]:
+            return self.config.get(key, default)
+  garbage_plugins.py: |
+    GARBAGE_ALGO_012_PLUGIN_MARKER_A = "plugin"
+    GARBAGE_ALGO_012_LOADER_MARKER_B = True
+
+    class PluginLoader:
+        GARBAGE_ALGO_012_REGISTRY_MARKER_C = {}
+
+        def load(self, name: str) -> None:
+            pass
+  garbage_extensions.py: |
+    GARBAGE_ALGO_012_EXT_MARKER_D = "extension"
+    GARBAGE_ALGO_012_HOOK_MARKER_E = []
+
+    class ExtensionManager:
+        GARBAGE_ALGO_012_ACTIVE_MARKER_F = True
+
+        def register(self, ext: str) -> None:
+            pass
+
+# === Assertions ===
+
+must_include_files:
+- src/core/application.py
+
+must_include_content_from:
+  src/core/application.py:
+    - from typing import Dict, Any, Optional, List
+    - '"environment": os.getenv("ENVIRONMENT", "development"),'
+    - VERSION = "2.0.0"
+    - 'self.plugins: List[str] = []'
+    - '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+
+must_not_include:
+# Plain garbage markers
+- GARBAGE_ALGO_012_PLUGIN_MARKER_A
+- GARBAGE_ALGO_012_LOADER_MARKER_B
+- GARBAGE_ALGO_012_REGISTRY_MARKER_C
+- GARBAGE_ALGO_012_EXT_MARKER_D
+- GARBAGE_ALGO_012_HOOK_MARKER_E
+- GARBAGE_ALGO_012_ACTIVE_MARKER_F
+# Tricky: name collision — same class names, variables (APP_NAME, VERSION, DEBUG, ApplicationContext)
+- GARBAGE_ALGO_012_WORKER_APP_G
+- GARBAGE_ALGO_012_WORKER_VERSION_H
+# Tricky: same-import consumer — identical setup_logging and validate_environment patterns
+- GARBAGE_ALGO_012_SCHEDULER_MARKER_I
+- GARBAGE_ALGO_012_CRON_MARKER_J
+# Tricky: structural sibling — MiddlewareContext mirrors ApplicationContext changes exactly
+- GARBAGE_ALGO_012_MIDDLEWARE_MARKER_K
+- GARBAGE_ALGO_012_CHAIN_MARKER_L
+
+must_not_include_files:
+- garbage_plugins.py
+- garbage_extensions.py
+- src/core/worker_application.py
+- src/core/scheduler.py
+- src/core/middleware.py
+
+max_fragments: 10
+max_files: 1
+add_garbage_files: false
+skip_garbage_check: true

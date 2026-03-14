@@ -160,8 +160,9 @@ def test_write_tree_text_direct():
     result = output.getvalue()
 
     assert "test_project/" in result
-    assert "  file.txt" in result
-    assert "subdir/" in result
+    assert "├── file.txt" in result
+    assert "└── subdir/" in result
+    assert "nested.txt" in result
 
 
 def test_write_tree_text_edge_cases():
@@ -171,7 +172,8 @@ def test_write_tree_text_edge_cases():
     result = output.getvalue()
     non_blank_lines = [line for line in result.strip().split("\n") if line.strip()]
     assert non_blank_lines[0] == "test/"
-    assert "empty.txt" in non_blank_lines[-1]
+    assert any("empty.txt" in line for line in non_blank_lines)
+    assert any("(empty file)" in line for line in non_blank_lines)
 
     tree_no_content = {"name": "test", "type": "directory", "children": [{"name": "file.txt", "type": "file"}]}
     output = io.StringIO()
@@ -255,3 +257,76 @@ def test_write_tree_to_file_stdout(fmt):
         assert parsed["name"] == "test"
     else:
         assert "test/" in output
+
+
+class TestYamlEmitterEdgeCases:
+    def _roundtrip(self, tree):
+        output = io.StringIO()
+        write_tree_yaml(output, tree)
+        raw = output.getvalue()
+        parsed = yaml.safe_load(raw)
+        return parsed, raw
+
+    def test_empty_string_content(self):
+        tree = {"name": "p", "type": "directory", "children": [{"name": "e.txt", "type": "file", "content": ""}]}
+        parsed, _ = self._roundtrip(tree)
+        assert parsed["children"][0]["content"] == ""
+
+    def test_whitespace_only_content(self):
+        tree = {"name": "p", "type": "directory", "children": [{"name": "w.txt", "type": "file", "content": "   \n  \n"}]}
+        parsed, _ = self._roundtrip(tree)
+        assert parsed["children"][0]["content"] == "   \n  \n"
+
+    @pytest.mark.parametrize(
+        "filename",
+        ["true", "false", "null", "yes", "no", "on", "off", "1.0", "1e2", "0x1A", ".nan", ".inf"],
+    )
+    def test_yaml_keyword_filenames(self, filename):
+        tree = {"name": "root", "type": "directory", "children": [{"name": filename, "type": "file", "content": "x\n"}]}
+        parsed, _raw = self._roundtrip(tree)
+        child = parsed["children"][0]
+        assert child["name"] == filename, f"Filename '{filename}' was not preserved as string"
+        assert isinstance(child["name"], str)
+
+    def test_control_chars_in_content(self):
+        content = "line1\rline2\x00line3\x85line4\n"
+        tree = {"name": "p", "type": "directory", "children": [{"name": "c.txt", "type": "file", "content": content}]}
+        parsed, _ = self._roundtrip(tree)
+        assert parsed["children"][0]["content"] == content
+
+    def test_special_chars_in_filename(self):
+        for name in ['file "quoted".txt', "file\\back.txt", "file: colon.txt", "file\nnewline.txt"]:
+            tree = {"name": "p", "type": "directory", "children": [{"name": name, "type": "file", "content": "x\n"}]}
+            parsed, _ = self._roundtrip(tree)
+            assert parsed["children"][0]["name"] == name
+
+    def test_deeply_nested_structure(self):
+        node = {"name": "leaf.txt", "type": "file", "content": "found\n"}
+        for i in range(20):
+            node = {"name": f"d{i}", "type": "directory", "children": [node]}
+        tree = {"name": "root", "type": "directory", "children": [node]}
+        parsed, _ = self._roundtrip(tree)
+
+        current = parsed
+        for i in range(19, -1, -1):
+            current = current["children"][0]
+            assert current["name"] == f"d{i}"
+        assert current["children"][0]["name"] == "leaf.txt"
+        assert current["children"][0]["content"] == "found\n"
+
+    def test_backtick_content(self):
+        content = "```python\nprint('hi')\n```\n"
+        tree = {"name": "p", "type": "directory", "children": [{"name": "md.txt", "type": "file", "content": content}]}
+        parsed, _ = self._roundtrip(tree)
+        assert parsed["children"][0]["content"] == content
+
+    def test_unicode_line_separators(self):
+        content = "a\u2028b\u2029c\n"
+        tree = {"name": "p", "type": "directory", "children": [{"name": "u.txt", "type": "file", "content": content}]}
+        parsed, _ = self._roundtrip(tree)
+        assert parsed["children"][0]["content"] == content
+
+    def test_empty_directory_no_children_key(self):
+        tree = {"name": "empty", "type": "directory", "children": []}
+        parsed, raw = self._roundtrip(tree)
+        assert "children" not in raw or parsed.get("children") is None or parsed.get("children") == []

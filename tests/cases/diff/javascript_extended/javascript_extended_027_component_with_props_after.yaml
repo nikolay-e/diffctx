@@ -1,3 +1,0 @@
-Card.tsx: "interface CardProps {\n    title: string;\n    children: React.ReactNode;\n}\n\nexport function Card({ title, children }: CardProps) {\n    return (\n        <div className=\"card\">\n      \
-  \      <h2>{title}</h2>\n            {children}\n        </div>\n    );\n}\n\n// react_adv_garbage_marker_001\n"
-App.tsx: "import { Card } from './Card';\n\nexport function App() {\n    return (\n        <Card title=\"Welcome\">\n            <p>Hello World</p>\n        </Card>\n    );\n}\n"

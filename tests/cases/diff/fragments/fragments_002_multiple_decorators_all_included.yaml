@@ -1,0 +1,65 @@
+initial:
+  multi_dec.py: |
+    import functools
+    from contextlib import contextmanager
+
+    def unrelated_before_function():
+
+    class UnrelatedBeforeClass:
+
+    @decorator1
+    @decorator2
+    @decorator3
+    def decorated_func():
+        pass
+
+    def unrelated_after_function():
+
+    class UnrelatedAfterClass:
+
+        def method_with_marker(self):
+  garbage_utils_002.py: |
+    GARBAGE_CONSTANT_002 = "GARBAGE_FRAG_constant002"
+
+    def garbage_util_function():
+        return "GARBAGE_FRAG_util002"
+
+    class GarbageHelper:
+        def __init__(self):
+            self.value = "GARBAGE_FRAG_helper002"
+changed:
+  multi_dec.py: |
+    import functools
+    from contextlib import contextmanager
+
+    def unrelated_before_function():
+
+    class UnrelatedBeforeClass:
+
+    @decorator1
+    @decorator2
+    @decorator3
+    def decorated_func():
+        return 1
+
+    def unrelated_after_function():
+
+    class UnrelatedAfterClass:
+
+        def method_with_marker(self):
+  garbage_utils_002.py: |
+    GARBAGE_CONSTANT_002 = "GARBAGE_FRAG_constant002"
+
+    def garbage_util_function():
+        return "GARBAGE_FRAG_util002"
+
+    class GarbageHelper:
+        def __init__(self):
+            self.value = "GARBAGE_FRAG_helper002"
+must_include_files:
+- multi_dec.py
+must_not_include:
+- GARBAGE_CONSTANT_002
+- garbage_utils_002.py
+add_garbage_files: false
+skip_garbage_check: true

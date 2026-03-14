@@ -1,0 +1,231 @@
+initial:
+  outer.py: |
+    def outer(data: list) -> dict:
+        total = sum(data)
+
+        def inner(values: list) -> float:
+            if not values:
+                return 0.0
+            return sum(values) / len(values)
+
+        def format_result(value: float) -> str:
+            return f"{value:.2f}"
+
+        return {"total": total}
+  utils/math_ops.py: |
+    def clamp(value: float, min_val: float, max_val: float) -> float:
+        return max(min_val, min(value, max_val))
+
+    def normalize(data: list) -> list:
+        if not data:
+            return []
+        max_val = max(data)
+        if max_val == 0:
+            return data
+        return [x / max_val for x in data]
+
+  # --- Tricky: has own outer() with nested inner() and format_result() (name collision) ---
+  processing/aggregator.py: |
+    GARBAGE_DEP_005_AGG_MODULE_C = "aggregator"
+    GARBAGE_DEP_005_AGG_VERSION_D = "2.1"
+
+    def outer(data: list) -> dict:
+        GARBAGE_DEP_005_AGG_OUTER_E = True
+
+        def inner(values: list) -> float:
+            return max(values) if values else 0.0
+
+        def format_result(value: float) -> str:
+            return f"Result: {value}"
+
+        return {"max": inner(data), "formatted": format_result(inner(data))}
+
+  # --- Tricky: uses sum()/len() pattern with nested functions (similar structure) ---
+  stats/calculator.py: |
+    GARBAGE_DEP_005_STATS_CALC_F = "statistics"
+    GARBAGE_DEP_005_STATS_VER_G = True
+
+    def compute_stats(data: list) -> dict:
+        total = sum(data)
+
+        def average(values: list) -> float:
+            if not values:
+                return 0.0
+            return sum(values) / len(values)
+
+        def format_result(value: float) -> str:
+            GARBAGE_DEP_005_STATS_FMT_H = True
+            return f"{value:.4f}"
+
+        avg = average(data)
+        return {"total": total, "average": format_result(avg)}
+
+  # --- Plain garbage ---
+  garbage/aquarium_sim_GARBAGE_DEP_005_AQUARIUM_A.py: |
+    import random
+
+    def fish_population_GARBAGE_DEP_005_AQUARIUM_A(current: int, food: float) -> int:
+        growth = int(current * food * 0.1)
+        return current + growth
+
+    def water_quality_GARBAGE_DEP_005_AQUARIUM_A(ph: float, temp: float) -> str:
+        if 6.5 <= ph <= 7.5 and 24 <= temp <= 28:
+            return "optimal"
+        return "suboptimal"
+
+    class Aquarium_GARBAGE_DEP_005_AQUARIUM_A:
+        def __init__(self, volume_liters: int):
+            self.volume = volume_liters
+            self.fish = []
+
+        def add_fish(self, species: str, count: int) -> None:
+            self.fish.append({"species": species, "count": count})
+  garbage/ticket_system_GARBAGE_DEP_005_TICKET_B.py: |
+    from datetime import datetime
+
+    def create_ticket_GARBAGE_DEP_005_TICKET_B(title: str, priority: int) -> dict:
+        return {"title": title, "priority": priority, "created": str(datetime.now())}
+
+    def escalate_ticket_GARBAGE_DEP_005_TICKET_B(ticket: dict) -> dict:
+        ticket["priority"] = min(ticket["priority"] + 1, 5)
+        return ticket
+
+    class TicketQueue_GARBAGE_DEP_005_TICKET_B:
+        def __init__(self):
+            self.tickets = []
+
+        def enqueue(self, ticket: dict) -> None:
+            self.tickets.append(ticket)
+            self.tickets.sort(key=lambda t: t["priority"], reverse=True)
+changed:
+  outer.py: |
+    def outer(data: list) -> dict:
+        total = sum(data)
+
+        def inner(values: list) -> float:
+            if not values:
+                return 0.0
+            return sum(values) / len(values)
+
+        def format_result(value: float) -> str:
+            return f"{value:.2f}"
+
+        avg = inner(data)
+        return {"total": total, "average": format_result(avg)}
+  utils/math_ops.py: |
+    def clamp(value: float, min_val: float, max_val: float) -> float:
+        return max(min_val, min(value, max_val))
+
+    def normalize(data: list) -> list:
+        if not data:
+            return []
+        max_val = max(data)
+        if max_val == 0:
+            return data
+        return [x / max_val for x in data]
+  processing/aggregator.py: |
+    GARBAGE_DEP_005_AGG_MODULE_C = "aggregator"
+    GARBAGE_DEP_005_AGG_VERSION_D = "2.1"
+
+    def outer(data: list) -> dict:
+        GARBAGE_DEP_005_AGG_OUTER_E = True
+
+        def inner(values: list) -> float:
+            return max(values) if values else 0.0
+
+        def format_result(value: float) -> str:
+            return f"Result: {value}"
+
+        return {"max": inner(data), "formatted": format_result(inner(data))}
+  stats/calculator.py: |
+    GARBAGE_DEP_005_STATS_CALC_F = "statistics"
+    GARBAGE_DEP_005_STATS_VER_G = True
+
+    def compute_stats(data: list) -> dict:
+        total = sum(data)
+
+        def average(values: list) -> float:
+            if not values:
+                return 0.0
+            return sum(values) / len(values)
+
+        def format_result(value: float) -> str:
+            GARBAGE_DEP_005_STATS_FMT_H = True
+            return f"{value:.4f}"
+
+        avg = average(data)
+        return {"total": total, "average": format_result(avg)}
+  garbage/aquarium_sim_GARBAGE_DEP_005_AQUARIUM_A.py: |
+    import random
+
+    def fish_population_GARBAGE_DEP_005_AQUARIUM_A(current: int, food: float) -> int:
+        growth = int(current * food * 0.1)
+        return current + growth
+
+    def water_quality_GARBAGE_DEP_005_AQUARIUM_A(ph: float, temp: float) -> str:
+        if 6.5 <= ph <= 7.5 and 24 <= temp <= 28:
+            return "optimal"
+        return "suboptimal"
+
+    class Aquarium_GARBAGE_DEP_005_AQUARIUM_A:
+        def __init__(self, volume_liters: int):
+            self.volume = volume_liters
+            self.fish = []
+
+        def add_fish(self, species: str, count: int) -> None:
+            self.fish.append({"species": species, "count": count})
+  garbage/ticket_system_GARBAGE_DEP_005_TICKET_B.py: |
+    from datetime import datetime
+
+    def create_ticket_GARBAGE_DEP_005_TICKET_B(title: str, priority: int) -> dict:
+        return {"title": title, "priority": priority, "created": str(datetime.now())}
+
+    def escalate_ticket_GARBAGE_DEP_005_TICKET_B(ticket: dict) -> dict:
+        ticket["priority"] = min(ticket["priority"] + 1, 5)
+        return ticket
+
+    class TicketQueue_GARBAGE_DEP_005_TICKET_B:
+        def __init__(self):
+            self.tickets = []
+
+        def enqueue(self, ticket: dict) -> None:
+            self.tickets.append(ticket)
+            self.tickets.sort(key=lambda t: t["priority"], reverse=True)
+
+# === Assertions ===
+
+must_include_files:
+- outer.py
+
+must_include_content_from:
+  outer.py:
+    - avg = inner(data)
+    - 'def outer(data: list) -> dict:'
+    - 'def inner(values: list) -> float:'
+    - 'def format_result(value: float) -> str:'
+    - format_result(avg)
+
+must_not_include:
+# Plain garbage
+- GARBAGE_DEP_005_AQUARIUM_A
+- GARBAGE_DEP_005_TICKET_B
+# Tricky: same outer/inner/format_result function names
+- GARBAGE_DEP_005_AGG_MODULE_C
+- GARBAGE_DEP_005_AGG_VERSION_D
+- GARBAGE_DEP_005_AGG_OUTER_E
+# Tricky: same sum/len pattern with nested functions and format_result
+- GARBAGE_DEP_005_STATS_CALC_F
+- GARBAGE_DEP_005_STATS_VER_G
+- GARBAGE_DEP_005_STATS_FMT_H
+
+must_not_include_files:
+- processing/aggregator.py
+- stats/calculator.py
+- utils/math_ops.py
+- garbage/aquarium_sim_GARBAGE_DEP_005_AQUARIUM_A.py
+- garbage/ticket_system_GARBAGE_DEP_005_TICKET_B.py
+
+max_fragments: 4
+max_files: 1
+add_garbage_files: false
+skip_garbage_check: true

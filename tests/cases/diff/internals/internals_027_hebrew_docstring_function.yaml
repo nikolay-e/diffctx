@@ -1,0 +1,19 @@
+initial:
+  hebrew_docs.py: |
+    def placeholder():
+        pass
+changed:
+  hebrew_docs.py: |
+    def foo():
+        """תיעוד בעברית"""
+        return 42
+
+    def bar(x, y):
+        """עוד תיעוד"""
+        return x + y
+must_include_files:
+- hebrew_docs.py
+must_include_content:
+- '"""תיעוד בעברית"""'
+add_garbage_files: false
+skip_garbage_check: true

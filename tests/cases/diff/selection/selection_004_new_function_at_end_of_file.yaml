@@ -1,0 +1,252 @@
+initial:
+  calculator.py: |
+    def add(a, b):
+        add_marker = "addition_operation"
+        return a + b
+
+    def sub(a, b):
+        sub_marker = "subtraction_operation"
+        return a - b
+
+    def mul(a, b):
+        mul_marker = "multiplication_operation"
+        return a * b
+  math_utils.py: |
+    def square(x):
+        return x * x
+
+    def cube(x):
+        return x * x * x
+
+    def power(base, exp):
+        return base ** exp
+  garbage_sel_004_validators.py: |
+    def GARBAGE_SEL_004_validate_input_alpha(value):
+        return "GARBAGE_SEL_004_valid_alpha"
+
+    def GARBAGE_SEL_004_validate_input_beta(value):
+        return "GARBAGE_SEL_004_valid_beta"
+
+    def GARBAGE_SEL_004_validate_input_gamma(value):
+        return "GARBAGE_SEL_004_valid_gamma"
+
+    class GARBAGE_SEL_004_ValidatorClass:
+        def validate(self, data):
+            return "GARBAGE_SEL_004_validator_class_result"
+
+        def sanitize(self, data):
+            return "GARBAGE_SEL_004_sanitize_result"
+  garbage_sel_004_formatters.py: |
+    def GARBAGE_SEL_004_format_output_one(data):
+        return f"GARBAGE_SEL_004_formatted_one_{data}"
+
+    def GARBAGE_SEL_004_format_output_two(data):
+        return f"GARBAGE_SEL_004_formatted_two_{data}"
+
+    GARBAGE_SEL_004_FORMAT_CONFIG = {
+        "pattern": "GARBAGE_SEL_004_pattern_value",
+        "delimiter": "GARBAGE_SEL_004_delimiter_value",
+    }
+  garbage_sel_004_handlers.py: |
+    class GARBAGE_SEL_004_RequestHandler:
+        def handle_get(self):
+            return "GARBAGE_SEL_004_get_response"
+
+        def handle_post(self):
+            return "GARBAGE_SEL_004_post_response"
+
+    class GARBAGE_SEL_004_ResponseHandler:
+        def format_success(self):
+            return "GARBAGE_SEL_004_success_format"
+
+        def format_error(self):
+            return "GARBAGE_SEL_004_error_format"
+  # --- Tricky garbage: also has div function with same structure ---
+  tricky_math_ops.py: |
+    GARBAGE_SEL_004_MATH_OPS_MODULE_A = "math_ops_extra"
+    GARBAGE_SEL_004_MATH_OPS_VER_B = 2
+
+    def div(a, b):
+        if b == 0:
+            raise ValueError("division by zero")
+        div_marker = "division_operation_extra"
+        return a / b
+
+    def mod(a, b):
+        return a % b
+
+    def add(a, b):
+        return a + b
+  # --- Tricky garbage: same calculator pattern with different operations ---
+  tricky_calculator_ext.py: |
+    GARBAGE_SEL_004_CALC_EXT_C = "calculator_extension"
+    GARBAGE_SEL_004_CALC_EXT_FLAG_D = True
+
+    def add(a, b):
+        add_marker = "addition_operation"
+        return a + b
+
+    def sub(a, b):
+        sub_marker = "subtraction_operation"
+        return a - b
+
+    def div(a, b):
+        div_marker = "division_operation_added"
+        return a / b if b != 0 else 0
+changed:
+  calculator.py: |
+    def add(a, b):
+        add_marker = "addition_operation"
+        return a + b
+
+    def sub(a, b):
+        sub_marker = "subtraction_operation"
+        return a - b
+
+    def mul(a, b):
+        mul_marker = "multiplication_operation"
+        return a * b
+
+    def div(a, b):
+        if b == 0:
+            raise ValueError("division by zero")
+        div_marker = "division_operation_added"
+        return a / b
+  math_utils.py: |
+    def square(x):
+        return x * x
+
+    def cube(x):
+        return x * x * x
+
+    def power(base, exp):
+        return base ** exp
+  garbage_sel_004_validators.py: |
+    def GARBAGE_SEL_004_validate_input_alpha(value):
+        return "GARBAGE_SEL_004_valid_alpha"
+
+    def GARBAGE_SEL_004_validate_input_beta(value):
+        return "GARBAGE_SEL_004_valid_beta"
+
+    def GARBAGE_SEL_004_validate_input_gamma(value):
+        return "GARBAGE_SEL_004_valid_gamma"
+
+    class GARBAGE_SEL_004_ValidatorClass:
+        def validate(self, data):
+            return "GARBAGE_SEL_004_validator_class_result"
+
+        def sanitize(self, data):
+            return "GARBAGE_SEL_004_sanitize_result"
+  garbage_sel_004_formatters.py: |
+    def GARBAGE_SEL_004_format_output_one(data):
+        return f"GARBAGE_SEL_004_formatted_one_{data}"
+
+    def GARBAGE_SEL_004_format_output_two(data):
+        return f"GARBAGE_SEL_004_formatted_two_{data}"
+
+    GARBAGE_SEL_004_FORMAT_CONFIG = {
+        "pattern": "GARBAGE_SEL_004_pattern_value",
+        "delimiter": "GARBAGE_SEL_004_delimiter_value",
+    }
+  garbage_sel_004_handlers.py: |
+    class GARBAGE_SEL_004_RequestHandler:
+        def handle_get(self):
+            return "GARBAGE_SEL_004_get_response"
+
+        def handle_post(self):
+            return "GARBAGE_SEL_004_post_response"
+
+    class GARBAGE_SEL_004_ResponseHandler:
+        def format_success(self):
+            return "GARBAGE_SEL_004_success_format"
+
+        def format_error(self):
+            return "GARBAGE_SEL_004_error_format"
+  tricky_math_ops.py: |
+    GARBAGE_SEL_004_MATH_OPS_MODULE_A = "math_ops_extra"
+    GARBAGE_SEL_004_MATH_OPS_VER_B = 2
+
+    def div(a, b):
+        if b == 0:
+            raise ValueError("division by zero")
+        div_marker = "division_operation_extra"
+        return a / b
+
+    def mod(a, b):
+        return a % b
+
+    def add(a, b):
+        return a + b
+  tricky_calculator_ext.py: |
+    GARBAGE_SEL_004_CALC_EXT_C = "calculator_extension"
+    GARBAGE_SEL_004_CALC_EXT_FLAG_D = True
+
+    def add(a, b):
+        add_marker = "addition_operation"
+        return a + b
+
+    def sub(a, b):
+        sub_marker = "subtraction_operation"
+        return a - b
+
+    def div(a, b):
+        div_marker = "division_operation_added"
+        return a / b if b != 0 else 0
+
+# === Assertions ===
+
+must_include:
+- def div
+- division by zero
+- division_operation_added
+
+must_include_content_from:
+  calculator.py:
+    - 'def div(a, b):'
+    - raise ValueError("division by zero")
+    - div_marker = "division_operation_added"
+
+must_not_include:
+- def mul
+- mul_marker
+- multiplication_operation
+# Plain garbage markers
+- GARBAGE_SEL_004_validate_input_alpha
+- GARBAGE_SEL_004_validate_input_beta
+- GARBAGE_SEL_004_valid_alpha
+- GARBAGE_SEL_004_valid_beta
+- GARBAGE_SEL_004_ValidatorClass
+- GARBAGE_SEL_004_validator_class_result
+- GARBAGE_SEL_004_sanitize_result
+- GARBAGE_SEL_004_format_output_one
+- GARBAGE_SEL_004_format_output_two
+- GARBAGE_SEL_004_formatted_one
+- GARBAGE_SEL_004_FORMAT_CONFIG
+- GARBAGE_SEL_004_pattern_value
+- GARBAGE_SEL_004_RequestHandler
+- GARBAGE_SEL_004_ResponseHandler
+- GARBAGE_SEL_004_get_response
+- GARBAGE_SEL_004_post_response
+- GARBAGE_SEL_004_success_format
+- GARBAGE_SEL_004_error_format
+- garbage_sel_004_validators.py
+- garbage_sel_004_formatters.py
+- garbage_sel_004_handlers.py
+# Tricky: same div function with similar structure
+- GARBAGE_SEL_004_MATH_OPS_MODULE_A
+- GARBAGE_SEL_004_MATH_OPS_VER_B
+# Tricky: same calculator pattern with div function
+- GARBAGE_SEL_004_CALC_EXT_C
+- GARBAGE_SEL_004_CALC_EXT_FLAG_D
+
+must_not_include_files:
+- garbage_sel_004_validators.py
+- garbage_sel_004_formatters.py
+- garbage_sel_004_handlers.py
+- tricky_math_ops.py
+- tricky_calculator_ext.py
+
+max_fragments: 4
+max_files: 2
+add_garbage_files: false
+skip_garbage_check: true

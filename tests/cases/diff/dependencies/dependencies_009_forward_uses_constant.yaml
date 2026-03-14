@@ -1,0 +1,218 @@
+initial:
+  constants.py: |
+    MIN_PASSWORD_LENGTH = 8
+    MAX_PASSWORD_LENGTH = 128
+    PASSWORD_SPECIAL_CHARS = "!@#$%^&*"
+    MAX_LOGIN_ATTEMPTS = 5
+    SESSION_TIMEOUT_SECONDS = 3600
+  validator.py: |
+    def validate():
+        pass
+  auth/session.py: |
+    from constants import SESSION_TIMEOUT_SECONDS
+
+    class SessionManager:
+        def __init__(self):
+            self.timeout = SESSION_TIMEOUT_SECONDS
+            self.sessions = {}
+
+        def create_session(self, user_id: int) -> str:
+            import hashlib
+            token = hashlib.sha256(str(user_id).encode()).hexdigest()
+            self.sessions[token] = {"user_id": user_id, "timeout": self.timeout}
+            return token
+
+  # --- Tricky: also imports from constants (same-import consumer) ---
+  auth/lockout.py: |
+    from constants import MAX_LOGIN_ATTEMPTS, SESSION_TIMEOUT_SECONDS
+    GARBAGE_DEP_009_LOCKOUT_IMPORT_C = "lockout_module"
+    GARBAGE_DEP_009_LOCKOUT_VER_D = "1.2"
+
+    class LoginLockout:
+        GARBAGE_DEP_009_LOCKOUT_CLASS_E = True
+
+        def __init__(self):
+            self.attempts = {}
+            self.max_attempts = MAX_LOGIN_ATTEMPTS
+
+        def record_failure(self, user_id: int) -> bool:
+            self.attempts[user_id] = self.attempts.get(user_id, 0) + 1
+            return self.attempts[user_id] >= self.max_attempts
+
+        def is_locked(self, user_id: int) -> bool:
+            return self.attempts.get(user_id, 0) >= MAX_LOGIN_ATTEMPTS
+
+  # --- Tricky: has own MIN_PASSWORD_LENGTH/MAX_PASSWORD_LENGTH constants (name collision) ---
+  config/password_policy.py: |
+    GARBAGE_DEP_009_POLICY_MODULE_F = "password_policy"
+    GARBAGE_DEP_009_POLICY_VER_G = "strict"
+
+    MIN_PASSWORD_LENGTH = 12
+    MAX_PASSWORD_LENGTH = 64
+    PASSWORD_SPECIAL_CHARS = "!@#$%^&*()_+-=[]{}|"
+    GARBAGE_DEP_009_POLICY_ENTROPY_H = 3.5
+
+    def validate(password: str) -> dict:
+        GARBAGE_DEP_009_POLICY_VALID_I = True
+        errors = []
+        if len(password) < MIN_PASSWORD_LENGTH:
+            errors.append("too short")
+        return {"valid": len(errors) == 0, "errors": errors}
+
+  # --- Plain garbage ---
+  garbage/geology_GARBAGE_DEP_009_GEOLOGY_A.py: |
+    def mohs_hardness_GARBAGE_DEP_009_GEOLOGY_A(mineral: str) -> float:
+        scale = {"talc": 1, "gypsum": 2, "quartz": 7, "diamond": 10}
+        return scale.get(mineral, 5.0)
+
+    def rock_density_GARBAGE_DEP_009_GEOLOGY_A(mass: float, volume: float) -> float:
+        return mass / volume if volume > 0 else 0.0
+
+    class MineralSample_GARBAGE_DEP_009_GEOLOGY_A:
+        def __init__(self, name: str, hardness: float):
+            self.name = name
+            self.hardness = hardness
+  garbage/knitting_GARBAGE_DEP_009_KNITTING_B.py: |
+    def yarn_needed_GARBAGE_DEP_009_KNITTING_B(width_cm: float, length_cm: float, gauge: float) -> float:
+        return width_cm * length_cm * gauge * 0.01
+
+    def stitch_count_GARBAGE_DEP_009_KNITTING_B(width_cm: float, gauge_per_cm: float) -> int:
+        return int(width_cm * gauge_per_cm)
+
+    class KnittingPattern_GARBAGE_DEP_009_KNITTING_B:
+        def __init__(self, name: str):
+            self.name = name
+            self.rows = []
+
+        def add_row(self, instructions: str) -> None:
+            self.rows.append(instructions)
+changed:
+  constants.py: |
+    MIN_PASSWORD_LENGTH = 8
+    MAX_PASSWORD_LENGTH = 128
+    PASSWORD_SPECIAL_CHARS = "!@#$%^&*"
+    MAX_LOGIN_ATTEMPTS = 5
+    SESSION_TIMEOUT_SECONDS = 3600
+  validator.py: |
+    from constants import MIN_PASSWORD_LENGTH, MAX_PASSWORD_LENGTH, PASSWORD_SPECIAL_CHARS
+
+    def validate(password: str) -> dict:
+        errors = []
+        if len(password) < MIN_PASSWORD_LENGTH:
+            errors.append(f"Password must be at least {MIN_PASSWORD_LENGTH} characters")
+        if len(password) > MAX_PASSWORD_LENGTH:
+            errors.append(f"Password must be at most {MAX_PASSWORD_LENGTH} characters")
+        if not any(c in PASSWORD_SPECIAL_CHARS for c in password):
+            errors.append("Password must contain a special character")
+        return {"valid": len(errors) == 0, "errors": errors}
+  auth/session.py: |
+    from constants import SESSION_TIMEOUT_SECONDS
+
+    class SessionManager:
+        def __init__(self):
+            self.timeout = SESSION_TIMEOUT_SECONDS
+            self.sessions = {}
+
+        def create_session(self, user_id: int) -> str:
+            import hashlib
+            token = hashlib.sha256(str(user_id).encode()).hexdigest()
+            self.sessions[token] = {"user_id": user_id, "timeout": self.timeout}
+            return token
+  auth/lockout.py: |
+    from constants import MAX_LOGIN_ATTEMPTS, SESSION_TIMEOUT_SECONDS
+    GARBAGE_DEP_009_LOCKOUT_IMPORT_C = "lockout_module"
+    GARBAGE_DEP_009_LOCKOUT_VER_D = "1.2"
+
+    class LoginLockout:
+        GARBAGE_DEP_009_LOCKOUT_CLASS_E = True
+
+        def __init__(self):
+            self.attempts = {}
+            self.max_attempts = MAX_LOGIN_ATTEMPTS
+
+        def record_failure(self, user_id: int) -> bool:
+            self.attempts[user_id] = self.attempts.get(user_id, 0) + 1
+            return self.attempts[user_id] >= self.max_attempts
+
+        def is_locked(self, user_id: int) -> bool:
+            return self.attempts.get(user_id, 0) >= MAX_LOGIN_ATTEMPTS
+  config/password_policy.py: |
+    GARBAGE_DEP_009_POLICY_MODULE_F = "password_policy"
+    GARBAGE_DEP_009_POLICY_VER_G = "strict"
+
+    MIN_PASSWORD_LENGTH = 12
+    MAX_PASSWORD_LENGTH = 64
+    PASSWORD_SPECIAL_CHARS = "!@#$%^&*()_+-=[]{}|"
+    GARBAGE_DEP_009_POLICY_ENTROPY_H = 3.5
+
+    def validate(password: str) -> dict:
+        GARBAGE_DEP_009_POLICY_VALID_I = True
+        errors = []
+        if len(password) < MIN_PASSWORD_LENGTH:
+            errors.append("too short")
+        return {"valid": len(errors) == 0, "errors": errors}
+  garbage/geology_GARBAGE_DEP_009_GEOLOGY_A.py: |
+    def mohs_hardness_GARBAGE_DEP_009_GEOLOGY_A(mineral: str) -> float:
+        scale = {"talc": 1, "gypsum": 2, "quartz": 7, "diamond": 10}
+        return scale.get(mineral, 5.0)
+
+    def rock_density_GARBAGE_DEP_009_GEOLOGY_A(mass: float, volume: float) -> float:
+        return mass / volume if volume > 0 else 0.0
+
+    class MineralSample_GARBAGE_DEP_009_GEOLOGY_A:
+        def __init__(self, name: str, hardness: float):
+            self.name = name
+            self.hardness = hardness
+  garbage/knitting_GARBAGE_DEP_009_KNITTING_B.py: |
+    def yarn_needed_GARBAGE_DEP_009_KNITTING_B(width_cm: float, length_cm: float, gauge: float) -> float:
+        return width_cm * length_cm * gauge * 0.01
+
+    def stitch_count_GARBAGE_DEP_009_KNITTING_B(width_cm: float, gauge_per_cm: float) -> int:
+        return int(width_cm * gauge_per_cm)
+
+    class KnittingPattern_GARBAGE_DEP_009_KNITTING_B:
+        def __init__(self, name: str):
+            self.name = name
+            self.rows = []
+
+        def add_row(self, instructions: str) -> None:
+            self.rows.append(instructions)
+
+# === Assertions ===
+
+must_include_files:
+- validator.py
+
+must_include_content_from:
+  validator.py:
+    - from constants import MIN_PASSWORD_LENGTH, MAX_PASSWORD_LENGTH, PASSWORD_SPECIAL_CHARS
+    - 'def validate(password: str) -> dict:'
+    - len(password) < MIN_PASSWORD_LENGTH
+    - len(password) > MAX_PASSWORD_LENGTH
+    - PASSWORD_SPECIAL_CHARS
+
+must_not_include:
+# Plain garbage
+- GARBAGE_DEP_009_GEOLOGY_A
+- GARBAGE_DEP_009_KNITTING_B
+# Tricky: also imports from constants (MAX_LOGIN_ATTEMPTS, SESSION_TIMEOUT_SECONDS)
+- GARBAGE_DEP_009_LOCKOUT_IMPORT_C
+- GARBAGE_DEP_009_LOCKOUT_VER_D
+- GARBAGE_DEP_009_LOCKOUT_CLASS_E
+# Tricky: same constant names MIN_PASSWORD_LENGTH/MAX_PASSWORD_LENGTH and validate function
+- GARBAGE_DEP_009_POLICY_MODULE_F
+- GARBAGE_DEP_009_POLICY_VER_G
+- GARBAGE_DEP_009_POLICY_ENTROPY_H
+- GARBAGE_DEP_009_POLICY_VALID_I
+
+must_not_include_files:
+- auth/lockout.py
+- config/password_policy.py
+- auth/session.py
+- garbage/geology_GARBAGE_DEP_009_GEOLOGY_A.py
+- garbage/knitting_GARBAGE_DEP_009_KNITTING_B.py
+
+max_fragments: 4
+max_files: 2
+add_garbage_files: false
+skip_garbage_check: true

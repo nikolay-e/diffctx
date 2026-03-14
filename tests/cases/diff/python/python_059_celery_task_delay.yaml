@@ -1,0 +1,193 @@
+# Scenario: views.py starts calling Celery tasks via .delay() from tasks.py,
+#   wiring up send_email, process_data, and generate_report for async execution.
+#
+# Reviewer questions:
+#   - Are the .delay() arguments in the correct order for each task?
+#   - Should get_task_status use AsyncResult directly or go through a service?
+#
+# Trap files:
+#   - services/message_queue.py: pub/sub message queue with topics, uses "queue"
+#     and "broker" vocabulary but is a separate messaging system
+#   - services/webhook_dispatcher.py: HTTP webhook delivery with retry logic,
+#     mentions "dispatch" and "payload" but has no Celery dependency
+
+initial:
+  tasks.py: |
+    from celery import shared_task
+    import logging
+
+    logger = logging.getLogger(__name__)
+
+    @shared_task(bind=True, max_retries=3)
+    def send_email(self, to: str, subject: str, body: str) -> bool:
+        logger.info("Sending email to %s: %s", to, subject)
+        return True
+
+    @shared_task(bind=True, max_retries=5)
+    def process_data(self, data: dict) -> dict:
+        logger.info("Processing data batch of %d items", len(data))
+        return {"processed": True, "count": len(data)}
+
+    @shared_task
+    def cleanup_expired_sessions() -> int:
+        logger.info("Cleaning up expired sessions")
+        return 0
+
+    @shared_task
+    def generate_report(report_type: str, date_range: dict) -> str:
+        logger.info("Generating %s report", report_type)
+        return f"/reports/{report_type}.pdf"
+  views.py: |
+    from typing import Any
+
+    def submit_form(email: str, data: dict[str, Any]) -> dict[str, Any]:
+        return {"status": "received"}
+
+    def request_report(report_type: str) -> dict[str, Any]:
+        return {"status": "pending"}
+
+    def get_task_status(task_id: str) -> dict[str, Any]:
+        return {"task_id": task_id, "status": "unknown"}
+  services/message_queue.py: |
+    from typing import Any
+
+    class MessageQueue:
+        def __init__(self, broker_url: str = "redis://localhost:6379"):
+            self.broker_url = broker_url
+            self._messages: list[dict] = []
+
+        def publish(self, topic: str, message: dict[str, Any]) -> None:
+            self._messages.append({"topic": topic, **message})
+
+        def consume(self, topic: str, max_messages: int = 10) -> list[dict]:
+            matching = [m for m in self._messages if m.get("topic") == topic]
+            return matching[:max_messages]
+
+        def acknowledge(self, message_id: str) -> bool:
+            return True
+
+        def get_queue_depth(self, topic: str) -> int:
+            return len([m for m in self._messages if m.get("topic") == topic])
+  services/webhook_dispatcher.py: |
+    from typing import Any
+
+    class WebhookDispatcher:
+        def __init__(self, secret: str = "", max_retries: int = 3):
+            self.secret = secret
+            self.max_retries = max_retries
+            self._dispatched: list[dict] = []
+
+        def dispatch(self, url: str, payload: dict[str, Any]) -> bool:
+            self._dispatched.append({"url": url, "payload": payload})
+            return True
+
+        def get_delivery_history(self) -> list[dict]:
+            return self._dispatched
+
+        def verify_signature(self, payload: bytes, signature: str) -> bool:
+            return True
+
+changed:
+  tasks.py: |
+    from celery import shared_task
+    import logging
+
+    logger = logging.getLogger(__name__)
+
+    @shared_task(bind=True, max_retries=3)
+    def send_email(self, to: str, subject: str, body: str) -> bool:
+        logger.info("Sending email to %s: %s", to, subject)
+        return True
+
+    @shared_task(bind=True, max_retries=5)
+    def process_data(self, data: dict) -> dict:
+        logger.info("Processing data batch of %d items", len(data))
+        return {"processed": True, "count": len(data)}
+
+    @shared_task
+    def cleanup_expired_sessions() -> int:
+        logger.info("Cleaning up expired sessions")
+        return 0
+
+    @shared_task
+    def generate_report(report_type: str, date_range: dict) -> str:
+        logger.info("Generating %s report", report_type)
+        return f"/reports/{report_type}.pdf"
+  views.py: |
+    from typing import Any
+    from tasks import send_email, process_data, generate_report
+
+    def submit_form(email: str, data: dict[str, Any]) -> dict[str, Any]:
+        send_email.delay(email, "Form Received", "Thank you for your submission")
+        process_data.delay(data)
+        return {"status": "queued"}
+
+    def request_report(report_type: str) -> dict[str, Any]:
+        task = generate_report.delay(report_type, {"start": "2024-01-01", "end": "2024-12-31"})
+        return {"status": "generating", "task_id": task.id}
+
+    def get_task_status(task_id: str) -> dict[str, Any]:
+        from celery.result import AsyncResult
+        result = AsyncResult(task_id)
+        return {"task_id": task_id, "status": result.status, "result": result.result}
+  services/message_queue.py: |
+    from typing import Any
+
+    class MessageQueue:
+        def __init__(self, broker_url: str = "redis://localhost:6379"):
+            self.broker_url = broker_url
+            self._messages: list[dict] = []
+
+        def publish(self, topic: str, message: dict[str, Any]) -> None:
+            self._messages.append({"topic": topic, **message})
+
+        def consume(self, topic: str, max_messages: int = 10) -> list[dict]:
+            matching = [m for m in self._messages if m.get("topic") == topic]
+            return matching[:max_messages]
+
+        def acknowledge(self, message_id: str) -> bool:
+            return True
+
+        def get_queue_depth(self, topic: str) -> int:
+            return len([m for m in self._messages if m.get("topic") == topic])
+  services/webhook_dispatcher.py: |
+    from typing import Any
+
+    class WebhookDispatcher:
+        def __init__(self, secret: str = "", max_retries: int = 3):
+            self.secret = secret
+            self.max_retries = max_retries
+            self._dispatched: list[dict] = []
+
+        def dispatch(self, url: str, payload: dict[str, Any]) -> bool:
+            self._dispatched.append({"url": url, "payload": payload})
+            return True
+
+        def get_delivery_history(self) -> list[dict]:
+            return self._dispatched
+
+        def verify_signature(self, payload: bytes, signature: str) -> bool:
+            return True
+
+must_include_files:
+- views.py
+must_include_content:
+- from tasks import send_email, process_data, generate_report
+- send_email.delay(email, "Form Received", "Thank you for your submission")
+must_include_content_from:
+  tasks.py:
+  - def send_email(self, to
+must_not_include:
+- MessageQueue
+- acknowledge
+- get_queue_depth
+- WebhookDispatcher
+- get_delivery_history
+- verify_signature
+must_not_include_files:
+- services/message_queue.py
+- services/webhook_dispatcher.py
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

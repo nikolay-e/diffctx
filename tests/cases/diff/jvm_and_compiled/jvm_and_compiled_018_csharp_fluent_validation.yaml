@@ -1,0 +1,259 @@
+# Scenario: UserValidator goes from empty class to FluentValidation implementation
+#   that validates UserDto fields (Name, Email, Age) using AbstractValidator<UserDto>.
+#
+# Reviewer questions:
+#   Q1: "What fields does UserDto have? Are the validation rules appropriate?"
+#       -> Needs Models/UserDto.cs: UserDto has Name (string), Email (string),
+#          Age (int), Role (string). Reviewer must verify Name/Email/Age match
+#          the RuleFor lambdas and that MaximumLength(100) etc. are sensible.
+#
+#   Q2: "What is AbstractValidator<T> — is the base class usage correct?"
+#       -> FluentValidation library pattern — but reviewer needs UserDto to
+#          verify the generic type parameter matches the validated class.
+#
+#   Q3: "Are there any UserDto fields NOT being validated that should be?"
+#       -> Models/UserDto.cs has Role field. Validator covers Name, Email, Age
+#          but NOT Role. This is a potential review finding.
+#
+# Not needed:
+#   - Services/UserService.cs: Consumes UserValidator to validate before saving.
+#     Direct structural edge (calls validator.Validate(dto)), but HOW the service
+#     uses validation results doesn't help review the rules themselves.
+#
+#   - Validators/ProductValidator.cs: Sibling FluentValidation validator with
+#     IDENTICAL structure. Same AbstractValidator<T> base, same RuleFor pattern.
+#     Different entity (ProductDto). Hardest trap: structurally identical sibling.
+#
+#   - Models/ProductDto.cs: Parallel DTO with similar properties. Same directory,
+#     same naming pattern. But validates different entity.
+#
+#   - Controllers/UserController.cs: ASP.NET controller that receives UserDto
+#     as [FromBody]. Uses ModelState validation. Different validation mechanism.
+#
+#   - Tests/UserValidatorTests.cs: Tests for the validator. Constructs UserDto,
+#     calls validator.Validate(). Same types, but test assertions don't help
+#     review whether the rules are correct.
+
+initial:
+  Models/UserDto.cs: |
+    namespace MyApp.Models
+    {
+        public class UserDto
+        {
+            public string Name { get; set; }
+            public string Email { get; set; }
+            public int Age { get; set; }
+            public string Role { get; set; }
+        }
+    }
+
+  Validators/UserValidator.cs: |
+    namespace MyApp.Validators
+    {
+        class UserValidator { }
+    }
+
+  Services/UserService.cs: |
+    using MyApp.Models;
+    using MyApp.Validators;
+    using FluentValidation;
+
+    namespace MyApp.Services
+    {
+        public class UserService
+        {
+            private readonly UserValidator _validator;
+            private readonly List<UserDto> _users = new();
+
+            public UserService(UserValidator validator)
+            {
+                _validator = validator;
+            }
+
+            public UserDto CreateUser(UserDto dto)
+            {
+                var result = _validator.Validate(dto);
+                if (!result.IsValid)
+                    throw new ValidationException(result.Errors);
+                _users.Add(dto);
+                return dto;
+            }
+
+            public List<UserDto> GetAllUsers() => _users;
+        }
+    }
+
+  Validators/ProductValidator.cs: |
+    using FluentValidation;
+    using MyApp.Models;
+
+    namespace MyApp.Validators
+    {
+        public class ProductValidator : AbstractValidator<ProductDto>
+        {
+            public ProductValidator()
+            {
+                RuleFor(x => x.Name)
+                    .NotEmpty()
+                    .MaximumLength(200);
+
+                RuleFor(x => x.Price)
+                    .GreaterThan(0)
+                    .LessThan(1000000);
+
+                RuleFor(x => x.Category)
+                    .NotEmpty();
+            }
+        }
+    }
+
+  Models/ProductDto.cs: |
+    namespace MyApp.Models
+    {
+        public class ProductDto
+        {
+            public string Name { get; set; }
+            public decimal Price { get; set; }
+            public string Category { get; set; }
+            public string Sku { get; set; }
+        }
+    }
+
+  Controllers/UserController.cs: |
+    using Microsoft.AspNetCore.Mvc;
+    using MyApp.Models;
+    using MyApp.Services;
+
+    namespace MyApp.Controllers
+    {
+        [ApiController]
+        [Route("api/[controller]")]
+        public class UserController : ControllerBase
+        {
+            private readonly UserService _service;
+
+            public UserController(UserService service)
+            {
+                _service = service;
+            }
+
+            [HttpPost]
+            public ActionResult<UserDto> Create([FromBody] UserDto dto)
+            {
+                var user = _service.CreateUser(dto);
+                return CreatedAtAction(nameof(GetById), new { id = 1 }, user);
+            }
+
+            [HttpGet("{id}")]
+            public ActionResult<UserDto> GetById(int id)
+            {
+                return Ok(new UserDto { Name = "Test" });
+            }
+        }
+    }
+
+  Tests/UserValidatorTests.cs: |
+    using FluentValidation.TestHelper;
+    using MyApp.Models;
+    using MyApp.Validators;
+    using Xunit;
+
+    namespace MyApp.Tests
+    {
+        public class UserValidatorTests
+        {
+            private readonly UserValidator _validator = new();
+
+            [Fact]
+            public void ValidUser_ShouldPass()
+            {
+                var dto = new UserDto { Name = "Alice", Email = "alice@test.com", Age = 25 };
+                var result = _validator.TestValidate(dto);
+                result.ShouldNotHaveAnyValidationErrors();
+            }
+
+            [Fact]
+            public void EmptyName_ShouldFail()
+            {
+                var dto = new UserDto { Name = "", Email = "a@b.com", Age = 20 };
+                var result = _validator.TestValidate(dto);
+                result.ShouldHaveValidationErrorFor(x => x.Name);
+            }
+        }
+    }
+
+changed:
+  Validators/UserValidator.cs: |
+    using FluentValidation;
+    using MyApp.Models;
+
+    namespace MyApp.Validators
+    {
+        public class UserValidator : AbstractValidator<UserDto>
+        {
+            public UserValidator()
+            {
+                RuleFor(x => x.Name)
+                    .NotEmpty()
+                    .MaximumLength(100);
+
+                RuleFor(x => x.Email)
+                    .NotEmpty()
+                    .EmailAddress();
+
+                RuleFor(x => x.Age)
+                    .GreaterThan(0)
+                    .LessThan(150);
+            }
+        }
+    }
+
+must_include_files:
+  - Validators/UserValidator.cs
+  # Q1+Q2+Q3: Reviewer needs UserDto to verify that Name, Email, Age fields
+  # exist with correct types, and to notice Role is not validated.
+  - Models/UserDto.cs
+
+must_include_content_from:
+  Validators/UserValidator.cs:
+    - "AbstractValidator<UserDto>"
+    - "RuleFor(x => x.Name)"
+    - "RuleFor(x => x.Email)"
+    - ".EmailAddress()"
+  Models/UserDto.cs:
+    - "public string Name { get; set; }"
+    - "public string Email { get; set; }"
+    - "public int Age { get; set; }"
+
+must_not_include:
+  # --- ProductValidator.cs: IDENTICAL structure, different entity ---
+  - ProductValidator
+  - "AbstractValidator<ProductDto>"
+  - "RuleFor(x => x.Price)"
+  # --- UserService.cs: consumes validator, different concern ---
+  - UserService
+  - "_validator.Validate(dto)"
+  - CreateUser
+  # --- ProductDto.cs: parallel DTO ---
+  - ProductDto
+  - "decimal Price"
+  # --- UserController.cs: ASP.NET controller ---
+  - UserController
+  - "[ApiController]"
+  - CreatedAtAction
+  # --- Tests ---
+  - UserValidatorTests
+  - TestValidate
+  - ShouldNotHaveAnyValidationErrors
+
+must_not_include_files:
+  - Services/UserService.cs
+  - Validators/ProductValidator.cs
+  - Models/ProductDto.cs
+  - Controllers/UserController.cs
+  - Tests/UserValidatorTests.cs
+
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

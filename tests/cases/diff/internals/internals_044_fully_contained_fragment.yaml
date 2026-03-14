@@ -1,0 +1,18 @@
+initial:
+  file.py: |
+    pass
+changed:
+  file.py: |
+    class OuterClass:
+        def outer_method(self):
+            pass
+
+        class InnerClass:
+            def inner_method(self):
+                pass
+must_include_files:
+- file.py
+must_include_content:
+- 'class OuterClass:'
+add_garbage_files: false
+skip_garbage_check: true

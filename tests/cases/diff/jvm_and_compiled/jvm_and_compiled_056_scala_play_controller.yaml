@@ -1,0 +1,152 @@
+# Scenario: Play Framework UserController is implemented with JSON endpoints
+# for CRUD operations defined in the routes file.
+#
+# Diff: UserController.scala goes from empty class to full controller with
+# getUser, createUser, deleteUser actions using Play JSON and Futures.
+#
+# Reviewer questions:
+#   Q1: "What routes map to this controller?"
+#       -> routes (UNCHANGED) defines GET/POST/DELETE /users/:id endpoints
+#          pointing to UserController methods.
+#
+# Not needed:
+#   - OrderController.scala: another Play controller for orders.
+#     Same framework pattern but independent routes and actions.
+#   - JsonFormats.scala: shared JSON formatters for the app.
+#     JSON-adjacent but UserController defines its own implicit format.
+
+initial:
+  routes: |
+    GET     /users/:id        controllers.UserController.getUser(id: Long)
+    POST    /users            controllers.UserController.createUser()
+    DELETE  /users/:id        controllers.UserController.deleteUser(id: Long)
+  UserController.scala: |
+    // Initial
+    class UserController {}
+  OrderController.scala: |
+    import play.api.mvc._
+    import play.api.libs.json._
+    import scala.concurrent.{ExecutionContext, Future}
+
+    case class Order(id: Long, item: String, quantity: Int)
+
+    class OrderController(cc: ControllerComponents)(implicit ec: ExecutionContext)
+        extends AbstractController(cc) {
+
+      implicit val orderFormat: Format[Order] = Json.format[Order]
+
+      def getOrder(id: Long): Action[AnyContent] = Action.async {
+        Future.successful(Ok(Json.toJson(Order(id, "Widget", 1))))
+      }
+
+      def createOrder(): Action[JsValue] = Action.async(parse.json) { request =>
+        request.body.validate[Order].fold(
+          errors => Future.successful(BadRequest),
+          order => Future.successful(Created(Json.toJson(order)))
+        )
+      }
+    }
+  JsonFormats.scala: |
+    import play.api.libs.json._
+
+    object JsonFormats {
+      implicit val dateFormat: Format[java.util.Date] = new Format[java.util.Date] {
+        def writes(date: java.util.Date): JsValue = JsNumber(date.getTime)
+        def reads(json: JsValue): JsResult[java.util.Date] = json.validate[Long].map(new java.util.Date(_))
+      }
+
+      def errorResponse(message: String): JsObject = {
+        Json.obj("error" -> message, "status" -> "failed")
+      }
+    }
+
+changed:
+  routes: |
+    GET     /users/:id        controllers.UserController.getUser(id: Long)
+    POST    /users            controllers.UserController.createUser()
+    DELETE  /users/:id        controllers.UserController.deleteUser(id: Long)
+  UserController.scala: |
+    import play.api.mvc._
+    import play.api.libs.json._
+    import scala.concurrent.{ExecutionContext, Future}
+
+    case class User(id: Long, name: String)
+
+    class UserController(cc: ControllerComponents)(implicit ec: ExecutionContext)
+        extends AbstractController(cc) {
+
+      implicit val userFormat: Format[User] = Json.format[User]
+
+      def getUser(id: Long): Action[AnyContent] = Action.async {
+        Future.successful(Ok(Json.toJson(User(id, "John"))))
+      }
+
+      def createUser(): Action[JsValue] = Action.async(parse.json) { request =>
+        request.body.validate[User].fold(
+          errors => Future.successful(BadRequest(Json.obj("error" -> "Invalid JSON"))),
+          user => Future.successful(Created(Json.toJson(user)))
+        )
+      }
+
+      def deleteUser(id: Long): Action[AnyContent] = Action.async {
+        Future.successful(NoContent)
+      }
+    }
+  OrderController.scala: |
+    import play.api.mvc._
+    import play.api.libs.json._
+    import scala.concurrent.{ExecutionContext, Future}
+
+    case class Order(id: Long, item: String, quantity: Int)
+
+    class OrderController(cc: ControllerComponents)(implicit ec: ExecutionContext)
+        extends AbstractController(cc) {
+
+      implicit val orderFormat: Format[Order] = Json.format[Order]
+
+      def getOrder(id: Long): Action[AnyContent] = Action.async {
+        Future.successful(Ok(Json.toJson(Order(id, "Widget", 1))))
+      }
+
+      def createOrder(): Action[JsValue] = Action.async(parse.json) { request =>
+        request.body.validate[Order].fold(
+          errors => Future.successful(BadRequest),
+          order => Future.successful(Created(Json.toJson(order)))
+        )
+      }
+    }
+  JsonFormats.scala: |
+    import play.api.libs.json._
+
+    object JsonFormats {
+      implicit val dateFormat: Format[java.util.Date] = new Format[java.util.Date] {
+        def writes(date: java.util.Date): JsValue = JsNumber(date.getTime)
+        def reads(json: JsValue): JsResult[java.util.Date] = json.validate[Long].map(new java.util.Date(_))
+      }
+
+      def errorResponse(message: String): JsObject = {
+        Json.obj("error" -> message, "status" -> "failed")
+      }
+    }
+
+must_include_files:
+  - UserController.scala
+must_include_content_from:
+  UserController.scala:
+    - "import play.api.mvc._"
+must_not_include:
+  # OrderController.scala: separate controller, no dependency on UserController
+  - OrderController
+  - getOrder
+  - createOrder
+  # JsonFormats.scala: shared formatters, not used by UserController (own implicit)
+  - JsonFormats
+  - dateFormat
+  - errorResponse
+must_not_include_files:
+  - OrderController.scala
+  - JsonFormats.scala
+max_fragments: 4
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

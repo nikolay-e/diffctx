@@ -1,0 +1,163 @@
+# Scenario: Adding a new output for vpc_cidr that references aws_vpc.main.cidr_block.
+#
+# Reviewer questions:
+#   Q1: "What does the VPC resource look like?"
+#       -> main.tf defines the VPC with cidr_block = "10.0.0.0/16".
+#   Q2: "Who consumes these outputs?"
+#       -> modules/app/main.tf references module outputs for the VPC.
+#   Q3: "Is there an existing output for the VPC that may overlap?"
+#       -> outputs.tf already has vpc_id, so vpc_cidr is a sibling output.
+#
+# Not needed:
+#   - modules/database/outputs.tf: Outputs from a different module. HARD TRAP:
+#     same file name (outputs.tf), same output block syntax, same pattern.
+#     But different module scope (database, not networking).
+#
+#   - modules/cache/outputs.tf: Cache module outputs with endpoint and port.
+#     Same file pattern, same output syntax. Different module.
+#
+#   - variables.tf: Input variables. Contains vpc_cidr variable that feeds
+#     the VPC resource. HARD TRAP: same "vpc_cidr" identifier as the new
+#     output. But inputs are declarations, not output references.
+#
+#   - networking/subnets.tf: Subnet resources referencing aws_vpc.main.id.
+#     Same VPC reference, same networking domain. But subnets don't affect
+#     whether the output reference is valid.
+
+initial:
+  outputs.tf: |
+    output "vpc_id" {
+      value = aws_vpc.main.id
+    }
+
+    output "public_subnet_ids" {
+      value = aws_subnet.public[*].id
+    }
+  main.tf: |
+    resource "aws_vpc" "main" {
+      cidr_block           = "10.0.0.0/16"
+      enable_dns_hostnames = true
+
+      tags = {
+        Name = "main-vpc"
+      }
+    }
+
+    resource "aws_subnet" "public" {
+      count      = 2
+      vpc_id     = aws_vpc.main.id
+      cidr_block = cidrsubnet(aws_vpc.main.cidr_block, 8, count.index)
+    }
+  modules/app/main.tf: |
+    module "networking" {
+      source = "../../"
+    }
+
+    resource "aws_instance" "app" {
+      ami       = var.ami_id
+      subnet_id = module.networking.public_subnet_ids[0]
+
+      tags = {
+        VPC = module.networking.vpc_id
+      }
+    }
+  modules/database/outputs.tf: |
+    output "db_endpoint" {
+      value = aws_db_instance.main.endpoint
+    }
+
+    output "db_port" {
+      value = aws_db_instance.main.port
+    }
+
+    output "db_connection_string" {
+      value     = "postgres://admin@${aws_db_instance.main.endpoint}:${aws_db_instance.main.port}/appdb"
+      sensitive = true
+    }
+  modules/cache/outputs.tf: |
+    output "cache_endpoint" {
+      value = aws_elasticache_cluster.main.cache_nodes[0].address
+    }
+
+    output "cache_port" {
+      value = aws_elasticache_cluster.main.cache_nodes[0].port
+    }
+  variables.tf: |
+    variable "vpc_cidr" {
+      type    = string
+      default = "10.0.0.0/16"
+    }
+
+    variable "ami_id" {
+      type = string
+    }
+
+    variable "environment" {
+      type    = string
+      default = "production"
+    }
+  networking/subnets.tf: |
+    resource "aws_subnet" "private" {
+      count      = 2
+      vpc_id     = aws_vpc.main.id
+      cidr_block = cidrsubnet(aws_vpc.main.cidr_block, 8, count.index + 100)
+
+      tags = {
+        Name = "private-${count.index}"
+        Tier = "private"
+      }
+    }
+
+changed:
+  outputs.tf: |
+    output "vpc_id" {
+      value = aws_vpc.main.id
+    }
+
+    output "vpc_cidr" {
+      value = aws_vpc.main.cidr_block
+    }
+
+    output "public_subnet_ids" {
+      value = aws_subnet.public[*].id
+    }
+
+must_include_files:
+  - outputs.tf
+  # Q1: VPC resource definition -- reviewer confirms cidr_block exists
+  - main.tf
+
+must_include_content_from:
+  outputs.tf:
+    - output "vpc_cidr" {
+    - aws_vpc.main.cidr_block
+  main.tf:
+    - resource "aws_vpc" "main" {
+    - cidr_block           = "10.0.0.0/16"
+
+must_not_include:
+  # --- database outputs: same file name/syntax but different module ---
+  - db_endpoint
+  - db_port
+  - db_connection_string
+  # --- cache outputs: same pattern, different module ---
+  - cache_endpoint
+  - cache_port
+  - aws_elasticache_cluster
+  # --- variables.tf: has "vpc_cidr" name but input, not output ---
+  - variable "vpc_cidr" {
+  - variable "ami_id" {
+  # --- subnets.tf: references same VPC but doesn't affect output validity ---
+  - 'Tier = "private"'
+  - private-${count.index}
+
+must_not_include_files:
+  - modules/database/outputs.tf
+  - modules/cache/outputs.tf
+  - variables.tf
+  - networking/subnets.tf
+
+max_fragments: 4
+max_files: 2
+add_garbage_files: false
+skip_garbage_check: true

@@ -1,0 +1,202 @@
+initial:
+  src/server.js: |
+    const http = require('http');
+    const url = require('url');
+
+    const PORT = parseInt(process.env.PORT || '3000', 10);
+    const HOST = process.env.HOST || '0.0.0.0';
+
+    const routes = {
+        '/health': (req, res) => {
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ status: 'ok', port: PORT }));
+        },
+        '/api/status': (req, res) => {
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ running: true, uptime: process.uptime() }));
+        }
+    };
+
+    const server = http.createServer((req, res) => {
+        const pathname = url.parse(req.url).pathname;
+        const handler = routes[pathname] || ((req, res) => {
+            res.writeHead(404);
+            res.end('Not Found');
+        });
+        handler(req, res);
+    });
+
+    server.listen(PORT, HOST, () => {
+        console.log(`Server running at http://${HOST}:${PORT}/`);
+    });
+  src/config.js: |
+    module.exports = {
+        port: parseInt(process.env.PORT || '3000', 10),
+        host: process.env.HOST || '0.0.0.0',
+        nodeEnv: process.env.NODE_ENV || 'development'
+    };
+  package.json: |
+    {
+      "name": "http-server",
+      "version": "1.0.0",
+      "main": "src/server.js",
+      "scripts": {
+        "start": "node src/server.js"
+      }
+    }
+  Dockerfile: |
+    FROM node:20-alpine
+    WORKDIR /app
+    COPY package*.json ./
+    RUN npm ci --only=production
+    COPY src/ ./src/
+    CMD ["node", "src/server.js"]
+  docker-compose.yml: |
+    version: '3.8'
+    services:
+      web:
+        build: .
+        ports:
+          - "3000:3000"
+  scripts/start_dev.sh: |
+    #!/bin/bash
+    docker-compose up -d
+  tests/integration.test.js: |
+    describe('Server', () => {
+        it('should respond on port', () => {});
+    });
+  docs/networking.md: |
+    # Network Configuration
+  nginx/nginx.conf: |
+    upstream backend {
+    }
+  k8s/service.yaml: |
+    apiVersion: v1
+changed:
+  src/server.js: |
+    const http = require('http');
+    const url = require('url');
+
+    const PORT = parseInt(process.env.PORT || '3000', 10);
+    const HOST = process.env.HOST || '0.0.0.0';
+
+    const routes = {
+        '/health': (req, res) => {
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ status: 'ok', port: PORT }));
+        },
+        '/api/status': (req, res) => {
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ running: true, uptime: process.uptime() }));
+        }
+    };
+
+    const server = http.createServer((req, res) => {
+        const pathname = url.parse(req.url).pathname;
+        const handler = routes[pathname] || ((req, res) => {
+            res.writeHead(404);
+            res.end('Not Found');
+        });
+        handler(req, res);
+    });
+
+    server.listen(PORT, HOST, () => {
+        console.log(`Server running at http://${HOST}:${PORT}/`);
+    });
+  src/config.js: |
+    module.exports = {
+        port: parseInt(process.env.PORT || '3000', 10),
+        host: process.env.HOST || '0.0.0.0',
+        nodeEnv: process.env.NODE_ENV || 'development'
+    };
+  package.json: |
+    {
+      "name": "http-server",
+      "version": "1.0.0",
+      "main": "src/server.js",
+      "scripts": {
+        "start": "node src/server.js"
+      }
+    }
+  Dockerfile: |
+    FROM node:20-alpine
+    WORKDIR /app
+    COPY package*.json ./
+    RUN npm ci --only=production
+    COPY src/ ./src/
+    CMD ["node", "src/server.js"]
+  docker-compose.yml: |
+    version: '3.8'
+
+    services:
+      web:
+        build:
+          context: .
+          dockerfile: Dockerfile
+        image: myregistry/web:${VERSION:-latest}
+        container_name: web-server
+        hostname: web
+        ports:
+          - "${HOST_PORT:-8080}:${CONTAINER_PORT:-8080}"
+          - "127.0.0.1:9090:9090"
+        environment:
+          - PORT=${CONTAINER_PORT:-8080}
+          - HOST=0.0.0.0
+          - NODE_ENV=production
+        healthcheck:
+          test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/health"]
+          interval: 30s
+          timeout: 10s
+          retries: 3
+          start_period: 40s
+        restart: unless-stopped
+        logging:
+          driver: json-file
+          options:
+            max-size: "10m"
+            max-file: "3"
+        deploy:
+          resources:
+            limits:
+              cpus: '0.5'
+              memory: 256M
+            reservations:
+              cpus: '0.25'
+              memory: 128M
+
+      nginx:
+        image: nginx:alpine
+        ports:
+          - "80:80"
+          - "443:443"
+        volumes:
+          - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+        depends_on:
+          web:
+            condition: service_healthy
+        restart: unless-stopped
+
+    networks:
+      default:
+        driver: bridge
+  scripts/start_dev.sh: |
+    #!/bin/bash
+    docker-compose up -d
+  tests/integration.test.js: |
+    describe('Server', () => {
+        it('should respond on port', () => {});
+    });
+  docs/networking.md: |
+    # Network Configuration
+  nginx/nginx.conf: |
+    upstream backend {
+    }
+  k8s/service.yaml: |
+    apiVersion: v1
+must_include_files:
+- docker-compose.yml
+must_include_content:
+- 'dockerfile: Dockerfile'
+- 'driver: bridge'
+add_garbage_files: false
+skip_garbage_check: true

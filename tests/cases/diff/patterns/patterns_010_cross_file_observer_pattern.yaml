@@ -1,0 +1,238 @@
+# Scenario: Observer pattern subject gains EventType enum, event filtering, and
+# typed update signature with event_type and data parameters.
+#
+# Diff: observer/subject.py adds EventType enum, event_filters dict, typed attach/notify
+# signatures, and get_observer_count method.
+#
+# Reviewer questions:
+#   Q1: "Do concrete observers implement the new update(subject, event_type, data) signature?"
+#       -> observer/observers/price_alert.py (UNCHANGED) still uses old update(subject).
+#          This is now incompatible with the new abstract signature.
+#   Q2: "Do concrete subjects call notify with the new signature?"
+#       -> observer/stock.py (UNCHANGED) calls self.notify() with no args, which now
+#          defaults to EventType.UPDATED and data=None.
+#
+# Not needed:
+#   - utils/event_logger.py: logs events to a file for audit purposes.
+#     Same "event" vocabulary but no import of Observer or Subject.
+#   - utils/stock_data_fetcher.py: fetches stock prices from an external API.
+#     Shares "stock" domain but has no dependency on the observer hierarchy.
+
+initial:
+  observer/subject.py: |
+    from abc import ABC, abstractmethod
+    from typing import List
+
+    class Observer(ABC):
+        @abstractmethod
+        def update(self, subject: 'Subject') -> None:
+            pass
+
+    class Subject(ABC):
+        def __init__(self):
+            self._observers: List[Observer] = []
+
+        def attach(self, observer: Observer) -> None:
+            if observer not in self._observers:
+                self._observers.append(observer)
+
+        def detach(self, observer: Observer) -> None:
+            self._observers.remove(observer)
+
+        def notify(self) -> None:
+            for observer in self._observers:
+                observer.update(self)
+  observer/stock.py: |
+    from observer.subject import Subject
+
+    class Stock(Subject):
+        def __init__(self, symbol: str, price: float):
+            super().__init__()
+            self._symbol = symbol
+            self._price = price
+
+        @property
+        def symbol(self) -> str:
+            return self._symbol
+
+        @property
+        def price(self) -> float:
+            return self._price
+
+        @price.setter
+        def price(self, value: float) -> None:
+            self._price = value
+            self.notify()
+  observer/observers/price_alert.py: |
+    from observer.subject import Observer, Subject
+
+    class PriceAlertObserver(Observer):
+        def __init__(self, threshold: float):
+            self.threshold = threshold
+            self.alerts: list[str] = []
+
+        def update(self, subject: Subject) -> None:
+            if hasattr(subject, 'price') and subject.price > self.threshold:
+                self.alerts.append(
+                    f"ALERT: {subject.symbol} exceeded {self.threshold}"
+                )
+  utils/event_logger.py: |
+    import time
+
+    EVENT_LOG_PATH = "/var/log/events.log"
+    MAX_EVENT_AGE_DAYS = 30
+
+    class EventLogger:
+        def __init__(self, log_path: str = EVENT_LOG_PATH):
+            self.log_path = log_path
+
+        def log_event(self, event_type: str, payload: dict) -> None:
+            timestamp = time.time()
+            entry = f"{timestamp}|{event_type}|{payload}\n"
+            with open(self.log_path, "a") as f:
+                f.write(entry)
+
+        def get_events_since(self, since: float) -> list[str]:
+            return []
+  utils/stock_data_fetcher.py: |
+    import urllib.request
+
+    STOCK_API_BASE = "https://api.stockdata.example.com"
+    DEFAULT_TIMEOUT = 10
+
+    class StockDataFetcher:
+        def __init__(self, api_key: str):
+            self.api_key = api_key
+
+        def fetch_price(self, symbol: str) -> float:
+            return 0.0
+
+        def fetch_history(self, symbol: str, days: int = 30) -> list[dict]:
+            return []
+changed:
+  observer/subject.py: |
+    from abc import ABC, abstractmethod
+    from typing import List, Any
+    from enum import Enum, auto
+
+    class EventType(Enum):
+        CREATED = auto()
+        UPDATED = auto()
+        DELETED = auto()
+
+    class Observer(ABC):
+        @abstractmethod
+        def update(self, subject: 'Subject', event_type: EventType, data: Any = None) -> None:
+            pass
+
+    class Subject(ABC):
+        def __init__(self):
+            self._observers: List[Observer] = []
+            self._event_filters: dict[Observer, set[EventType]] = {}
+
+        def attach(self, observer: Observer, event_types: set[EventType] | None = None) -> None:
+            if observer not in self._observers:
+                self._observers.append(observer)
+                self._event_filters[observer] = event_types or set(EventType)
+
+        def detach(self, observer: Observer) -> None:
+            self._observers.remove(observer)
+            self._event_filters.pop(observer, None)
+
+        def notify(self, event_type: EventType = EventType.UPDATED, data: Any = None) -> None:
+            for observer in self._observers:
+                allowed_events = self._event_filters.get(observer, set(EventType))
+                if event_type in allowed_events:
+                    observer.update(self, event_type, data)
+
+        def get_observer_count(self) -> int:
+            return len(self._observers)
+  observer/stock.py: |
+    from observer.subject import Subject
+
+    class Stock(Subject):
+        def __init__(self, symbol: str, price: float):
+            super().__init__()
+            self._symbol = symbol
+            self._price = price
+
+        @property
+        def symbol(self) -> str:
+            return self._symbol
+
+        @property
+        def price(self) -> float:
+            return self._price
+
+        @price.setter
+        def price(self, value: float) -> None:
+            self._price = value
+            self.notify()
+  observer/observers/price_alert.py: |
+    from observer.subject import Observer, Subject
+
+    class PriceAlertObserver(Observer):
+        def __init__(self, threshold: float):
+            self.threshold = threshold
+            self.alerts: list[str] = []
+
+        def update(self, subject: Subject) -> None:
+            if hasattr(subject, 'price') and subject.price > self.threshold:
+                self.alerts.append(
+                    f"ALERT: {subject.symbol} exceeded {self.threshold}"
+                )
+  utils/event_logger.py: |
+    import time
+
+    EVENT_LOG_PATH = "/var/log/events.log"
+    MAX_EVENT_AGE_DAYS = 30
+
+    class EventLogger:
+        def __init__(self, log_path: str = EVENT_LOG_PATH):
+            self.log_path = log_path
+
+        def log_event(self, event_type: str, payload: dict) -> None:
+            timestamp = time.time()
+            entry = f"{timestamp}|{event_type}|{payload}\n"
+            with open(self.log_path, "a") as f:
+                f.write(entry)
+
+        def get_events_since(self, since: float) -> list[str]:
+            return []
+  utils/stock_data_fetcher.py: |
+    import urllib.request
+
+    STOCK_API_BASE = "https://api.stockdata.example.com"
+    DEFAULT_TIMEOUT = 10
+
+    class StockDataFetcher:
+        def __init__(self, api_key: str):
+            self.api_key = api_key
+
+        def fetch_price(self, symbol: str) -> float:
+            return 0.0
+
+        def fetch_history(self, symbol: str, days: int = 30) -> list[dict]:
+            return []
+must_include_files:
+  - observer/subject.py
+must_include_content_from:
+  observer/subject.py:
+    - "from typing import List, Any"
+    - "class EventType(Enum):"
+must_not_include:
+  # utils/event_logger.py: file-based event logging, no import of Observer/Subject
+  - EventLogger
+  - EVENT_LOG_PATH
+  - MAX_EVENT_AGE_DAYS
+  # utils/stock_data_fetcher.py: external API data fetcher, no observer dependency
+  - StockDataFetcher
+  - STOCK_API_BASE
+  - fetch_history
+must_not_include_files:
+  - utils/event_logger.py
+  - utils/stock_data_fetcher.py
+max_fragments: 5
+max_files: 4
+add_garbage_files: false
+skip_garbage_check: true

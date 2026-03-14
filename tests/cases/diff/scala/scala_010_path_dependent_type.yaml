@@ -1,0 +1,176 @@
+# Scenario: PathDependent uses Outer's path-dependent type (outer.Inner, outer.T)
+# to process inner instances tied to specific outer instances.
+#
+# Diff: PathDependent.scala adds processInner and createAndProcess methods that
+# take outer.Inner as a path-dependent type parameter.
+#
+# Reviewer questions:
+#   Q1: "What is outer.Inner / outer.T?"
+#       -> Outer.scala (UNCHANGED) defines class Inner with greet method,
+#          and type T = Inner. Reviewer confirms the types exist.
+#   Q2: "How does path-dependency enforce safety?"
+#       -> processInner takes (outer: Outer) and then (inner: outer.Inner) —
+#          different outer instances have incompatible types. Reviewer needs
+#          Outer.scala to understand this type structure.
+#
+# Not needed:
+#   - Container.scala: generic container with type member (type Element = A).
+#     Same "inner type" vocabulary but parametric, not path-dependent. The
+#     type Element pattern looks similar to Outer's type T.
+#   - Wrapper.scala: another class with an inner class (Wrapper.Wrapped).
+#     HARDEST TRAP: same "outer.inner" pattern with a nested class.
+#     But PathDependent only uses Outer.Inner, not Wrapper.Wrapped.
+#   - Factory.scala: creates objects using a factory pattern. Same "create
+#     and process" vocabulary but no path-dependent types.
+#   - PathDependentTest.scala: tests PathDependent with specific Outer instances.
+#     Uses outer.Inner, outer.T — exact same types. But test expectations
+#     don't define the type structure.
+#   - TypeUtils.scala: utility for working with types at runtime. Uses
+#     ClassTag/TypeTag, related to "type" domain but runtime, not compile-time.
+
+initial:
+  Outer.scala: |
+    class Outer {
+      class Inner {
+        def greet: String = "Hello from Inner"
+        def identity: String = s"Inner of ${Outer.this.toString}"
+      }
+
+      type T = Inner
+
+      def createInner: Inner = new Inner
+
+      def createMany(count: Int): List[Inner] = {
+        (1 to count).map(_ => new Inner).toList
+      }
+    }
+  PathDependent.scala: |
+    class PathDependent {}
+  Container.scala: |
+    class Container[A](value: A) {
+      type Element = A
+
+      def get: Element = value
+
+      def map[B](f: A => B): Container[B] = new Container(f(value))
+
+      def flatMap[B](f: A => Container[B]): Container[B] = f(value)
+    }
+
+    object Container {
+      def of[A](value: A): Container[A] = new Container(value)
+      def empty[A](implicit ev: Null <:< A): Container[A] = new Container(null.asInstanceOf[A])
+    }
+  Wrapper.scala: |
+    class Wrapper(label: String) {
+      class Wrapped(content: String) {
+        def describe: String = s"$label: $content"
+        def unwrap: String = content
+      }
+
+      type W = Wrapped
+
+      def wrap(content: String): Wrapped = new Wrapped(content)
+
+      def wrapAll(items: List[String]): List[Wrapped] = items.map(wrap)
+    }
+  Factory.scala: |
+    trait Factory[T] {
+      def create(): T
+      def createMany(count: Int): List[T] = (1 to count).map(_ => create()).toList
+    }
+
+    class StringFactory extends Factory[String] {
+      def create(): String = java.util.UUID.randomUUID().toString
+    }
+
+    class IntFactory(start: Int) extends Factory[Int] {
+      private var counter = start
+      def create(): Int = { counter += 1; counter }
+    }
+  PathDependentTest.scala: |
+    class PathDependentTest {
+      def testProcessInner(): Unit = {
+        val pd = new PathDependent
+        val outer = new Outer
+        val inner: outer.T = outer.createInner
+        val result = pd.processInner(outer)(inner)
+        assert(result == "Hello from Inner")
+      }
+
+      def testCreateAndProcess(): Unit = {
+        val pd = new PathDependent
+        val result = pd.createAndProcess()
+        assert(result.nonEmpty)
+      }
+    }
+  TypeUtils.scala: |
+    import scala.reflect.ClassTag
+
+    object TypeUtils {
+      def typeName[T: ClassTag]: String = {
+        implicitly[ClassTag[T]].runtimeClass.getSimpleName
+      }
+
+      def isInstance[T: ClassTag](value: Any): Boolean = {
+        implicitly[ClassTag[T]].runtimeClass.isInstance(value)
+      }
+
+      def cast[T: ClassTag](value: Any): Option[T] = {
+        if (isInstance[T](value)) Some(value.asInstanceOf[T]) else None
+      }
+    }
+
+changed:
+  PathDependent.scala: |
+    class PathDependent {
+      def processInner(outer: Outer)(inner: outer.Inner): String = {
+        inner.greet
+      }
+
+      def createAndProcess(): String = {
+        val outer = new Outer
+        val inner: outer.T = outer.createInner
+        processInner(outer)(inner)
+      }
+    }
+must_include_files:
+  # Q1+Q2: Outer.scala defines Inner class, type T, and createInner
+  - Outer.scala
+must_include_content_from:
+  Outer.scala:
+    - "class Inner"
+    - "def greet: String"
+    - "type T = Inner"
+    - "def createInner: Inner"
+must_not_include:
+  # Container.scala: generic type member, not path-dependent
+  - "class Container"
+  - "type Element"
+  - flatMap
+  # Wrapper.scala: ALSO has nested class with outer.inner pattern
+  - "class Wrapper"
+  - "class Wrapped"
+  - "def describe"
+  - "def unwrap"
+  # Factory.scala: factory pattern, no path-dependent types
+  - "trait Factory"
+  - StringFactory
+  - IntFactory
+  # PathDependentTest.scala: tests using outer.T / outer.Inner
+  - "class PathDependentTest"
+  - "testProcessInner"
+  # TypeUtils.scala: runtime type utilities, not compile-time types
+  - "object TypeUtils"
+  - "typeName"
+  - "ClassTag"
+must_not_include_files:
+  - Container.scala
+  - Wrapper.scala
+  - Factory.scala
+  - PathDependentTest.scala
+  - TypeUtils.scala
+max_fragments: 5
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

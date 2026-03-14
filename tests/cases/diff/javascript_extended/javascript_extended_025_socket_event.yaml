@@ -1,0 +1,226 @@
+# Reviewer sees: src/socket/chat-handler.ts changes from stub to a full
+# socket.io handler that imports CHAT_EVENT and ChatMessage from the events
+# module and wires up a connection -> message -> broadcast flow.
+#
+# Reviewer questions:
+#   Q1: "What is CHAT_EVENT — what event name string is being listened to?"
+#       -> src/socket/events.ts: CHAT_EVENT = 'chat:message'. The reviewer needs
+#          to see the constant value to verify the event name matches what clients
+#          will emit.
+#   Q2: "What shape does ChatMessage have?"
+#       -> src/socket/events.ts defines ChatMessage { userId, text, timestamp }.
+#          Reviewer confirms the handler broadcasts the right data.
+#
+# Not needed:
+#   - src/services/message-store.ts: persists messages to a store. No socket.io
+#     involvement. Eventually the chat handler might call it, but no import exists.
+#   - src/socket/admin-handler.ts: admin-only socket events (kick, ban).
+#     Different event namespace, different concern.
+
+initial:
+  src/socket/chat-handler.ts: |
+    import { Server } from 'socket.io';
+
+    export function setupChatHandler(io: Server) {
+        io.on('connection', (socket) => {
+            console.log('client connected:', socket.id);
+        });
+    }
+  src/socket/events.ts: |
+    export interface ChatMessage {
+        userId: string;
+        text: string;
+        timestamp: number;
+    }
+
+    export interface PresenceEvent {
+        userId: string;
+        status: 'online' | 'offline';
+    }
+
+    export const CHAT_EVENT = 'chat:message';
+    export const PRESENCE_ONLINE = 'user:online';
+    export const PRESENCE_OFFLINE = 'user:offline';
+  src/socket/presence-handler.ts: |
+    import { Server } from 'socket.io';
+    import { PRESENCE_ONLINE, PRESENCE_OFFLINE, PresenceEvent } from './events';
+
+    const onlineUsers = new Set<string>();
+
+    export function setupPresenceHandler(io: Server) {
+        io.on('connection', (socket) => {
+            socket.on(PRESENCE_ONLINE, (event: PresenceEvent) => {
+                onlineUsers.add(event.userId);
+                io.emit(PRESENCE_ONLINE, { userId: event.userId, status: 'online' });
+            });
+
+            socket.on(PRESENCE_OFFLINE, (event: PresenceEvent) => {
+                onlineUsers.delete(event.userId);
+                io.emit(PRESENCE_OFFLINE, { userId: event.userId, status: 'offline' });
+            });
+        });
+    }
+
+    export function getOnlineUsers(): string[] {
+        return Array.from(onlineUsers);
+    }
+  # --- Not needed: message persistence, no socket.io import ---
+  src/services/message-store.ts: |
+    interface StoredMessage {
+        id: string;
+        userId: string;
+        text: string;
+        createdAt: Date;
+        channelId: string;
+    }
+
+    const messages: StoredMessage[] = [];
+
+    export function saveMessage(userId: string, text: string, channelId: string): StoredMessage {
+        const msg: StoredMessage = {
+            id: Date.now().toString(),
+            userId,
+            text,
+            createdAt: new Date(),
+            channelId,
+        };
+        messages.push(msg);
+        return msg;
+    }
+
+    export function getMessages(channelId: string, limit: number = 50): StoredMessage[] {
+        return messages.filter(m => m.channelId === channelId).slice(-limit);
+    }
+  # --- Not needed: admin socket events, different namespace ---
+  src/socket/admin-handler.ts: |
+    import { Server } from 'socket.io';
+
+    export function setupAdminHandler(io: Server) {
+        io.on('connection', (socket) => {
+            socket.on('admin:kick', (userId: string) => {
+                io.emit('user:kicked', { userId, reason: 'Kicked by admin' });
+            });
+
+            socket.on('admin:ban', (userId: string) => {
+                io.emit('user:banned', { userId, reason: 'Banned by admin' });
+            });
+        });
+    }
+
+changed:
+  src/socket/chat-handler.ts: |
+    import { Server } from 'socket.io';
+    import { CHAT_EVENT, ChatMessage } from './events';
+
+    export function setupChatHandler(io: Server) {
+        io.on('connection', (socket) => {
+            socket.on(CHAT_EVENT, (message: ChatMessage) => {
+                io.emit(CHAT_EVENT, message);
+            });
+        });
+    }
+  # Unchanged
+  src/socket/events.ts: |
+    export interface ChatMessage {
+        userId: string;
+        text: string;
+        timestamp: number;
+    }
+
+    export interface PresenceEvent {
+        userId: string;
+        status: 'online' | 'offline';
+    }
+
+    export const CHAT_EVENT = 'chat:message';
+    export const PRESENCE_ONLINE = 'user:online';
+    export const PRESENCE_OFFLINE = 'user:offline';
+  src/socket/presence-handler.ts: |
+    import { Server } from 'socket.io';
+    import { PRESENCE_ONLINE, PRESENCE_OFFLINE, PresenceEvent } from './events';
+
+    const onlineUsers = new Set<string>();
+
+    export function setupPresenceHandler(io: Server) {
+        io.on('connection', (socket) => {
+            socket.on(PRESENCE_ONLINE, (event: PresenceEvent) => {
+                onlineUsers.add(event.userId);
+                io.emit(PRESENCE_ONLINE, { userId: event.userId, status: 'online' });
+            });
+
+            socket.on(PRESENCE_OFFLINE, (event: PresenceEvent) => {
+                onlineUsers.delete(event.userId);
+                io.emit(PRESENCE_OFFLINE, { userId: event.userId, status: 'offline' });
+            });
+        });
+    }
+
+    export function getOnlineUsers(): string[] {
+        return Array.from(onlineUsers);
+    }
+  src/services/message-store.ts: |
+    interface StoredMessage {
+        id: string;
+        userId: string;
+        text: string;
+        createdAt: Date;
+        channelId: string;
+    }
+
+    const messages: StoredMessage[] = [];
+
+    export function saveMessage(userId: string, text: string, channelId: string): StoredMessage {
+        const msg: StoredMessage = {
+            id: Date.now().toString(),
+            userId,
+            text,
+            createdAt: new Date(),
+            channelId,
+        };
+        messages.push(msg);
+        return msg;
+    }
+
+    export function getMessages(channelId: string, limit: number = 50): StoredMessage[] {
+        return messages.filter(m => m.channelId === channelId).slice(-limit);
+    }
+  src/socket/admin-handler.ts: |
+    import { Server } from 'socket.io';
+
+    export function setupAdminHandler(io: Server) {
+        io.on('connection', (socket) => {
+            socket.on('admin:kick', (userId: string) => {
+                io.emit('user:kicked', { userId, reason: 'Kicked by admin' });
+            });
+
+            socket.on('admin:ban', (userId: string) => {
+                io.emit('user:banned', { userId, reason: 'Banned by admin' });
+            });
+        });
+    }
+
+must_include_files:
+  # Q1+Q2: Event constant value and message type definition.
+  # Reviewer must verify CHAT_EVENT matches client expectations.
+  - src/socket/events.ts
+must_include_content_from:
+  src/socket/events.ts:
+    - "CHAT_EVENT"
+    - "chat:message"
+    - "ChatMessage"
+must_not_include:
+  # message-store.ts: persistence layer, no socket.io import
+  - StoredMessage
+  - saveMessage
+  - getMessages
+  # admin-handler.ts: different socket event namespace
+  - setupAdminHandler
+  - "admin:kick"
+  - "admin:ban"
+must_not_include_files:
+  - src/services/message-store.ts
+  - src/socket/admin-handler.ts
+max_fragments: 8
+max_files: 4
+add_garbage_files: false
+skip_garbage_check: true

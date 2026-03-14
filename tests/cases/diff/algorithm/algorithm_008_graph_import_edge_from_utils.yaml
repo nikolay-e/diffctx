@@ -1,0 +1,269 @@
+initial:
+  src/utils/formatting.py: |
+    from typing import Any, Optional
+    from datetime import datetime
+
+    def format_currency(amount: float, currency: str = "USD") -> str:
+        symbols = {"USD": "$", "EUR": "€", "GBP": "£"}
+        symbol = symbols.get(currency, currency)
+        return f"{symbol}{amount:,.2f}"
+
+    def format_date(dt: datetime, fmt: str = "%Y-%m-%d") -> str:
+        return dt.strftime(fmt)
+
+    def format_percentage(value: float, decimals: int = 2) -> str:
+        return f"{value * 100:.{decimals}f}%"
+  src/services/report_generator.py: |
+    from utils.formatting import format_currency, format_date, format_percentage
+    from datetime import datetime
+    from typing import Dict, List, Any
+
+    class ReportGenerator:
+        def __init__(self, title: str):
+            self.title = title
+            self.created_at = datetime.now()
+
+        def generate_summary(self, data: Dict[str, Any]) -> str:
+            revenue = data.get("revenue", 0)
+            growth = data.get("growth", 0)
+
+            lines = [
+                f"Report: {self.title}",
+                f"Date: {format_date(self.created_at)}",
+                f"Revenue: {format_currency(revenue)}",
+                f"Growth: {format_percentage(growth)}",
+            ]
+            return "\n".join(lines)
+
+        def generate_table(self, rows: List[Dict]) -> str:
+            output = []
+            for row in rows:
+                output.append(f"{row['name']}: {format_currency(row['amount'])}")
+            return "\n".join(output)
+
+  # --- Tricky garbage: same-import consumer — also imports from utils.formatting ---
+  src/services/invoice_generator.py: |
+    from utils.formatting import format_currency, format_date
+    from datetime import datetime
+    GARBAGE_ALGO_008_INVOICE_GEN_G = "invoice"
+    GARBAGE_ALGO_008_BILLING_MARKER_H = True
+
+    class InvoiceGenerator:
+        def __init__(self, title: str):
+            self.title = title
+            self.created_at = datetime.now()
+
+        def generate_summary(self, data: dict) -> str:
+            total = data.get("total", 0)
+            return f"Invoice: {self.title} - {format_currency(total)}"
+
+        def generate_table(self, items: list) -> str:
+            return "\n".join(f"{i['desc']}: {format_currency(i['price'])}" for i in items)
+
+  # --- Tricky garbage: name collision — another generator with same method names ---
+  src/services/csv_exporter.py: |
+    from datetime import datetime
+    from typing import Dict, List, Any
+    GARBAGE_ALGO_008_CSV_EXPORT_I = "csv"
+    GARBAGE_ALGO_008_DELIMITER_MARKER_J = ","
+
+    class CSVExporter:
+        def __init__(self, title: str, currency: str = "USD"):
+            self.title = title
+            self.currency = currency
+            self.created_at = datetime.now()
+
+        def generate_summary(self, data: Dict[str, Any]) -> str:
+            revenue = data.get("revenue", 0)
+            return f"{self.title},{revenue},{self.currency}"
+
+        def generate_table(self, rows: List[Dict]) -> str:
+            return "\n".join(f"{r['name']},{r['amount']}" for r in rows)
+
+  # --- Tricky garbage: structural sibling in utils — similar utility module ---
+  src/utils/converters.py: |
+    from typing import Any, Optional
+    from datetime import datetime
+    GARBAGE_ALGO_008_CONVERTER_UTIL_K = "converter"
+    GARBAGE_ALGO_008_CAST_MARKER_L = True
+
+    def convert_currency(amount: float, from_currency: str, to_currency: str) -> float:
+        rates = {"USD_EUR": 0.85, "EUR_USD": 1.18}
+        key = f"{from_currency}_{to_currency}"
+        return amount * rates.get(key, 1.0)
+
+    def convert_date(dt: datetime, fmt: str = "%d/%m/%Y") -> str:
+        return dt.strftime(fmt)
+
+  # --- Plain garbage ---
+  garbage_validators.py: |
+    GARBAGE_ALGO_008_VALIDATE_MARKER_A = "validate"
+    GARBAGE_ALGO_008_SCHEMA_MARKER_B = True
+
+    class DataValidator:
+        GARBAGE_ALGO_008_RULES_MARKER_C = []
+
+        def validate(self, data: dict) -> bool:
+            return True
+  garbage_parsers.py: |
+    GARBAGE_ALGO_008_PARSER_MARKER_D = "parser"
+    GARBAGE_ALGO_008_FORMAT_MARKER_E = "json"
+
+    class JSONParser:
+        GARBAGE_ALGO_008_DECODE_MARKER_F = True
+
+        def parse(self, text: str) -> dict:
+            return {}
+changed:
+  src/utils/formatting.py: |
+    from typing import Any, Optional
+    from datetime import datetime
+
+    def format_currency(amount: float, currency: str = "USD") -> str:
+        symbols = {"USD": "$", "EUR": "€", "GBP": "£"}
+        symbol = symbols.get(currency, currency)
+        return f"{symbol}{amount:,.2f}"
+
+    def format_date(dt: datetime, fmt: str = "%Y-%m-%d") -> str:
+        return dt.strftime(fmt)
+
+    def format_percentage(value: float, decimals: int = 2) -> str:
+        return f"{value * 100:.{decimals}f}%"
+  src/services/report_generator.py: |
+    from utils.formatting import format_currency, format_date, format_percentage
+    from datetime import datetime
+    from typing import Dict, List, Any
+
+    class ReportGenerator:
+        def __init__(self, title: str, currency: str = "USD"):
+            self.title = title
+            self.currency = currency
+            self.created_at = datetime.now()
+
+        def generate_summary(self, data: Dict[str, Any]) -> str:
+            revenue = data.get("revenue", 0)
+            growth = data.get("growth", 0)
+            previous = data.get("previous_revenue", 0)
+
+            lines = [
+                f"Report: {self.title}",
+                f"Date: {format_date(self.created_at)}",
+                f"Revenue: {format_currency(revenue, self.currency)}",
+                f"Previous: {format_currency(previous, self.currency)}",
+                f"Growth: {format_percentage(growth)}",
+            ]
+            return "\n".join(lines)
+
+        def generate_table(self, rows: List[Dict]) -> str:
+            output = []
+            for row in rows:
+                output.append(f"{row['name']}: {format_currency(row['amount'], self.currency)}")
+            return "\n".join(output)
+  src/services/invoice_generator.py: |
+    from utils.formatting import format_currency, format_date
+    from datetime import datetime
+    GARBAGE_ALGO_008_INVOICE_GEN_G = "invoice"
+    GARBAGE_ALGO_008_BILLING_MARKER_H = True
+
+    class InvoiceGenerator:
+        def __init__(self, title: str):
+            self.title = title
+            self.created_at = datetime.now()
+
+        def generate_summary(self, data: dict) -> str:
+            total = data.get("total", 0)
+            return f"Invoice: {self.title} - {format_currency(total)}"
+
+        def generate_table(self, items: list) -> str:
+            return "\n".join(f"{i['desc']}: {format_currency(i['price'])}" for i in items)
+  src/services/csv_exporter.py: |
+    from datetime import datetime
+    from typing import Dict, List, Any
+    GARBAGE_ALGO_008_CSV_EXPORT_I = "csv"
+    GARBAGE_ALGO_008_DELIMITER_MARKER_J = ","
+
+    class CSVExporter:
+        def __init__(self, title: str, currency: str = "USD"):
+            self.title = title
+            self.currency = currency
+            self.created_at = datetime.now()
+
+        def generate_summary(self, data: Dict[str, Any]) -> str:
+            revenue = data.get("revenue", 0)
+            return f"{self.title},{revenue},{self.currency}"
+
+        def generate_table(self, rows: List[Dict]) -> str:
+            return "\n".join(f"{r['name']},{r['amount']}" for r in rows)
+  src/utils/converters.py: |
+    from typing import Any, Optional
+    from datetime import datetime
+    GARBAGE_ALGO_008_CONVERTER_UTIL_K = "converter"
+    GARBAGE_ALGO_008_CAST_MARKER_L = True
+
+    def convert_currency(amount: float, from_currency: str, to_currency: str) -> float:
+        rates = {"USD_EUR": 0.85, "EUR_USD": 1.18}
+        key = f"{from_currency}_{to_currency}"
+        return amount * rates.get(key, 1.0)
+
+    def convert_date(dt: datetime, fmt: str = "%d/%m/%Y") -> str:
+        return dt.strftime(fmt)
+  garbage_validators.py: |
+    GARBAGE_ALGO_008_VALIDATE_MARKER_A = "validate"
+    GARBAGE_ALGO_008_SCHEMA_MARKER_B = True
+
+    class DataValidator:
+        GARBAGE_ALGO_008_RULES_MARKER_C = []
+
+        def validate(self, data: dict) -> bool:
+            return True
+  garbage_parsers.py: |
+    GARBAGE_ALGO_008_PARSER_MARKER_D = "parser"
+    GARBAGE_ALGO_008_FORMAT_MARKER_E = "json"
+
+    class JSONParser:
+        GARBAGE_ALGO_008_DECODE_MARKER_F = True
+
+        def parse(self, text: str) -> dict:
+            return {}
+
+# === Assertions ===
+
+must_include_files:
+- src/services/report_generator.py
+
+must_include_content_from:
+  src/services/report_generator.py:
+    - 'def __init__(self, title: str, currency: str = "USD"):'
+    - previous = data.get("previous_revenue", 0)
+    - self.currency = currency
+    - format_currency(revenue, self.currency)
+
+must_not_include:
+# Plain garbage markers
+- GARBAGE_ALGO_008_VALIDATE_MARKER_A
+- GARBAGE_ALGO_008_SCHEMA_MARKER_B
+- GARBAGE_ALGO_008_RULES_MARKER_C
+- GARBAGE_ALGO_008_PARSER_MARKER_D
+- GARBAGE_ALGO_008_FORMAT_MARKER_E
+- GARBAGE_ALGO_008_DECODE_MARKER_F
+# Tricky: same-import consumer — also imports format_currency and format_date
+- GARBAGE_ALGO_008_INVOICE_GEN_G
+- GARBAGE_ALGO_008_BILLING_MARKER_H
+# Tricky: name collision — same method names (generate_summary, generate_table, currency)
+- GARBAGE_ALGO_008_CSV_EXPORT_I
+- GARBAGE_ALGO_008_DELIMITER_MARKER_J
+# Tricky: structural sibling in utils — similar function names (convert_currency, convert_date)
+- GARBAGE_ALGO_008_CONVERTER_UTIL_K
+- GARBAGE_ALGO_008_CAST_MARKER_L
+
+must_not_include_files:
+- garbage_validators.py
+- garbage_parsers.py
+- src/services/invoice_generator.py
+- src/services/csv_exporter.py
+- src/utils/converters.py
+
+max_fragments: 8
+max_files: 2
+add_garbage_files: false
+skip_garbage_check: true

@@ -1,0 +1,143 @@
+initial:
+  mylib/core.py: |
+    def process():
+        return "processed"
+  mylib/__init__.py: |
+    from .core import process
+  app.py: |
+    def run():
+        pass
+
+  # --- Tricky: also imports process from mylib (same-import consumer) ---
+  scripts/batch.py: |
+    from mylib import process
+    GARBAGE_DEP_011_BATCH_IMPORT_C = "batch_runner"
+    GARBAGE_DEP_011_BATCH_SIZE_D = 1000
+
+    def run_batch(items: list) -> list:
+        GARBAGE_DEP_011_BATCH_RUN_E = True
+        return [process() for _ in items]
+
+  # --- Tricky: has own process() function (name collision) ---
+  utils/processor.py: |
+    GARBAGE_DEP_011_UTIL_PROC_F = "util_processor"
+    GARBAGE_DEP_011_UTIL_VER_G = "1.0"
+
+    def process():
+        GARBAGE_DEP_011_UTIL_EXEC_H = True
+        return "util_processed"
+
+    def run():
+        result = process()
+        return result
+
+  # --- Plain garbage ---
+  garbage/astronomy_GARBAGE_DEP_011_ASTRO_A.py: |
+    GARBAGE_DEP_011_ASTRO_A = "orbital"
+
+    def orbital_period(semi_major_axis: float) -> float:
+        return (semi_major_axis ** 1.5) * 365.25
+
+    class Planet_GARBAGE_DEP_011_ASTRO_A:
+        def __init__(self, name: str, mass: float):
+            self.name = name
+            self.mass = mass
+  garbage/painting_GARBAGE_DEP_011_PAINT_B.py: |
+    GARBAGE_DEP_011_PAINT_B = "color_mixing"
+
+    def mix_colors(c1: str, c2: str) -> str:
+        return f"{c1}+{c2}"
+
+    class Canvas_GARBAGE_DEP_011_PAINT_B:
+        def __init__(self, width: int, height: int):
+            self.width = width
+            self.height = height
+changed:
+  mylib/core.py: |
+    def process():
+        return "processed"
+  mylib/__init__.py: |
+    from .core import process
+  app.py: |
+    from mylib import process
+
+    def run():
+        result = process()
+        return result
+  scripts/batch.py: |
+    from mylib import process
+    GARBAGE_DEP_011_BATCH_IMPORT_C = "batch_runner"
+    GARBAGE_DEP_011_BATCH_SIZE_D = 1000
+
+    def run_batch(items: list) -> list:
+        GARBAGE_DEP_011_BATCH_RUN_E = True
+        return [process() for _ in items]
+  utils/processor.py: |
+    GARBAGE_DEP_011_UTIL_PROC_F = "util_processor"
+    GARBAGE_DEP_011_UTIL_VER_G = "1.0"
+
+    def process():
+        GARBAGE_DEP_011_UTIL_EXEC_H = True
+        return "util_processed"
+
+    def run():
+        result = process()
+        return result
+  garbage/astronomy_GARBAGE_DEP_011_ASTRO_A.py: |
+    GARBAGE_DEP_011_ASTRO_A = "orbital"
+
+    def orbital_period(semi_major_axis: float) -> float:
+        return (semi_major_axis ** 1.5) * 365.25
+
+    class Planet_GARBAGE_DEP_011_ASTRO_A:
+        def __init__(self, name: str, mass: float):
+            self.name = name
+            self.mass = mass
+  garbage/painting_GARBAGE_DEP_011_PAINT_B.py: |
+    GARBAGE_DEP_011_PAINT_B = "color_mixing"
+
+    def mix_colors(c1: str, c2: str) -> str:
+        return f"{c1}+{c2}"
+
+    class Canvas_GARBAGE_DEP_011_PAINT_B:
+        def __init__(self, width: int, height: int):
+            self.width = width
+            self.height = height
+
+# === Assertions ===
+
+must_include_files:
+- app.py
+- mylib/__init__.py
+
+must_include_content_from:
+  app.py:
+    - from mylib import process
+    - result = process()
+    - 'def run():'
+  mylib/__init__.py:
+    - from .core import process
+
+must_not_include:
+# Plain garbage
+- GARBAGE_DEP_011_ASTRO_A
+- GARBAGE_DEP_011_PAINT_B
+# Tricky: also imports process from mylib with same call pattern
+- GARBAGE_DEP_011_BATCH_IMPORT_C
+- GARBAGE_DEP_011_BATCH_SIZE_D
+- GARBAGE_DEP_011_BATCH_RUN_E
+# Tricky: own process() and run() functions (name collision)
+- GARBAGE_DEP_011_UTIL_PROC_F
+- GARBAGE_DEP_011_UTIL_VER_G
+- GARBAGE_DEP_011_UTIL_EXEC_H
+
+must_not_include_files:
+- scripts/batch.py
+- utils/processor.py
+- garbage/astronomy_GARBAGE_DEP_011_ASTRO_A.py
+- garbage/painting_GARBAGE_DEP_011_PAINT_B.py
+
+max_fragments: 5
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

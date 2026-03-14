@@ -1,3 +1,0 @@
-api.ts: "export async function searchUsers(query: string): Promise<any[]> {\n    const response = await fetch(\\`/api/users?search=\\${encodeURIComponent(query)}\\`);\n    return response.json();\n}\n\n\
-  export async function fetchUserDetails(userId: string): Promise<any> {\n    const response = await fetch(\\`/api/users/\\${userId}\\`);\n    return response.json();\n}\n\n// vue_garbage_marker_003\n"
-UserSearch.vue: "<template>\n    <div>Initial</div>\n</template>\n\n<script setup lang=\"ts\">\n</script>\n"

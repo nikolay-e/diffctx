@@ -1,0 +1,179 @@
+# Scenario: React component adds useEffect with an API dependency.
+#
+# Diff: Dashboard.tsx changes from empty to using useEffect with fetchDashboard
+# as dependency. The effect re-runs when `filter` prop changes.
+#
+# Reviewer questions:
+#   Q1: "What does fetchDashboard return?" → src/api.ts (UNCHANGED) defines it with
+#        fetchData helper that calls /api/dashboard endpoint.
+#   Q2: "Is the cleanup correct for stale responses?" → Dashboard.tsx (CHANGED)
+#        uses cancelled flag pattern in the effect.
+#
+# Not needed:
+#   - src/hooks/useDebounce.ts: a custom hook in hooks/ but unrelated to data fetching.
+#   - src/api/auth.ts: another API module but for authentication, not dashboard data.
+
+initial:
+  src/api.ts: |
+    export async function fetchData(endpoint: string): Promise<any> {
+        const response = await fetch(`/api/${endpoint}`);
+        return response.json();
+    }
+
+    export async function fetchUsers(): Promise<any[]> {
+        return fetchData('users');
+    }
+
+    export async function fetchDashboard(filter: string): Promise<any> {
+        return fetchData(`dashboard?filter=${filter}`);
+    }
+  src/Dashboard.tsx: |
+    import React from 'react';
+
+    export function Dashboard() {
+        return <div>TODO</div>;
+    }
+  src/hooks/useDebounce.ts: |
+    import { useState, useEffect } from 'react';
+
+    export function useDebounce<T>(value: T, delay: number): T {
+        const [debouncedValue, setDebouncedValue] = useState(value);
+
+        useEffect(() => {
+            const timer = setTimeout(() => setDebouncedValue(value), delay);
+            return () => clearTimeout(timer);
+        }, [value, delay]);
+
+        return debouncedValue;
+    }
+  src/api/auth.ts: |
+    export async function login(email: string, password: string): Promise<{ token: string }> {
+        const response = await fetch('/api/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password }),
+        });
+        return response.json();
+    }
+
+    export async function logout(): Promise<void> {
+        await fetch('/api/auth/logout', { method: 'POST' });
+    }
+
+    export async function refreshToken(token: string): Promise<{ token: string }> {
+        const response = await fetch('/api/auth/refresh', {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}` },
+        });
+        return response.json();
+    }
+
+changed:
+  src/api.ts: |
+    export async function fetchData(endpoint: string): Promise<any> {
+        const response = await fetch(`/api/${endpoint}`);
+        return response.json();
+    }
+
+    export async function fetchUsers(): Promise<any[]> {
+        return fetchData('users');
+    }
+
+    export async function fetchDashboard(filter: string): Promise<any> {
+        return fetchData(`dashboard?filter=${filter}`);
+    }
+  src/Dashboard.tsx: |
+    import React, { useEffect, useState } from 'react';
+    import { fetchDashboard } from './api';
+
+    interface DashboardProps {
+        filter: string;
+    }
+
+    export function Dashboard({ filter }: DashboardProps) {
+        const [data, setData] = useState(null);
+        const [loading, setLoading] = useState(false);
+
+        useEffect(() => {
+            let cancelled = false;
+            setLoading(true);
+
+            fetchDashboard(filter).then(result => {
+                if (!cancelled) {
+                    setData(result);
+                    setLoading(false);
+                }
+            });
+
+            return () => { cancelled = true; };
+        }, [filter]);
+
+        return (
+            <div>
+                {loading ? <p>Loading...</p> : null}
+                {data ? <pre>{JSON.stringify(data)}</pre> : null}
+            </div>
+        );
+    }
+  src/hooks/useDebounce.ts: |
+    import { useState, useEffect } from 'react';
+
+    export function useDebounce<T>(value: T, delay: number): T {
+        const [debouncedValue, setDebouncedValue] = useState(value);
+
+        useEffect(() => {
+            const timer = setTimeout(() => setDebouncedValue(value), delay);
+            return () => clearTimeout(timer);
+        }, [value, delay]);
+
+        return debouncedValue;
+    }
+  src/api/auth.ts: |
+    export async function login(email: string, password: string): Promise<{ token: string }> {
+        const response = await fetch('/api/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password }),
+        });
+        return response.json();
+    }
+
+    export async function logout(): Promise<void> {
+        await fetch('/api/auth/logout', { method: 'POST' });
+    }
+
+    export async function refreshToken(token: string): Promise<{ token: string }> {
+        const response = await fetch('/api/auth/refresh', {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}` },
+        });
+        return response.json();
+    }
+
+# === Assertions ===
+
+must_include_files:
+  - src/Dashboard.tsx
+
+must_include_content_from:
+  # Reviewer needs to see what fetchDashboard does — it calls fetchData('dashboard?filter=...')
+  src/api.ts:
+    - "async function fetchDashboard(filter: string)"
+    - "fetchData(`dashboard?filter=${filter}`)"
+
+must_not_include:
+  # useDebounce.ts: custom hook with useEffect but for debouncing, not data fetching
+  - useDebounce
+  - debouncedValue
+  # auth.ts: API module but for auth, not dashboard
+  - refreshToken
+  - logout
+
+must_not_include_files:
+  - src/hooks/useDebounce.ts
+  - src/api/auth.ts
+
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

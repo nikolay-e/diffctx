@@ -1,0 +1,318 @@
+# Scenario: Adding Send+Sync bounds, priority ordering, execute_all, and
+# find_plugin to a plugin system. All changes in src/plugin.rs.
+#
+# Diff: src/plugin.rs — Plugin gains Send+Sync+priority(), PluginManager gets
+# sort_by_key with Reverse, execute_all, find_plugin.
+#
+# Reviewer questions:
+#   Q1: "Is sort_by_key with Reverse correct for highest-priority-first?"
+#       -> Self-contained in the diff: sort_by_key(|p| Reverse(p.priority()))
+#   Q2: "Does find_plugin lifetime work with &dyn Plugin return?"
+#       -> Self-contained: returns Option<&dyn Plugin> from Vec<Box<dyn Plugin>>
+#   Q3: "Which modules register plugins? Will they compile with Send+Sync?"
+#       -> src/main.rs (UNCHANGED) creates LogPlugin and registers it with
+#          PluginManager. Reviewer must verify LogPlugin is Send+Sync compatible.
+#
+# Not needed:
+#   - src/middleware.rs: request middleware chain with Middleware trait.
+#     HARDEST TRAP: same pattern — trait with name()/process(), Vec<Box<dyn>>,
+#     ordered execution via for loop. "Middleware" and "Plugin" are structurally
+#     identical patterns. But MiddlewareChain doesn't use Plugin trait.
+#   - src/hook.rs: lifecycle hooks registry with register/trigger pattern.
+#     Same "register and execute" vocabulary. Uses Box<dyn Fn> callbacks.
+#   - src/extension.rs: extension system that ALSO uses Box<dyn Extension>
+#     with load/unload methods. Same dynamic dispatch pattern. Registered
+#     similarly to plugins but independent trait.
+#   - src/plugin_loader.rs: loads plugins from configuration. DIRECT edge:
+#     calls PluginManager::register(). Consumer of the changed code.
+#   - tests/plugin_test.rs: tests that create LogPlugin and register it.
+#     Uses the same API from the diff.
+
+initial:
+  src/lib.rs: |
+    pub mod plugin;
+    pub mod middleware;
+    pub mod hook;
+    pub mod extension;
+    pub mod plugin_loader;
+  src/plugin.rs: |
+    pub trait Plugin {
+        fn name(&self) -> &str;
+        fn execute(&self);
+    }
+
+    pub struct PluginManager {
+        plugins: Vec<Box<dyn Plugin>>,
+    }
+
+    impl PluginManager {
+        pub fn new() -> Self {
+            Self { plugins: vec![] }
+        }
+
+        pub fn register(&mut self, plugin: Box<dyn Plugin>) {
+            self.plugins.push(plugin);
+        }
+
+        pub fn list_plugins(&self) -> Vec<&str> {
+            self.plugins.iter().map(|p| p.name()).collect()
+        }
+    }
+
+    pub struct LogPlugin {
+        label: String,
+    }
+
+    impl LogPlugin {
+        pub fn new(label: &str) -> Self {
+            Self { label: label.to_string() }
+        }
+    }
+
+    impl Plugin for LogPlugin {
+        fn name(&self) -> &str {
+            &self.label
+        }
+
+        fn execute(&self) {
+            println!("LogPlugin [{}] executed", self.label);
+        }
+    }
+  src/main.rs: |
+    use crate::plugin::{LogPlugin, Plugin, PluginManager};
+
+    fn main() {
+        let mut manager = PluginManager::new();
+        manager.register(Box::new(LogPlugin::new("startup")));
+        manager.register(Box::new(LogPlugin::new("shutdown")));
+
+        for name in manager.list_plugins() {
+            println!("Loaded: {}", name);
+        }
+    }
+  src/middleware.rs: |
+    pub trait Middleware {
+        fn name(&self) -> &str;
+        fn process(&self, request: &str) -> String;
+        fn priority(&self) -> i32 { 0 }
+    }
+
+    pub struct MiddlewareChain {
+        layers: Vec<Box<dyn Middleware>>,
+    }
+
+    impl MiddlewareChain {
+        pub fn new() -> Self {
+            Self { layers: Vec::new() }
+        }
+
+        pub fn add(&mut self, layer: Box<dyn Middleware>) {
+            self.layers.push(layer);
+            self.layers.sort_by_key(|m| std::cmp::Reverse(m.priority()));
+        }
+
+        pub fn execute(&self, request: &str) -> String {
+            let mut result = request.to_string();
+            for layer in &self.layers {
+                result = layer.process(&result);
+            }
+            result
+        }
+
+        pub fn find_by_name(&self, name: &str) -> Option<&dyn Middleware> {
+            self.layers.iter().find(|m| m.name() == name).map(|m| m.as_ref())
+        }
+    }
+  src/hook.rs: |
+    pub type HookFn = Box<dyn Fn(&str)>;
+
+    pub struct HookRegistry {
+        hooks: Vec<(String, HookFn)>,
+    }
+
+    impl HookRegistry {
+        pub fn new() -> Self {
+            Self { hooks: Vec::new() }
+        }
+
+        pub fn register(&mut self, event: &str, callback: HookFn) {
+            self.hooks.push((event.to_string(), callback));
+        }
+
+        pub fn trigger(&self, event: &str, data: &str) {
+            for (name, callback) in &self.hooks {
+                if name == event {
+                    callback(data);
+                }
+            }
+        }
+
+        pub fn registered_events(&self) -> Vec<&str> {
+            self.hooks.iter().map(|(name, _)| name.as_str()).collect()
+        }
+    }
+  src/extension.rs: |
+    pub trait Extension: Send + Sync {
+        fn name(&self) -> &str;
+        fn load(&self);
+        fn unload(&self);
+        fn priority(&self) -> i32 { 0 }
+    }
+
+    pub struct ExtensionRegistry {
+        extensions: Vec<Box<dyn Extension>>,
+    }
+
+    impl ExtensionRegistry {
+        pub fn new() -> Self {
+            Self { extensions: Vec::new() }
+        }
+
+        pub fn register(&mut self, ext: Box<dyn Extension>) {
+            self.extensions.push(ext);
+        }
+
+        pub fn load_all(&self) {
+            for ext in &self.extensions {
+                println!("Loading extension: {}", ext.name());
+                ext.load();
+            }
+        }
+
+        pub fn find_extension(&self, name: &str) -> Option<&dyn Extension> {
+            self.extensions.iter().find(|e| e.name() == name).map(|e| e.as_ref())
+        }
+    }
+  src/plugin_loader.rs: |
+    use crate::plugin::{LogPlugin, PluginManager};
+
+    pub fn load_default_plugins(manager: &mut PluginManager) {
+        manager.register(Box::new(LogPlugin::new("default-logger")));
+        manager.register(Box::new(LogPlugin::new("audit-logger")));
+    }
+
+    pub fn load_from_config(manager: &mut PluginManager, config: &[&str]) {
+        for name in config {
+            manager.register(Box::new(LogPlugin::new(name)));
+        }
+    }
+  tests/plugin_test.rs: |
+    use crate::plugin::{LogPlugin, Plugin, PluginManager};
+
+    #[test]
+    fn test_register_and_list() {
+        let mut manager = PluginManager::new();
+        manager.register(Box::new(LogPlugin::new("test")));
+        assert_eq!(manager.list_plugins(), vec!["test"]);
+    }
+
+    #[test]
+    fn test_execute_all() {
+        let mut manager = PluginManager::new();
+        manager.register(Box::new(LogPlugin::new("a")));
+        manager.register(Box::new(LogPlugin::new("b")));
+        manager.execute_all();
+    }
+changed:
+  src/plugin.rs: |
+    pub trait Plugin: Send + Sync {
+        fn name(&self) -> &str;
+        fn execute(&self);
+        fn priority(&self) -> i32 { 0 }
+    }
+
+    pub struct PluginManager {
+        plugins: Vec<Box<dyn Plugin>>,
+    }
+
+    impl PluginManager {
+        pub fn new() -> Self {
+            Self { plugins: vec![] }
+        }
+
+        pub fn register(&mut self, plugin: Box<dyn Plugin>) {
+            self.plugins.push(plugin);
+            self.plugins.sort_by_key(|p| std::cmp::Reverse(p.priority()));
+        }
+
+        pub fn list_plugins(&self) -> Vec<&str> {
+            self.plugins.iter().map(|p| p.name()).collect()
+        }
+
+        pub fn execute_all(&self) {
+            for plugin in &self.plugins {
+                println!("Running plugin: {}", plugin.name());
+                plugin.execute();
+            }
+        }
+
+        pub fn find_plugin(&self, name: &str) -> Option<&dyn Plugin> {
+            self.plugins.iter().find(|p| p.name() == name).map(|p| p.as_ref())
+        }
+    }
+
+    pub struct LogPlugin {
+        label: String,
+    }
+
+    impl LogPlugin {
+        pub fn new(label: &str) -> Self {
+            Self { label: label.to_string() }
+        }
+    }
+
+    impl Plugin for LogPlugin {
+        fn name(&self) -> &str {
+            &self.label
+        }
+
+        fn execute(&self) {
+            println!("LogPlugin [{}] executed", self.label);
+        }
+
+        fn priority(&self) -> i32 {
+            10
+        }
+    }
+must_include_files:
+  - src/plugin.rs
+  # Q3: main.rs registers LogPlugin — must verify Send+Sync compatibility
+  - src/main.rs
+must_include_content_from:
+  src/plugin.rs:
+    - "pub trait Plugin: Send + Sync"
+    - "self.plugins.sort_by_key(|p| std::cmp::Reverse(p.priority()))"
+    - "pub fn find_plugin"
+  src/main.rs:
+    - "PluginManager::new()"
+    - 'LogPlugin::new("startup")'
+must_not_include:
+  # middleware.rs: SAME pattern — name()/priority(), Vec<Box<dyn>>, sort, find
+  - MiddlewareChain
+  - "trait Middleware"
+  - "find_by_name"
+  # hook.rs: register/trigger pattern, Box<dyn Fn>
+  - HookRegistry
+  - HookFn
+  - "registered_events"
+  # extension.rs: ALSO Send+Sync with name()/priority(), Box<dyn Extension>
+  - "trait Extension"
+  - ExtensionRegistry
+  - "load_all"
+  - "find_extension"
+  # plugin_loader.rs: calls PluginManager::register() — consumer
+  - "load_default_plugins"
+  - "load_from_config"
+  # tests/plugin_test.rs: tests the changed API
+  - "test_register_and_list"
+  - "test_execute_all"
+must_not_include_files:
+  - src/middleware.rs
+  - src/hook.rs
+  - src/extension.rs
+  - src/plugin_loader.rs
+  - tests/plugin_test.rs
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

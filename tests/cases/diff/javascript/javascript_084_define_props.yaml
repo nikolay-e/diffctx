@@ -1,0 +1,215 @@
+# Scenario: Card.vue is rewritten from a stub to a full Vue 3 component using
+#   defineProps<CardProps>() with CardProps imported from types.ts.
+#   Only Card.vue is changed; types.ts is unchanged.
+#
+# Diff shows:
+#   - <template><div>initial</div></template>
+#   + <script setup lang="ts"> with import type { CardProps } from './types'
+#   + const props = defineProps<CardProps>()
+#   + Template uses props.variant, props.title, props.subtitle
+#
+# Reviewer questions:
+#   Q1: "What fields does CardProps have — does the template access valid props?"
+#       -> types.ts: CardProps has title: string, subtitle?: string,
+#          variant: 'primary' | 'secondary'. Template accesses props.variant,
+#          props.title, props.subtitle — all valid. Without types.ts, reviewer
+#          cannot verify these field accesses.
+#
+#   Q2: "Is subtitle optional — is the v-if guard correct?"
+#       -> types.ts: subtitle is optional (subtitle?: string). The template uses
+#          v-if="props.subtitle" which correctly guards against undefined.
+#
+# Not needed for comprehension:
+#   - CardList.vue: Parent component that renders multiple Card instances.
+#     Direct consumer edge — imports Card and passes props. But HOW the parent
+#     uses Card doesn't help verify whether Card's template matches CardProps.
+#
+#   - CardPreview.vue: Sibling component with IDENTICAL defineProps pattern
+#     but uses PreviewProps instead of CardProps. Same Vue 3 composition API
+#     pattern, same <script setup> structure. HARD TRAP: structurally similar
+#     sibling that uses defineProps the same way. But it's a different component
+#     with different props, not needed to review Card.vue.
+#
+#   - card-animations.ts: CSS transition helpers for card enter/leave.
+#     Same "card" domain but purely visual concern, not imported by Card.vue.
+
+initial:
+  types.ts: |
+    export interface CardProps {
+        title: string;
+        subtitle?: string;
+        variant: 'primary' | 'secondary';
+    }
+
+    export interface PreviewProps {
+        imageUrl: string;
+        caption?: string;
+        aspect: '16:9' | '4:3' | '1:1';
+    }
+  Card.vue: |
+    <template><div>initial</div></template>
+  CardList.vue: |
+    <script setup lang="ts">
+    import Card from './Card.vue';
+    import type { CardProps } from './types';
+
+    const cards: CardProps[] = [
+        { title: 'First', variant: 'primary' },
+        { title: 'Second', subtitle: 'Details', variant: 'secondary' },
+    ];
+    </script>
+
+    <template>
+        <div class="card-list">
+            <Card v-for="(card, i) in cards" :key="i" v-bind="card" />
+        </div>
+    </template>
+  CardPreview.vue: |
+    <script setup lang="ts">
+    import type { PreviewProps } from './types';
+
+    const props = defineProps<PreviewProps>();
+    </script>
+
+    <template>
+        <figure :class="props.aspect">
+            <img :src="props.imageUrl" :alt="props.caption" />
+            <figcaption v-if="props.caption">{{ props.caption }}</figcaption>
+        </figure>
+    </template>
+  card-animations.ts: |
+    export function cardEnterTransition(el: HTMLElement): void {
+        el.style.opacity = '0';
+        el.style.transform = 'translateY(20px)';
+        requestAnimationFrame(() => {
+            el.style.transition = 'opacity 0.3s, transform 0.3s';
+            el.style.opacity = '1';
+            el.style.transform = 'translateY(0)';
+        });
+    }
+
+    export function cardLeaveTransition(el: HTMLElement): void {
+        el.style.transition = 'opacity 0.2s';
+        el.style.opacity = '0';
+    }
+
+changed:
+  types.ts: |
+    export interface CardProps {
+        title: string;
+        subtitle?: string;
+        variant: 'primary' | 'secondary';
+    }
+
+    export interface PreviewProps {
+        imageUrl: string;
+        caption?: string;
+        aspect: '16:9' | '4:3' | '1:1';
+    }
+  Card.vue: |
+    <script setup lang="ts">
+    import type { CardProps } from './types';
+
+    const props = defineProps<CardProps>();
+    </script>
+
+    <template>
+        <div :class="props.variant">
+            <h2>{{ props.title }}</h2>
+            <p v-if="props.subtitle">{{ props.subtitle }}</p>
+        </div>
+    </template>
+  CardList.vue: |
+    <script setup lang="ts">
+    import Card from './Card.vue';
+    import type { CardProps } from './types';
+
+    const cards: CardProps[] = [
+        { title: 'First', variant: 'primary' },
+        { title: 'Second', subtitle: 'Details', variant: 'secondary' },
+    ];
+    </script>
+
+    <template>
+        <div class="card-list">
+            <Card v-for="(card, i) in cards" :key="i" v-bind="card" />
+        </div>
+    </template>
+  CardPreview.vue: |
+    <script setup lang="ts">
+    import type { PreviewProps } from './types';
+
+    const props = defineProps<PreviewProps>();
+    </script>
+
+    <template>
+        <figure :class="props.aspect">
+            <img :src="props.imageUrl" :alt="props.caption" />
+            <figcaption v-if="props.caption">{{ props.caption }}</figcaption>
+        </figure>
+    </template>
+  card-animations.ts: |
+    export function cardEnterTransition(el: HTMLElement): void {
+        el.style.opacity = '0';
+        el.style.transform = 'translateY(20px)';
+        requestAnimationFrame(() => {
+            el.style.transition = 'opacity 0.3s, transform 0.3s';
+            el.style.opacity = '1';
+            el.style.transform = 'translateY(0)';
+        });
+    }
+
+    export function cardLeaveTransition(el: HTMLElement): void {
+        el.style.transition = 'opacity 0.2s';
+        el.style.opacity = '0';
+    }
+
+must_include_files:
+  - Card.vue
+  # Q1+Q2: types.ts defines CardProps — reviewer needs to see the interface
+  # to verify that template accesses (variant, title, subtitle) are valid
+  # and that the v-if guard on subtitle is appropriate for its optional type.
+  - types.ts
+
+must_include_content_from:
+  Card.vue:
+    - "defineProps<CardProps>()"
+    - "props.variant"
+    - "props.title"
+  types.ts:
+    - "interface CardProps {"
+    - "title: string"
+    - "subtitle?: string"
+    - "variant: 'primary' | 'secondary'"
+
+must_not_include:
+  # --- CardList.vue: consumer of Card, imports and renders it ---
+  # Direct structural edge: imports Card.vue and CardProps from types.ts.
+  # But HOW the parent iterates cards doesn't help review whether Card's
+  # template correctly uses the CardProps fields.
+  - CardList
+  - card-list
+  - v-for
+  - "v-bind=\"card\""
+  # --- CardPreview.vue: sibling component with identical defineProps pattern ---
+  # HARD TRAP: same <script setup>, same defineProps<T>() pattern, same
+  # types.ts import. But uses PreviewProps not CardProps. Including it
+  # confuses which component is being reviewed.
+  - CardPreview
+  - PreviewProps
+  - imageUrl
+  - figcaption
+  # --- card-animations.ts: card transition helpers ---
+  - cardEnterTransition
+  - cardLeaveTransition
+  - translateY
+
+must_not_include_files:
+  - CardList.vue
+  - CardPreview.vue
+  - card-animations.ts
+
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

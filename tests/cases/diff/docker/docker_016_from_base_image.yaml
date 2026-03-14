@@ -1,0 +1,137 @@
+# Test 016: Dockerfile migrates from alpine to python:3.12-slim-bookworm with gunicorn
+#           — reviewer needs requirements.txt for native dep compatibility
+#
+# Scenario: Python Dockerfile migrated from alpine:3.14 (manual python install) to
+# python:3.12-slim-bookworm with multi-stage. Base image change is the core of the diff.
+# CMD switches from "python3 main.py" to gunicorn with workers.
+#
+# Reviewer questions:
+#   Q1: "What does requirements.txt contain — are there native dependencies?"
+#       -> requirements.txt has psycopg2-binary which needs libpq. Reviewer
+#       needs this to verify slim-bookworm includes the necessary C libraries.
+#   Q2: "Does config/settings.py reference env vars the Dockerfile should set?"
+#       -> settings.py has DATABASE_URL, REDIS_URL, CELERY_BROKER_URL.
+#       The Dockerfile sets none of these — reviewer needs to verify whether
+#       they're expected to come from runtime env only.
+#   Q3: "Is there an app entrypoint matching gunicorn's 'app:create_app()' target?"
+#       -> The Dockerfile CMD uses `app:create_app()` but no app.py is present
+#       in the test files. This is caught by the gunicorn target reference.
+#
+# Not needed:
+#   - scripts/backup.sh: uses DATABASE_URL but is an ops utility for pg_dump,
+#     not relevant to base image change review.
+#   - tests/conftest.py: references create_app but is test infrastructure,
+#     does not help reviewer assess base image compatibility.
+#   - docs/deployment.md: static documentation mentioning Docker commands,
+#     adds nothing beyond what the Dockerfile itself shows.
+
+initial:
+  requirements.txt: |
+    flask==2.3.0
+    gunicorn==21.2.0
+    psycopg2-binary==2.9.9
+    redis==5.0.1
+    celery==5.3.4
+  config/settings.py: |
+    DATABASE_URL = "postgresql://localhost/app"
+    REDIS_URL = "redis://localhost:6379/0"
+    CELERY_BROKER_URL = REDIS_URL
+  Dockerfile: |
+    FROM alpine:3.14
+    RUN apk add --no-cache python3 py3-pip
+    COPY requirements.txt .
+    RUN pip3 install -r requirements.txt
+    COPY . /app
+    WORKDIR /app
+    CMD ["python3", "main.py"]
+  scripts/backup.sh: |
+    #!/bin/bash
+    pg_dump $DATABASE_URL > backup.sql
+    gzip backup.sql
+  tests/conftest.py: |
+    import pytest
+    @pytest.fixture
+    def app():
+        from main import create_app
+        return create_app()
+  docs/deployment.md: |
+    # Deployment Guide
+    Build with: docker build -t app .
+    Run with: docker run -p 8000:8000 app
+
+changed:
+  requirements.txt: |
+    flask==2.3.0
+    gunicorn==21.2.0
+    psycopg2-binary==2.9.9
+    redis==5.0.1
+    celery==5.3.4
+  config/settings.py: |
+    DATABASE_URL = "postgresql://localhost/app"
+    REDIS_URL = "redis://localhost:6379/0"
+    CELERY_BROKER_URL = REDIS_URL
+  Dockerfile: |
+    FROM python:3.12-slim-bookworm AS base
+    ENV PYTHONDONTWRITEBYTECODE=1
+    ENV PYTHONUNBUFFERED=1
+
+    FROM base AS dependencies
+    WORKDIR /app
+    COPY requirements.txt .
+    RUN pip install --no-cache-dir -r requirements.txt
+
+    FROM base AS production
+    WORKDIR /app
+    COPY --from=dependencies /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
+    COPY --from=dependencies /usr/local/bin /usr/local/bin
+    COPY . .
+    EXPOSE 8000
+    USER nobody
+    CMD ["gunicorn", "-w", "4", "-b", "0.0.0.0:8000", "app:create_app()"]
+  scripts/backup.sh: |
+    #!/bin/bash
+    pg_dump $DATABASE_URL > backup.sql
+    gzip backup.sql
+  tests/conftest.py: |
+    import pytest
+    @pytest.fixture
+    def app():
+        from main import create_app
+        return create_app()
+  docs/deployment.md: |
+    # Deployment Guide
+    Build with: docker build -t app .
+    Run with: docker run -p 8000:8000 app
+
+must_include_files:
+  - Dockerfile
+  # Q1: Does requirements.txt have native deps that need slim-bookworm libs?
+  - requirements.txt
+
+must_include_content_from:
+  Dockerfile:
+    - FROM python:3.12-slim-bookworm AS base
+    - FROM base AS dependencies
+    - 'CMD ["gunicorn", "-w", "4", "-b", "0.0.0.0:8000", "app:create_app()"]'
+  requirements.txt:
+    - gunicorn==21.2.0
+    - psycopg2-binary==2.9.9
+
+must_not_include:
+  # --- backup.sh: ops utility, uses DATABASE_URL but not build-relevant ---
+  - pg_dump
+  - gzip backup.sql
+  # --- tests/conftest.py: test infrastructure, not base image review ---
+  - "@pytest.fixture"
+  # --- docs: static guide, doesn't add info beyond what Dockerfile shows ---
+  - "Deployment Guide"
+  - "docker run -p 8000:8000"
+must_not_include_files:
+  - scripts/backup.sh
+  - tests/conftest.py
+  - docs/deployment.md
+
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

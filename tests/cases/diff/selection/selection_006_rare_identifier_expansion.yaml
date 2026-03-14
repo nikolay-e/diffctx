@@ -1,0 +1,142 @@
+# Scenario: core.py modifies main() which calls unique_helper() imported
+# from rare_module.py. The identifier "unique_helper" is rare — it only
+# appears in these two files. The selector should expand via the rare
+# identifier edge to include rare_module.py.
+#
+# Diff: core.py changes main() body — new return expression using unique_helper().
+#
+# Reviewer questions:
+#   Q1: "What does unique_helper return?"
+#       -> rare_module.py (UNCHANGED) defines unique_helper returning 42.
+#          Reviewer verifies that `result * 2` in the new code is correct
+#          given the helper's actual return value.
+#   Q2: "Are there side effects in unique_helper?"
+#       -> rare_module.py shows a pure function. Reviewer confirms the
+#          multiplication in main() is safe.
+#
+# Not needed:
+#   - string_utils.py: general-purpose string manipulation. No import from
+#     core.py and no shared identifiers with the diff.
+#   - math_helpers.py: arithmetic utilities. Plausibly related (core.py does
+#     multiplication) but no import edge and no shared rare identifiers.
+
+initial:
+  core.py: |
+    from rare_module import unique_helper
+
+    def main():
+        return unique_helper()
+
+    def secondary_function():
+        return "secondary_result"
+
+    def tertiary_function():
+        return "tertiary_result"
+  rare_module.py: |
+    def unique_helper():
+        return 42
+
+    def rare_helper_alpha():
+        return "rare_alpha_result"
+
+    def rare_helper_beta():
+        return "rare_beta_result"
+  string_utils.py: |
+    def capitalize_words(text):
+        return " ".join(word.capitalize() for word in text.split())
+
+    def truncate(text, max_length=100):
+        if len(text) <= max_length:
+            return text
+        return text[:max_length - 3] + "..."
+
+    def slugify(text):
+        return text.lower().replace(" ", "-").replace("_", "-")
+  math_helpers.py: |
+    def clamp(value, minimum, maximum):
+        return max(minimum, min(value, maximum))
+
+    def lerp(start, end, factor):
+        return start + (end - start) * factor
+
+    def moving_average(values, window=3):
+        if len(values) < window:
+            return values
+        result = []
+        for i in range(len(values) - window + 1):
+            avg = sum(values[i:i + window]) / window
+            result.append(avg)
+        return result
+changed:
+  core.py: |
+    from rare_module import unique_helper
+
+    def main():
+        result = unique_helper()
+        return result * 2
+
+    def secondary_function():
+        return "secondary_result"
+
+    def tertiary_function():
+        return "tertiary_result"
+  rare_module.py: |
+    def unique_helper():
+        return 42
+
+    def rare_helper_alpha():
+        return "rare_alpha_result"
+
+    def rare_helper_beta():
+        return "rare_beta_result"
+  string_utils.py: |
+    def capitalize_words(text):
+        return " ".join(word.capitalize() for word in text.split())
+
+    def truncate(text, max_length=100):
+        if len(text) <= max_length:
+            return text
+        return text[:max_length - 3] + "..."
+
+    def slugify(text):
+        return text.lower().replace(" ", "-").replace("_", "-")
+  math_helpers.py: |
+    def clamp(value, minimum, maximum):
+        return max(minimum, min(value, maximum))
+
+    def lerp(start, end, factor):
+        return start + (end - start) * factor
+
+    def moving_average(values, window=3):
+        if len(values) < window:
+            return values
+        result = []
+        for i in range(len(values) - window + 1):
+            avg = sum(values[i:i + window]) / window
+            result.append(avg)
+        return result
+must_include_files:
+  # Q1+Q2: rare_module defines unique_helper — rare identifier edge
+  - rare_module.py
+must_include_content_from:
+  core.py:
+    - "from rare_module import unique_helper"
+    - "result = unique_helper()"
+  rare_module.py:
+    - "def unique_helper()"
+must_not_include:
+  # string_utils.py: general text utilities, no import edge
+  - capitalize_words
+  - truncate
+  - slugify
+  # math_helpers.py: arithmetic utilities, no import edge
+  - clamp
+  - lerp
+  - moving_average
+must_not_include_files:
+  - string_utils.py
+  - math_helpers.py
+max_fragments: 5
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

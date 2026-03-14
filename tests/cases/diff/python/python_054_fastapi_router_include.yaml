@@ -1,0 +1,237 @@
+# Scenario: FastAPI main.py includes the users router via include_router
+#   and adds a /health endpoint. routers/users.py and schemas.py are
+#   unchanged but define the router being included.
+#
+# Diff shows:
+#   + from routers.users import router as users_router
+#   + app.include_router(users_router)
+#   + @app.get("/health") async def health_check()
+#
+# Reviewer questions:
+#   Q1: "Is the router import path correct for the nested module?"
+#       -> routers/users.py (UNCHANGED) defines router = APIRouter(
+#          prefix="/users", tags=["users"]). The import path
+#          routers.users matches the file location. Reviewer verifies.
+#
+#   Q2: "What routes does the included router register?"
+#       -> routers/users.py: POST /, GET /{user_id}, GET /. These become
+#          /users/, /users/{user_id}, /users/ under the prefix. Reviewer
+#          checks for route conflicts with /health.
+#
+#   Q3: "What schemas do the user routes depend on?"
+#       -> routers/users.py imports UserCreate, UserResponse from schemas.
+#          schemas.py (UNCHANGED) defines these dataclasses.
+#
+# Not needed for comprehension:
+#   - services/notification_service.py: NotificationService with send/flush.
+#     "User" vocabulary (sends to recipients). But no dependency on
+#     routers, main, or schemas. Independent service.
+#
+#   - services/billing_engine.py: BillingEngine with charge/get_total.
+#     Completely different domain (financial transactions). No dependency
+#     on any of the changed or included modules.
+
+initial:
+  schemas.py: |
+    from dataclasses import dataclass
+
+    @dataclass
+    class UserCreate:
+        name: str
+        email: str
+
+        def dict(self) -> dict:
+            return {"name": self.name, "email": self.email}
+
+    @dataclass
+    class UserResponse:
+        id: int
+        name: str
+        email: str
+
+        def dict(self) -> dict:
+            return {"id": self.id, "name": self.name, "email": self.email}
+  routers/users.py: |
+    from fastapi import APIRouter
+    from schemas import UserCreate, UserResponse
+
+    router = APIRouter(prefix="/users", tags=["users"])
+
+    _users_db: list[dict] = []
+
+    @router.post("/", response_model=UserResponse)
+    async def create_user(user: UserCreate):
+        new_user = {"id": len(_users_db) + 1, **user.dict()}
+        _users_db.append(new_user)
+        return new_user
+
+    @router.get("/{user_id}", response_model=UserResponse)
+    async def get_user(user_id: int):
+        for u in _users_db:
+            if u["id"] == user_id:
+                return u
+        return {"id": 0, "name": "", "email": ""}
+
+    @router.get("/", response_model=list)
+    async def list_users():
+        return _users_db
+  main.py: |
+    from fastapi import FastAPI
+
+    app = FastAPI(title="User Service", version="1.0.0")
+  services/notification_service.py: |
+    from typing import Optional
+
+    class NotificationService:
+        def __init__(self, provider: str = "email"):
+            self.provider = provider
+            self._pending: list[dict] = []
+
+        def send(self, recipient: str, message: str) -> bool:
+            self._pending.append({"to": recipient, "msg": message})
+            return True
+
+        def flush(self) -> int:
+            count = len(self._pending)
+            self._pending.clear()
+            return count
+
+        def get_pending_count(self) -> int:
+            return len(self._pending)
+  services/billing_engine.py: |
+    from typing import Optional
+
+    class BillingEngine:
+        def __init__(self, currency: str = "USD"):
+            self.currency = currency
+            self._transactions: list[dict] = []
+
+        def charge(self, amount: float, description: str) -> dict:
+            txn = {"amount": amount, "desc": description, "currency": self.currency}
+            self._transactions.append(txn)
+            return txn
+
+        def get_total(self) -> float:
+            return sum(t["amount"] for t in self._transactions)
+
+changed:
+  schemas.py: |
+    from dataclasses import dataclass
+
+    @dataclass
+    class UserCreate:
+        name: str
+        email: str
+
+        def dict(self) -> dict:
+            return {"name": self.name, "email": self.email}
+
+    @dataclass
+    class UserResponse:
+        id: int
+        name: str
+        email: str
+
+        def dict(self) -> dict:
+            return {"id": self.id, "name": self.name, "email": self.email}
+  routers/users.py: |
+    from fastapi import APIRouter
+    from schemas import UserCreate, UserResponse
+
+    router = APIRouter(prefix="/users", tags=["users"])
+
+    _users_db: list[dict] = []
+
+    @router.post("/", response_model=UserResponse)
+    async def create_user(user: UserCreate):
+        new_user = {"id": len(_users_db) + 1, **user.dict()}
+        _users_db.append(new_user)
+        return new_user
+
+    @router.get("/{user_id}", response_model=UserResponse)
+    async def get_user(user_id: int):
+        for u in _users_db:
+            if u["id"] == user_id:
+                return u
+        return {"id": 0, "name": "", "email": ""}
+
+    @router.get("/", response_model=list)
+    async def list_users():
+        return _users_db
+  main.py: |
+    from fastapi import FastAPI
+    from routers.users import router as users_router
+
+    app = FastAPI(title="User Service", version="1.0.0")
+    app.include_router(users_router)
+
+    @app.get("/health")
+    async def health_check():
+        return {"status": "ok"}
+  services/notification_service.py: |
+    from typing import Optional
+
+    class NotificationService:
+        def __init__(self, provider: str = "email"):
+            self.provider = provider
+            self._pending: list[dict] = []
+
+        def send(self, recipient: str, message: str) -> bool:
+            self._pending.append({"to": recipient, "msg": message})
+            return True
+
+        def flush(self) -> int:
+            count = len(self._pending)
+            self._pending.clear()
+            return count
+
+        def get_pending_count(self) -> int:
+            return len(self._pending)
+  services/billing_engine.py: |
+    from typing import Optional
+
+    class BillingEngine:
+        def __init__(self, currency: str = "USD"):
+            self.currency = currency
+            self._transactions: list[dict] = []
+
+        def charge(self, amount: float, description: str) -> dict:
+            txn = {"amount": amount, "desc": description, "currency": self.currency}
+            self._transactions.append(txn)
+            return txn
+
+        def get_total(self) -> float:
+            return sum(t["amount"] for t in self._transactions)
+
+must_include_files:
+  - main.py
+  # Q1/Q2: routers/users.py defines the router being included
+  - routers/users.py
+
+must_include_content_from:
+  main.py:
+    - "from routers.users import router as users_router"
+    - "app.include_router(users_router)"
+    - "async def health_check"
+  routers/users.py:
+    - 'router = APIRouter(prefix="/users"'
+    - '@router.post("/"'
+
+must_not_include:
+  # --- notification_service.py: "user" vocabulary, no router dependency ---
+  - NotificationService
+  - get_pending_count
+  - flush
+  # --- billing_engine.py: financial domain, no dependency ---
+  - BillingEngine
+  - get_total
+  - charge
+
+must_not_include_files:
+  - services/notification_service.py
+  - services/billing_engine.py
+
+max_fragments: 6
+max_files: 4
+add_garbage_files: false
+skip_garbage_check: true

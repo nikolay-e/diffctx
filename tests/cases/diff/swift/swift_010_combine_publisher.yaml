@@ -1,0 +1,145 @@
+# Scenario: SearchViewModel gains a Combine pipeline that debounces search
+# text and flatMaps into SearchService.search(query:). The reviewer sees
+# `self?.service.search(query: query)` inside a flatMap and needs to know
+# what SearchService.search returns (an AnyPublisher) to understand the chain.
+#
+# Reviewer questions:
+#   Q1: "What does SearchService.search(query:) return?"
+#       -> Sources/Services/SearchService.swift: AnyPublisher<[String], Never>
+#   Q2: "How does the publisher chain work — what gets assigned to $results?"
+#       -> The flatMap feeds SearchService's publisher into .assign(to: &$results)
+#
+# Not needed:
+#   - Sources/Services/AnalyticsService.swift: another service — tracks events
+#     but not connected to the search pipeline
+#   - Sources/ViewModels/SettingsViewModel.swift: another ObservableObject —
+#     same pattern but manages settings, not search
+
+initial:
+  Sources/Services/SearchService.swift: |
+    import Combine
+
+    class SearchService {
+        func search(query: String) -> AnyPublisher<[String], Never> {
+            Just(["Result 1", "Result 2"])
+                .eraseToAnyPublisher()
+        }
+    }
+  Sources/ViewModels/SearchViewModel.swift: |
+    import Combine
+
+    class SearchViewModel: ObservableObject {
+        @Published var searchText = ""
+    }
+
+  # Trap: sibling service — analytics tracking, not search
+  Sources/Services/AnalyticsService.swift: |
+    import Foundation
+
+    class AnalyticsService {
+        static let shared = AnalyticsService()
+
+        func track(event: String, properties: [String: String] = [:]) {
+            print("Track: \(event) \(properties)")
+        }
+
+        func identify(userId: String) {
+            print("Identify: \(userId)")
+        }
+    }
+
+  # Trap: another ViewModel in same directory — settings, not search
+  Sources/ViewModels/SettingsViewModel.swift: |
+    import Combine
+
+    class SettingsViewModel: ObservableObject {
+        @Published var darkMode = false
+        @Published var fontSize: Double = 14.0
+
+        func resetToDefaults() {
+            darkMode = false
+            fontSize = 14.0
+        }
+    }
+
+changed:
+  Sources/Services/SearchService.swift: |
+    import Combine
+
+    class SearchService {
+        func search(query: String) -> AnyPublisher<[String], Never> {
+            Just(["Result 1", "Result 2"])
+                .eraseToAnyPublisher()
+        }
+    }
+  Sources/ViewModels/SearchViewModel.swift: |
+    import Combine
+
+    class SearchViewModel: ObservableObject {
+        @Published var searchText = ""
+        @Published var results: [String] = []
+
+        private let service = SearchService()
+        private var cancellables = Set<AnyCancellable>()
+
+        init() {
+            $searchText
+                .debounce(for: .milliseconds(300), scheduler: RunLoop.main)
+                .removeDuplicates()
+                .flatMap { [weak self] query in
+                    self?.service.search(query: query) ?? Just([]).eraseToAnyPublisher()
+                }
+                .assign(to: &$results)
+        }
+    }
+  Sources/Services/AnalyticsService.swift: |
+    import Foundation
+
+    class AnalyticsService {
+        static let shared = AnalyticsService()
+
+        func track(event: String, properties: [String: String] = [:]) {
+            print("Track: \(event) \(properties)")
+        }
+
+        func identify(userId: String) {
+            print("Identify: \(userId)")
+        }
+    }
+  Sources/ViewModels/SettingsViewModel.swift: |
+    import Combine
+
+    class SettingsViewModel: ObservableObject {
+        @Published var darkMode = false
+        @Published var fontSize: Double = 14.0
+
+        func resetToDefaults() {
+            darkMode = false
+            fontSize = 14.0
+        }
+    }
+
+must_include_files:
+- Sources/ViewModels/SearchViewModel.swift
+
+must_include_content:
+- service.search(query: query)
+
+must_not_include:
+  # AnalyticsService.swift: event tracking — different service, not
+  # part of the search Combine pipeline
+  - AnalyticsService
+  - identify
+  # SettingsViewModel.swift: another ObservableObject — manages UI
+  # preferences, no connection to the search pipeline
+  - SettingsViewModel
+  - darkMode
+
+must_not_include_files:
+- Sources/Services/AnalyticsService.swift
+- Sources/ViewModels/SettingsViewModel.swift
+
+max_fragments: 5
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

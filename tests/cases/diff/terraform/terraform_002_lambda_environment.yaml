@@ -1,0 +1,393 @@
+# Scenario: Lambda module caller adds custom_env_vars, increases timeout/memory,
+# and enables X-Ray tracing. The module definition merges base and custom env vars.
+#
+# Reviewer questions:
+#   Q1: "What new environment variables are being injected into data-processor?"
+#       -> infrastructure/processor.tf: DATABASE_URL, CACHE_ENDPOINT, QUEUE_URL, ENABLE_METRICS
+#   Q2: "How are base_env_vars and custom_env_vars merged in the module?"
+#       -> modules/lambda/main.tf: merge(var.base_env_vars, var.custom_env_vars)
+#         The reviewer needs to confirm merge semantics (custom overrides base).
+#   Q3: "What were the original resource limits vs. new ones?"
+#       -> infrastructure/processor.tf: timeout 120, memory 512, tracing Active
+#
+# Not needed:
+#   - infrastructure/indexer.tf: Sibling module call to same Lambda module.
+#     HARDEST TRAP: identical module source, same custom_env_vars pattern,
+#     same base_env_vars, same tracing_mode = "Active", shares ENABLE_METRICS
+#     key. But deploys search-indexer, not data-processor.
+#
+#   - infrastructure/notifier.tf: Another Lambda module call for sending
+#     notifications. Same module source, same pattern. HARD TRAP: same
+#     module with custom_env_vars. But different function.
+#
+#   - environments/staging/processor.tfvars: Staging config with database
+#     connection string. Contains "database_connection_string" key matching
+#     the var used in the diff. But staging env values, not the module.
+#
+#   - modules/lambda/outputs.tf: Module outputs for function ARN and name.
+#     Same module directory. But outputs flow out, not in.
+#
+#   - tests/test_processor.py: Integration test for the Lambda function.
+#     References environment variables. But test code, not Terraform.
+
+initial:
+  modules/lambda/main.tf: |
+    resource "aws_lambda_function" "processor" {
+      function_name = var.function_name
+      role          = aws_iam_role.lambda.arn
+      handler       = var.handler
+      runtime       = var.runtime
+      timeout       = var.timeout
+      memory_size   = var.memory_size
+
+      filename         = data.archive_file.lambda.output_path
+      source_code_hash = data.archive_file.lambda.output_base64sha256
+
+      environment {
+        variables = merge(var.base_env_vars, var.custom_env_vars)
+      }
+
+      tracing_config {
+        mode = var.tracing_mode
+      }
+
+      tags = var.tags
+    }
+
+    resource "aws_iam_role" "lambda" {
+      name = "${var.function_name}-role"
+
+      assume_role_policy = jsonencode({
+        Version = "2012-10-17"
+        Statement = [{
+          Effect    = "Allow"
+          Principal = { Service = "lambda.amazonaws.com" }
+          Action    = "sts:AssumeRole"
+        }]
+      })
+    }
+
+    resource "aws_iam_role_policy_attachment" "lambda_basic" {
+      role       = aws_iam_role.lambda.name
+      policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+    }
+
+    data "archive_file" "lambda" {
+      type        = "zip"
+      source_dir  = var.source_dir
+      output_path = "${path.module}/function.zip"
+    }
+  modules/lambda/variables.tf: |
+    variable "function_name" {
+      type = string
+    }
+
+    variable "handler" {
+      type    = string
+      default = "index.handler"
+    }
+
+    variable "runtime" {
+      type    = string
+      default = "nodejs18.x"
+    }
+
+    variable "timeout" {
+      type    = number
+      default = 30
+    }
+
+    variable "memory_size" {
+      type    = number
+      default = 128
+    }
+
+    variable "source_dir" {
+      type = string
+    }
+
+    variable "base_env_vars" {
+      type    = map(string)
+      default = {}
+    }
+
+    variable "custom_env_vars" {
+      type    = map(string)
+      default = {}
+    }
+
+    variable "tracing_mode" {
+      type    = string
+      default = "PassThrough"
+    }
+
+    variable "tags" {
+      type    = map(string)
+      default = {}
+    }
+  infrastructure/processor.tf: |
+    module "data_processor" {
+      source        = "./modules/lambda"
+      function_name = "data-processor"
+      handler       = "processor.handle"
+      runtime       = "python3.9"
+      source_dir    = "${path.module}/../functions/processor"
+
+      base_env_vars = {
+        LOG_LEVEL = "INFO"
+        REGION    = var.aws_region
+      }
+
+      tags = local.common_tags
+    }
+
+  # Trap: sibling module call to same lambda module with custom_env_vars
+  infrastructure/indexer.tf: |
+    module "search_indexer" {
+      source        = "./modules/lambda"
+      function_name = "search-indexer"
+      handler       = "indexer.handle"
+      runtime       = "python3.9"
+      source_dir    = "${path.module}/../functions/indexer"
+      timeout       = 180
+      memory_size   = 1024
+      tracing_mode  = "Active"
+
+      base_env_vars = {
+        LOG_LEVEL = "INFO"
+        REGION    = var.aws_region
+      }
+
+      custom_env_vars = {
+        ELASTICSEARCH_URL = var.elasticsearch_endpoint
+        INDEX_NAME        = "search-main"
+        BATCH_SIZE        = "500"
+        ENABLE_METRICS    = "true"
+      }
+
+      tags = local.common_tags
+    }
+
+  infrastructure/notifier.tf: |
+    module "email_notifier" {
+      source        = "./modules/lambda"
+      function_name = "email-notifier"
+      handler       = "notifier.handle"
+      runtime       = "python3.9"
+      source_dir    = "${path.module}/../functions/notifier"
+      timeout       = 60
+      memory_size   = 256
+
+      base_env_vars = {
+        LOG_LEVEL = "INFO"
+        REGION    = var.aws_region
+      }
+
+      custom_env_vars = {
+        SMTP_HOST     = var.smtp_host
+        SMTP_PORT     = "587"
+        FROM_ADDRESS  = "noreply@example.com"
+      }
+
+      tags = local.common_tags
+    }
+
+  # Trap: staging tfvars with overlapping variable names
+  environments/staging/processor.tfvars: |
+    aws_region                  = "us-west-2"
+    database_connection_string  = "postgres://staging-db.internal:5432/processor"
+    environment                 = "staging"
+    log_level                   = "DEBUG"
+
+  modules/lambda/outputs.tf: |
+    output "function_arn" {
+      value = aws_lambda_function.processor.arn
+    }
+
+    output "function_name" {
+      value = aws_lambda_function.processor.function_name
+    }
+
+    output "invoke_arn" {
+      value = aws_lambda_function.processor.invoke_arn
+    }
+
+  tests/test_processor.py: |
+    import os
+    import json
+
+    def test_processor_env_vars():
+        assert os.environ.get("DATABASE_URL") is not None
+        assert os.environ.get("CACHE_ENDPOINT") is not None
+
+    def test_processor_handles_task():
+        from processor import handle
+        event = {"Records": [{"body": json.dumps({"type": "sync"})}]}
+        result = handle(event, None)
+        assert result["statusCode"] == 200
+
+changed:
+  modules/lambda/main.tf: |
+    resource "aws_lambda_function" "processor" {
+      function_name = var.function_name
+      role          = aws_iam_role.lambda.arn
+      handler       = var.handler
+      runtime       = var.runtime
+      timeout       = var.timeout
+      memory_size   = var.memory_size
+
+      filename         = data.archive_file.lambda.output_path
+      source_code_hash = data.archive_file.lambda.output_base64sha256
+
+      environment {
+        variables = merge(var.base_env_vars, var.custom_env_vars)
+      }
+
+      tracing_config {
+        mode = var.tracing_mode
+      }
+
+      tags = var.tags
+    }
+
+    resource "aws_iam_role" "lambda" {
+      name = "${var.function_name}-role"
+
+      assume_role_policy = jsonencode({
+        Version = "2012-10-17"
+        Statement = [{
+          Effect    = "Allow"
+          Principal = { Service = "lambda.amazonaws.com" }
+          Action    = "sts:AssumeRole"
+        }]
+      })
+    }
+
+    resource "aws_iam_role_policy_attachment" "lambda_basic" {
+      role       = aws_iam_role.lambda.name
+      policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+    }
+
+    data "archive_file" "lambda" {
+      type        = "zip"
+      source_dir  = var.source_dir
+      output_path = "${path.module}/function.zip"
+    }
+  modules/lambda/variables.tf: |
+    variable "function_name" {
+      type = string
+    }
+
+    variable "handler" {
+      type    = string
+      default = "index.handler"
+    }
+
+    variable "runtime" {
+      type    = string
+      default = "nodejs18.x"
+    }
+
+    variable "timeout" {
+      type    = number
+      default = 30
+    }
+
+    variable "memory_size" {
+      type    = number
+      default = 128
+    }
+
+    variable "source_dir" {
+      type = string
+    }
+
+    variable "base_env_vars" {
+      type    = map(string)
+      default = {}
+    }
+
+    variable "custom_env_vars" {
+      type    = map(string)
+      default = {}
+    }
+
+    variable "tracing_mode" {
+      type    = string
+      default = "PassThrough"
+    }
+
+    variable "tags" {
+      type    = map(string)
+      default = {}
+    }
+  infrastructure/processor.tf: |
+    module "data_processor" {
+      source        = "./modules/lambda"
+      function_name = "data-processor"
+      handler       = "processor.handle"
+      runtime       = "python3.9"
+      source_dir    = "${path.module}/../functions/processor"
+      timeout       = 120
+      memory_size   = 512
+      tracing_mode  = "Active"
+
+      base_env_vars = {
+        LOG_LEVEL = "DEBUG"
+        REGION    = var.aws_region
+      }
+
+      custom_env_vars = {
+        DATABASE_URL   = var.database_connection_string
+        CACHE_ENDPOINT = aws_elasticache_cluster.main.cache_nodes[0].address
+        QUEUE_URL      = aws_sqs_queue.processor.url
+        ENABLE_METRICS = "true"
+      }
+
+      tags = local.common_tags
+    }
+
+must_include_files:
+  - infrastructure/processor.tf
+
+must_include_content_from:
+  infrastructure/processor.tf:
+    - timeout       = 120
+    - memory_size   = 512
+    - tracing_mode  = "Active"
+    - LOG_LEVEL = "DEBUG"
+    - DATABASE_URL   = var.database_connection_string
+    - CACHE_ENDPOINT = aws_elasticache_cluster.main.cache_nodes[0].address
+    - QUEUE_URL      = aws_sqs_queue.processor.url
+
+must_not_include:
+  # --- indexer.tf: sibling Lambda deploying search-indexer ---
+  - search-indexer
+  - ELASTICSEARCH_URL
+  - INDEX_NAME
+  - BATCH_SIZE        = "500"
+  # --- notifier.tf: another Lambda module call for email ---
+  - email-notifier
+  - SMTP_HOST
+  - FROM_ADDRESS
+  - noreply@example.com
+  # --- staging tfvars: environment-specific overrides ---
+  - "postgres://staging-db.internal"
+  - 'environment                 = "staging"'
+  # --- module outputs: data flowing out, not in ---
+  - invoke_arn
+  # --- test code: not Terraform ---
+  - test_processor_env_vars
+  - test_processor_handles_task
+
+must_not_include_files:
+  - infrastructure/indexer.tf
+  - infrastructure/notifier.tf
+  - environments/staging/processor.tfvars
+  - modules/lambda/outputs.tf
+  - tests/test_processor.py
+
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

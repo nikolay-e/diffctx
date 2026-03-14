@@ -1,0 +1,16 @@
+initial:
+  math_symbols.jl: |
+    x = 1
+changed:
+  math_symbols.jl: |
+    ∑ = sum
+    ∏ = prod
+    α = 0.5
+    β = 0.3
+    result = calculate(α, β)
+must_include_files:
+- math_symbols.jl
+must_include_content:
+- result = calculate(α, β)
+add_garbage_files: false
+skip_garbage_check: true

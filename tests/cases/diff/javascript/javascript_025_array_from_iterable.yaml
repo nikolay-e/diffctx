@@ -1,0 +1,180 @@
+# Scenario: main.ts is rewritten to import NumberRange from iterator.ts
+#   and use Array.from(range) to convert to array. Only main.ts is changed.
+#
+# Diff shows:
+#   - console.log('initial');
+#   + import { NumberRange } from './iterator';
+#   + function getNumbers() { const range = new NumberRange(1, 10); return Array.from(range); }
+#
+# Reviewer questions:
+#   Q1: "Is NumberRange iterable — does Array.from work on it?"
+#       -> iterator.ts (UNCHANGED) implements *[Symbol.iterator]() yielding
+#          integers from start to end. Reviewer must see the iterator to
+#          verify Array.from compatibility.
+#
+#   Q2: "What values will Array.from produce for NumberRange(1, 10)?"
+#       -> Same file: yields i from this.start to this.end inclusive.
+#          For (1, 10) this is [1, 2, ..., 10]. Reviewer needs the loop
+#          bounds to verify correctness.
+#
+# Not needed for comprehension:
+#   - collection-utils.ts: Utilities like chunk(), flatten(), unique() that
+#     also use Array.from. KEYWORD OVERLAP with Array.from in the diff.
+#     But these operate on arrays, not on NumberRange. Not imported by main.ts.
+#
+#   - lazy-sequence.ts: Another iterable class with Symbol.iterator, similar
+#     pattern to NumberRange. STRUCTURAL TRAP: same interface pattern.
+#     But not imported by main.ts and produces different values.
+
+initial:
+  iterator.ts: |
+    export class NumberRange {
+        constructor(private start: number, private end: number) {}
+
+        *[Symbol.iterator]() {
+            for (let i = this.start; i <= this.end; i++) {
+                yield i;
+            }
+        }
+    }
+  main.ts: |
+    console.log('initial');
+  collection-utils.ts: |
+    export function chunk<T>(arr: T[], size: number): T[][] {
+        return Array.from({ length: Math.ceil(arr.length / size) }, (_, i) =>
+            arr.slice(i * size, i * size + size)
+        );
+    }
+
+    export function flatten<T>(nested: T[][]): T[] {
+        return Array.from(nested.reduce((acc, arr) => [...acc, ...arr], []));
+    }
+
+    export function unique<T>(arr: T[]): T[] {
+        return Array.from(new Set(arr));
+    }
+  lazy-sequence.ts: |
+    export class LazySequence<T> {
+        private transforms: ((value: any) => any)[] = [];
+
+        constructor(private source: Iterable<T>) {}
+
+        map<R>(fn: (value: T) => R): LazySequence<R> {
+            this.transforms.push(fn);
+            return this as unknown as LazySequence<R>;
+        }
+
+        filter(predicate: (value: T) => boolean): LazySequence<T> {
+            this.transforms.push((v) => predicate(v) ? v : undefined);
+            return this;
+        }
+
+        *[Symbol.iterator]() {
+            for (const value of this.source) {
+                let result: any = value;
+                for (const transform of this.transforms) {
+                    result = transform(result);
+                    if (result === undefined) break;
+                }
+                if (result !== undefined) yield result;
+            }
+        }
+    }
+
+changed:
+  iterator.ts: |
+    export class NumberRange {
+        constructor(private start: number, private end: number) {}
+
+        *[Symbol.iterator]() {
+            for (let i = this.start; i <= this.end; i++) {
+                yield i;
+            }
+        }
+    }
+  main.ts: |
+    import { NumberRange } from './iterator';
+
+    function getNumbers() {
+        const range = new NumberRange(1, 10);
+        return Array.from(range);
+    }
+
+    console.log(getNumbers());
+  collection-utils.ts: |
+    export function chunk<T>(arr: T[], size: number): T[][] {
+        return Array.from({ length: Math.ceil(arr.length / size) }, (_, i) =>
+            arr.slice(i * size, i * size + size)
+        );
+    }
+
+    export function flatten<T>(nested: T[][]): T[] {
+        return Array.from(nested.reduce((acc, arr) => [...acc, ...arr], []));
+    }
+
+    export function unique<T>(arr: T[]): T[] {
+        return Array.from(new Set(arr));
+    }
+  lazy-sequence.ts: |
+    export class LazySequence<T> {
+        private transforms: ((value: any) => any)[] = [];
+
+        constructor(private source: Iterable<T>) {}
+
+        map<R>(fn: (value: T) => R): LazySequence<R> {
+            this.transforms.push(fn);
+            return this as unknown as LazySequence<R>;
+        }
+
+        filter(predicate: (value: T) => boolean): LazySequence<T> {
+            this.transforms.push((v) => predicate(v) ? v : undefined);
+            return this;
+        }
+
+        *[Symbol.iterator]() {
+            for (const value of this.source) {
+                let result: any = value;
+                for (const transform of this.transforms) {
+                    result = transform(result);
+                    if (result === undefined) break;
+                }
+                if (result !== undefined) yield result;
+            }
+        }
+    }
+
+must_include_files:
+  - main.ts
+  # Q1+Q2: NumberRange implements Symbol.iterator, needed to verify Array.from works
+  - iterator.ts
+
+must_include_content_from:
+  main.ts:
+    - "import { NumberRange } from './iterator'"
+    - "Array.from(range)"
+  iterator.ts:
+    - "class NumberRange"
+    - "*[Symbol.iterator]()"
+    - "yield i"
+
+must_not_include:
+  # --- collection-utils.ts: uses Array.from but on arrays, not NumberRange ---
+  # KEYWORD OVERLAP: Array.from appears multiple times. But these utilities
+  # are not imported by main.ts and work on different data types.
+  - chunk
+  - flatten
+  - unique
+  # --- lazy-sequence.ts: another Symbol.iterator class ---
+  # STRUCTURAL TRAP: same iterable pattern as NumberRange.
+  # But not imported by main.ts.
+  - LazySequence
+  - "this.transforms"
+
+must_not_include_files:
+  - collection-utils.ts
+  - lazy-sequence.ts
+
+max_fragments: 5
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

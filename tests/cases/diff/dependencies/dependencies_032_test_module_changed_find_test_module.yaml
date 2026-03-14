@@ -1,0 +1,116 @@
+initial:
+  utils/formatting.py: |
+    def format_currency(amount):
+        return f"${amount:.2f}"
+  tests/utils/test_formatting.py: |
+    from utils.formatting import format_currency
+
+    def test_format_currency():
+        assert format_currency(10) == "$10.00"
+
+  # --- Tricky: same function name format_currency (name collision) ---
+  utils/locale_formatting.py: |
+    GARBAGE_DEP032_LOCALE_FMT_A = "locale_formatting"
+    GARBAGE_DEP032_LOCALE_INIT_B = True
+
+    def format_currency(amount, locale="en_US"):
+        GARBAGE_DEP032_LOCALE_CONV_C = "converting"
+        symbols = {"en_US": "$", "de_DE": "EUR", "ja_JP": "JPY"}
+        sym = symbols.get(locale, "$")
+        return f"{sym}{amount:.2f}"
+
+  # --- Tricky: same import, same test directory ---
+  tests/utils/test_locale_formatting.py: |
+    from utils.locale_formatting import format_currency
+    GARBAGE_DEP032_LOCTEST_D = "locale_test_module"
+    GARBAGE_DEP032_LOCTEST_ASSERT_E = True
+
+    def test_format_currency():
+        GARBAGE_DEP032_LOCTEST_RUN_F = "running"
+        assert format_currency(10, "de_DE") == "EUR10.00"
+
+  # --- Tricky: same directory, similar utility pattern ---
+  utils/number_formatting.py: |
+    GARBAGE_DEP032_NUMFMT_G = "number_formatting"
+    GARBAGE_DEP032_NUMFMT_INIT_H = True
+
+    def format_percentage(value):
+        GARBAGE_DEP032_NUMFMT_PCT_I = "percent"
+        return f"{value:.1f}%"
+
+    def format_decimal(value, places=2):
+        return f"{value:.{places}f}"
+
+changed:
+  utils/formatting.py: |
+    def format_currency(amount, symbol="$"):
+        return f"{symbol}{amount:.2f}"
+  tests/utils/test_formatting.py: |
+    from utils.formatting import format_currency
+
+    def test_format_currency():
+        assert format_currency(10) == "$10.00"
+  utils/locale_formatting.py: |
+    GARBAGE_DEP032_LOCALE_FMT_A = "locale_formatting"
+    GARBAGE_DEP032_LOCALE_INIT_B = True
+
+    def format_currency(amount, locale="en_US"):
+        GARBAGE_DEP032_LOCALE_CONV_C = "converting"
+        symbols = {"en_US": "$", "de_DE": "EUR", "ja_JP": "JPY"}
+        sym = symbols.get(locale, "$")
+        return f"{sym}{amount:.2f}"
+  tests/utils/test_locale_formatting.py: |
+    from utils.locale_formatting import format_currency
+    GARBAGE_DEP032_LOCTEST_D = "locale_test_module"
+    GARBAGE_DEP032_LOCTEST_ASSERT_E = True
+
+    def test_format_currency():
+        GARBAGE_DEP032_LOCTEST_RUN_F = "running"
+        assert format_currency(10, "de_DE") == "EUR10.00"
+  utils/number_formatting.py: |
+    GARBAGE_DEP032_NUMFMT_G = "number_formatting"
+    GARBAGE_DEP032_NUMFMT_INIT_H = True
+
+    def format_percentage(value):
+        GARBAGE_DEP032_NUMFMT_PCT_I = "percent"
+        return f"{value:.1f}%"
+
+    def format_decimal(value, places=2):
+        return f"{value:.{places}f}"
+
+# === Assertions ===
+
+must_include_files:
+- utils/formatting.py
+- tests/utils/test_formatting.py
+
+must_include_content_from:
+  utils/formatting.py:
+    - 'def format_currency(amount, symbol="$"):'
+    - return f"{symbol}{amount:.2f}"
+  tests/utils/test_formatting.py:
+    - 'def test_format_currency():'
+
+must_not_include:
+# Tricky: same function name format_currency (name collision in different module)
+- GARBAGE_DEP032_LOCALE_FMT_A
+- GARBAGE_DEP032_LOCALE_INIT_B
+- GARBAGE_DEP032_LOCALE_CONV_C
+# Tricky: same test function name test_format_currency, same test directory
+- GARBAGE_DEP032_LOCTEST_D
+- GARBAGE_DEP032_LOCTEST_ASSERT_E
+- GARBAGE_DEP032_LOCTEST_RUN_F
+# Tricky: same utils/ directory, similar formatting utility
+- GARBAGE_DEP032_NUMFMT_G
+- GARBAGE_DEP032_NUMFMT_INIT_H
+- GARBAGE_DEP032_NUMFMT_PCT_I
+
+must_not_include_files:
+- utils/locale_formatting.py
+- tests/utils/test_locale_formatting.py
+- utils/number_formatting.py
+
+max_fragments: 5
+max_files: 2
+add_garbage_files: false
+skip_garbage_check: true

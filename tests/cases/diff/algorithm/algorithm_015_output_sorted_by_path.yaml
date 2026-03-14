@@ -1,0 +1,236 @@
+initial:
+  src/z_module/handler.py: |
+    from typing import Any, Dict
+
+    class ZHandler:
+        def __init__(self, config: Dict[str, Any]):
+            self.config = config
+
+        def handle(self, data: Any) -> Any:
+            return data
+
+        def validate(self, data: Any) -> bool:
+            return True
+  src/a_module/processor.py: |
+    from typing import List, Any
+
+    class AProcessor:
+        def __init__(self):
+            self.items: List[Any] = []
+
+        def process(self, item: Any) -> Any:
+            self.items.append(item)
+            return item
+
+        def get_all(self) -> List[Any]:
+            return self.items
+  src/m_module/service.py: |
+    from typing import Optional
+
+    class MService:
+        def __init__(self, name: str):
+            self.name = name
+
+        def execute(self) -> str:
+            return f"Executing {self.name}"
+
+  # --- Tricky garbage: name collision — another handler/processor with same method names ---
+  src/z_module/backup_handler.py: |
+    from typing import Any, Dict, Optional
+    GARBAGE_ALGO_015_BACKUP_HANDLER_G = "backup_handler"
+    GARBAGE_ALGO_015_BACKUP_VER_H = "1.2"
+
+    class BackupHandler:
+        def __init__(self, config: Dict[str, Any]):
+            self.config = config
+            self.last_error: Optional[str] = None
+
+        def handle(self, data: Any) -> Any:
+            GARBAGE_ALGO_015_BACKUP_HANDLE_I = True
+            return data
+
+        def validate(self, data: Any) -> bool:
+            return data is not None
+
+  # --- Tricky garbage: same-import consumer — uses typing like both changed files ---
+  src/a_module/transformer.py: |
+    from typing import List, Any, Callable
+    GARBAGE_ALGO_015_TRANSFORMER_J = "transformer"
+    GARBAGE_ALGO_015_TRANSFORM_VER_K = "2.0"
+
+    class Transformer:
+        def __init__(self, transform: Callable[[Any], Any] = None):
+            self.items: List[Any] = []
+            self.transform = transform or (lambda x: x)
+
+        def process(self, item: Any) -> Any:
+            GARBAGE_ALGO_015_TRANSFORM_PROC_L = True
+            transformed = self.transform(item)
+            self.items.append(transformed)
+            return transformed
+
+  # --- Plain garbage ---
+  garbage_extras.py: |
+    GARBAGE_ALGO_015_EXTRA_MARKER_A = "extra"
+    GARBAGE_ALGO_015_BONUS_MARKER_B = True
+
+    class ExtraFeatures:
+        GARBAGE_ALGO_015_FEATURE_MARKER_C = {}
+
+        def enable(self) -> None:
+            pass
+  garbage_utils.py: |
+    GARBAGE_ALGO_015_UTIL_MARKER_D = "util"
+    GARBAGE_ALGO_015_HELPER_MARKER_E = []
+
+    class UtilityFunctions:
+        GARBAGE_ALGO_015_FUNC_MARKER_F = True
+
+        def helper(self) -> None:
+            pass
+changed:
+  src/z_module/handler.py: |
+    from typing import Any, Dict, Optional
+
+    class ZHandler:
+        def __init__(self, config: Dict[str, Any]):
+            self.config = config
+            self.last_error: Optional[str] = None
+
+        def handle(self, data: Any) -> Any:
+            try:
+                return self._process(data)
+            except Exception as e:
+                self.last_error = str(e)
+                return None
+
+        def _process(self, data: Any) -> Any:
+            return data
+
+        def validate(self, data: Any) -> bool:
+            return data is not None
+  src/a_module/processor.py: |
+    from typing import List, Any, Callable
+
+    class AProcessor:
+        def __init__(self, transform: Callable[[Any], Any] = None):
+            self.items: List[Any] = []
+            self.transform = transform or (lambda x: x)
+
+        def process(self, item: Any) -> Any:
+            transformed = self.transform(item)
+            self.items.append(transformed)
+            return transformed
+
+        def get_all(self) -> List[Any]:
+            return self.items.copy()
+
+        def clear(self) -> None:
+            self.items.clear()
+  src/m_module/service.py: |
+    from typing import Optional
+
+    class MService:
+        def __init__(self, name: str):
+            self.name = name
+
+        def execute(self) -> str:
+            return f"Executing {self.name}"
+
+  # --- Tricky garbage: unchanged ---
+  src/z_module/backup_handler.py: |
+    from typing import Any, Dict, Optional
+    GARBAGE_ALGO_015_BACKUP_HANDLER_G = "backup_handler"
+    GARBAGE_ALGO_015_BACKUP_VER_H = "1.2"
+
+    class BackupHandler:
+        def __init__(self, config: Dict[str, Any]):
+            self.config = config
+            self.last_error: Optional[str] = None
+
+        def handle(self, data: Any) -> Any:
+            GARBAGE_ALGO_015_BACKUP_HANDLE_I = True
+            return data
+
+        def validate(self, data: Any) -> bool:
+            return data is not None
+
+  src/a_module/transformer.py: |
+    from typing import List, Any, Callable
+    GARBAGE_ALGO_015_TRANSFORMER_J = "transformer"
+    GARBAGE_ALGO_015_TRANSFORM_VER_K = "2.0"
+
+    class Transformer:
+        def __init__(self, transform: Callable[[Any], Any] = None):
+            self.items: List[Any] = []
+            self.transform = transform or (lambda x: x)
+
+        def process(self, item: Any) -> Any:
+            GARBAGE_ALGO_015_TRANSFORM_PROC_L = True
+            transformed = self.transform(item)
+            self.items.append(transformed)
+            return transformed
+
+  # --- Plain garbage ---
+  garbage_extras.py: |
+    GARBAGE_ALGO_015_EXTRA_MARKER_A = "extra"
+    GARBAGE_ALGO_015_BONUS_MARKER_B = True
+
+    class ExtraFeatures:
+        GARBAGE_ALGO_015_FEATURE_MARKER_C = {}
+
+        def enable(self) -> None:
+            pass
+  garbage_utils.py: |
+    GARBAGE_ALGO_015_UTIL_MARKER_D = "util"
+    GARBAGE_ALGO_015_HELPER_MARKER_E = []
+
+    class UtilityFunctions:
+        GARBAGE_ALGO_015_FUNC_MARKER_F = True
+
+        def helper(self) -> None:
+            pass
+
+# === Assertions ===
+
+must_include_files:
+- src/a_module/processor.py
+- src/z_module/handler.py
+
+must_include_content_from:
+  src/a_module/processor.py:
+    - from typing import List, Any, Callable
+    - transformed = self.transform(item)
+    - 'self.transform = transform or (lambda x: x)'
+    - return self.items.copy()
+  src/z_module/handler.py:
+    - self.last_error = str(e)
+    - return data is not None
+
+must_not_include:
+# Plain garbage markers
+- GARBAGE_ALGO_015_EXTRA_MARKER_A
+- GARBAGE_ALGO_015_BONUS_MARKER_B
+- GARBAGE_ALGO_015_FEATURE_MARKER_C
+- GARBAGE_ALGO_015_UTIL_MARKER_D
+- GARBAGE_ALGO_015_HELPER_MARKER_E
+- GARBAGE_ALGO_015_FUNC_MARKER_F
+# Tricky: name collision — same handle, validate, last_error in same directory
+- GARBAGE_ALGO_015_BACKUP_HANDLER_G
+- GARBAGE_ALGO_015_BACKUP_VER_H
+- GARBAGE_ALGO_015_BACKUP_HANDLE_I
+# Tricky: same-import consumer — same Callable, transform, process methods
+- GARBAGE_ALGO_015_TRANSFORMER_J
+- GARBAGE_ALGO_015_TRANSFORM_VER_K
+- GARBAGE_ALGO_015_TRANSFORM_PROC_L
+
+must_not_include_files:
+- garbage_extras.py
+- garbage_utils.py
+- src/z_module/backup_handler.py
+- src/a_module/transformer.py
+
+max_fragments: 8
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

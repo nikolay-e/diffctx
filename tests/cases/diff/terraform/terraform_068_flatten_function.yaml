@@ -1,0 +1,413 @@
+# Scenario: Adding a database subnet group to var.subnet_groups and a new
+#   local.public_cidrs filtered local. local.all_cidrs now includes database CIDRs.
+#   Only main.tf is changed.
+#
+# Diff shows:
+#   + database = { cidrs = ["10.0.20.0/24", "10.0.21.0/24"] } in subnet_groups
+#   + local.public_cidrs = flatten with `if name == "public"` filter
+#   (local.all_cidrs unchanged but now iterates 3 groups instead of 2,
+#    so the SG ingress rule silently expands to include database CIDRs)
+#
+# Reviewer questions:
+#   Q1: "local.all_cidrs now includes 10.0.20.0/24 and 10.0.21.0/24.
+#        Where are the actual aws_subnet resources created from these CIDRs?"
+#       -> Needs networking/subnets.tf: it iterates var.subnet_groups with
+#         for_each to create subnets. The new database group will generate
+#         two new subnets. Without seeing this, the reviewer can't verify
+#         that the CIDRs in var.subnet_groups actually become real subnets.
+#
+#   Q2: "The SG ingress rule uses local.all_cidrs. Adding database CIDRs
+#        means DB subnets can now reach ALL ports (0-65535) on this SG.
+#        Is that intentional?"
+#       -> main.tf's ingress rule is visible in the diff. But the reviewer
+#         needs to understand WHAT is behind this SG. networking/subnets.tf
+#         shows the subnet→SG relationship.
+#
+#   Q3: "What is local.public_cidrs used for — it's new but nothing in
+#        the diff references it?"
+#       -> Needs alb/listeners.tf: it uses local.public_cidrs for the ALB
+#         subnet assignment. The new local was added to support a separate
+#         concern (ALB needs ONLY public subnets). Without seeing the
+#         consumer, the reviewer might think public_cidrs is dead code.
+#
+# Not needed for comprehension:
+#   - networking/route_tables.tf: Creates route tables with routes for
+#     EACH subnet group. References var.subnet_groups with for_each —
+#     SAME variable as the diff, SAME iteration pattern. HARDEST TRAP:
+#     the database group will get a new route table, which is structurally
+#     important but doesn't help review the CIDR/SG question. Route
+#     table entries (0.0.0.0/0 → NAT gateway) are independent of which
+#     CIDRs are in the SG ingress rule.
+#
+#   - security/sg_rules.tf: Additional SG rules on aws_security_group.main.
+#     References the SAME security_group_id as the diff's ingress rule.
+#     Direct structural edge. Contains port-specific rules (443, 5432).
+#     But these rules use different cidr_blocks (specific IPs, not
+#     local.all_cidrs). The diff's concern is "all_cidrs expanded" not
+#     "what other rules exist."
+#
+#   - networking/nacl.tf: Network ACLs with 10.0.x.0/24 CIDR ranges —
+#     lexically similar to the new database CIDRs. Same networking
+#     domain. But NACLs are independently managed; adding CIDRs to
+#     subnet_groups doesn't change NACL rules.
+#
+#   - terraform.tfvars: Provides actual values for subnet_groups that
+#     OVERRIDE the default in the variable block. Contains the database
+#     group with different CIDRs (10.0.30.0/24 instead of 10.0.20.0/24).
+#     IMPORTANT TRAP: the reviewer might think the diff's CIDRs are
+#     authoritative, but tfvars overrides them. However, the reviewer
+#     question is about the STRUCTURE (does a database group exist, what
+#     does all_cidrs include), not the specific CIDR values at deploy time.
+#
+#   - database/rds.tf: RDS instance in a DB subnet group. Same "database"
+#     domain as the new subnet group. But it references var.database_subnet_ids
+#     (a separate variable), not var.subnet_groups. No structural edge to
+#     the diff's variable.
+
+initial:
+  main.tf: |
+    variable "subnet_groups" {
+      type = map(object({
+        cidrs = list(string)
+      }))
+      default = {
+        public = {
+          cidrs = ["10.0.1.0/24", "10.0.2.0/24"]
+        }
+        private = {
+          cidrs = ["10.0.10.0/24", "10.0.11.0/24"]
+        }
+      }
+    }
+
+    locals {
+      all_cidrs = flatten([
+        for group in var.subnet_groups : group.cidrs
+      ])
+    }
+
+    resource "aws_security_group" "main" {
+      name   = "app-main-sg"
+      vpc_id = aws_vpc.main.id
+    }
+
+    resource "aws_security_group_rule" "allow_internal" {
+      type              = "ingress"
+      from_port         = 0
+      to_port           = 65535
+      protocol          = "tcp"
+      cidr_blocks       = local.all_cidrs
+      security_group_id = aws_security_group.main.id
+    }
+
+  networking/subnets.tf: |
+    resource "aws_vpc" "main" {
+      cidr_block           = "10.0.0.0/16"
+      enable_dns_hostnames = true
+
+      tags = { Name = "app-vpc" }
+    }
+
+    resource "aws_subnet" "groups" {
+      for_each = {
+        for pair in flatten([
+          for name, group in var.subnet_groups : [
+            for idx, cidr in group.cidrs : {
+              key  = "${name}-${idx}"
+              cidr = cidr
+              name = name
+            }
+          ]
+        ]) : pair.key => pair
+      }
+
+      vpc_id            = aws_vpc.main.id
+      cidr_block        = each.value.cidr
+      availability_zone = element(data.aws_availability_zones.available.names, index(keys(var.subnet_groups), each.value.name) % length(data.aws_availability_zones.available.names))
+
+      tags = {
+        Name  = "app-${each.key}"
+        Group = each.value.name
+      }
+    }
+
+    data "aws_availability_zones" "available" {
+      state = "available"
+    }
+
+  alb/listeners.tf: |
+    resource "aws_lb" "app" {
+      name               = "app-alb"
+      internal           = false
+      load_balancer_type = "application"
+      subnets            = [for s in aws_subnet.groups : s.id if s.tags["Group"] == "public"]
+      security_groups    = [aws_security_group.main.id]
+    }
+
+    resource "aws_lb_listener" "https" {
+      load_balancer_arn = aws_lb.app.arn
+      port              = 443
+      protocol          = "HTTPS"
+      certificate_arn   = aws_acm_certificate.app.arn
+
+      default_action {
+        type             = "forward"
+        target_group_arn = aws_lb_target_group.app.arn
+      }
+    }
+
+  networking/route_tables.tf: |
+    resource "aws_route_table" "groups" {
+      for_each = var.subnet_groups
+
+      vpc_id = aws_vpc.main.id
+
+      tags = {
+        Name = "rt-${each.key}"
+      }
+    }
+
+    resource "aws_route" "nat" {
+      for_each = {
+        for name, _ in var.subnet_groups : name => name
+        if name != "public"
+      }
+
+      route_table_id         = aws_route_table.groups[each.key].id
+      destination_cidr_block = "0.0.0.0/0"
+      nat_gateway_id         = aws_nat_gateway.main.id
+    }
+
+    resource "aws_route" "igw" {
+      route_table_id         = aws_route_table.groups["public"].id
+      destination_cidr_block = "0.0.0.0/0"
+      gateway_id             = aws_internet_gateway.main.id
+    }
+
+    resource "aws_route_table_association" "groups" {
+      for_each = aws_subnet.groups
+
+      subnet_id      = each.value.id
+      route_table_id = aws_route_table.groups[each.value.tags["Group"]].id
+    }
+
+  security/sg_rules.tf: |
+    resource "aws_security_group_rule" "allow_https" {
+      type              = "ingress"
+      from_port         = 443
+      to_port           = 443
+      protocol          = "tcp"
+      cidr_blocks       = ["0.0.0.0/0"]
+      security_group_id = aws_security_group.main.id
+    }
+
+    resource "aws_security_group_rule" "allow_postgres" {
+      type                     = "ingress"
+      from_port                = 5432
+      to_port                  = 5432
+      protocol                 = "tcp"
+      source_security_group_id = aws_security_group.main.id
+      security_group_id        = aws_security_group.database.id
+    }
+
+    resource "aws_security_group_rule" "allow_outbound" {
+      type              = "egress"
+      from_port         = 0
+      to_port           = 0
+      protocol          = "-1"
+      cidr_blocks       = ["0.0.0.0/0"]
+      security_group_id = aws_security_group.main.id
+    }
+
+  networking/nacl.tf: |
+    resource "aws_network_acl" "private" {
+      vpc_id     = aws_vpc.main.id
+      subnet_ids = [for s in aws_subnet.groups : s.id if s.tags["Group"] == "private"]
+
+      ingress {
+        protocol   = "tcp"
+        rule_no    = 100
+        action     = "allow"
+        cidr_block = "10.0.1.0/24"
+        from_port  = 0
+        to_port    = 65535
+      }
+
+      ingress {
+        protocol   = "tcp"
+        rule_no    = 200
+        action     = "allow"
+        cidr_block = "10.0.2.0/24"
+        from_port  = 0
+        to_port    = 65535
+      }
+
+      egress {
+        protocol   = "-1"
+        rule_no    = 100
+        action     = "allow"
+        cidr_block = "0.0.0.0/0"
+        from_port  = 0
+        to_port    = 0
+      }
+    }
+
+  terraform.tfvars: |
+    subnet_groups = {
+      public = {
+        cidrs = ["10.0.1.0/24", "10.0.2.0/24"]
+      }
+      private = {
+        cidrs = ["10.0.10.0/24", "10.0.11.0/24"]
+      }
+      database = {
+        cidrs = ["10.0.30.0/24", "10.0.31.0/24"]
+      }
+    }
+
+  database/rds.tf: |
+    resource "aws_db_subnet_group" "main" {
+      name       = "main-db-subnet-group"
+      subnet_ids = var.database_subnet_ids
+
+      tags = {
+        Name = "Main DB Subnet Group"
+      }
+    }
+
+    resource "aws_db_instance" "main" {
+      identifier           = "app-database"
+      engine               = "postgres"
+      engine_version       = "15.4"
+      instance_class       = "db.t3.medium"
+      db_subnet_group_name = aws_db_subnet_group.main.name
+      vpc_security_group_ids = [aws_security_group.database.id]
+      allocated_storage    = 20
+    }
+
+changed:
+  main.tf: |
+    variable "subnet_groups" {
+      type = map(object({
+        cidrs = list(string)
+      }))
+      default = {
+        public = {
+          cidrs = ["10.0.1.0/24", "10.0.2.0/24"]
+        }
+        private = {
+          cidrs = ["10.0.10.0/24", "10.0.11.0/24"]
+        }
+        database = {
+          cidrs = ["10.0.20.0/24", "10.0.21.0/24"]
+        }
+      }
+    }
+
+    locals {
+      all_cidrs = flatten([
+        for group in var.subnet_groups : group.cidrs
+      ])
+
+      public_cidrs = flatten([
+        for name, group in var.subnet_groups : group.cidrs
+        if name == "public"
+      ])
+    }
+
+    resource "aws_security_group" "main" {
+      name   = "app-main-sg"
+      vpc_id = aws_vpc.main.id
+    }
+
+    resource "aws_security_group_rule" "allow_internal" {
+      type              = "ingress"
+      from_port         = 0
+      to_port           = 65535
+      protocol          = "tcp"
+      cidr_blocks       = local.all_cidrs
+      security_group_id = aws_security_group.main.id
+    }
+
+must_include_files:
+  - main.tf
+  # Q1: subnets.tf iterates var.subnet_groups with for_each to CREATE
+  # actual aws_subnet resources. The new database group generates two
+  # new subnets. Without this, the reviewer sees CIDRs in a variable
+  # but can't verify they become real subnets.
+  - networking/subnets.tf
+  # Q3: alb/listeners.tf uses a filter on Group == "public" to select
+  # subnets for the ALB. This is the consumer of the distinction between
+  # public/private/database subnets — it explains WHY local.public_cidrs
+  # was added (ALB needs only public subnets). Without this, public_cidrs
+  # looks like dead code.
+  - alb/listeners.tf
+
+must_include_content_from:
+  main.tf:
+    - 'cidrs = ["10.0.20.0/24", "10.0.21.0/24"]'
+    - 'if name == "public"'
+    - "cidr_blocks       = local.all_cidrs"
+  networking/subnets.tf:
+    - "for name, group in var.subnet_groups"
+    - "cidr_block        = each.value.cidr"
+    - 'Group = each.value.name'
+  alb/listeners.tf:
+    - 'if s.tags["Group"] == "public"'
+    - "security_groups    = [aws_security_group.main.id]"
+
+must_not_include:
+  # --- networking/route_tables.tf: for_each on SAME var.subnet_groups ---
+  # HARDEST TRAP. Iterates var.subnet_groups — the SAME variable the diff
+  # modifies. The database group will generate a new route table + NAT
+  # route. Direct structural edge via shared variable. But route table
+  # entries (0.0.0.0/0 → NAT) don't help review the CIDR/SG expansion
+  # or the public_cidrs filter logic.
+  - "rt-${each.key}"
+  - nat_gateway_id
+  - aws_internet_gateway
+  - aws_route_table_association
+  # --- security/sg_rules.tf: SAME security_group_id as diff's SG rule ---
+  # Direct structural edge: references aws_security_group.main.id —
+  # the exact SG from the diff. Contains port 443 and 5432 rules.
+  # But these rules use different cidr_blocks (0.0.0.0/0, self-ref).
+  # The diff's concern is "all_cidrs now includes DB subnets" not
+  # "what other port rules exist on this SG."
+  - allow_https
+  - allow_postgres
+  - allow_outbound
+  - "source_security_group_id"
+  # --- networking/nacl.tf: CIDR ranges 10.0.x.0/24 (lexical overlap) ---
+  # Has 10.0.1.0/24 and 10.0.2.0/24 — existing public CIDRs. The new
+  # database CIDRs (10.0.20.0/24) are in the same IP space. But NACLs
+  # are independently managed — adding to subnet_groups doesn't auto-
+  # update NACL rules. (That might be a bug, but it's not THIS diff's concern.)
+  - aws_network_acl
+  - rule_no
+  # --- terraform.tfvars: overrides var.subnet_groups with DIFFERENT CIDRs ---
+  # Contains database group with 10.0.30.0/24 instead of 10.0.20.0/24.
+  # This means the diff's default CIDRs are overridden at deploy time.
+  # Interesting fact, but the reviewer question is about STRUCTURE (does
+  # database group exist, what does all_cidrs iterate), not about which
+  # specific CIDRs win at plan time.
+  - "10.0.30.0/24"
+  - "10.0.31.0/24"
+  # --- database/rds.tf: "database" domain, but uses var.database_subnet_ids ---
+  # No structural edge to var.subnet_groups. Uses a DIFFERENT variable.
+  # Same domain name is a lexical coincidence.
+  - aws_db_subnet_group
+  - aws_db_instance
+  - database_subnet_ids
+  - "db.t3.medium"
+
+must_not_include_files:
+  - networking/route_tables.tf
+  - security/sg_rules.tf
+  - networking/nacl.tf
+  - terraform.tfvars
+  - database/rds.tf
+
+max_fragments: 5
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

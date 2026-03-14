@@ -1,0 +1,159 @@
+# Test: Redux actions expanded — reviewer needs the reducer
+#
+# Scenario: actions.ts adds RESET and SET action types with creators
+# reset() and setValue(). The reducer.ts imports from actions.ts
+# but only handles INCREMENT and DECREMENT.
+#
+# Reviewer questions:
+#   Q1: "Does the reducer handle the new RESET and SET actions?"
+#       → reducer.ts: switch only has INCREMENT and DECREMENT cases.
+#         The new actions fall through to `default: return state`.
+#         Reviewer notices the reducer is NOT updated — either a bug
+#         (forgot to add cases) or intentional (separate PR).
+#   Q2: "What is the state shape?"
+#       → reducer.ts: { count: 0 }. Reviewer verifies SET payload
+#         semantics (setValue takes a number) match the state shape.
+#
+# Not needed:
+#   - src/store/selectors.ts: derived state selectors. Different
+#     layer (read vs write). Selectors don't process actions.
+#   - src/store/middleware.ts: logging middleware. Observability
+#     concern, not relevant to action/reducer logic.
+
+initial:
+  src/store/actions.ts: |
+    export const INCREMENT = 'INCREMENT';
+    export const DECREMENT = 'DECREMENT';
+
+    export const increment = () => ({ type: INCREMENT });
+    export const decrement = () => ({ type: DECREMENT });
+  src/store/reducer.ts: |
+    import { INCREMENT, DECREMENT } from './actions';
+
+    const initialState = { count: 0 };
+
+    export function counterReducer(state = initialState, action: any) {
+        switch (action.type) {
+            case INCREMENT:
+                return { count: state.count + 1 };
+            case DECREMENT:
+                return { count: state.count - 1 };
+            default:
+                return state;
+        }
+    }
+  # --- Not needed: derived state selectors, read-only concern ---
+  src/store/selectors.ts: |
+    interface CounterState {
+        count: number;
+    }
+
+    export function selectCount(state: CounterState): number {
+        return state.count;
+    }
+
+    export function selectIsPositive(state: CounterState): boolean {
+        return state.count > 0;
+    }
+
+    export function selectCountDisplay(state: CounterState): string {
+        return `Count: ${state.count}`;
+    }
+  # --- Not needed: logging middleware, observability concern ---
+  src/store/middleware.ts: |
+    export function loggerMiddleware(store: any) {
+        return (next: any) => (action: any) => {
+            console.log('dispatching:', action.type);
+            const result = next(action);
+            console.log('next state:', store.getState());
+            return result;
+        };
+    }
+
+    export function crashReporter(store: any) {
+        return (next: any) => (action: any) => {
+            try {
+                return next(action);
+            } catch (err) {
+                console.error('Caught exception:', err);
+                throw err;
+            }
+        };
+    }
+changed:
+  src/store/actions.ts: |
+    export const INCREMENT = 'INCREMENT';
+    export const DECREMENT = 'DECREMENT';
+    export const RESET = 'RESET';
+    export const SET = 'SET';
+
+    export const increment = () => ({ type: INCREMENT });
+    export const decrement = () => ({ type: DECREMENT });
+    export const reset = () => ({ type: RESET });
+    export const setValue = (value: number) => ({ type: SET, payload: value });
+  src/store/reducer.ts: |
+    import { INCREMENT, DECREMENT } from './actions';
+
+    const initialState = { count: 0 };
+
+    export function counterReducer(state = initialState, action: any) {
+        switch (action.type) {
+            case INCREMENT:
+                return { count: state.count + 1 };
+            case DECREMENT:
+                return { count: state.count - 1 };
+            default:
+                return state;
+        }
+    }
+  src/store/selectors.ts: |
+    interface CounterState {
+        count: number;
+    }
+
+    export function selectCount(state: CounterState): number {
+        return state.count;
+    }
+
+    export function selectIsPositive(state: CounterState): boolean {
+        return state.count > 0;
+    }
+
+    export function selectCountDisplay(state: CounterState): string {
+        return `Count: ${state.count}`;
+    }
+  src/store/middleware.ts: |
+    export function loggerMiddleware(store: any) {
+        return (next: any) => (action: any) => {
+            console.log('dispatching:', action.type);
+            const result = next(action);
+            console.log('next state:', store.getState());
+            return result;
+        };
+    }
+
+    export function crashReporter(store: any) {
+        return (next: any) => (action: any) => {
+            try {
+                return next(action);
+            } catch (err) {
+                console.error('Caught exception:', err);
+                throw err;
+            }
+        };
+    }
+must_include_files:
+- src/store/actions.ts
+must_include_content:
+- INCREMENT = 'INCREMENT'
+- DECREMENT = 'DECREMENT'
+must_not_include:
+  # selectors.ts: derived state, read-only concern
+  - selectCount
+  - selectIsPositive
+  - selectCountDisplay
+  # middleware.ts: logging/crash reporting, observability concern
+  - loggerMiddleware
+  - crashReporter
+add_garbage_files: false
+skip_garbage_check: true

@@ -1,0 +1,577 @@
+# Scenario: BaseEntity gains audit fields (updatedAt, updatedBy, version,
+#   soft delete). Product and Category extend BaseEntity but are NOT changed.
+#   Only BaseEntity.java is changed.
+#
+# Diff shows:
+#   + updatedAt, updatedBy, version, deleted fields
+#   + onUpdate(user), softDelete(user), restore(user), isNew() methods
+#   + toString() override
+#   - Constructor now initializes version=0, deleted=false
+#
+# Reviewer questions:
+#   Q1: "Do existing subclasses (Product, Category) break with these changes?"
+#       -> Need Product.java and Category.java to verify they call super()
+#         and don't shadow any new fields. Product has its own constructor
+#         that calls super() — compatible. Category also calls super().
+#
+#   Q2: "Is the version incrementing in onUpdate correct?"
+#       -> Self-contained in BaseEntity diff: version++ in onUpdate().
+#
+# Not needed for comprehension:
+#   - AuditLogRepository.java: Spring @Repository that queries BaseEntity
+#     subclasses by updatedAt and createdBy — uses the exact new fields.
+#     HARDEST TRAP: direct structural edge to the new audit fields. But
+#     the repository is a consumer of the fields, not needed to verify
+#     the BaseEntity implementation itself.
+#
+#   - AuditLogService.java: @Service that @Autowires AuditLogRepository,
+#     calls softDelete() and onUpdate() on BaseEntity instances. Direct
+#     consumer of the new methods. But HOW the service uses them doesn't
+#     help review whether the methods are implemented correctly.
+#
+#   - BaseEntityTest.java: Tests the new version/softDelete behavior.
+#     Direct structural edge. But test expectations don't help review
+#     the implementation.
+
+initial:
+  src/main/java/com/ecommerce/model/BaseEntity.java: |
+    package com.ecommerce.model;
+
+    import java.time.LocalDateTime;
+    import java.util.Objects;
+
+    public abstract class BaseEntity {
+        private Long id;
+        private LocalDateTime createdAt;
+        private String createdBy;
+
+        protected BaseEntity() {
+            this.createdAt = LocalDateTime.now();
+        }
+
+        public Long getId() {
+            return id;
+        }
+
+        public void setId(Long id) {
+            this.id = id;
+        }
+
+        public LocalDateTime getCreatedAt() {
+            return createdAt;
+        }
+
+        public String getCreatedBy() {
+            return createdBy;
+        }
+
+        public void setCreatedBy(String createdBy) {
+            this.createdBy = createdBy;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (o == null || getClass() != o.getClass()) return false;
+            BaseEntity that = (BaseEntity) o;
+            return Objects.equals(id, that.id);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(id);
+        }
+    }
+
+  src/main/java/com/ecommerce/model/Product.java: |
+    package com.ecommerce.model;
+
+    import java.math.BigDecimal;
+
+    public class Product extends BaseEntity {
+        private String name;
+        private String description;
+        private BigDecimal price;
+        private String sku;
+        private Integer stockQuantity;
+
+        public Product() {
+            super();
+        }
+
+        public Product(String name, BigDecimal price, String sku) {
+            super();
+            this.name = name;
+            this.price = price;
+            this.sku = sku;
+            this.stockQuantity = 0;
+        }
+
+        public String getName() { return name; }
+        public void setName(String name) { this.name = name; }
+        public String getDescription() { return description; }
+        public void setDescription(String description) { this.description = description; }
+        public BigDecimal getPrice() { return price; }
+        public void setPrice(BigDecimal price) { this.price = price; }
+        public String getSku() { return sku; }
+        public void setSku(String sku) { this.sku = sku; }
+        public Integer getStockQuantity() { return stockQuantity; }
+        public void setStockQuantity(Integer stockQuantity) { this.stockQuantity = stockQuantity; }
+    }
+
+  src/main/java/com/ecommerce/model/Category.java: |
+    package com.ecommerce.model;
+
+    import java.util.ArrayList;
+    import java.util.List;
+
+    public class Category extends BaseEntity {
+        private String name;
+        private Category parent;
+        private List<Category> children = new ArrayList<>();
+
+        public Category() {
+            super();
+        }
+
+        public String getName() { return name; }
+        public void setName(String name) { this.name = name; }
+        public Category getParent() { return parent; }
+        public void setParent(Category parent) { this.parent = parent; }
+        public List<Category> getChildren() { return children; }
+    }
+
+  src/main/java/com/ecommerce/repository/AuditLogRepository.java: |
+    package com.ecommerce.repository;
+
+    import com.ecommerce.model.BaseEntity;
+    import org.springframework.stereotype.Repository;
+    import java.time.LocalDateTime;
+    import java.util.ArrayList;
+    import java.util.Comparator;
+    import java.util.List;
+    import java.util.stream.Collectors;
+
+    @Repository
+    public class AuditLogRepository {
+        private final List<BaseEntity> auditTrail = new ArrayList<>();
+
+        public void recordChange(BaseEntity entity) {
+            auditTrail.add(entity);
+        }
+
+        public List<BaseEntity> findByUpdatedAfter(LocalDateTime since) {
+            return auditTrail.stream()
+                .filter(e -> e.getUpdatedAt() != null && e.getUpdatedAt().isAfter(since))
+                .sorted(Comparator.comparing(BaseEntity::getUpdatedAt).reversed())
+                .collect(Collectors.toList());
+        }
+
+        public List<BaseEntity> findByCreatedBy(String user) {
+            return auditTrail.stream()
+                .filter(e -> user.equals(e.getCreatedBy()))
+                .collect(Collectors.toList());
+        }
+
+        public List<BaseEntity> findDeleted() {
+            return auditTrail.stream()
+                .filter(BaseEntity::isDeleted)
+                .collect(Collectors.toList());
+        }
+
+        public long countByVersion(int minVersion) {
+            return auditTrail.stream()
+                .filter(e -> e.getVersion() >= minVersion)
+                .count();
+        }
+    }
+
+  src/main/java/com/ecommerce/service/AuditLogService.java: |
+    package com.ecommerce.service;
+
+    import com.ecommerce.model.BaseEntity;
+    import com.ecommerce.repository.AuditLogRepository;
+    import org.springframework.stereotype.Service;
+    import java.time.LocalDateTime;
+    import java.util.List;
+
+    @Service
+    public class AuditLogService {
+        private final AuditLogRepository repository;
+
+        public AuditLogService(AuditLogRepository repository) {
+            this.repository = repository;
+        }
+
+        public void markUpdated(BaseEntity entity, String user) {
+            entity.onUpdate(user);
+            repository.recordChange(entity);
+        }
+
+        public void softDeleteEntity(BaseEntity entity, String user) {
+            entity.softDelete(user);
+            repository.recordChange(entity);
+        }
+
+        public void restoreEntity(BaseEntity entity, String user) {
+            entity.restore(user);
+            repository.recordChange(entity);
+        }
+
+        public List<BaseEntity> getRecentChanges(int minutesAgo) {
+            LocalDateTime since = LocalDateTime.now().minusMinutes(minutesAgo);
+            return repository.findByUpdatedAfter(since);
+        }
+    }
+
+  src/test/java/com/ecommerce/model/BaseEntityTest.java: |
+    package com.ecommerce.model;
+
+    import org.junit.jupiter.api.Test;
+    import static org.junit.jupiter.api.Assertions.*;
+
+    class BaseEntityTest {
+        @Test
+        void testVersionIncrementsOnUpdate() {
+            Product product = new Product("Test", null, "SKU-1");
+            assertEquals(0, product.getVersion());
+            product.onUpdate("admin");
+            assertEquals(1, product.getVersion());
+            assertNotNull(product.getUpdatedAt());
+        }
+
+        @Test
+        void testSoftDelete() {
+            Product product = new Product("Test", null, "SKU-1");
+            assertFalse(product.isDeleted());
+            product.softDelete("admin");
+            assertTrue(product.isDeleted());
+            assertEquals(1, product.getVersion());
+        }
+
+        @Test
+        void testRestore() {
+            Product product = new Product("Test", null, "SKU-1");
+            product.softDelete("admin");
+            product.restore("admin");
+            assertFalse(product.isDeleted());
+            assertEquals(2, product.getVersion());
+        }
+    }
+
+changed:
+  src/main/java/com/ecommerce/model/BaseEntity.java: |
+    package com.ecommerce.model;
+
+    import java.time.LocalDateTime;
+    import java.util.Objects;
+
+    public abstract class BaseEntity {
+        private Long id;
+        private LocalDateTime createdAt;
+        private String createdBy;
+        private LocalDateTime updatedAt;
+        private String updatedBy;
+        private Integer version;
+        private boolean deleted;
+
+        protected BaseEntity() {
+            this.createdAt = LocalDateTime.now();
+            this.version = 0;
+            this.deleted = false;
+        }
+
+        public Long getId() {
+            return id;
+        }
+
+        public void setId(Long id) {
+            this.id = id;
+        }
+
+        public LocalDateTime getCreatedAt() {
+            return createdAt;
+        }
+
+        public String getCreatedBy() {
+            return createdBy;
+        }
+
+        public void setCreatedBy(String createdBy) {
+            this.createdBy = createdBy;
+        }
+
+        public LocalDateTime getUpdatedAt() {
+            return updatedAt;
+        }
+
+        public String getUpdatedBy() {
+            return updatedBy;
+        }
+
+        public Integer getVersion() {
+            return version;
+        }
+
+        public boolean isDeleted() {
+            return deleted;
+        }
+
+        protected void onUpdate(String user) {
+            this.updatedAt = LocalDateTime.now();
+            this.updatedBy = user;
+            this.version++;
+        }
+
+        protected void softDelete(String user) {
+            this.deleted = true;
+            onUpdate(user);
+        }
+
+        protected void restore(String user) {
+            this.deleted = false;
+            onUpdate(user);
+        }
+
+        public boolean isNew() {
+            return id == null;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (o == null || getClass() != o.getClass()) return false;
+            BaseEntity that = (BaseEntity) o;
+            return Objects.equals(id, that.id);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(id);
+        }
+
+        @Override
+        public String toString() {
+            return getClass().getSimpleName() + "{id=" + id + ", version=" + version + "}";
+        }
+    }
+
+  src/main/java/com/ecommerce/model/Product.java: |
+    package com.ecommerce.model;
+
+    import java.math.BigDecimal;
+
+    public class Product extends BaseEntity {
+        private String name;
+        private String description;
+        private BigDecimal price;
+        private String sku;
+        private Integer stockQuantity;
+
+        public Product() {
+            super();
+        }
+
+        public Product(String name, BigDecimal price, String sku) {
+            super();
+            this.name = name;
+            this.price = price;
+            this.sku = sku;
+            this.stockQuantity = 0;
+        }
+
+        public String getName() { return name; }
+        public void setName(String name) { this.name = name; }
+        public String getDescription() { return description; }
+        public void setDescription(String description) { this.description = description; }
+        public BigDecimal getPrice() { return price; }
+        public void setPrice(BigDecimal price) { this.price = price; }
+        public String getSku() { return sku; }
+        public void setSku(String sku) { this.sku = sku; }
+        public Integer getStockQuantity() { return stockQuantity; }
+        public void setStockQuantity(Integer stockQuantity) { this.stockQuantity = stockQuantity; }
+    }
+
+  src/main/java/com/ecommerce/model/Category.java: |
+    package com.ecommerce.model;
+
+    import java.util.ArrayList;
+    import java.util.List;
+
+    public class Category extends BaseEntity {
+        private String name;
+        private Category parent;
+        private List<Category> children = new ArrayList<>();
+
+        public Category() {
+            super();
+        }
+
+        public String getName() { return name; }
+        public void setName(String name) { this.name = name; }
+        public Category getParent() { return parent; }
+        public void setParent(Category parent) { this.parent = parent; }
+        public List<Category> getChildren() { return children; }
+    }
+
+  src/main/java/com/ecommerce/repository/AuditLogRepository.java: |
+    package com.ecommerce.repository;
+
+    import com.ecommerce.model.BaseEntity;
+    import org.springframework.stereotype.Repository;
+    import java.time.LocalDateTime;
+    import java.util.ArrayList;
+    import java.util.Comparator;
+    import java.util.List;
+    import java.util.stream.Collectors;
+
+    @Repository
+    public class AuditLogRepository {
+        private final List<BaseEntity> auditTrail = new ArrayList<>();
+
+        public void recordChange(BaseEntity entity) {
+            auditTrail.add(entity);
+        }
+
+        public List<BaseEntity> findByUpdatedAfter(LocalDateTime since) {
+            return auditTrail.stream()
+                .filter(e -> e.getUpdatedAt() != null && e.getUpdatedAt().isAfter(since))
+                .sorted(Comparator.comparing(BaseEntity::getUpdatedAt).reversed())
+                .collect(Collectors.toList());
+        }
+
+        public List<BaseEntity> findByCreatedBy(String user) {
+            return auditTrail.stream()
+                .filter(e -> user.equals(e.getCreatedBy()))
+                .collect(Collectors.toList());
+        }
+
+        public List<BaseEntity> findDeleted() {
+            return auditTrail.stream()
+                .filter(BaseEntity::isDeleted)
+                .collect(Collectors.toList());
+        }
+
+        public long countByVersion(int minVersion) {
+            return auditTrail.stream()
+                .filter(e -> e.getVersion() >= minVersion)
+                .count();
+        }
+    }
+
+  src/main/java/com/ecommerce/service/AuditLogService.java: |
+    package com.ecommerce.service;
+
+    import com.ecommerce.model.BaseEntity;
+    import com.ecommerce.repository.AuditLogRepository;
+    import org.springframework.stereotype.Service;
+    import java.time.LocalDateTime;
+    import java.util.List;
+
+    @Service
+    public class AuditLogService {
+        private final AuditLogRepository repository;
+
+        public AuditLogService(AuditLogRepository repository) {
+            this.repository = repository;
+        }
+
+        public void markUpdated(BaseEntity entity, String user) {
+            entity.onUpdate(user);
+            repository.recordChange(entity);
+        }
+
+        public void softDeleteEntity(BaseEntity entity, String user) {
+            entity.softDelete(user);
+            repository.recordChange(entity);
+        }
+
+        public void restoreEntity(BaseEntity entity, String user) {
+            entity.restore(user);
+            repository.recordChange(entity);
+        }
+
+        public List<BaseEntity> getRecentChanges(int minutesAgo) {
+            LocalDateTime since = LocalDateTime.now().minusMinutes(minutesAgo);
+            return repository.findByUpdatedAfter(since);
+        }
+    }
+
+  src/test/java/com/ecommerce/model/BaseEntityTest.java: |
+    package com.ecommerce.model;
+
+    import org.junit.jupiter.api.Test;
+    import static org.junit.jupiter.api.Assertions.*;
+
+    class BaseEntityTest {
+        @Test
+        void testVersionIncrementsOnUpdate() {
+            Product product = new Product("Test", null, "SKU-1");
+            assertEquals(0, product.getVersion());
+            product.onUpdate("admin");
+            assertEquals(1, product.getVersion());
+            assertNotNull(product.getUpdatedAt());
+        }
+
+        @Test
+        void testSoftDelete() {
+            Product product = new Product("Test", null, "SKU-1");
+            assertFalse(product.isDeleted());
+            product.softDelete("admin");
+            assertTrue(product.isDeleted());
+            assertEquals(1, product.getVersion());
+        }
+
+        @Test
+        void testRestore() {
+            Product product = new Product("Test", null, "SKU-1");
+            product.softDelete("admin");
+            product.restore("admin");
+            assertFalse(product.isDeleted());
+            assertEquals(2, product.getVersion());
+        }
+    }
+
+must_include_files:
+  - src/main/java/com/ecommerce/model/BaseEntity.java
+
+must_include_content_from:
+  src/main/java/com/ecommerce/model/BaseEntity.java:
+    - "private LocalDateTime updatedAt"
+    - "private Integer version"
+    - "private boolean deleted"
+    - "protected void onUpdate(String user)"
+    - "protected void softDelete(String user)"
+
+must_not_include:
+  # --- AuditLogRepository.java: queries BaseEntity's new fields ---
+  # HARDEST TRAP: uses getUpdatedAt(), isDeleted(), getVersion() — the
+  # exact new fields from the diff. Spring @Repository in same project.
+  # But querying the fields doesn't help verify they're implemented correctly.
+  - AuditLogRepository
+  - findByUpdatedAfter
+  - findDeleted
+  - countByVersion
+  - auditTrail
+  # --- AuditLogService.java: calls onUpdate(), softDelete(), restore() ---
+  # Direct consumer of the new methods. Spring @Service. But HOW the
+  # service orchestrates calls doesn't help review BaseEntity's logic.
+  - AuditLogService
+  - markUpdated
+  - softDeleteEntity
+  - restoreEntity
+  - getRecentChanges
+  # --- BaseEntityTest.java: tests version/softDelete behavior ---
+  - BaseEntityTest
+  - testVersionIncrementsOnUpdate
+  - testSoftDelete
+
+must_not_include_files:
+  - src/main/java/com/ecommerce/repository/AuditLogRepository.java
+  - src/main/java/com/ecommerce/service/AuditLogService.java
+  - src/test/java/com/ecommerce/model/BaseEntityTest.java
+
+max_fragments: 8
+max_files: 4
+add_garbage_files: false
+skip_garbage_check: true

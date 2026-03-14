@@ -1,0 +1,127 @@
+# Scenario: CORS config replaces localhost origin with production domains
+#
+# Diff: api.yaml changes allowed_origins from http://localhost:3000 to
+# https://example.com and https://api.example.com.
+#
+# Reviewer questions:
+#   Q1: "What code applies these CORS origins?"
+#       → src/middleware.py (UNCHANGED) has setup_cors() which iterates
+#         origins and calls app.allow_origin(). The reviewer needs to see
+#         this to know the config is actually consumed and how credentials
+#         interact with the wildcard-free origin list.
+#   Q2: "Does allow_credentials interact with the origin change?"
+#       → middleware.py passes credentials=credentials per origin, so
+#         credentials: true with specific origins is safe (no wildcard).
+#
+# Not needed:
+#   - config/rate_limits.yaml: API config sibling but for rate limiting,
+#     not cross-origin policy.
+#   - src/auth_middleware.py: another middleware but for auth decorators
+#     (require_auth, require_role), not CORS headers.
+
+initial:
+  config/api.yaml: |
+    cors:
+      allowed_origins:
+        - http://localhost:3000
+      allow_credentials: true
+  src/middleware.py: |
+    def setup_cors(app, origins: list[str], credentials: bool = True):
+        for origin in origins:
+            app.allow_origin(origin, credentials=credentials)
+  config/rate_limits.yaml: |
+    rate_limiting:
+      global:
+        requests_per_minute: 60
+        burst: 10
+      per_user:
+        requests_per_minute: 30
+        burst: 5
+  src/auth_middleware.py: |
+    from functools import wraps
+
+    def require_auth(f):
+        @wraps(f)
+        def decorated(*args, **kwargs):
+            token = kwargs.get("request").headers.get("Authorization")
+            if not token:
+                return {"error": "Unauthorized"}, 401
+            return f(*args, **kwargs)
+        return decorated
+
+    def require_role(role: str):
+        def decorator(f):
+            @wraps(f)
+            def decorated(*args, **kwargs):
+                user_role = kwargs.get("request").user.role
+                if user_role != role:
+                    return {"error": "Forbidden"}, 403
+                return f(*args, **kwargs)
+            return decorated
+        return decorator
+
+changed:
+  config/api.yaml: |
+    cors:
+      allowed_origins:
+        - https://example.com
+        - https://api.example.com
+      allow_credentials: true
+  src/middleware.py: |
+    def setup_cors(app, origins: list[str], credentials: bool = True):
+        for origin in origins:
+            app.allow_origin(origin, credentials=credentials)
+  config/rate_limits.yaml: |
+    rate_limiting:
+      global:
+        requests_per_minute: 60
+        burst: 10
+      per_user:
+        requests_per_minute: 30
+        burst: 5
+  src/auth_middleware.py: |
+    from functools import wraps
+
+    def require_auth(f):
+        @wraps(f)
+        def decorated(*args, **kwargs):
+            token = kwargs.get("request").headers.get("Authorization")
+            if not token:
+                return {"error": "Unauthorized"}, 401
+            return f(*args, **kwargs)
+        return decorated
+
+    def require_role(role: str):
+        def decorator(f):
+            @wraps(f)
+            def decorated(*args, **kwargs):
+                user_role = kwargs.get("request").user.role
+                if user_role != role:
+                    return {"error": "Forbidden"}, 403
+                return f(*args, **kwargs)
+            return decorated
+        return decorator
+
+must_include_files:
+  # Q1+Q2: The code that applies CORS settings — shows how origins
+  # are iterated and how credentials interact with each origin.
+  - src/middleware.py
+must_include_content_from:
+  src/middleware.py:
+    # How each origin is registered with credential support
+    - "app.allow_origin(origin, credentials=credentials)"
+must_not_include:
+  # rate_limits.yaml: API config sibling but for rate limiting
+  - requests_per_minute
+  - per_user
+  # auth_middleware.py: auth decorators, not CORS headers
+  - require_auth
+  - require_role
+  - Unauthorized
+must_not_include_files:
+  - config/rate_limits.yaml
+  - src/auth_middleware.py
+max_fragments: 5
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

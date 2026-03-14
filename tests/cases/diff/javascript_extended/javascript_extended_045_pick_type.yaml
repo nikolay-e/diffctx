@@ -1,0 +1,226 @@
+# Scenario: dto.ts is created with a UserPublic type alias using
+#   Pick<User, 'id' | 'name' | 'email'> and a toPublic conversion function.
+#   The user.ts interface is unchanged.
+#
+# Reviewer questions:
+#   Q1: "What fields does User have? Are id, name, email the right ones to pick?"
+#       -> src/user.ts: User has id (string), name (string), email (string),
+#          password (string), createdAt (Date). Pick selects 3 of 5 fields,
+#          excluding password and createdAt (sensitive/internal data).
+#
+#   Q2: "Does toPublic correctly extract only the picked fields?"
+#       -> src/user.ts: User has password and createdAt that must NOT appear
+#          in UserPublic. The function returns only { id, name, email }.
+#
+# Not needed:
+#   - src/userService.ts: CRUD operations on User objects. Same type,
+#     direct import. But how users are stored/fetched doesn't help
+#     review which fields should be public.
+#
+#   - src/auth.ts: Authentication using User.password and User.email.
+#     Same type, accesses the sensitive fields being excluded. But
+#     auth flow doesn't help review the DTO mapping.
+#
+#   - src/userRepository.ts: Database queries returning User[]. Same
+#     type, persistence concern. Doesn't help review the Pick type.
+#
+#   - src/serializer.ts: Generic serialization utilities. Different
+#     concern. Doesn't help review the DTO conversion.
+
+initial:
+  src/user.ts: |
+    export interface User {
+        id: string;
+        name: string;
+        email: string;
+        password: string;
+        createdAt: Date;
+    }
+
+    export function createUser(name: string, email: string, password: string): User {
+        return {
+            id: crypto.randomUUID(),
+            name,
+            email,
+            password,
+            createdAt: new Date(),
+        };
+    }
+
+  src/dto.ts: |
+    console.log('placeholder');
+
+  src/userService.ts: |
+    import { User, createUser } from './user';
+
+    const users: Map<string, User> = new Map();
+
+    export function addUser(name: string, email: string, password: string): User {
+        const user = createUser(name, email, password);
+        users.set(user.id, user);
+        return user;
+    }
+
+    export function getUserById(id: string): User | undefined {
+        return users.get(id);
+    }
+
+    export function getAllUsers(): User[] {
+        return Array.from(users.values());
+    }
+
+    export function deleteUser(id: string): boolean {
+        return users.delete(id);
+    }
+
+    export function updateUserEmail(id: string, email: string): User | undefined {
+        const user = users.get(id);
+        if (user) {
+            user.email = email;
+        }
+        return user;
+    }
+
+  src/auth.ts: |
+    import { User } from './user';
+
+    export interface AuthToken {
+        userId: string;
+        token: string;
+        expiresAt: Date;
+    }
+
+    export function authenticate(user: User, passwordAttempt: string): AuthToken | null {
+        if (user.password !== passwordAttempt) {
+            return null;
+        }
+        return {
+            userId: user.id,
+            token: crypto.randomUUID(),
+            expiresAt: new Date(Date.now() + 3600000),
+        };
+    }
+
+    export function isTokenExpired(token: AuthToken): boolean {
+        return new Date() > token.expiresAt;
+    }
+
+    export function verifyToken(token: AuthToken, userId: string): boolean {
+        return token.userId === userId && !isTokenExpired(token);
+    }
+
+  src/userRepository.ts: |
+    import { User } from './user';
+
+    export interface UserRepository {
+        findById(id: string): Promise<User | null>;
+        findByEmail(email: string): Promise<User | null>;
+        save(user: User): Promise<void>;
+        delete(id: string): Promise<boolean>;
+    }
+
+    export class InMemoryUserRepository implements UserRepository {
+        private store = new Map<string, User>();
+
+        async findById(id: string): Promise<User | null> {
+            return this.store.get(id) ?? null;
+        }
+
+        async findByEmail(email: string): Promise<User | null> {
+            for (const user of this.store.values()) {
+                if (user.email === email) return user;
+            }
+            return null;
+        }
+
+        async save(user: User): Promise<void> {
+            this.store.set(user.id, user);
+        }
+
+        async delete(id: string): Promise<boolean> {
+            return this.store.delete(id);
+        }
+    }
+
+  src/serializer.ts: |
+    export function toJSON<T>(obj: T): string {
+        return JSON.stringify(obj, null, 2);
+    }
+
+    export function fromJSON<T>(json: string): T {
+        return JSON.parse(json) as T;
+    }
+
+    export function pick<T, K extends keyof T>(obj: T, keys: K[]): Pick<T, K> {
+        const result = {} as Pick<T, K>;
+        for (const key of keys) {
+            result[key] = obj[key];
+        }
+        return result;
+    }
+
+    export function omit<T, K extends keyof T>(obj: T, keys: K[]): Omit<T, K> {
+        const result = { ...obj };
+        for (const key of keys) {
+            delete (result as any)[key];
+        }
+        return result as Omit<T, K>;
+    }
+
+changed:
+  src/dto.ts: |
+    import { User } from './user';
+
+    export type UserPublic = Pick<User, 'id' | 'name' | 'email'>;
+
+    export function toPublic(user: User): UserPublic {
+        return { id: user.id, name: user.name, email: user.email };
+    }
+
+    export function toPublicList(users: User[]): UserPublic[] {
+        return users.map(toPublic);
+    }
+
+must_include_files:
+  - src/user.ts
+
+must_include_content_from:
+  src/user.ts:
+    - "User"
+    - "id: string"
+    - "name: string"
+    - "email: string"
+    - "password: string"
+    - "createdAt: Date"
+
+must_not_include:
+  # --- src/userService.ts: CRUD operations, different concern ---
+  - addUser
+  - getUserById
+  - getAllUsers
+  - deleteUser
+  - updateUserEmail
+  # --- src/auth.ts: authentication, different concern ---
+  - AuthToken
+  - authenticate
+  - isTokenExpired
+  - verifyToken
+  # --- src/userRepository.ts: persistence, different concern ---
+  - UserRepository
+  - InMemoryUserRepository
+  - findByEmail
+  # --- src/serializer.ts: generic serialization utilities ---
+  - toJSON
+  - fromJSON
+  - "omit<T"
+
+must_not_include_files:
+  - src/userService.ts
+  - src/auth.ts
+  - src/userRepository.ts
+  - src/serializer.ts
+
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

@@ -1,0 +1,133 @@
+initial:
+  monitoring.tf: |
+    resource "aws_cloudwatch_metric_alarm" "cpu" {
+      alarm_name          = "high-cpu"
+      comparison_operator = "GreaterThanThreshold"
+      evaluation_periods  = 2
+      metric_name         = "CPUUtilization"
+      namespace           = "AWS/EC2"
+      period              = 300
+      statistic           = "Average"
+      threshold           = 80
+    }
+  src/metrics.py: |
+    import boto3
+
+    def get_cpu_metrics(instance_id: str):
+        cw = boto3.client("cloudwatch")
+        return cw.get_metric_statistics(
+            Namespace="AWS/EC2",
+            MetricName="CPUUtilization",
+            Dimensions=[{"Name": "InstanceId", "Value": instance_id}],
+            Period=300,
+            Statistics=["Average"],
+        )
+
+  # --- Tricky garbage: sibling .tf with same aws_cloudwatch_metric_alarm resource type ---
+  garbage_cw_memory.tf: |
+    GARBAGE_TF_074_MEMORY_ALARM_MARKER_A = "memory-monitor"
+    GARBAGE_TF_074_CW_AGENT_MARKER_B = "installed"
+
+    resource "aws_cloudwatch_metric_alarm" "memory" {
+      alarm_name          = "high-memory"
+      comparison_operator = "GreaterThanThreshold"
+      evaluation_periods  = 3
+      metric_name         = "MemoryUtilization"
+      namespace           = "CWAgent"
+      period              = 300
+      statistic           = "Average"
+      threshold           = 85
+    }
+
+  # --- Plain garbage: no overlap ---
+  garbage_scheduler.py: |
+    GARBAGE_TF_074_SCHEDULER_MARKER_C = "cron-jobs"
+    GARBAGE_TF_074_INTERVAL_MARKER_D = 3600
+
+    class TaskScheduler:
+        GARBAGE_TF_074_QUEUE_MARKER_E = True
+
+        def schedule(self, task: str, interval: int) -> None:
+            pass
+
+changed:
+  monitoring.tf: |
+    resource "aws_cloudwatch_metric_alarm" "cpu" {
+      alarm_name          = "critical-cpu"
+      comparison_operator = "GreaterThanThreshold"
+      evaluation_periods  = 1
+      metric_name         = "CPUUtilization"
+      namespace           = "AWS/EC2"
+      period              = 60
+      statistic           = "Average"
+      threshold           = 90
+    }
+  src/metrics.py: |
+    import boto3
+
+    def get_cpu_metrics(instance_id: str):
+        cw = boto3.client("cloudwatch")
+        return cw.get_metric_statistics(
+            Namespace="AWS/EC2",
+            MetricName="CPUUtilization",
+            Dimensions=[{"Name": "InstanceId", "Value": instance_id}],
+            Period=300,
+            Statistics=["Average"],
+        )
+
+  garbage_cw_memory.tf: |
+    GARBAGE_TF_074_MEMORY_ALARM_MARKER_A = "memory-monitor"
+    GARBAGE_TF_074_CW_AGENT_MARKER_B = "installed"
+
+    resource "aws_cloudwatch_metric_alarm" "memory" {
+      alarm_name          = "high-memory"
+      comparison_operator = "GreaterThanThreshold"
+      evaluation_periods  = 3
+      metric_name         = "MemoryUtilization"
+      namespace           = "CWAgent"
+      period              = 300
+      statistic           = "Average"
+      threshold           = 85
+    }
+
+  garbage_scheduler.py: |
+    GARBAGE_TF_074_SCHEDULER_MARKER_C = "cron-jobs"
+    GARBAGE_TF_074_INTERVAL_MARKER_D = 3600
+
+    class TaskScheduler:
+        GARBAGE_TF_074_QUEUE_MARKER_E = True
+
+        def schedule(self, task: str, interval: int) -> None:
+            pass
+
+# === Assertions ===
+
+must_include_files:
+- monitoring.tf
+
+must_include_content_from:
+  monitoring.tf:
+    - alarm_name          = "critical-cpu"
+    - evaluation_periods  = 1
+    - period              = 60
+    - threshold           = 90
+    - 'resource "aws_cloudwatch_metric_alarm" "cpu"'
+
+must_not_include:
+# Tricky garbage: sibling .tf with same resource type
+- GARBAGE_TF_074_MEMORY_ALARM_MARKER_A
+- GARBAGE_TF_074_CW_AGENT_MARKER_B
+# Plain garbage
+- GARBAGE_TF_074_SCHEDULER_MARKER_C
+- GARBAGE_TF_074_INTERVAL_MARKER_D
+- GARBAGE_TF_074_QUEUE_MARKER_E
+
+must_not_include_files:
+- garbage_cw_memory.tf
+- garbage_scheduler.py
+- src/metrics.py
+
+max_fragments: 3
+max_files: 1
+add_garbage_files: false
+skip_garbage_check: true

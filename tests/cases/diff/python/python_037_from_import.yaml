@@ -1,0 +1,290 @@
+# Scenario: Adding ISO format support, currency symbols, text truncation, and
+#   DateRange.overlaps() to a helpers module imported by event_view.py.
+#
+# Reviewer questions:
+#   - Does event_view.py need updating for the new helpers?
+#   - Are the new date format constants consistent with existing ones?
+#
+# Trap files:
+#   - utils/timezone_helpers.py: date/time vocabulary overlaps heavily with helpers.py
+#     (format_date, parse, datetime) but has no import relationship
+#   - utils/string_sanitizer.py: text manipulation functions (strip, truncate-like)
+#     but completely independent
+#   - utils/currency_converter.py: currency-related code (symbols, exchange rates)
+#     but does not import from helpers.py
+
+initial:
+  helpers.py: |
+    from typing import Optional, List, Dict, Any
+    from datetime import datetime, date, timedelta
+    from decimal import Decimal, ROUND_HALF_UP
+    import re
+
+    DATE_FORMAT = "%Y-%m-%d"
+    TIME_FORMAT = "%H:%M:%S"
+    DATETIME_FORMAT = "%Y-%m-%d %H:%M:%S"
+
+    def format_date(dt: datetime) -> str:
+        return dt.strftime(DATE_FORMAT)
+
+    def format_time(dt: datetime) -> str:
+        return dt.strftime(TIME_FORMAT)
+
+    def format_datetime(dt: datetime) -> str:
+        return dt.strftime(DATETIME_FORMAT)
+
+    def parse_date(date_str: str) -> Optional[date]:
+        try:
+            return datetime.strptime(date_str, DATE_FORMAT).date()
+        except ValueError:
+            return None
+
+    def parse_datetime(dt_str: str) -> Optional[datetime]:
+        try:
+            return datetime.strptime(dt_str, DATETIME_FORMAT)
+        except ValueError:
+            return None
+
+    def format_currency(amount: Decimal, currency: str = "USD") -> str:
+        rounded = amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        symbols = {"USD": "$", "EUR": "€", "GBP": "£"}
+        symbol = symbols.get(currency, currency + " ")
+        return f"{symbol}{rounded:,.2f}"
+
+    def slugify(text: str) -> str:
+        text = text.lower().strip()
+        text = re.sub(r"[^\w\s-]", "", text)
+        text = re.sub(r"[\s_-]+", "-", text)
+        return text.strip("-")
+
+    class DateRange:
+        def __init__(self, start: date, end: date):
+            self.start = start
+            self.end = end
+
+        def days(self) -> int:
+            return (self.end - self.start).days
+
+        def contains(self, dt: date) -> bool:
+            return self.start <= dt <= self.end
+  event_view.py: |
+    from helpers import format_date
+
+    class Event:
+        def __init__(self, title: str, date: datetime):
+            self.title = title
+            self.date = date
+
+    def render():
+        pass
+  utils/timezone_helpers.py: |
+    from datetime import datetime, timezone, timedelta
+
+    UTC = timezone.utc
+    EASTERN = timezone(timedelta(hours=-5))
+    PACIFIC = timezone(timedelta(hours=-8))
+
+    def to_utc(dt: datetime) -> datetime:
+        if dt.tzinfo is None:
+            return dt.replace(tzinfo=UTC)
+        return dt.astimezone(UTC)
+
+    def format_local(dt: datetime, tz: timezone = EASTERN) -> str:
+        local_dt = dt.astimezone(tz)
+        return local_dt.strftime("%Y-%m-%d %H:%M:%S %Z")
+
+    def parse_iso_timestamp(iso_str: str) -> datetime:
+        return datetime.fromisoformat(iso_str)
+  utils/string_sanitizer.py: |
+    import re
+    from html import escape
+
+    def sanitize_html(text: str) -> str:
+        return escape(text)
+
+    def strip_tags(html: str) -> str:
+        return re.sub(r"<[^>]+>", "", html)
+
+    def normalize_whitespace(text: str) -> str:
+        return re.sub(r"\s+", " ", text).strip()
+
+    def truncate_text(text: str, max_len: int = 100) -> str:
+        if len(text) <= max_len:
+            return text
+        return text[:max_len - 3] + "..."
+  utils/currency_converter.py: |
+    from decimal import Decimal
+
+    EXCHANGE_RATES = {
+        ("USD", "EUR"): Decimal("0.92"),
+        ("USD", "GBP"): Decimal("0.79"),
+        ("EUR", "USD"): Decimal("1.09"),
+        ("GBP", "USD"): Decimal("1.27"),
+    }
+
+    def convert(amount: Decimal, from_currency: str, to_currency: str) -> Decimal:
+        if from_currency == to_currency:
+            return amount
+        rate = EXCHANGE_RATES.get((from_currency, to_currency))
+        if rate is None:
+            raise ValueError(f"No rate for {from_currency} -> {to_currency}")
+        return amount * rate
+
+changed:
+  helpers.py: |
+    from typing import Optional, List, Dict, Any
+    from datetime import datetime, date, timedelta
+    from decimal import Decimal, ROUND_HALF_UP
+    import re
+
+    DATE_FORMAT = "%Y-%m-%d"
+    TIME_FORMAT = "%H:%M:%S"
+    DATETIME_FORMAT = "%Y-%m-%d %H:%M:%S"
+    ISO_FORMAT = "%Y-%m-%dT%H:%M:%S"
+
+    def format_date(dt: datetime) -> str:
+        return dt.strftime(DATE_FORMAT)
+
+    def format_time(dt: datetime) -> str:
+        return dt.strftime(TIME_FORMAT)
+
+    def format_datetime(dt: datetime) -> str:
+        return dt.strftime(DATETIME_FORMAT)
+
+    def format_iso(dt: datetime) -> str:
+        return dt.strftime(ISO_FORMAT)
+
+    def parse_date(date_str: str) -> Optional[date]:
+        try:
+            return datetime.strptime(date_str, DATE_FORMAT).date()
+        except ValueError:
+            return None
+
+    def parse_datetime(dt_str: str) -> Optional[datetime]:
+        try:
+            return datetime.strptime(dt_str, DATETIME_FORMAT)
+        except ValueError:
+            return None
+
+    def parse_iso(dt_str: str) -> Optional[datetime]:
+        try:
+            return datetime.strptime(dt_str, ISO_FORMAT)
+        except ValueError:
+            return None
+
+    def format_currency(amount: Decimal, currency: str = "USD") -> str:
+        rounded = amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        symbols = {"USD": "$", "EUR": "€", "GBP": "£", "JPY": "¥"}
+        symbol = symbols.get(currency, currency + " ")
+        return f"{symbol}{rounded:,.2f}"
+
+    def slugify(text: str) -> str:
+        text = text.lower().strip()
+        text = re.sub(r"[^\w\s-]", "", text)
+        text = re.sub(r"[\s_-]+", "-", text)
+        return text.strip("-")
+
+    def truncate(text: str, max_length: int, suffix: str = "...") -> str:
+        if len(text) <= max_length:
+            return text
+        return text[:max_length - len(suffix)] + suffix
+
+    class DateRange:
+        def __init__(self, start: date, end: date):
+            self.start = start
+            self.end = end
+
+        def days(self) -> int:
+            return (self.end - self.start).days
+
+        def contains(self, dt: date) -> bool:
+            return self.start <= dt <= self.end
+
+        def overlaps(self, other: "DateRange") -> bool:
+            return self.start <= other.end and other.start <= self.end
+  event_view.py: |
+    from helpers import format_date
+
+    class Event:
+        def __init__(self, title: str, date: datetime):
+            self.title = title
+            self.date = date
+
+    def render():
+        pass
+  utils/timezone_helpers.py: |
+    from datetime import datetime, timezone, timedelta
+
+    UTC = timezone.utc
+    EASTERN = timezone(timedelta(hours=-5))
+    PACIFIC = timezone(timedelta(hours=-8))
+
+    def to_utc(dt: datetime) -> datetime:
+        if dt.tzinfo is None:
+            return dt.replace(tzinfo=UTC)
+        return dt.astimezone(UTC)
+
+    def format_local(dt: datetime, tz: timezone = EASTERN) -> str:
+        local_dt = dt.astimezone(tz)
+        return local_dt.strftime("%Y-%m-%d %H:%M:%S %Z")
+
+    def parse_iso_timestamp(iso_str: str) -> datetime:
+        return datetime.fromisoformat(iso_str)
+  utils/string_sanitizer.py: |
+    import re
+    from html import escape
+
+    def sanitize_html(text: str) -> str:
+        return escape(text)
+
+    def strip_tags(html: str) -> str:
+        return re.sub(r"<[^>]+>", "", html)
+
+    def normalize_whitespace(text: str) -> str:
+        return re.sub(r"\s+", " ", text).strip()
+
+    def truncate_text(text: str, max_len: int = 100) -> str:
+        if len(text) <= max_len:
+            return text
+        return text[:max_len - 3] + "..."
+  utils/currency_converter.py: |
+    from decimal import Decimal
+
+    EXCHANGE_RATES = {
+        ("USD", "EUR"): Decimal("0.92"),
+        ("USD", "GBP"): Decimal("0.79"),
+        ("EUR", "USD"): Decimal("1.09"),
+        ("GBP", "USD"): Decimal("1.27"),
+    }
+
+    def convert(amount: Decimal, from_currency: str, to_currency: str) -> Decimal:
+        if from_currency == to_currency:
+            return amount
+        rate = EXCHANGE_RATES.get((from_currency, to_currency))
+        if rate is None:
+            raise ValueError(f"No rate for {from_currency} -> {to_currency}")
+        return amount * rate
+
+must_include_files:
+- helpers.py
+must_include_content:
+- 'def format_iso(dt: datetime) -> str:'
+- 'def parse_iso(dt_str: str) -> Optional[datetime]:'
+must_include_content_from:
+  event_view.py:
+  - from helpers import format_date
+must_not_include:
+- parse_iso_timestamp
+- EXCHANGE_RATES
+- sanitize_html
+- strip_tags
+- truncate_text
+- format_local
+must_not_include_files:
+- utils/timezone_helpers.py
+- utils/string_sanitizer.py
+- utils/currency_converter.py
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

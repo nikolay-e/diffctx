@@ -1,0 +1,272 @@
+# Scenario: Empty Endpoints object populated with three external API IPs,
+# labels, and port definition for a headless external service.
+# Reviewer asks: "Are the external endpoint addresses and ports correct?"
+# Trap rationale: endpointslice.yaml and service-mesh-entry.yaml share
+# endpoint/networking vocabulary but use different K8s APIs with no link.
+
+initial:
+  k8s/base/deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: legacy-adapter
+      namespace: production
+      labels:
+        app: legacy-adapter
+        tier: integration
+    spec:
+      replicas: 2
+      selector:
+        matchLabels:
+          app: legacy-adapter
+      template:
+        metadata:
+          labels:
+            app: legacy-adapter
+            tier: integration
+        spec:
+          containers:
+          - name: adapter
+            image: registry.example.com/legacy-adapter:v1.0.0
+            ports:
+            - containerPort: 8080
+              name: http
+            env:
+            - name: EXTERNAL_API_HOST
+              value: external-api
+            - name: EXTERNAL_API_PORT
+              value: "443"
+            resources:
+              requests:
+                memory: "128Mi"
+                cpu: "100m"
+              limits:
+                memory: "256Mi"
+                cpu: "200m"
+  k8s/base/service.yaml: |
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: legacy-adapter
+      namespace: production
+    spec:
+      selector:
+        app: legacy-adapter
+      ports:
+      - name: http
+        port: 80
+        targetPort: 8080
+  k8s/base/service-external.yaml: |
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: external-api
+      namespace: production
+      labels:
+        app: external-api
+        type: external
+    spec:
+      ports:
+      - name: https
+        port: 443
+        targetPort: 443
+  k8s/base/endpoints.yaml: |
+    apiVersion: v1
+    kind: Endpoints
+    metadata:
+      name: external-api
+      namespace: production
+    subsets: []
+  k8s/base/configmap.yaml: |
+    apiVersion: v1
+    kind: ConfigMap
+    metadata:
+      name: adapter-config
+      namespace: production
+    data:
+      RETRY_ATTEMPTS: "3"
+      TIMEOUT_MS: "5000"
+      CIRCUIT_BREAKER: "enabled"
+  k8s/advanced/endpointslice.yaml: |
+    apiVersion: discovery.k8s.io/v1
+    kind: EndpointSlice
+    metadata:
+      name: metrics-collector-endpoints
+      namespace: monitoring
+      labels:
+        kubernetes.io/service-name: metrics-collector
+    addressType: IPv4
+    endpoints:
+    - addresses:
+      - 10.0.1.50
+      conditions:
+        ready: true
+    ports:
+    - name: metrics
+      port: 9090
+      protocol: TCP
+  k8s/advanced/service-mesh-entry.yaml: |
+    apiVersion: networking.istio.io/v1beta1
+    kind: ServiceEntry
+    metadata:
+      name: payment-gateway-external
+      namespace: istio-system
+    spec:
+      hosts:
+      - payments.thirdparty.com
+      ports:
+      - number: 443
+        name: https
+        protocol: TLS
+      resolution: DNS
+      location: MESH_EXTERNAL
+  ansible/playbook.yaml: |2
+      tasks:
+        kubernetes.core.k8s:
+changed:
+  k8s/base/deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: legacy-adapter
+      namespace: production
+      labels:
+        app: legacy-adapter
+        tier: integration
+    spec:
+      replicas: 2
+      selector:
+        matchLabels:
+          app: legacy-adapter
+      template:
+        metadata:
+          labels:
+            app: legacy-adapter
+            tier: integration
+        spec:
+          containers:
+          - name: adapter
+            image: registry.example.com/legacy-adapter:v1.0.0
+            ports:
+            - containerPort: 8080
+              name: http
+            env:
+            - name: EXTERNAL_API_HOST
+              value: external-api
+            - name: EXTERNAL_API_PORT
+              value: "443"
+            resources:
+              requests:
+                memory: "128Mi"
+                cpu: "100m"
+              limits:
+                memory: "256Mi"
+                cpu: "200m"
+  k8s/base/service.yaml: |
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: legacy-adapter
+      namespace: production
+    spec:
+      selector:
+        app: legacy-adapter
+      ports:
+      - name: http
+        port: 80
+        targetPort: 8080
+  k8s/base/service-external.yaml: |
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: external-api
+      namespace: production
+      labels:
+        app: external-api
+        type: external
+    spec:
+      ports:
+      - name: https
+        port: 443
+        targetPort: 443
+  k8s/base/endpoints.yaml: |
+    apiVersion: v1
+    kind: Endpoints
+    metadata:
+      name: external-api
+      namespace: production
+      labels:
+        app: external-api
+        type: external
+    subsets:
+    - addresses:
+      - ip: 203.0.113.10
+        hostname: api-node-1
+      - ip: 203.0.113.11
+        hostname: api-node-2
+      - ip: 203.0.113.12
+        hostname: api-node-3
+      ports:
+      - name: https
+        port: 443
+        protocol: TCP
+  k8s/base/configmap.yaml: |
+    apiVersion: v1
+    kind: ConfigMap
+    metadata:
+      name: adapter-config
+      namespace: production
+    data:
+      RETRY_ATTEMPTS: "3"
+      TIMEOUT_MS: "5000"
+      CIRCUIT_BREAKER: "enabled"
+  k8s/advanced/endpointslice.yaml: |
+    apiVersion: discovery.k8s.io/v1
+    kind: EndpointSlice
+    metadata:
+      name: metrics-collector-endpoints
+      namespace: monitoring
+      labels:
+        kubernetes.io/service-name: metrics-collector
+    addressType: IPv4
+    endpoints:
+    - addresses:
+      - 10.0.1.50
+      conditions:
+        ready: true
+    ports:
+    - name: metrics
+      port: 9090
+      protocol: TCP
+  k8s/advanced/service-mesh-entry.yaml: |
+    apiVersion: networking.istio.io/v1beta1
+    kind: ServiceEntry
+    metadata:
+      name: payment-gateway-external
+      namespace: istio-system
+    spec:
+      hosts:
+      - payments.thirdparty.com
+      ports:
+      - number: 443
+        name: https
+        protocol: TLS
+      resolution: DNS
+      location: MESH_EXTERNAL
+  ansible/playbook.yaml: |2
+      tasks:
+        kubernetes.core.k8s:
+must_include_files:
+- k8s/base/endpoints.yaml
+must_include_content:
+- 'app: external-api'
+must_not_include:
+- metrics-collector-endpoints
+- payment-gateway-external
+- endpointslice.yaml
+- service-mesh-entry.yaml
+must_not_include_files:
+- k8s/advanced/endpointslice.yaml
+- k8s/advanced/service-mesh-entry.yaml
+add_garbage_files: false
+skip_garbage_check: true

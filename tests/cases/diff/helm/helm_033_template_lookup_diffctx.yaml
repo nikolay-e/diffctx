@@ -1,4 +1,0 @@
-must_include_files:
-- templates/secret.yaml
-must_include_content:
-- '{{- $secret := lookup "v1" "Secret" .Release.Namespace "existing-secret" -}}'

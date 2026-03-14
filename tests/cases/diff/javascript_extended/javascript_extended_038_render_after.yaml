@@ -1,3 +1,0 @@
-Greeting.tsx: "interface GreetingProps {\n    name: string;\n}\n\nexport function Greeting({ name }: GreetingProps) {\n    return <h1>Hello, {name}!</h1>;\n}\n\n// testing_library_garbage_marker_001\n"
-Greeting.test.tsx: "import { render, screen } from '@testing-library/react';\nimport { Greeting } from './Greeting';\n\ndescribe('Greeting', () => {\n    it('should display name', () => {\n        render(<Greeting\
-  \ name=\"World\" />);\n        expect(screen.getByText('Hello, World!')).toBeInTheDocument();\n    });\n});\n"

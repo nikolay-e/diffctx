@@ -1,0 +1,199 @@
+initial:
+  src/database.py: |
+    class Database:
+        def __init__(self, connection_string: str):
+            self.connection_string = connection_string
+            self.connected = False
+
+        def connect(self):
+            self.connected = True
+
+        def disconnect(self):
+            self.connected = False
+
+        def query(self, sql: str) -> list:
+            if not self.connected:
+                raise RuntimeError("Not connected")
+            return []
+  tests/conftest.py: |
+    import pytest
+    from src.database import Database
+
+    @pytest.fixture
+    def db():
+        database = Database("test://localhost")
+        database.connect()
+        yield database
+        database.disconnect()
+  tests/test_queries.py: |
+    def test_query_returns_list(db):
+        result = db.query("SELECT * FROM users")
+        assert isinstance(result, list)
+
+    def test_db_is_connected(db):
+        assert db.connected is True
+
+  # --- Tricky: same Database import, same fixture pattern (same-import consumer) ---
+  tests/integration/conftest.py: |
+    import pytest
+    from src.database import Database
+    GARBAGE_DEP037_INTEG_CONFTEST_A = "integration_conftest"
+    GARBAGE_DEP037_INTEG_SETUP_B = True
+
+    @pytest.fixture
+    def db():
+        GARBAGE_DEP037_INTEG_DB_C = "integration_db_fixture"
+        database = Database("integration://localhost:5432")
+        database.connect()
+        yield database
+        database.disconnect()
+
+  # --- Tricky: same test file pattern, uses db fixture ---
+  tests/test_migrations.py: |
+    GARBAGE_DEP037_MIGTEST_D = "migration_test_module"
+    GARBAGE_DEP037_MIGTEST_INIT_E = True
+
+    def test_migration_runs(db):
+        GARBAGE_DEP037_MIGTEST_RUN_F = "running"
+        result = db.query("SELECT version FROM schema_migrations")
+        assert isinstance(result, list)
+
+  # --- Tricky: same directory, Database-like class ---
+  src/cache_store.py: |
+    GARBAGE_DEP037_CACHE_G = "cache_store_module"
+    GARBAGE_DEP037_CACHE_INIT_H = True
+
+    class CacheStore:
+        def __init__(self, connection_string: str):
+            self.connection_string = connection_string
+            self.connected = False
+
+        def connect(self):
+            GARBAGE_DEP037_CACHE_CONN_I = "connecting"
+            self.connected = True
+
+        def disconnect(self):
+            self.connected = False
+
+        def query(self, key: str) -> list:
+            return []
+
+changed:
+  src/database.py: |
+    class Database:
+        def __init__(self, connection_string: str):
+            self.connection_string = connection_string
+            self.connected = False
+
+        def connect(self):
+            self.connected = True
+
+        def disconnect(self):
+            self.connected = False
+
+        def query(self, sql: str) -> list:
+            if not self.connected:
+                raise RuntimeError("Not connected")
+            return []
+  tests/conftest.py: |
+    import pytest
+    from src.database import Database
+
+    @pytest.fixture
+    def db():
+        database = Database("test://localhost")
+        database.connect()
+        yield database
+        database.disconnect()
+
+    @pytest.fixture
+    def db_with_data(db):
+        db.query("INSERT INTO users VALUES (1, 'test')")
+        return db
+
+    @pytest.fixture
+    def transaction_db(db):
+        db.query("BEGIN TRANSACTION")
+        yield db
+        db.query("ROLLBACK")
+  tests/test_queries.py: |
+    def test_query_returns_list(db):
+        result = db.query("SELECT * FROM users")
+        assert isinstance(result, list)
+
+    def test_db_is_connected(db):
+        assert db.connected is True
+  tests/integration/conftest.py: |
+    import pytest
+    from src.database import Database
+    GARBAGE_DEP037_INTEG_CONFTEST_A = "integration_conftest"
+    GARBAGE_DEP037_INTEG_SETUP_B = True
+
+    @pytest.fixture
+    def db():
+        GARBAGE_DEP037_INTEG_DB_C = "integration_db_fixture"
+        database = Database("integration://localhost:5432")
+        database.connect()
+        yield database
+        database.disconnect()
+  tests/test_migrations.py: |
+    GARBAGE_DEP037_MIGTEST_D = "migration_test_module"
+    GARBAGE_DEP037_MIGTEST_INIT_E = True
+
+    def test_migration_runs(db):
+        GARBAGE_DEP037_MIGTEST_RUN_F = "running"
+        result = db.query("SELECT version FROM schema_migrations")
+        assert isinstance(result, list)
+  src/cache_store.py: |
+    GARBAGE_DEP037_CACHE_G = "cache_store_module"
+    GARBAGE_DEP037_CACHE_INIT_H = True
+
+    class CacheStore:
+        def __init__(self, connection_string: str):
+            self.connection_string = connection_string
+            self.connected = False
+
+        def connect(self):
+            GARBAGE_DEP037_CACHE_CONN_I = "connecting"
+            self.connected = True
+
+        def disconnect(self):
+            self.connected = False
+
+        def query(self, key: str) -> list:
+            return []
+
+# === Assertions ===
+
+must_include_files:
+- tests/conftest.py
+
+must_include_content_from:
+  tests/conftest.py:
+    - 'def db_with_data(db):'
+    - 'def transaction_db(db):'
+    - INSERT INTO users VALUES
+
+must_not_include:
+# Tricky: same Database import, same db fixture name (name collision)
+- GARBAGE_DEP037_INTEG_CONFTEST_A
+- GARBAGE_DEP037_INTEG_SETUP_B
+- GARBAGE_DEP037_INTEG_DB_C
+# Tricky: uses db fixture, same query() call pattern
+- GARBAGE_DEP037_MIGTEST_D
+- GARBAGE_DEP037_MIGTEST_INIT_E
+- GARBAGE_DEP037_MIGTEST_RUN_F
+# Tricky: same connect/disconnect/query API, same constructor signature
+- GARBAGE_DEP037_CACHE_G
+- GARBAGE_DEP037_CACHE_INIT_H
+- GARBAGE_DEP037_CACHE_CONN_I
+
+must_not_include_files:
+- tests/integration/conftest.py
+- tests/test_migrations.py
+- src/cache_store.py
+
+max_fragments: 5
+max_files: 2
+add_garbage_files: false
+skip_garbage_check: true

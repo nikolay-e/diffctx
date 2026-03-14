@@ -1,0 +1,171 @@
+# Scenario: wrapper.ts is rewritten from a stub to import fetchData from api.ts
+#   and use Parameters<typeof fetchData> to create a type-safe wrapper function.
+#   Only wrapper.ts is changed; api.ts is unchanged.
+#
+# Diff shows:
+#   - console.log('initial')
+#   + import { fetchData } from './api'
+#   + type FetchParams = Parameters<typeof fetchData>
+#   + function wrappedFetch(...args: FetchParams) that logs and delegates
+#
+# Reviewer questions:
+#   Q1: "What parameters does fetchData accept — what does FetchParams resolve to?"
+#       -> api.ts: fetchData(url: string, options: { method: string; headers: Record<string, string> }).
+#          So FetchParams = [string, { method: string; headers: Record<string, string> }].
+#          args[0] is the URL being logged, args spread to fetchData.
+#
+#   Q2: "Is the wrapper correctly forwarding all arguments?"
+#       -> api.ts: two parameters. The wrapper uses ...args spread which
+#          captures both. fetchData(...args) forwards them correctly.
+#
+# Not needed for comprehension:
+#   - api-client.ts: Higher-level API client class that also calls fetchData.
+#     Direct consumer edge — uses the same function. But HOW the client uses
+#     fetchData doesn't help review the Parameters<> type extraction.
+#
+#   - fetch-interceptor.ts: Middleware that wraps fetch globally with logging.
+#     Same "wrapping fetch" pattern. HARD TRAP: identical concern (wrap and log)
+#     but operates on global fetch, not on fetchData from api.ts.
+#
+#   - api.types.ts: Separate type definitions for API options (RequestOptions,
+#     ResponseType). Same API domain types but not used by wrapper.ts or api.ts.
+
+initial:
+  api.ts: |
+    export function fetchData(url: string, options: { method: string; headers: Record<string, string> }) {
+        return fetch(url, options);
+    }
+
+    export function postData(url: string, body: unknown, options: { headers: Record<string, string> }) {
+        return fetch(url, { method: 'POST', body: JSON.stringify(body), ...options });
+    }
+  wrapper.ts: |
+    console.log('initial');
+  api-client.ts: |
+    import { fetchData } from './api';
+
+    export class ApiClient {
+        private baseUrl: string;
+
+        constructor(baseUrl: string) {
+            this.baseUrl = baseUrl;
+        }
+
+        async get(path: string, headers: Record<string, string> = {}) {
+            return fetchData(`${this.baseUrl}${path}`, { method: 'GET', headers });
+        }
+    }
+  fetch-interceptor.ts: |
+    type FetchFn = typeof globalThis.fetch;
+
+    export function createFetchInterceptor(originalFetch: FetchFn): FetchFn {
+        return async (input, init) => {
+            console.log('Intercepted:', typeof input === 'string' ? input : input.url);
+            const response = await originalFetch(input, init);
+            console.log('Response status:', response.status);
+            return response;
+        };
+    }
+  api.types.ts: |
+    export interface RequestOptions {
+        timeout?: number;
+        retries?: number;
+        cache?: boolean;
+    }
+
+    export type ResponseType = 'json' | 'text' | 'blob' | 'arrayBuffer';
+
+changed:
+  api.ts: |
+    export function fetchData(url: string, options: { method: string; headers: Record<string, string> }) {
+        return fetch(url, options);
+    }
+
+    export function postData(url: string, body: unknown, options: { headers: Record<string, string> }) {
+        return fetch(url, { method: 'POST', body: JSON.stringify(body), ...options });
+    }
+  wrapper.ts: |
+    import { fetchData } from './api';
+
+    type FetchParams = Parameters<typeof fetchData>;
+
+    function wrappedFetch(...args: FetchParams) {
+        console.log('Fetching:', args[0]);
+        return fetchData(...args);
+    }
+  api-client.ts: |
+    import { fetchData } from './api';
+
+    export class ApiClient {
+        private baseUrl: string;
+
+        constructor(baseUrl: string) {
+            this.baseUrl = baseUrl;
+        }
+
+        async get(path: string, headers: Record<string, string> = {}) {
+            return fetchData(`${this.baseUrl}${path}`, { method: 'GET', headers });
+        }
+    }
+  fetch-interceptor.ts: |
+    type FetchFn = typeof globalThis.fetch;
+
+    export function createFetchInterceptor(originalFetch: FetchFn): FetchFn {
+        return async (input, init) => {
+            console.log('Intercepted:', typeof input === 'string' ? input : input.url);
+            const response = await originalFetch(input, init);
+            console.log('Response status:', response.status);
+            return response;
+        };
+    }
+  api.types.ts: |
+    export interface RequestOptions {
+        timeout?: number;
+        retries?: number;
+        cache?: boolean;
+    }
+
+    export type ResponseType = 'json' | 'text' | 'blob' | 'arrayBuffer';
+
+must_include_files:
+  - wrapper.ts
+  # Q1+Q2: api.ts defines fetchData — reviewer needs to see its parameter
+  # types to understand what Parameters<typeof fetchData> resolves to.
+  - api.ts
+
+must_include_content_from:
+  wrapper.ts:
+    - "import { fetchData } from './api'"
+    - "type FetchParams = Parameters<typeof fetchData>"
+    - "function wrappedFetch(...args: FetchParams)"
+  api.ts:
+    - "function fetchData(url: string, options:"
+    - "method: string"
+    - "headers: Record<string, string>"
+
+must_not_include:
+  # --- api-client.ts: consumer of fetchData with same import ---
+  # Direct edge — imports fetchData from same module. But the client's
+  # usage doesn't help review the Parameters<> type extraction.
+  - ApiClient
+  - baseUrl
+  - "async get("
+  # --- fetch-interceptor.ts: wraps global fetch with logging ---
+  # HARD TRAP: identical "wrap and log" pattern. Same concern as wrapper.ts
+  # but operates on global fetch not fetchData.
+  - createFetchInterceptor
+  - FetchFn
+  - "Response status:"
+  # --- api.types.ts: API type definitions not used by wrapper.ts ---
+  - RequestOptions
+  - ResponseType
+
+must_not_include_files:
+  - api-client.ts
+  - fetch-interceptor.ts
+  - api.types.ts
+
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

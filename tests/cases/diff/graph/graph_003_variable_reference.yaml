@@ -1,0 +1,279 @@
+initial:
+  constants.py: |
+    CONFIG_VALUE = 42
+    MAX_RETRIES = 3
+    TIMEOUT_SECONDS = 30
+    API_VERSION = "v2"
+    DEBUG_MODE = False
+
+    class ConfigNamespace:
+        DATABASE_URL = "postgresql://localhost/db"
+        REDIS_URL = "redis://localhost:6379"
+        SECRET_KEY = "dev-secret-key"
+  settings.py: |
+    from constants import MAX_RETRIES, TIMEOUT_SECONDS, DEBUG_MODE
+
+    DEFAULT_BATCH_SIZE = 100
+    PAGINATION_LIMIT = 50
+
+    class AppSettings:
+        retry_count = MAX_RETRIES
+        timeout = TIMEOUT_SECONDS
+        debug = DEBUG_MODE
+  app.py: |
+    from constants import CONFIG_VALUE, API_VERSION
+    from settings import DEFAULT_BATCH_SIZE, AppSettings
+
+    def main():
+        x = CONFIG_VALUE
+        version = API_VERSION
+        batch = DEFAULT_BATCH_SIZE
+        settings = AppSettings()
+        return process_with_settings(x, version, batch, settings.timeout)
+
+    def process_with_settings(value, ver, batch, timeout):
+        return {"value": value, "version": ver, "batch": batch, "timeout": timeout}
+  feature/processor.py: |
+    from constants import MAX_RETRIES, TIMEOUT_SECONDS
+    from settings import PAGINATION_LIMIT
+
+    def process_batch():
+        for attempt in range(MAX_RETRIES):
+            try:
+                return fetch_page(PAGINATION_LIMIT, TIMEOUT_SECONDS)
+            except TimeoutError:
+                continue
+        return None
+
+    def fetch_page(limit, timeout):
+        return {"items": [], "limit": limit}
+
+  # --- Tricky garbage: imports DEBUG_MODE from constants just like the diff ---
+  garbage_debug_logger.py: |
+    from constants import DEBUG_MODE
+    GARBAGE_GRAPH_003_DEBUG_LOGGER_A = "debug_logger"
+    GARBAGE_GRAPH_003_DEBUG_LOGGER_B = True
+
+    class DebugLogger:
+        GARBAGE_GRAPH_003_DEBUG_LOGGER_C = "log_level"
+
+        def __init__(self):
+            self.enabled = DEBUG_MODE
+
+        def log(self, message):
+            if self.enabled:
+                print(message)
+
+  # --- Tricky garbage: references CONFIG_VALUE and API_VERSION like app.py ---
+  garbage_config_reporter.py: |
+    from constants import CONFIG_VALUE, API_VERSION
+    GARBAGE_GRAPH_003_CONFIG_REPORTER_D = "reporter"
+    GARBAGE_GRAPH_003_CONFIG_REPORTER_E = 99
+
+    def generate_report():
+        return {
+            "config": CONFIG_VALUE,
+            "api": API_VERSION,
+        }
+
+    class ConfigReporter:
+        GARBAGE_GRAPH_003_CONFIG_REPORTER_F = True
+
+        def report(self):
+            return generate_report()
+
+  # --- Tricky garbage: same directory as app.py, similar settings pattern ---
+  garbage_feature_toggle.py: |
+    GARBAGE_GRAPH_003_FEATURE_TOGGLE_G = "toggles"
+    GARBAGE_GRAPH_003_FEATURE_TOGGLE_H = False
+    DEBUG_MODE = True
+
+    class FeatureFlags:
+        dark_mode = True
+        analytics = False
+
+        def is_enabled(self, flag_name):
+            return getattr(self, flag_name, False)
+
+  garbage/color_constants_GARBAGE_GRAPH_ghi001.py: |
+    PRIMARY_COLOR_GARBAGE_GRAPH_ghi001 = "#3498db"
+    SECONDARY_COLOR_GARBAGE_GRAPH_ghi001 = "#2ecc71"
+    WARNING_COLOR_GARBAGE_GRAPH_ghi001 = "#f39c12"
+    ERROR_COLOR_GARBAGE_GRAPH_ghi001 = "#e74c3c"
+
+    class ColorPalette_GARBAGE_GRAPH_ghi001:
+        BACKGROUND = "#ffffff"
+        FOREGROUND = "#333333"
+        ACCENT = "#9b59b6"
+  garbage/magic_numbers_GARBAGE_GRAPH_ghi002.py: |
+    GOLDEN_RATIO_GARBAGE_GRAPH_ghi002 = 1.618033988749895
+    PI_APPROX_GARBAGE_GRAPH_ghi002 = 3.14159265359
+    EULER_NUMBER_GARBAGE_GRAPH_ghi002 = 2.71828182845
+
+    def calculate_golden_spiral_GARBAGE_GRAPH_ghi002(n):
+        return [GOLDEN_RATIO_GARBAGE_GRAPH_ghi002 ** i for i in range(n)]
+  garbage/http_codes_GARBAGE_GRAPH_ghi003.py: |
+    HTTP_OK_GARBAGE_GRAPH_ghi003 = 200
+    HTTP_CREATED_GARBAGE_GRAPH_ghi003 = 201
+    HTTP_BAD_REQUEST_GARBAGE_GRAPH_ghi003 = 400
+    HTTP_UNAUTHORIZED_GARBAGE_GRAPH_ghi003 = 401
+    HTTP_NOT_FOUND_GARBAGE_GRAPH_ghi003 = 404
+    HTTP_SERVER_ERROR_GARBAGE_GRAPH_ghi003 = 500
+changed:
+  constants.py: |
+    CONFIG_VALUE = 42
+    MAX_RETRIES = 3
+    TIMEOUT_SECONDS = 30
+    API_VERSION = "v2"
+    DEBUG_MODE = False
+
+    class ConfigNamespace:
+        DATABASE_URL = "postgresql://localhost/db"
+        REDIS_URL = "redis://localhost:6379"
+        SECRET_KEY = "dev-secret-key"
+  settings.py: |
+    from constants import MAX_RETRIES, TIMEOUT_SECONDS, DEBUG_MODE
+
+    DEFAULT_BATCH_SIZE = 100
+    PAGINATION_LIMIT = 50
+
+    class AppSettings:
+        retry_count = MAX_RETRIES
+        timeout = TIMEOUT_SECONDS
+        debug = DEBUG_MODE
+  app.py: |
+    from constants import CONFIG_VALUE, API_VERSION, DEBUG_MODE
+    from settings import DEFAULT_BATCH_SIZE, AppSettings
+
+    def main():
+        x = CONFIG_VALUE
+        version = API_VERSION
+        batch = DEFAULT_BATCH_SIZE
+        settings = AppSettings()
+        if DEBUG_MODE:
+            print(f"Running in debug mode with value={x}")
+        return process_with_settings(x, version, batch, settings.timeout)
+
+    def process_with_settings(value, ver, batch, timeout):
+        return {"value": value, "version": ver, "batch": batch, "timeout": timeout}
+  feature/processor.py: |
+    from constants import MAX_RETRIES, TIMEOUT_SECONDS
+    from settings import PAGINATION_LIMIT
+
+    def process_batch():
+        for attempt in range(MAX_RETRIES):
+            try:
+                return fetch_page(PAGINATION_LIMIT, TIMEOUT_SECONDS)
+            except TimeoutError:
+                continue
+        return None
+
+    def fetch_page(limit, timeout):
+        return {"items": [], "limit": limit}
+  garbage_debug_logger.py: |
+    from constants import DEBUG_MODE
+    GARBAGE_GRAPH_003_DEBUG_LOGGER_A = "debug_logger"
+    GARBAGE_GRAPH_003_DEBUG_LOGGER_B = True
+
+    class DebugLogger:
+        GARBAGE_GRAPH_003_DEBUG_LOGGER_C = "log_level"
+
+        def __init__(self):
+            self.enabled = DEBUG_MODE
+
+        def log(self, message):
+            if self.enabled:
+                print(message)
+  garbage_config_reporter.py: |
+    from constants import CONFIG_VALUE, API_VERSION
+    GARBAGE_GRAPH_003_CONFIG_REPORTER_D = "reporter"
+    GARBAGE_GRAPH_003_CONFIG_REPORTER_E = 99
+
+    def generate_report():
+        return {
+            "config": CONFIG_VALUE,
+            "api": API_VERSION,
+        }
+
+    class ConfigReporter:
+        GARBAGE_GRAPH_003_CONFIG_REPORTER_F = True
+
+        def report(self):
+            return generate_report()
+  garbage_feature_toggle.py: |
+    GARBAGE_GRAPH_003_FEATURE_TOGGLE_G = "toggles"
+    GARBAGE_GRAPH_003_FEATURE_TOGGLE_H = False
+    DEBUG_MODE = True
+
+    class FeatureFlags:
+        dark_mode = True
+        analytics = False
+
+        def is_enabled(self, flag_name):
+            return getattr(self, flag_name, False)
+  garbage/color_constants_GARBAGE_GRAPH_ghi001.py: |
+    PRIMARY_COLOR_GARBAGE_GRAPH_ghi001 = "#3498db"
+    SECONDARY_COLOR_GARBAGE_GRAPH_ghi001 = "#2ecc71"
+    WARNING_COLOR_GARBAGE_GRAPH_ghi001 = "#f39c12"
+    ERROR_COLOR_GARBAGE_GRAPH_ghi001 = "#e74c3c"
+
+    class ColorPalette_GARBAGE_GRAPH_ghi001:
+        BACKGROUND = "#ffffff"
+        FOREGROUND = "#333333"
+        ACCENT = "#9b59b6"
+  garbage/magic_numbers_GARBAGE_GRAPH_ghi002.py: |
+    GOLDEN_RATIO_GARBAGE_GRAPH_ghi002 = 1.618033988749895
+    PI_APPROX_GARBAGE_GRAPH_ghi002 = 3.14159265359
+    EULER_NUMBER_GARBAGE_GRAPH_ghi002 = 2.71828182845
+
+    def calculate_golden_spiral_GARBAGE_GRAPH_ghi002(n):
+        return [GOLDEN_RATIO_GARBAGE_GRAPH_ghi002 ** i for i in range(n)]
+  garbage/http_codes_GARBAGE_GRAPH_ghi003.py: |
+    HTTP_OK_GARBAGE_GRAPH_ghi003 = 200
+    HTTP_CREATED_GARBAGE_GRAPH_ghi003 = 201
+    HTTP_BAD_REQUEST_GARBAGE_GRAPH_ghi003 = 400
+    HTTP_UNAUTHORIZED_GARBAGE_GRAPH_ghi003 = 401
+    HTTP_NOT_FOUND_GARBAGE_GRAPH_ghi003 = 404
+    HTTP_SERVER_ERROR_GARBAGE_GRAPH_ghi003 = 500
+
+# === Assertions ===
+
+must_include_files:
+- app.py
+
+must_include_content_from:
+  app.py:
+    - from constants import CONFIG_VALUE, API_VERSION, DEBUG_MODE
+    - 'if DEBUG_MODE:'
+    - print(f"Running in debug mode with value={x}")
+    - 'def main():'
+
+must_not_include:
+# Plain garbage markers
+- GARBAGE_GRAPH_ghi001
+- GARBAGE_GRAPH_ghi002
+- GARBAGE_GRAPH_ghi003
+# Tricky: imports DEBUG_MODE from constants just like the diff
+- GARBAGE_GRAPH_003_DEBUG_LOGGER_A
+- GARBAGE_GRAPH_003_DEBUG_LOGGER_B
+- GARBAGE_GRAPH_003_DEBUG_LOGGER_C
+# Tricky: references CONFIG_VALUE and API_VERSION like app.py
+- GARBAGE_GRAPH_003_CONFIG_REPORTER_D
+- GARBAGE_GRAPH_003_CONFIG_REPORTER_E
+- GARBAGE_GRAPH_003_CONFIG_REPORTER_F
+# Tricky: defines its own DEBUG_MODE variable, same directory
+- GARBAGE_GRAPH_003_FEATURE_TOGGLE_G
+- GARBAGE_GRAPH_003_FEATURE_TOGGLE_H
+
+must_not_include_files:
+- garbage/color_constants_GARBAGE_GRAPH_ghi001.py
+- garbage/magic_numbers_GARBAGE_GRAPH_ghi002.py
+- garbage/http_codes_GARBAGE_GRAPH_ghi003.py
+- garbage_debug_logger.py
+- garbage_config_reporter.py
+- garbage_feature_toggle.py
+
+max_fragments: 6
+max_files: 4
+add_garbage_files: false
+skip_garbage_check: true

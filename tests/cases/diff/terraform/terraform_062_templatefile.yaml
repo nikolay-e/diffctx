@@ -1,0 +1,107 @@
+initial:
+  main.tf: |
+    resource "aws_instance" "app" {
+      ami           = "ami-12345678"
+      instance_type = "t3.micro"
+      user_data     = templatefile("${path.module}/templates/init.sh", {
+        app_name = "myapp"
+        port     = 8080
+      })
+    }
+
+  templates/init.sh: |
+    #!/bin/bash
+    echo "Starting ${app_name} on port ${port}"
+    systemctl start ${app_name}
+
+  # --- Tricky garbage: same resource type aws_instance but for CI runner ---
+  garbage_ci_runner.tf: |
+    GARBAGE_TF_062_CI_MARKER_A = "ci-runner-instance"
+    GARBAGE_TF_062_CI_MARKER_B = "build-agent"
+
+    resource "aws_instance" "ci_runner" {
+      ami           = "ami-55667788"
+      instance_type = "c5.xlarge"
+      user_data     = templatefile("${path.module}/templates/ci.sh", {
+        runner_token = var.runner_token
+      })
+    }
+
+  # --- Plain garbage: no overlap ---
+  garbage_dns.tf: |
+    GARBAGE_TF_062_DNS_MARKER_C = "route53-zone"
+    GARBAGE_TF_062_DNS_MARKER_D = "dns-records"
+
+    resource "aws_route53_zone" "primary" {
+      name = "example.com"
+    }
+
+changed:
+  main.tf: |
+    resource "aws_instance" "app" {
+      ami           = "ami-12345678"
+      instance_type = "t3.small"
+      user_data     = templatefile("${path.module}/templates/init.sh", {
+        app_name    = "myapp"
+        port        = 8080
+        environment = "production"
+        log_level   = "info"
+      })
+    }
+
+  templates/init.sh: |
+    #!/bin/bash
+    echo "Starting ${app_name} on port ${port}"
+    systemctl start ${app_name}
+
+  # --- Tricky garbage: same resource type aws_instance but for CI runner ---
+  garbage_ci_runner.tf: |
+    GARBAGE_TF_062_CI_MARKER_A = "ci-runner-instance"
+    GARBAGE_TF_062_CI_MARKER_B = "build-agent"
+
+    resource "aws_instance" "ci_runner" {
+      ami           = "ami-55667788"
+      instance_type = "c5.xlarge"
+      user_data     = templatefile("${path.module}/templates/ci.sh", {
+        runner_token = var.runner_token
+      })
+    }
+
+  # --- Plain garbage: no overlap ---
+  garbage_dns.tf: |
+    GARBAGE_TF_062_DNS_MARKER_C = "route53-zone"
+    GARBAGE_TF_062_DNS_MARKER_D = "dns-records"
+
+    resource "aws_route53_zone" "primary" {
+      name = "example.com"
+    }
+
+# === Assertions ===
+
+must_include_files:
+- main.tf
+
+must_include_content_from:
+  main.tf:
+    - environment = "production"
+    - log_level   = "info"
+    - instance_type = "t3.small"
+    - 'resource "aws_instance" "app"'
+
+must_not_include:
+# Tricky garbage markers (sibling aws_instance resource)
+- GARBAGE_TF_062_CI_MARKER_A
+- GARBAGE_TF_062_CI_MARKER_B
+# Plain garbage markers
+- GARBAGE_TF_062_DNS_MARKER_C
+- GARBAGE_TF_062_DNS_MARKER_D
+
+must_not_include_files:
+- garbage_ci_runner.tf
+- garbage_dns.tf
+- templates/init.sh
+
+max_fragments: 3
+max_files: 1
+add_garbage_files: false
+skip_garbage_check: true

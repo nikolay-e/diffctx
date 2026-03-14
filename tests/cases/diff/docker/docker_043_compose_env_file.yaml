@@ -1,0 +1,122 @@
+initial:
+  src/api.py: |
+    from flask import Flask, jsonify
+    import os
+
+    app = Flask(__name__)
+
+    DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///app.db")
+    DEBUG = os.getenv("DEBUG", "false").lower() == "true"
+    SECRET_KEY = os.getenv("SECRET_KEY", "changeme")
+
+    @app.route('/health')
+    def health():
+        return jsonify(status='ok', debug=DEBUG)
+
+    @app.route('/api/config')
+    def get_config():
+        return jsonify(
+            db_configured=bool(DATABASE_URL),
+            debug_mode=DEBUG
+        )
+
+    if __name__ == "__main__":
+        app.run(host="0.0.0.0", port=8080, debug=DEBUG)
+  requirements.txt: |
+    flask==2.3.0
+    gunicorn==21.2.0
+    psycopg2-binary==2.9.9
+  Dockerfile: |
+    FROM python:3.12-slim
+    WORKDIR /app
+    COPY requirements.txt .
+    RUN pip install --no-cache-dir -r requirements.txt
+    COPY src/ ./src/
+    EXPOSE 8080
+    CMD ["gunicorn", "-b", "0.0.0.0:8080", "src.api:app"]
+  .env.local: |
+    DATABASE_URL=postgres://localhost:5432/dev
+    DEBUG=true
+    SECRET_KEY=dev-secret-key-not-for-production
+  docker-compose.yml: |
+    version: '3.8'
+    services:
+      api:
+        build: .
+        ports:
+          - "8080:8080"
+  scripts/gen_env.sh: |
+    #!/bin/bash
+    cp .env.template .env.local
+  tests/test_config.py: |
+    def test_env_loading():
+        pass
+  docs/configuration.md: |
+    # Configuration Guide
+  k8s/configmap.yaml: |
+    apiVersion: v1
+  ansible/env-setup.yml: ''
+changed:
+  src/api.py: |
+    from flask import Flask, jsonify
+    import os
+
+    app = Flask(__name__)
+
+    DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///app.db")
+    DEBUG = os.getenv("DEBUG", "false").lower() == "true"
+    SECRET_KEY = os.getenv("SECRET_KEY", "changeme")
+
+    @app.route('/health')
+    def health():
+        return jsonify(status='ok', debug=DEBUG)
+
+    @app.route('/api/config')
+    def get_config():
+        return jsonify(
+            db_configured=bool(DATABASE_URL),
+            debug_mode=DEBUG
+        )
+
+    if __name__ == "__main__":
+        app.run(host="0.0.0.0", port=8080, debug=DEBUG)
+  requirements.txt: |
+    flask==2.3.0
+    gunicorn==21.2.0
+    psycopg2-binary==2.9.9
+  Dockerfile: |
+    FROM python:3.12-slim
+    WORKDIR /app
+    COPY requirements.txt .
+    RUN pip install --no-cache-dir -r requirements.txt
+    COPY src/ ./src/
+    EXPOSE 8080
+    CMD ["gunicorn", "-b", "0.0.0.0:8080", "src.api:app"]
+  .env.local: |
+    DATABASE_URL=postgres://localhost:5432/dev
+    DEBUG=true
+    SECRET_KEY=dev-secret-key-not-for-production
+  docker-compose.yml: |
+    version: '3.8'
+    services:
+      api:
+        build: .
+        ports:
+          - "8080:8080"
+        env_file:
+          - .env.local
+  scripts/gen_env.sh: |
+    #!/bin/bash
+    cp .env.template .env.local
+  tests/test_config.py: |
+    def test_env_loading():
+        pass
+  docs/configuration.md: |
+    # Configuration Guide
+  k8s/configmap.yaml: |
+    apiVersion: v1
+  ansible/env-setup.yml: ''
+must_include_files:
+- docker-compose.yml
+add_garbage_files: false
+skip_garbage_check: true

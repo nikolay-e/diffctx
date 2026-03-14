@@ -1,0 +1,198 @@
+# Test 007: Internal logger gains LogLevel enum — reviewer needs consumers
+#
+# Scenario: internal/logger/index.ts adds a LogLevel enum and changes the
+# Logger class: constructor takes optional LogLevel, log() gains level
+# parameter with filtering, and new debug()/error() convenience methods.
+#
+# Reviewer questions:
+#   Q1: "Who uses createLogger()?" -> server.ts calls createLogger('api')
+#       with the OLD signature (no level arg). The new optional parameter
+#       is backward-compatible, but reviewer needs to verify existing
+#       callers still work and see whether they should adopt the new API.
+#   Q2: "Same question for other consumers" -> main.ts calls
+#       createLogger('worker'). Same backward-compatibility check.
+#   Q3: "Does logger.log() still work the same?" -> Both callers do
+#       logger.log(`...`) with one arg. Since the new level param
+#       defaults to INFO, this still works — but reviewer needs to
+#       see the call sites to confirm.
+#
+# Not needed:
+#   - health.ts: an HTTP health-check endpoint returning { status: 'ok' }.
+#     Same internal/ directory, but zero logging dependency.
+#   - metrics.ts: Prometheus-style counter/gauge tracking. Same directory
+#     sibling, shares "monitoring" concern, but does not use Logger.
+#   - tsconfig.json: compiler config, no relevance to logger API change.
+
+initial:
+  internal/logger/index.ts: |
+    export class Logger {
+        log(message: string) {
+            console.log(message);
+        }
+    }
+
+    export function createLogger(name: string): Logger {
+        return new Logger();
+    }
+
+    export const DEFAULT_LOG_PREFIX = "[APP]";
+  packages/api/src/server.ts: |
+    import { Logger, createLogger } from '../../internal/logger';
+
+    const logger = createLogger('api');
+
+    export function startServer(port: number) {
+        logger.log(`Server started on port ${port}`);
+        return { port, status: 'running' };
+    }
+
+    export function stopServer() {
+        logger.log('Server stopped');
+    }
+  packages/worker/src/main.ts: |
+    import { Logger, createLogger } from '../../internal/logger';
+
+    const logger = createLogger('worker');
+
+    export function runWorker(taskName: string) {
+        logger.log(`Worker started: ${taskName}`);
+        return { task: taskName, status: 'processing' };
+    }
+
+    export function stopWorker() {
+        logger.log('Worker stopped');
+    }
+  internal/health/health.ts: |
+    interface HealthStatus {
+      status: 'ok' | 'degraded' | 'down';
+      uptime: number;
+      checks: Record<string, boolean>;
+    }
+
+    let startTime = Date.now();
+
+    export function getHealthStatus(): HealthStatus {
+      return {
+        status: 'ok',
+        uptime: Date.now() - startTime,
+        checks: {
+          database: true,
+          cache: true,
+        },
+      };
+    }
+
+    export function resetUptime(): void {
+      startTime = Date.now();
+    }
+  internal/metrics/metrics.ts: |
+    interface MetricEntry {
+      name: string;
+      value: number;
+      labels: Record<string, string>;
+    }
+
+    const registry: MetricEntry[] = [];
+
+    export function incrementCounter(name: string, labels: Record<string, string> = {}): void {
+      const existing = registry.find(m => m.name === name);
+      if (existing) {
+        existing.value += 1;
+      } else {
+        registry.push({ name, value: 1, labels });
+      }
+    }
+
+    export function setGauge(name: string, value: number): void {
+      const existing = registry.find(m => m.name === name);
+      if (existing) {
+        existing.value = value;
+      } else {
+        registry.push({ name, value, labels: {} });
+      }
+    }
+
+    export function getMetrics(): MetricEntry[] {
+      return [...registry];
+    }
+  tsconfig.json: |
+    {
+      "compilerOptions": {
+        "target": "ES2022",
+        "module": "NodeNext",
+        "strict": true,
+        "outDir": "dist"
+      }
+    }
+
+changed:
+  internal/logger/index.ts: |
+    export enum LogLevel {
+        DEBUG = 0,
+        INFO = 1,
+        WARN = 2,
+        ERROR = 3,
+    }
+
+    export class Logger {
+        constructor(private level: LogLevel = LogLevel.INFO) {}
+
+        log(message: string, level: LogLevel = LogLevel.INFO) {
+            if (level >= this.level) {
+                console.log(`[${LogLevel[level]}] ${message}`);
+            }
+        }
+
+        debug(message: string) {
+            this.log(message, LogLevel.DEBUG);
+        }
+
+        error(message: string) {
+            this.log(message, LogLevel.ERROR);
+        }
+    }
+
+    export function createLogger(name: string, level?: LogLevel): Logger {
+        return new Logger(level);
+    }
+
+    export const DEFAULT_LOG_PREFIX = "[APP]";
+
+must_include_files:
+  - internal/logger/index.ts
+  # Q1: Existing consumer — does createLogger('api') still work?
+  - packages/api/src/server.ts
+  # Q2: Another consumer — does createLogger('worker') still work?
+  - packages/worker/src/main.ts
+must_include_content_from:
+  internal/logger/index.ts:
+    - enum LogLevel
+    - "constructor(private level: LogLevel = LogLevel.INFO)"
+    - "function createLogger"
+  packages/api/src/server.ts:
+    # Call site using old signature — reviewer checks compatibility
+    - "createLogger('api')"
+  packages/worker/src/main.ts:
+    # Same check in a different package
+    - "createLogger('worker')"
+must_not_include:
+  # --- health.ts: HTTP health endpoint, no logging dependency ---
+  - getHealthStatus
+  - resetUptime
+  - HealthStatus
+  # --- metrics.ts: counter/gauge tracking, different concern ---
+  - incrementCounter
+  - setGauge
+  - getMetrics
+  - MetricEntry
+  # --- tsconfig: compiler config ---
+  - "ES2022"
+  - "NodeNext"
+must_not_include_files:
+  - internal/health/health.ts
+  - internal/metrics/metrics.ts
+  - tsconfig.json
+max_fragments: 8
+max_files: 4
+add_garbage_files: false
+skip_garbage_check: true

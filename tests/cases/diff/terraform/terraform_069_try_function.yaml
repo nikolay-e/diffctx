@@ -1,0 +1,363 @@
+# Scenario: Adding a failover Route53 record using coalesce() for domain
+#   fallback logic, pointing to a secondary ALB.
+#   Only main.tf is changed.
+#
+# Diff shows:
+#   - NEW variable "failover_domain" (string, default "")
+#   - NEW resource aws_route53_record "failover" with:
+#     - coalesce(var.failover_domain, var.custom_domain, var.default_domain)
+#     - failover_routing_policy { type = "SECONDARY" }
+#     - alias to aws_lb.failover
+#
+# Reviewer questions:
+#   Q1: "What is aws_lb.failover — the target of this new DNS record?"
+#       -> Needs alb.tf: the failover ALB definition — its name, subnets,
+#         whether it's internal or external. Without this the reviewer
+#         cannot verify the failover target actually exists and is
+#         configured appropriately.
+#
+#   Q2: "What does the PRIMARY record look like? Does it also have
+#        failover_routing_policy and set_identifier?"
+#       -> Needs the existing aws_route53_record.app in main.tf. This is
+#         critical: Route53 failover requires BOTH records to have
+#         set_identifier and failover_routing_policy. The primary record
+#         in the diff does NOT have these — this is likely a bug, and
+#         the reviewer can only spot it by seeing both records together.
+#
+#   Q3: "What is the domain resolution chain via coalesce()?"
+#       -> Answerable from the diff + the existing variable definitions
+#         in main.tf. The three-argument coalesce means: use failover_domain
+#         if set, else custom_domain, else default_domain.
+#
+# Not needed for comprehension:
+#   - security/waf.tf: A WAF WebACL association attached to aws_lb.failover.
+#     This is the hardest trap: it has a direct structural reference to the
+#     same ALB the new DNS record targets. But knowing WAF rules does not
+#     help review DNS failover routing. The reviewer question is "what does
+#     the failover ALB look like", not "what WAF protects it."
+#
+#   - networking/target_groups.tf: Target groups registered to both ALBs.
+#     Another structural trap — references aws_lb.failover.arn. But target
+#     group health check paths and ports don't help answer any reviewer
+#     question about DNS failover configuration.
+#
+#   - api/dns.tf: A different Route53 record for the API service, also
+#     using coalesce(). Same function, same resource type, different service.
+#     Lexical trap.
+#
+#   - certs/acm.tf: An ACM certificate for "*.example.com" — lexically
+#     overlaps with var.default_domain ("app.example.com"). But TLS
+#     certificate management is not DNS routing.
+#
+#   - lambda/layers.tf: No relationship to DNS or ALB.
+
+initial:
+  main.tf: |
+    variable "custom_domain" {
+      type    = string
+      default = ""
+    }
+
+    variable "default_domain" {
+      type    = string
+      default = "app.example.com"
+    }
+
+    resource "aws_route53_zone" "main" {
+      name = "example.com"
+    }
+
+    resource "aws_route53_record" "app" {
+      zone_id = aws_route53_zone.main.zone_id
+      name    = coalesce(var.custom_domain, var.default_domain)
+      type    = "A"
+      alias {
+        name                   = aws_lb.main.dns_name
+        zone_id                = aws_lb.main.zone_id
+        evaluate_target_health = true
+      }
+    }
+
+  alb.tf: |
+    resource "aws_lb" "main" {
+      name               = "app-alb"
+      internal           = false
+      load_balancer_type = "application"
+      subnets            = var.public_subnet_ids
+      security_groups    = [aws_security_group.alb.id]
+
+      access_logs {
+        bucket  = aws_s3_bucket.logs.id
+        prefix  = "alb-main"
+        enabled = true
+      }
+    }
+
+    resource "aws_lb" "failover" {
+      name               = "app-alb-failover"
+      internal           = false
+      load_balancer_type = "application"
+      subnets            = var.failover_subnet_ids
+      security_groups    = [aws_security_group.alb.id]
+
+      access_logs {
+        bucket  = aws_s3_bucket.logs.id
+        prefix  = "alb-failover"
+        enabled = true
+      }
+    }
+
+    resource "aws_lb_listener" "main_https" {
+      load_balancer_arn = aws_lb.main.arn
+      port              = 443
+      protocol          = "HTTPS"
+      ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"
+      certificate_arn   = aws_acm_certificate.app.arn
+
+      default_action {
+        type             = "forward"
+        target_group_arn = aws_lb_target_group.main.arn
+      }
+    }
+
+    resource "aws_lb_listener" "failover_https" {
+      load_balancer_arn = aws_lb.failover.arn
+      port              = 443
+      protocol          = "HTTPS"
+      ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"
+      certificate_arn   = aws_acm_certificate.app.arn
+
+      default_action {
+        type             = "forward"
+        target_group_arn = aws_lb_target_group.failover.arn
+      }
+    }
+
+  security/waf.tf: |
+    resource "aws_wafv2_web_acl_association" "failover_alb" {
+      resource_arn = aws_lb.failover.arn
+      web_acl_arn  = aws_wafv2_web_acl.main.arn
+    }
+
+    resource "aws_wafv2_web_acl" "main" {
+      name  = "app-waf"
+      scope = "REGIONAL"
+
+      default_action {
+        allow {}
+      }
+
+      rule {
+        name     = "rate-limit"
+        priority = 1
+        action { block {} }
+        statement {
+          rate_based_statement {
+            limit              = 2000
+            aggregate_key_type = "IP"
+          }
+        }
+        visibility_config {
+          sampled_requests_enabled   = true
+          cloudwatch_metrics_enabled = true
+          metric_name                = "rate-limit"
+        }
+      }
+
+      visibility_config {
+        sampled_requests_enabled   = true
+        cloudwatch_metrics_enabled = true
+        metric_name                = "app-waf"
+      }
+    }
+
+  networking/target_groups.tf: |
+    resource "aws_lb_target_group" "main" {
+      name        = "app-main-tg"
+      port        = 8080
+      protocol    = "HTTP"
+      vpc_id      = var.vpc_id
+      target_type = "ip"
+
+      health_check {
+        path                = "/health"
+        port                = "traffic-port"
+        healthy_threshold   = 3
+        unhealthy_threshold = 3
+        timeout             = 5
+        interval            = 30
+        matcher             = "200"
+      }
+    }
+
+    resource "aws_lb_target_group" "failover" {
+      name        = "app-failover-tg"
+      port        = 8080
+      protocol    = "HTTP"
+      vpc_id      = var.failover_vpc_id
+      target_type = "ip"
+
+      health_check {
+        path                = "/health"
+        port                = "traffic-port"
+        healthy_threshold   = 3
+        unhealthy_threshold = 3
+        timeout             = 5
+        interval            = 30
+        matcher             = "200"
+      }
+    }
+
+  api/dns.tf: |
+    variable "api_domain" {
+      type    = string
+      default = ""
+    }
+
+    resource "aws_route53_record" "api" {
+      zone_id = aws_route53_zone.main.zone_id
+      name    = coalesce(var.api_domain, "api.example.com")
+      type    = "A"
+      alias {
+        name                   = aws_lb.api.dns_name
+        zone_id                = aws_lb.api.zone_id
+        evaluate_target_health = true
+      }
+    }
+
+  certs/acm.tf: |
+    resource "aws_acm_certificate" "app" {
+      domain_name       = "*.example.com"
+      validation_method = "DNS"
+
+      lifecycle {
+        create_before_destroy = true
+      }
+    }
+
+    resource "aws_route53_record" "cert_validation" {
+      for_each = {
+        for dvo in aws_acm_certificate.app.domain_validation_options : dvo.domain_name => {
+          name   = dvo.resource_record_name
+          record = dvo.resource_record_value
+          type   = dvo.resource_record_type
+        }
+      }
+
+      zone_id = aws_route53_zone.main.zone_id
+      name    = each.value.name
+      type    = each.value.type
+      ttl     = 60
+      records = [each.value.record]
+    }
+
+  lambda/layers.tf: |
+    resource "aws_lambda_layer_version" "deps" {
+      filename            = "layer.zip"
+      layer_name          = "shared-dependencies"
+      compatible_runtimes = ["python3.11"]
+    }
+
+changed:
+  main.tf: |
+    variable "custom_domain" {
+      type    = string
+      default = ""
+    }
+
+    variable "default_domain" {
+      type    = string
+      default = "app.example.com"
+    }
+
+    variable "failover_domain" {
+      type        = string
+      default     = ""
+      description = "Custom domain for the failover record. Falls back to custom_domain, then default_domain."
+    }
+
+    resource "aws_route53_zone" "main" {
+      name = "example.com"
+    }
+
+    resource "aws_route53_record" "app" {
+      zone_id = aws_route53_zone.main.zone_id
+      name    = coalesce(var.custom_domain, var.default_domain)
+      type    = "A"
+      alias {
+        name                   = aws_lb.main.dns_name
+        zone_id                = aws_lb.main.zone_id
+        evaluate_target_health = true
+      }
+    }
+
+    resource "aws_route53_record" "failover" {
+      zone_id = aws_route53_zone.main.zone_id
+      name    = coalesce(var.failover_domain, var.custom_domain, var.default_domain)
+      type    = "A"
+      set_identifier = "secondary"
+      failover_routing_policy {
+        type = "SECONDARY"
+      }
+      alias {
+        name                   = aws_lb.failover.dns_name
+        zone_id                = aws_lb.failover.zone_id
+        evaluate_target_health = true
+      }
+    }
+
+must_include_files:
+  - main.tf
+  # Q1: reviewer needs to see what aws_lb.failover IS — its subnets,
+  # whether it's internal/external, its type. The diff aliases to it
+  # but the definition lives here.
+  - alb.tf
+
+must_include_content_from:
+  main.tf:
+    - 'resource "aws_route53_record" "failover"'
+    - coalesce(var.failover_domain, var.custom_domain, var.default_domain)
+    - type = "SECONDARY"
+    - variable "failover_domain" {
+    # Q2: the primary record MUST be visible so the reviewer can see it
+    # LACKS set_identifier and failover_routing_policy — likely a bug
+    - 'resource "aws_route53_record" "app"'
+  alb.tf:
+    - 'resource "aws_lb" "failover"'
+    - app-alb-failover
+    - failover_subnet_ids
+
+must_not_include:
+  # --- security/waf.tf: structural edge to aws_lb.failover.arn ---
+  # Hardest trap. Real dependency on the same ALB, but WAF rules
+  # don't help review DNS failover routing configuration.
+  - aws_wafv2_web_acl_association
+  - rate_based_statement
+  - aggregate_key_type
+  # --- networking/target_groups.tf: structural edge to both ALBs ---
+  # Target group health checks and ports are ALB backend concerns,
+  # not DNS routing concerns.
+  - app-failover-tg
+  - "traffic-port"
+  - unhealthy_threshold
+  # --- api/dns.tf: same resource type + coalesce(), different service ---
+  - api.example.com
+  - aws_lb.api.dns_name
+  # --- certs/acm.tf: lexical overlap on example.com domain ---
+  - "*.example.com"
+  - domain_validation_options
+  - cert_validation
+  # --- lambda: no relationship ---
+  - shared-dependencies
+
+must_not_include_files:
+  - security/waf.tf
+  - networking/target_groups.tf
+  - api/dns.tf
+  - certs/acm.tf
+  - lambda/layers.tf
+
+max_fragments: 5
+max_files: 2
+add_garbage_files: false
+skip_garbage_check: true

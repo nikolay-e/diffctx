@@ -1,0 +1,221 @@
+# Scenario: Renderer uses NamedTuples (Point, Color, Size) from geometry module
+# Changed: renderer.py imports NamedTuples and uses them for rendering geometric shapes
+# Reviewer questions: Are NamedTuple fields accessed correctly? Does color blending work?
+# Trap 1: animation.py — animates shapes with similar Point/Size types but independent definitions
+# Trap 2: layout_engine.py — positions elements, shares "geometry/position" vocabulary but no dep
+initial:
+  geometry.py: |
+    from typing import NamedTuple
+    import math
+
+    class Point(NamedTuple):
+        x: float
+        y: float
+
+        def distance_to(self, other: "Point") -> float:
+            return math.sqrt((self.x - other.x) ** 2 + (self.y - other.y) ** 2)
+
+        def midpoint(self, other: "Point") -> "Point":
+            return Point(x=(self.x + other.x) / 2, y=(self.y + other.y) / 2)
+
+    class Rectangle(NamedTuple):
+        top_left: Point
+        bottom_right: Point
+
+        def width(self) -> float:
+            return abs(self.bottom_right.x - self.top_left.x)
+
+        def height(self) -> float:
+            return abs(self.bottom_right.y - self.top_left.y)
+
+        def area(self) -> float:
+            return self.width() * self.height()
+
+        def contains(self, point: Point) -> bool:
+            return (self.top_left.x <= point.x <= self.bottom_right.x and
+                    self.top_left.y <= point.y <= self.bottom_right.y)
+  renderer.py: |
+    def draw():
+        pass
+
+    def clear_canvas() -> None:
+        pass
+  animation.py: |
+    from typing import List, Optional, NamedTuple
+    from dataclasses import dataclass
+
+    class Keyframe(NamedTuple):
+        time_ms: int
+        x: float
+        y: float
+        opacity: float = 1.0
+
+    @dataclass
+    class Animation:
+        name: str
+        keyframes: List[Keyframe]
+        loop: bool = False
+
+    class AnimationPlayer:
+        def __init__(self):
+            self._animations: dict[str, Animation] = {}
+
+        def register(self, animation: Animation) -> None:
+            self._animations[animation.name] = animation
+
+        def get_frame_at(self, name: str, time_ms: int) -> Optional[Keyframe]:
+            anim = self._animations.get(name)
+            if not anim or not anim.keyframes:
+                return None
+            for kf in reversed(anim.keyframes):
+                if kf.time_ms <= time_ms:
+                    return kf
+            return anim.keyframes[0]
+  layout_engine.py: |
+    from typing import List, Dict, Optional
+    from dataclasses import dataclass
+
+    @dataclass
+    class LayoutBox:
+        x: float
+        y: float
+        width: float
+        height: float
+
+    class LayoutEngine:
+        def __init__(self, container_width: float, container_height: float):
+            self._width = container_width
+            self._height = container_height
+
+        def flow_layout(self, items: List[tuple[float, float]], gap: float = 10) -> List[LayoutBox]:
+            boxes = []
+            current_x, current_y = 0.0, 0.0
+            for w, h in items:
+                if current_x + w > self._width:
+                    current_x = 0.0
+                    current_y += h + gap
+                boxes.append(LayoutBox(current_x, current_y, w, h))
+                current_x += w + gap
+            return boxes
+changed:
+  geometry.py: |
+    from typing import NamedTuple
+    import math
+
+    class Point(NamedTuple):
+        x: float
+        y: float
+
+        def distance_to(self, other: "Point") -> float:
+            return math.sqrt((self.x - other.x) ** 2 + (self.y - other.y) ** 2)
+
+        def midpoint(self, other: "Point") -> "Point":
+            return Point(x=(self.x + other.x) / 2, y=(self.y + other.y) / 2)
+
+    class Rectangle(NamedTuple):
+        top_left: Point
+        bottom_right: Point
+
+        def width(self) -> float:
+            return abs(self.bottom_right.x - self.top_left.x)
+
+        def height(self) -> float:
+            return abs(self.bottom_right.y - self.top_left.y)
+
+        def area(self) -> float:
+            return self.width() * self.height()
+
+        def contains(self, point: Point) -> bool:
+            return (self.top_left.x <= point.x <= self.bottom_right.x and
+                    self.top_left.y <= point.y <= self.bottom_right.y)
+  renderer.py: |
+    from geometry import Point, Rectangle
+
+    def draw(rect: Rectangle) -> str:
+        center = rect.top_left.midpoint(rect.bottom_right)
+        return f"Drawing rect at center ({center.x}, {center.y}), area={rect.area()}"
+
+    def draw_line(start: Point, end: Point) -> str:
+        length = start.distance_to(end)
+        return f"Line from ({start.x},{start.y}) to ({end.x},{end.y}), length={length:.2f}"
+
+    def clear_canvas() -> None:
+        pass
+  animation.py: |
+    from typing import List, Optional, NamedTuple
+    from dataclasses import dataclass
+
+    class Keyframe(NamedTuple):
+        time_ms: int
+        x: float
+        y: float
+        opacity: float = 1.0
+
+    @dataclass
+    class Animation:
+        name: str
+        keyframes: List[Keyframe]
+        loop: bool = False
+
+    class AnimationPlayer:
+        def __init__(self):
+            self._animations: dict[str, Animation] = {}
+
+        def register(self, animation: Animation) -> None:
+            self._animations[animation.name] = animation
+
+        def get_frame_at(self, name: str, time_ms: int) -> Optional[Keyframe]:
+            anim = self._animations.get(name)
+            if not anim or not anim.keyframes:
+                return None
+            for kf in reversed(anim.keyframes):
+                if kf.time_ms <= time_ms:
+                    return kf
+            return anim.keyframes[0]
+  layout_engine.py: |
+    from typing import List, Dict, Optional
+    from dataclasses import dataclass
+
+    @dataclass
+    class LayoutBox:
+        x: float
+        y: float
+        width: float
+        height: float
+
+    class LayoutEngine:
+        def __init__(self, container_width: float, container_height: float):
+            self._width = container_width
+            self._height = container_height
+
+        def flow_layout(self, items: List[tuple[float, float]], gap: float = 10) -> List[LayoutBox]:
+            boxes = []
+            current_x, current_y = 0.0, 0.0
+            for w, h in items:
+                if current_x + w > self._width:
+                    current_x = 0.0
+                    current_y += h + gap
+                boxes.append(LayoutBox(current_x, current_y, w, h))
+                current_x += w + gap
+            return boxes
+must_include_files:
+- renderer.py
+- geometry.py
+must_include_content_from:
+  renderer.py:
+  - 'from geometry import Point, Rectangle'
+  - 'def draw(rect: Rectangle) -> str:'
+must_not_include:
+- AnimationPlayer
+- Animation
+- Keyframe
+- LayoutEngine
+- LayoutBox
+- flow_layout
+must_not_include_files:
+- animation.py
+- layout_engine.py
+add_garbage_files: false
+skip_garbage_check: true
+max_fragments: 10
+max_files: 5

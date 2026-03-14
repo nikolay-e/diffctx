@@ -1,0 +1,268 @@
+# Scenario: User model starts using Scopes module for dynamic query-like class methods
+# Changed: app/models/user.rb — added require_relative, include Scopes, scope declarations, products accessor
+# Reviewer questions: Does scope DSL correctly define singleton methods? Does by_category lambda parameter work?
+# Trap files:
+#   - app/models/category.rb: Category tree with children/parent — "product category" domain overlap but no Scopes usage
+#   - lib/query_builder.rb: SQL-like query builder — "scope/filter" vocabulary overlap but independent query chain
+initial:
+  lib/scopes.rb: |
+    module Scopes
+      def self.included(base)
+        base.extend(ClassMethods)
+      end
+
+      module ClassMethods
+        def scope(name, body)
+          define_singleton_method(name, &body)
+        end
+      end
+    end
+  app/models/product.rb: |
+    class Product
+      attr_accessor :name, :price, :active, :category
+
+      def initialize(name:, price:, active: true, category: nil)
+        @name = name
+        @price = price
+        @active = active
+        @category = category
+      end
+
+      def self.all
+        []
+      end
+    end
+  app/models/user.rb: |
+    class User
+      def initialize(name:)
+        @name = name
+      end
+    end
+  app/models/category.rb: |
+    class Category
+      attr_accessor :name, :parent, :children
+
+      def initialize(name:, parent: nil)
+        @name = name
+        @parent = parent
+        @children = []
+        parent.add_child(self) if parent
+      end
+
+      def add_child(child)
+        @children << child
+        child.instance_variable_set(:@parent, self)
+      end
+
+      def root?
+        @parent.nil?
+      end
+
+      def leaf?
+        @children.empty?
+      end
+
+      def ancestors
+        result = []
+        current = @parent
+        while current
+          result.unshift(current)
+          current = current.parent
+        end
+        result
+      end
+
+      def depth
+        ancestors.size
+      end
+
+      def full_path
+        (ancestors.map(&:name) + [name]).join(' > ')
+      end
+    end
+  lib/query_builder.rb: |
+    class QueryBuilder
+      def initialize(collection)
+        @collection = collection
+        @filters = []
+        @sort_key = nil
+        @limit_count = nil
+      end
+
+      def where(&condition)
+        @filters << condition
+        self
+      end
+
+      def order_by(key)
+        @sort_key = key
+        self
+      end
+
+      def limit(count)
+        @limit_count = count
+        self
+      end
+
+      def execute
+        result = @collection.dup
+        @filters.each { |f| result = result.select(&f) }
+        result = result.sort_by(&@sort_key) if @sort_key
+        result = result.first(@limit_count) if @limit_count
+        result
+      end
+
+      def count
+        execute.size
+      end
+    end
+changed:
+  lib/scopes.rb: |
+    module Scopes
+      def self.included(base)
+        base.extend(ClassMethods)
+      end
+
+      module ClassMethods
+        def scope(name, body)
+          define_singleton_method(name, &body)
+        end
+      end
+    end
+  app/models/product.rb: |
+    class Product
+      attr_accessor :name, :price, :active, :category
+
+      def initialize(name:, price:, active: true, category: nil)
+        @name = name
+        @price = price
+        @active = active
+        @category = category
+      end
+
+      def self.all
+        []
+      end
+    end
+  app/models/user.rb: |
+    require_relative '../../lib/scopes'
+    require_relative 'product'
+
+    class User
+      include Scopes
+
+      attr_accessor :name, :products
+
+      scope :active, -> { all.select(&:active) }
+      scope :expensive, -> { all.select { |p| p.price > 100 } }
+      scope :by_category, ->(cat) { all.select { |p| p.category == cat } }
+
+      def initialize(name:)
+        @name = name
+        @products = []
+      end
+
+      def self.all
+        []
+      end
+
+      def active
+        true
+      end
+    end
+  app/models/category.rb: |
+    class Category
+      attr_accessor :name, :parent, :children
+
+      def initialize(name:, parent: nil)
+        @name = name
+        @parent = parent
+        @children = []
+        parent.add_child(self) if parent
+      end
+
+      def add_child(child)
+        @children << child
+        child.instance_variable_set(:@parent, self)
+      end
+
+      def root?
+        @parent.nil?
+      end
+
+      def leaf?
+        @children.empty?
+      end
+
+      def ancestors
+        result = []
+        current = @parent
+        while current
+          result.unshift(current)
+          current = current.parent
+        end
+        result
+      end
+
+      def depth
+        ancestors.size
+      end
+
+      def full_path
+        (ancestors.map(&:name) + [name]).join(' > ')
+      end
+    end
+  lib/query_builder.rb: |
+    class QueryBuilder
+      def initialize(collection)
+        @collection = collection
+        @filters = []
+        @sort_key = nil
+        @limit_count = nil
+      end
+
+      def where(&condition)
+        @filters << condition
+        self
+      end
+
+      def order_by(key)
+        @sort_key = key
+        self
+      end
+
+      def limit(count)
+        @limit_count = count
+        self
+      end
+
+      def execute
+        result = @collection.dup
+        @filters.each { |f| result = result.select(&f) }
+        result = result.sort_by(&@sort_key) if @sort_key
+        result = result.first(@limit_count) if @limit_count
+        result
+      end
+
+      def count
+        execute.size
+      end
+    end
+must_include_files:
+- app/models/user.rb
+must_include_content:
+- |
+  scope :active, -> { all.select(&:active) }
+must_not_include:
+- Category
+- QueryBuilder
+- ancestors
+- order_by
+- category.rb
+- query_builder.rb
+must_not_include_files:
+- app/models/category.rb
+- lib/query_builder.rb
+max_files: 5
+add_garbage_files: false
+skip_garbage_check: true

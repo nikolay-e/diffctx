@@ -1,0 +1,18 @@
+initial:
+  single_gap.py: |
+    def func1():
+        pass
+
+    def func2():
+        pass
+changed:
+  single_gap.py: |
+    def func1():
+        return 1
+
+    def func2():
+        return 2
+must_include_files:
+- single_gap.py
+add_garbage_files: false
+skip_garbage_check: true

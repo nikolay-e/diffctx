@@ -1,0 +1,135 @@
+initial:
+  models/user.py: |
+    class User:
+        def __init__(self, name: str, email: str):
+            self.name = name
+            self.email = email
+
+        def get_display_name(self) -> str:
+            return self.name
+  views/profile.py: |
+    from models.user import User
+
+    def render_profile(user: User) -> str:
+        name = user.get_display_name()
+        return f"<h1>{name}</h1>"
+  views/header.py: |
+    from models.user import User
+
+    def render_header(user: User) -> str:
+        display = user.get_display_name()
+        return f"<span>{display}</span>"
+  emails/welcome.py: |
+    from models.user import User
+
+    def send_welcome_email(user: User) -> None:
+        name = user.get_display_name()
+        print(f"Welcome, {name}!")
+
+  # --- Tricky: different User class with get_display_name (name collision, no import link) ---
+  admin/user.py: |
+    GARBAGE_DEP_021_ADMIN_USER_A = "admin_user_model"
+    GARBAGE_DEP_021_ADMIN_MOD_B = True
+
+    class User:
+        def __init__(self, name: str, email: str, title: str = ""):
+            self.name = name
+            self.email = email
+            self.title = title
+
+        def get_display_name(self, include_title: bool = False) -> str:
+            GARBAGE_DEP_021_ADMIN_DISP_C = "admin_display"
+            if include_title and self.title:
+                return f"{self.title} {self.name}"
+            return self.name
+
+  # --- Tricky: same views/ directory sibling ---
+  views/sidebar.py: |
+    GARBAGE_DEP_021_SIDEBAR_MOD_G = "sidebar_sibling"
+    GARBAGE_DEP_021_SIDEBAR_NAV_H = "navigation"
+
+    def render_sidebar(items: list) -> str:
+        GARBAGE_DEP_021_SIDEBAR_RENDER_I = True
+        return "<aside>" + "".join(items) + "</aside>"
+
+changed:
+  models/user.py: |
+    class User:
+        def __init__(self, name: str, email: str, title: str = ""):
+            self.name = name
+            self.email = email
+            self.title = title
+
+        def get_display_name(self, include_title: bool = False) -> str:
+            if include_title and self.title:
+                return f"{self.title} {self.name}"
+            return self.name
+  views/profile.py: |
+    from models.user import User
+
+    def render_profile(user: User) -> str:
+        name = user.get_display_name()
+        return f"<h1>{name}</h1>"
+  views/header.py: |
+    from models.user import User
+
+    def render_header(user: User) -> str:
+        display = user.get_display_name()
+        return f"<span>{display}</span>"
+  emails/welcome.py: |
+    from models.user import User
+
+    def send_welcome_email(user: User) -> None:
+        name = user.get_display_name()
+        print(f"Welcome, {name}!")
+  admin/user.py: |
+    GARBAGE_DEP_021_ADMIN_USER_A = "admin_user_model"
+    GARBAGE_DEP_021_ADMIN_MOD_B = True
+
+    class User:
+        def __init__(self, name: str, email: str, title: str = ""):
+            self.name = name
+            self.email = email
+            self.title = title
+
+        def get_display_name(self, include_title: bool = False) -> str:
+            GARBAGE_DEP_021_ADMIN_DISP_C = "admin_display"
+            if include_title and self.title:
+                return f"{self.title} {self.name}"
+            return self.name
+  views/sidebar.py: |
+    GARBAGE_DEP_021_SIDEBAR_MOD_G = "sidebar_sibling"
+    GARBAGE_DEP_021_SIDEBAR_NAV_H = "navigation"
+
+    def render_sidebar(items: list) -> str:
+        GARBAGE_DEP_021_SIDEBAR_RENDER_I = True
+        return "<aside>" + "".join(items) + "</aside>"
+
+# === Assertions ===
+
+must_include_files:
+- models/user.py
+
+must_include_content_from:
+  models/user.py:
+    - 'def __init__(self, name: str, email: str, title: str = ""):'
+    - 'def get_display_name(self, include_title: bool = False) -> str:'
+
+must_not_include:
+# Tricky: different User class with identical get_display_name signature
+- GARBAGE_DEP_021_ADMIN_USER_A
+- GARBAGE_DEP_021_ADMIN_MOD_B
+- GARBAGE_DEP_021_ADMIN_DISP_C
+# Tricky: same views/ directory sibling
+- GARBAGE_DEP_021_SIDEBAR_MOD_G
+- GARBAGE_DEP_021_SIDEBAR_NAV_H
+- GARBAGE_DEP_021_SIDEBAR_RENDER_I
+
+must_not_include_files:
+- admin/user.py
+- views/sidebar.py
+
+max_fragments: 8
+max_files: 5
+add_garbage_files: false
+skip_garbage_check: true

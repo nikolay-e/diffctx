@@ -1,0 +1,197 @@
+# Scenario: Adding an alias to a Helm dependency to rename the postgresql
+#   subchart to "postgres" in the release. Only Chart.yaml is changed —
+#   a single line addition: `alias: postgres`.
+#
+# Reviewer questions:
+#   Q1: "Does values.yaml reference the subchart by the OLD name
+#        (postgresql) or the NEW alias (postgres)?"
+#       -> Needs values.yaml: with alias: postgres, Helm expects values
+#         under the `postgres:` key, not `postgresql:`. Reviewer must
+#         verify values.yaml uses the correct key name.
+#
+#   Q2: "Do any templates reference .Values.postgresql that should now
+#        be .Values.postgres?"
+#       -> Needs templates/deployment.yaml: it references
+#         .Values.postgresql.host. With the alias change, this must
+#         become .Values.postgres.host — or the template will break.
+#
+# Not needed for comprehension:
+#   - templates/service.yaml: Service template that exposes the app.
+#     Does not reference postgresql or postgres values. No structural
+#     connection to the alias change.
+#
+#   - templates/_helpers.tpl: Helper templates defining fullname and labels.
+#     Does not reference any dependency-specific values.
+#
+#   - values-staging.yaml: Staging values override with postgresql section.
+#     Will also need renaming, but reviewer first needs to understand the
+#     impact on the DEFAULT values.yaml and templates.
+#
+#   - charts/external/Chart.yaml: Unrelated subchart dependency. Same
+#     structural location (charts/ directory) but different dependency.
+
+initial:
+  Chart.yaml: |
+    apiVersion: v2
+    name: myapp
+    dependencies:
+      - name: postgresql
+        version: 12.0.0
+        repository: https://charts.bitnami.com/bitnami
+  values.yaml: |
+    postgresql:
+      auth:
+        postgresPassword: secret123
+        database: myapp_db
+      primary:
+        persistence:
+          size: 10Gi
+  values-staging.yaml: |
+    postgresql:
+      auth:
+        postgresPassword: staging-pass
+        database: myapp_staging
+      primary:
+        persistence:
+          size: 1Gi
+  templates/deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: {{ include "myapp.fullname" . }}
+    spec:
+      template:
+        spec:
+          containers:
+            - name: myapp
+              env:
+                - name: DB_HOST
+                  value: {{ .Values.postgresql.host | default "localhost" }}
+                - name: DB_NAME
+                  value: {{ .Values.postgresql.auth.database }}
+  templates/service.yaml: |
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: {{ include "myapp.fullname" . }}
+    spec:
+      type: ClusterIP
+      ports:
+        - port: 80
+          targetPort: http
+  templates/_helpers.tpl: |
+    {{- define "myapp.fullname" -}}
+    {{- printf "%s-%s" .Release.Name .Chart.Name | trunc 63 | trimSuffix "-" -}}
+    {{- end -}}
+  charts/external/Chart.yaml: |
+    apiVersion: v2
+    name: external-service
+    version: 2.0.0
+    description: External API integration chart
+
+changed:
+  Chart.yaml: |
+    apiVersion: v2
+    name: myapp
+    dependencies:
+      - name: postgresql
+        version: 12.0.0
+        repository: https://charts.bitnami.com/bitnami
+        alias: postgres
+  values.yaml: |
+    postgresql:
+      auth:
+        postgresPassword: secret123
+        database: myapp_db
+      primary:
+        persistence:
+          size: 10Gi
+  values-staging.yaml: |
+    postgresql:
+      auth:
+        postgresPassword: staging-pass
+        database: myapp_staging
+      primary:
+        persistence:
+          size: 1Gi
+  templates/deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: {{ include "myapp.fullname" . }}
+    spec:
+      template:
+        spec:
+          containers:
+            - name: myapp
+              env:
+                - name: DB_HOST
+                  value: {{ .Values.postgresql.host | default "localhost" }}
+                - name: DB_NAME
+                  value: {{ .Values.postgresql.auth.database }}
+  templates/service.yaml: |
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: {{ include "myapp.fullname" . }}
+    spec:
+      type: ClusterIP
+      ports:
+        - port: 80
+          targetPort: http
+  templates/_helpers.tpl: |
+    {{- define "myapp.fullname" -}}
+    {{- printf "%s-%s" .Release.Name .Chart.Name | trunc 63 | trimSuffix "-" -}}
+    {{- end -}}
+  charts/external/Chart.yaml: |
+    apiVersion: v2
+    name: external-service
+    version: 2.0.0
+    description: External API integration chart
+
+must_include_files:
+  - Chart.yaml
+  # Q1: With alias: postgres, Helm expects values under `postgres:` key.
+  # values.yaml still uses `postgresql:` — reviewer must spot the mismatch.
+  - values.yaml
+  # Q2: Template references .Values.postgresql.host and
+  # .Values.postgresql.auth.database. With the alias, these should become
+  # .Values.postgres.* — reviewer must spot the breaking references.
+  - templates/deployment.yaml
+
+must_include_content_from:
+  Chart.yaml:
+    - "alias: postgres"
+  values.yaml:
+    - "postgresql:"
+    - "postgresPassword: secret123"
+    - "database: myapp_db"
+  templates/deployment.yaml:
+    - ".Values.postgresql.host"
+    - ".Values.postgresql.auth.database"
+
+must_not_include:
+  # --- values-staging.yaml: staging override with same postgresql key ---
+  # TEMPTING: also uses postgresql: key that will need renaming. But
+  # reviewer first needs to understand the impact on base values + templates.
+  - staging-pass
+  - myapp_staging
+  - "size: 1Gi"
+  # --- templates/service.yaml: no dependency value references ---
+  - "targetPort: http"
+  # --- templates/_helpers.tpl: no dependency value references ---
+  - "myapp.fullname"
+  # --- charts/external/Chart.yaml: unrelated subchart ---
+  - external-service
+  - "External API integration"
+
+must_not_include_files:
+  - values-staging.yaml
+  - templates/service.yaml
+  - templates/_helpers.tpl
+  - charts/external/Chart.yaml
+
+max_fragments: 8
+max_files: 4
+add_garbage_files: false
+skip_garbage_check: true

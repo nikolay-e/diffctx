@@ -1,0 +1,175 @@
+# Scenario: jest.config.json adds "**/*.spec.js" to testMatch, enables
+#   collectCoverage with 80% thresholds for branches/functions/lines.
+#
+# Reviewer questions:
+#   Q1: "Are the 80% coverage thresholds achievable with current tests?"
+#       -> tests/math.test.js: covers add, subtract, multiply, divide
+#          (including edge case), and average. Reviewer must assess whether
+#          this reaches 80% of src/math.js branches/functions/lines.
+#
+#   Q2: "Does adding **/*.spec.js pattern conflict with existing tests?"
+#       -> tests/math.test.js: uses .test.js extension. Adding .spec.js
+#          expands the pattern. No conflict if no .spec.js files exist yet.
+#
+# Not needed:
+#   - babel.config.json: Babel transform config. Referenced by jest "transform"
+#     via "babel-jest". But babel config doesn't help review jest coverage.
+#
+#   - package.json: jest version and scripts. Same test domain. But deps
+#     don't help review the coverage threshold decision.
+#
+#   - .github/workflows/test.yml: CI that runs jest. Same domain. But
+#     CI pipeline doesn't help review whether thresholds are appropriate.
+
+initial:
+  jest.config.json: |
+    {
+      "testMatch": ["**/*.test.js"],
+      "collectCoverage": false,
+      "testEnvironment": "node",
+      "transform": {
+        "^.+\\.js$": "babel-jest"
+      },
+      "moduleNameMapper": {
+        "^@/(.*)$": "<rootDir>/src/$1"
+      },
+      "setupFilesAfterSetup": ["./tests/setup.js"]
+    }
+
+  src/math.js: |
+    function add(a, b) {
+        return a + b;
+    }
+
+    function subtract(a, b) {
+        return a - b;
+    }
+
+    function multiply(a, b) {
+        return a * b;
+    }
+
+    function divide(a, b) {
+        if (b === 0) {
+            throw new Error('Division by zero');
+        }
+        return a / b;
+    }
+
+    function average(numbers) {
+        if (numbers.length === 0) return 0;
+        const sum = numbers.reduce((acc, n) => add(acc, n), 0);
+        return divide(sum, numbers.length);
+    }
+
+    module.exports = { add, subtract, multiply, divide, average };
+
+  tests/math.test.js: |
+    const { add, subtract, multiply, divide, average } = require('../src/math');
+
+    test('adds 1 + 2', () => {
+        expect(add(1, 2)).toBe(3);
+    });
+
+    test('subtracts 5 - 3', () => {
+        expect(subtract(5, 3)).toBe(2);
+    });
+
+    test('multiplies 4 * 3', () => {
+        expect(multiply(4, 3)).toBe(12);
+    });
+
+    test('divides 10 / 2', () => {
+        expect(divide(10, 2)).toBe(5);
+    });
+
+    test('throws on division by zero', () => {
+        expect(() => divide(1, 0)).toThrow('Division by zero');
+    });
+
+    test('calculates average', () => {
+        expect(average([2, 4, 6])).toBe(4);
+    });
+
+  babel.config.json: |
+    {
+      "presets": ["@babel/preset-env"],
+      "plugins": ["@babel/plugin-transform-runtime"]
+    }
+
+  package.json: |
+    {
+      "name": "math-lib",
+      "version": "1.0.0",
+      "scripts": {
+        "test": "jest",
+        "test:watch": "jest --watch",
+        "test:coverage": "jest --coverage"
+      },
+      "devDependencies": {
+        "jest": "^29.6.0",
+        "babel-jest": "^29.6.0",
+        "@babel/preset-env": "^7.22.0"
+      }
+    }
+
+  .github/workflows/test.yml: |
+    name: Tests
+    on: [push, pull_request]
+    jobs:
+      test:
+        runs-on: ubuntu-latest
+        steps:
+          - uses: actions/checkout@v4
+          - uses: actions/setup-node@v4
+            with:
+              node-version: 18
+          - run: npm ci
+          - run: npm test -- --coverage
+
+changed:
+  jest.config.json: |
+    {
+      "testMatch": ["**/*.test.js", "**/*.spec.js"],
+      "collectCoverage": true,
+      "coverageThreshold": {"global": {"branches": 80, "functions": 80, "lines": 80}},
+      "testEnvironment": "node",
+      "transform": {
+        "^.+\\.js$": "babel-jest"
+      },
+      "moduleNameMapper": {
+        "^@/(.*)$": "<rootDir>/src/$1"
+      },
+      "setupFilesAfterSetup": ["./tests/setup.js"]
+    }
+
+must_include_files:
+  - jest.config.json
+
+must_include_content_from:
+  jest.config.json:
+    - '"collectCoverage": true'
+    - '"branches": 80'
+
+must_not_include:
+  # --- babel.config.json: transform config referenced by jest, but doesn't help review coverage ---
+  - "@babel/preset-env"
+  - "plugin-transform-runtime"
+  # --- package.json: deps and scripts ---
+  - "babel-jest"
+  - "test:watch"
+  - "test:coverage"
+  # --- CI: runs jest but doesn't help review threshold decisions ---
+  - "actions/checkout"
+  - "actions/setup-node"
+  - "npm test -- --coverage"
+
+must_not_include_files:
+  - babel.config.json
+  - package.json
+  - .github/workflows/test.yml
+
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

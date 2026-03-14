@@ -1,0 +1,249 @@
+initial:
+  src/api_client.py: |
+    import requests
+
+    class ApiClient:
+        def __init__(self, base_url: str):
+            self.base_url = base_url
+
+        def fetch_data(self, endpoint: str) -> dict:
+            response = requests.get(f"{self.base_url}/{endpoint}")
+            response.raise_for_status()
+            return response.json()
+
+        def post_data(self, endpoint: str, data: dict) -> dict:
+            response = requests.post(f"{self.base_url}/{endpoint}", json=data)
+            response.raise_for_status()
+            return response.json()
+  src/data_processor.py: |
+    from src.api_client import ApiClient
+
+    class DataProcessor:
+        def __init__(self, client: ApiClient):
+            self.client = client
+
+        def process_user_data(self, user_id: int) -> dict:
+            data = self.client.fetch_data(f"users/{user_id}")
+            return {"processed": True, "user": data}
+
+        def process_with_retry(self, endpoint: str, retries: int = 3) -> dict:
+            for attempt in range(retries):
+                try:
+                    return self.client.fetch_data(endpoint)
+                except Exception as e:
+                    if attempt == retries - 1:
+                        raise
+            return {}
+  tests/test_data_processor.py: |
+    from unittest.mock import Mock
+    from src.data_processor import DataProcessor
+
+    def test_process_user_data():
+        mock_client = Mock()
+        mock_client.fetch_data.return_value = {"id": 1, "name": "Test"}
+        processor = DataProcessor(mock_client)
+        result = processor.process_user_data(1)
+        assert result["processed"] is True
+
+  # --- Tricky: same import, same Mock pattern (same-import consumer) ---
+  tests/test_api_client.py: |
+    from unittest.mock import Mock, patch
+    from src.api_client import ApiClient
+    GARBAGE_DEP038_APITEST_A = "api_client_tests"
+    GARBAGE_DEP038_APITEST_INIT_B = True
+
+    def test_fetch_data():
+        GARBAGE_DEP038_APITEST_FETCH_C = "testing_fetch"
+        with patch("src.api_client.requests.get") as mock_get:
+            mock_get.return_value = Mock()
+            mock_get.return_value.json.return_value = {"data": "test"}
+            client = ApiClient("http://test.com")
+            result = client.fetch_data("users")
+            assert result["data"] == "test"
+
+  # --- Tricky: same DataProcessor, same Mock().side_effect pattern ---
+  tests/test_data_processor_edge.py: |
+    from unittest.mock import Mock
+    from src.data_processor import DataProcessor
+    GARBAGE_DEP038_EDGETEST_D = "edge_case_tests"
+    GARBAGE_DEP038_EDGETEST_INIT_E = True
+
+    def test_process_empty_response():
+        GARBAGE_DEP038_EDGETEST_RUN_F = "running"
+        mock_client = Mock()
+        mock_client.fetch_data.return_value = {}
+        processor = DataProcessor(mock_client)
+        result = processor.process_user_data(1)
+        assert result["processed"] is True
+
+  # --- Tricky: same retry logic pattern, different class ---
+  src/notification_sender.py: |
+    GARBAGE_DEP038_NOTIF_G = "notification_sender"
+    GARBAGE_DEP038_NOTIF_INIT_H = True
+
+    class NotificationSender:
+        def __init__(self, client):
+            self.client = client
+
+        def send_with_retry(self, endpoint: str, retries: int = 3) -> dict:
+            GARBAGE_DEP038_NOTIF_RETRY_I = "retrying"
+            for attempt in range(retries):
+                try:
+                    return self.client.fetch_data(endpoint)
+                except Exception as e:
+                    if attempt == retries - 1:
+                        raise
+            return {}
+
+changed:
+  src/api_client.py: |
+    import requests
+
+    class ApiClient:
+        def __init__(self, base_url: str):
+            self.base_url = base_url
+
+        def fetch_data(self, endpoint: str) -> dict:
+            response = requests.get(f"{self.base_url}/{endpoint}")
+            response.raise_for_status()
+            return response.json()
+
+        def post_data(self, endpoint: str, data: dict) -> dict:
+            response = requests.post(f"{self.base_url}/{endpoint}", json=data)
+            response.raise_for_status()
+            return response.json()
+  src/data_processor.py: |
+    from src.api_client import ApiClient
+
+    class DataProcessor:
+        def __init__(self, client: ApiClient):
+            self.client = client
+
+        def process_user_data(self, user_id: int) -> dict:
+            data = self.client.fetch_data(f"users/{user_id}")
+            return {"processed": True, "user": data}
+
+        def process_with_retry(self, endpoint: str, retries: int = 3) -> dict:
+            for attempt in range(retries):
+                try:
+                    return self.client.fetch_data(endpoint)
+                except Exception as e:
+                    if attempt == retries - 1:
+                        raise
+            return {}
+  tests/test_data_processor.py: |
+    from unittest.mock import Mock
+    import pytest
+    from src.data_processor import DataProcessor
+
+    def test_process_user_data():
+        mock_client = Mock()
+        mock_client.fetch_data.return_value = {"id": 1, "name": "Test"}
+        processor = DataProcessor(mock_client)
+        result = processor.process_user_data(1)
+        assert result["processed"] is True
+
+    def test_retry_on_failure():
+        mock_client = Mock()
+        mock_client.fetch_data.side_effect = [
+            ConnectionError("First failure"),
+            ConnectionError("Second failure"),
+            {"id": 1, "data": "success"},
+        ]
+        processor = DataProcessor(mock_client)
+        result = processor.process_with_retry("users/1", retries=3)
+        assert result["data"] == "success"
+        assert mock_client.fetch_data.call_count == 3
+
+    def test_retry_exhausted_raises():
+        mock_client = Mock()
+        mock_client.fetch_data.side_effect = [
+            ConnectionError("Failure 1"),
+            ConnectionError("Failure 2"),
+            ConnectionError("Failure 3"),
+        ]
+        processor = DataProcessor(mock_client)
+        with pytest.raises(ConnectionError):
+            processor.process_with_retry("users/1", retries=3)
+  tests/test_api_client.py: |
+    from unittest.mock import Mock, patch
+    from src.api_client import ApiClient
+    GARBAGE_DEP038_APITEST_A = "api_client_tests"
+    GARBAGE_DEP038_APITEST_INIT_B = True
+
+    def test_fetch_data():
+        GARBAGE_DEP038_APITEST_FETCH_C = "testing_fetch"
+        with patch("src.api_client.requests.get") as mock_get:
+            mock_get.return_value = Mock()
+            mock_get.return_value.json.return_value = {"data": "test"}
+            client = ApiClient("http://test.com")
+            result = client.fetch_data("users")
+            assert result["data"] == "test"
+  tests/test_data_processor_edge.py: |
+    from unittest.mock import Mock
+    from src.data_processor import DataProcessor
+    GARBAGE_DEP038_EDGETEST_D = "edge_case_tests"
+    GARBAGE_DEP038_EDGETEST_INIT_E = True
+
+    def test_process_empty_response():
+        GARBAGE_DEP038_EDGETEST_RUN_F = "running"
+        mock_client = Mock()
+        mock_client.fetch_data.return_value = {}
+        processor = DataProcessor(mock_client)
+        result = processor.process_user_data(1)
+        assert result["processed"] is True
+  src/notification_sender.py: |
+    GARBAGE_DEP038_NOTIF_G = "notification_sender"
+    GARBAGE_DEP038_NOTIF_INIT_H = True
+
+    class NotificationSender:
+        def __init__(self, client):
+            self.client = client
+
+        def send_with_retry(self, endpoint: str, retries: int = 3) -> dict:
+            GARBAGE_DEP038_NOTIF_RETRY_I = "retrying"
+            for attempt in range(retries):
+                try:
+                    return self.client.fetch_data(endpoint)
+                except Exception as e:
+                    if attempt == retries - 1:
+                        raise
+            return {}
+
+# === Assertions ===
+
+must_include_files:
+- tests/test_data_processor.py
+- src/data_processor.py
+
+must_include_content_from:
+  tests/test_data_processor.py:
+    - import pytest
+    - 'def test_retry_on_failure():'
+    - from src.data_processor import DataProcessor
+  src/data_processor.py:
+    - 'def process_with_retry(self, endpoint: str, retries: int = 3) -> dict:'
+
+must_not_include:
+# Tricky: same Mock import, same ApiClient usage pattern
+- GARBAGE_DEP038_APITEST_A
+- GARBAGE_DEP038_APITEST_INIT_B
+- GARBAGE_DEP038_APITEST_FETCH_C
+# Tricky: same DataProcessor + Mock import, same test structure
+- GARBAGE_DEP038_EDGETEST_D
+- GARBAGE_DEP038_EDGETEST_INIT_E
+- GARBAGE_DEP038_EDGETEST_RUN_F
+# Tricky: same retry logic, same client.fetch_data call pattern
+- GARBAGE_DEP038_NOTIF_G
+- GARBAGE_DEP038_NOTIF_INIT_H
+- GARBAGE_DEP038_NOTIF_RETRY_I
+
+must_not_include_files:
+- tests/test_api_client.py
+- tests/test_data_processor_edge.py
+- src/notification_sender.py
+
+max_fragments: 6
+max_files: 2
+add_garbage_files: false
+skip_garbage_check: true

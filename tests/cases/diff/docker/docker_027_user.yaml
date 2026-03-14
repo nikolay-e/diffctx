@@ -1,0 +1,179 @@
+# Scenario: Python Dockerfile refactored to multi-stage build with explicit
+# USER directive (UID 1000 / GID 1000) for Kubernetes compatibility, pre-created
+# directories /app/data and /app/logs with proper ownership. App code unchanged.
+#
+# Reviewer questions:
+#   1. Does src/app.py use os.getuid/os.getgid — will it work as appuser (UID 1000)?
+#   2. Does the app write to /app/data or /app/logs — are the created directories correct?
+#   3. Does requirements.txt include gunicorn for the new CMD?
+
+initial:
+  src/app.py: |
+    import os
+    import pwd
+    from flask import Flask, jsonify
+
+    app = Flask(__name__)
+
+    @app.route('/whoami')
+    def whoami():
+        return jsonify(
+            uid=os.getuid(),
+            gid=os.getgid(),
+            user=pwd.getpwuid(os.getuid()).pw_name
+        )
+
+    @app.route('/health')
+    def health():
+        return jsonify(status='ok')
+
+    if __name__ == '__main__':
+        app.run(host='0.0.0.0', port=8080)
+  requirements.txt: |
+    flask==2.3.0
+    gunicorn==21.2.0
+  Dockerfile: |
+    FROM python:3.11-slim
+    WORKDIR /app
+    COPY requirements.txt .
+    RUN pip install -r requirements.txt
+    COPY src/ ./src/
+    CMD ["python", "src/app.py"]
+
+  # Trap: user setup script — creates same user but is a host-level provisioning script
+  scripts/setup_user.sh: |
+    #!/bin/bash
+    useradd -m -u 1000 appuser
+    chown -R appuser:appuser /app
+
+  # Trap: K8s pod security — same UID/GID concept but different orchestration layer
+  k8s/pod-security.yaml: |
+    apiVersion: v1
+    kind: Pod
+    metadata:
+      name: secure-app
+    spec:
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      containers:
+        - name: app
+          securityContext:
+            allowPrivilegeEscalation: false
+
+  # Trap: compliance checks — mentions UID/GID but is audit tooling
+  compliance/checks.yaml: |
+    checks:
+      - name: non-root-container
+        description: Container must not run as root
+        target_uid: 1000
+
+changed:
+  src/app.py: |
+    import os
+    import pwd
+    from flask import Flask, jsonify
+
+    app = Flask(__name__)
+
+    @app.route('/whoami')
+    def whoami():
+        return jsonify(
+            uid=os.getuid(),
+            gid=os.getgid(),
+            user=pwd.getpwuid(os.getuid()).pw_name
+        )
+
+    @app.route('/health')
+    def health():
+        return jsonify(status='ok')
+
+    if __name__ == '__main__':
+        app.run(host='0.0.0.0', port=8080)
+  requirements.txt: |
+    flask==2.3.0
+    gunicorn==21.2.0
+  Dockerfile: |
+    FROM python:3.12-slim-bookworm AS base
+    ENV PYTHONDONTWRITEBYTECODE=1
+    ENV PYTHONUNBUFFERED=1
+
+    FROM base AS dependencies
+    WORKDIR /app
+    COPY requirements.txt .
+    RUN pip install --no-cache-dir -r requirements.txt
+
+    FROM base AS production
+    WORKDIR /app
+
+    # Create non-root user with specific UID/GID for Kubernetes compatibility
+    RUN groupadd --gid 1000 appgroup && \
+        useradd --uid 1000 --gid appgroup --shell /bin/bash --create-home appuser && \
+        mkdir -p /app/data /app/logs && \
+        chown -R appuser:appgroup /app
+
+    COPY --from=dependencies /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
+    COPY --from=dependencies /usr/local/bin /usr/local/bin
+    COPY --chown=appuser:appgroup src/ ./src/
+
+    # Switch to non-root user
+    USER appuser:appgroup
+
+    EXPOSE 8080
+
+    HEALTHCHECK --interval=30s --timeout=5s \
+        CMD curl -f http://localhost:8080/health || exit 1
+
+    CMD ["gunicorn", "-w", "4", "-b", "0.0.0.0:8080", "src.app:app"]
+
+  scripts/setup_user.sh: |
+    #!/bin/bash
+    useradd -m -u 1000 appuser
+    chown -R appuser:appuser /app
+  k8s/pod-security.yaml: |
+    apiVersion: v1
+    kind: Pod
+    metadata:
+      name: secure-app
+    spec:
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      containers:
+        - name: app
+          securityContext:
+            allowPrivilegeEscalation: false
+  compliance/checks.yaml: |
+    checks:
+      - name: non-root-container
+        description: Container must not run as root
+        target_uid: 1000
+
+# === Assertions ===
+
+must_include_files:
+- Dockerfile
+
+must_include_content_from:
+  # Reviewer needs to see that app calls os.getuid/os.getgid to verify it works under non-root
+  src/app.py:
+    - os.getuid()
+    - os.getgid()
+  # Reviewer needs to confirm gunicorn is available for the new CMD
+  requirements.txt:
+    - "gunicorn==21.2.0"
+
+must_not_include_files:
+  # Setup script — creates same user on host, but is host-level ops tooling
+- scripts/setup_user.sh
+  # K8s pod security — same UID/GID concept but different orchestration layer
+- k8s/pod-security.yaml
+  # Compliance checks — auditing tool, not Docker build concern
+- compliance/checks.yaml
+
+max_fragments: 6
+max_files: 4
+add_garbage_files: false
+skip_garbage_check: true

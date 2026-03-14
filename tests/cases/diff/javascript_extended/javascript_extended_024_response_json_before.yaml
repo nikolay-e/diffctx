@@ -1,5 +1,0 @@
-service.ts: "export interface ApiResponse<T> {\n    data: T;\n    success: boolean;\n    timestamp: number;\n}\n\nexport function createResponse<T>(data: T): ApiResponse<T> {\n    return { data, success:\
-  \ true, timestamp: Date.now() };\n}\n\n// node_garbage_marker_004\n"
-handler.ts: 'console.log(''initial'');
-
-  '

@@ -1,0 +1,241 @@
+# Scenario: Secure-api deployment adds pod and container securityContext with
+#   non-root, read-only filesystem, capability drops, seccomp, and tmp volume.
+#   Only k8s/apps/secure-api/deployment.yaml is changed.
+#
+# Diff shows:
+#   + pod securityContext: runAsNonRoot, runAsUser 1000, fsGroup 2000, seccomp
+#   + container securityContext: readOnlyRootFilesystem, drop ALL caps, add NET_BIND_SERVICE
+#   + /tmp emptyDir volume mount
+#
+# Reviewer questions:
+#   Q1: "Does the app write to any path besides /tmp?"
+#       -> Pure config review: readOnlyRootFilesystem: true means only
+#          explicitly mounted volumes are writable. The diff adds /tmp as
+#          emptyDir. If the app writes to /var/log or /app/data, it will fail.
+#
+#   Q2: "Is NET_BIND_SERVICE needed if containerPort is 8080 (> 1024)?"
+#       -> Pure config review: NET_BIND_SERVICE allows binding to ports < 1024.
+#          containerPort: 8080 doesn't need it. Potential over-permissioning.
+#
+# Not needed for comprehension:
+#   - k8s/policies/pod-security-standard.yaml: Namespace-level Pod Security
+#     Standards labels (enforce: restricted). Direct structural edge: the
+#     restricted profile REQUIRES the exact settings being added (non-root,
+#     drop ALL, seccomp RuntimeDefault). HARDEST TRAP: explains WHY the
+#     security context is being added. But the namespace policy doesn't help
+#     review WHETHER the settings are correct for this specific app — the
+#     reviewer needs to verify container behavior, not policy requirements.
+#
+#   - k8s/apps/secure-api/network-policy.yaml: NetworkPolicy for secure-api
+#     with ingress/egress rules. Shares "secure-api" label and "security"
+#     vocabulary. But NetworkPolicy controls network traffic, not container
+#     capabilities or filesystem permissions. Different security dimension.
+initial:
+  k8s/apps/secure-api/deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: secure-api
+      namespace: production
+      labels:
+        app: secure-api
+        security-tier: high
+    spec:
+      replicas: 3
+      selector:
+        matchLabels:
+          app: secure-api
+      template:
+        metadata:
+          labels:
+            app: secure-api
+            security-tier: high
+        spec:
+          containers:
+          - name: api
+            image: secure-api:v1.0.0
+            ports:
+            - containerPort: 8080
+            resources:
+              requests:
+                memory: "256Mi"
+                cpu: "250m"
+              limits:
+                memory: "512Mi"
+                cpu: "500m"
+  k8s/apps/secure-api/service.yaml: |
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: secure-api
+      namespace: production
+    spec:
+      selector:
+        app: secure-api
+      ports:
+      - port: 443
+        targetPort: 8080
+  k8s/policies/pod-security-standard.yaml: |
+    apiVersion: v1
+    kind: Namespace
+    metadata:
+      name: production
+      labels:
+        pod-security.kubernetes.io/enforce: restricted
+        pod-security.kubernetes.io/audit: restricted
+        pod-security.kubernetes.io/warn: restricted
+  k8s/apps/secure-api/network-policy.yaml: |
+    apiVersion: networking.k8s.io/v1
+    kind: NetworkPolicy
+    metadata:
+      name: secure-api-netpol
+      namespace: production
+    spec:
+      podSelector:
+        matchLabels:
+          app: secure-api
+      policyTypes:
+      - Ingress
+      - Egress
+      ingress:
+      - from:
+        - podSelector:
+            matchLabels:
+              app: api-gateway
+        ports:
+        - port: 8080
+      egress:
+      - to:
+        - podSelector:
+            matchLabels:
+              app: postgres
+        ports:
+        - port: 5432
+changed:
+  k8s/apps/secure-api/deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: secure-api
+      namespace: production
+      labels:
+        app: secure-api
+        security-tier: high
+    spec:
+      replicas: 3
+      selector:
+        matchLabels:
+          app: secure-api
+      template:
+        metadata:
+          labels:
+            app: secure-api
+            security-tier: high
+        spec:
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 3000
+            fsGroup: 2000
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+          - name: api
+            image: secure-api:v1.0.0
+            ports:
+            - containerPort: 8080
+            securityContext:
+              allowPrivilegeEscalation: false
+              readOnlyRootFilesystem: true
+              privileged: false
+              capabilities:
+                drop:
+                - ALL
+                add:
+                - NET_BIND_SERVICE
+            resources:
+              requests:
+                memory: "256Mi"
+                cpu: "250m"
+              limits:
+                memory: "512Mi"
+                cpu: "500m"
+            volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+          volumes:
+          - name: tmp
+            emptyDir: {}
+  k8s/apps/secure-api/service.yaml: |
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: secure-api
+      namespace: production
+    spec:
+      selector:
+        app: secure-api
+      ports:
+      - port: 443
+        targetPort: 8080
+  k8s/policies/pod-security-standard.yaml: |
+    apiVersion: v1
+    kind: Namespace
+    metadata:
+      name: production
+      labels:
+        pod-security.kubernetes.io/enforce: restricted
+        pod-security.kubernetes.io/audit: restricted
+        pod-security.kubernetes.io/warn: restricted
+  k8s/apps/secure-api/network-policy.yaml: |
+    apiVersion: networking.k8s.io/v1
+    kind: NetworkPolicy
+    metadata:
+      name: secure-api-netpol
+      namespace: production
+    spec:
+      podSelector:
+        matchLabels:
+          app: secure-api
+      policyTypes:
+      - Ingress
+      - Egress
+      ingress:
+      - from:
+        - podSelector:
+            matchLabels:
+              app: api-gateway
+        ports:
+        - port: 8080
+      egress:
+      - to:
+        - podSelector:
+            matchLabels:
+              app: postgres
+        ports:
+        - port: 5432
+must_include_files:
+- k8s/apps/secure-api/deployment.yaml
+must_include_content_from:
+  k8s/apps/secure-api/deployment.yaml:
+    - 'securityContext:'
+    - 'readOnlyRootFilesystem: true'
+    - 'runAsNonRoot: true'
+    - 'drop:'
+    - 'NET_BIND_SERVICE'
+must_not_include:
+  # --- pod-security-standard.yaml: namespace policy, not container config ---
+  - pod-security.kubernetes.io
+  - "pod-security.kubernetes.io/enforce"
+  - "pod-security.kubernetes.io/audit"
+  # --- network-policy.yaml: network controls, different security dimension ---
+  - secure-api-netpol
+  - NetworkPolicy
+  - api-gateway
+must_not_include_files:
+  - k8s/policies/pod-security-standard.yaml
+  - k8s/apps/secure-api/network-policy.yaml
+add_garbage_files: false
+skip_garbage_check: true
+max_fragments: 8
+max_files: 5

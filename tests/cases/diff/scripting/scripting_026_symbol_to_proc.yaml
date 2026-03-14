@@ -1,0 +1,231 @@
+# Scenario: report.rb adds methods that use symbol-to-proc (&:name, &:email)
+# on a collection of User objects. user.rb defines the User class with those attributes.
+#
+# Diff: report.rb changes from an empty class to one that accepts a users array
+# and provides `names` and `emails` methods using `map(&:name)` and `map(&:email)`.
+#
+# Reviewer questions:
+#   Q1: "Does User actually have name and email methods for &:name and &:email to call?"
+#       -> user.rb (UNCHANGED) has `attr_reader :name, :email, :age` — confirms
+#          both methods exist. Reviewer can verify the symbol-to-proc is valid.
+#   Q2: "What does User's constructor look like?"
+#       -> user.rb shows `initialize(name:, email:, age:)` — reviewer sees all
+#          required fields for creating User instances passed to Report.
+#
+# Not needed:
+#   - csv_exporter.rb: exports arrays of hashes to CSV format. Could export
+#     user data but doesn't import User or Report — no require edge.
+#   - statistics.rb: computes aggregate stats (mean, median) on numeric arrays.
+#     Could process user ages but is a general math utility — no edge.
+#   - user_filter.rb: also requires user.rb and uses map(&:email) to collect
+#     unique emails. DIRECT structural edge (same source, same symbol-to-proc)
+#     but is a different consumer with filtering logic.
+#   - team.rb: groups users by department. Accesses user.name — same attribute
+#     — but via its own user-like struct, not the User class.
+#   - lib/collection_utils.rb: generic collection operations including map-based
+#     extractors. Same map(&:sym) pattern but operates on arbitrary objects.
+
+initial:
+  user.rb: |
+    class User
+      attr_reader :name, :email, :age, :department
+
+      def initialize(name:, email:, age:, department: nil)
+        @name = name
+        @email = email
+        @age = age
+        @department = department
+      end
+
+      def adult?
+        age >= 18
+      end
+    end
+  report.rb: |
+    class Report
+    end
+  csv_exporter.rb: |
+    module CsvExporter
+      def self.generate(rows, headers:)
+        lines = [headers.join(',')]
+        rows.each do |row|
+          values = headers.map { |h| row[h].to_s }
+          lines << values.join(',')
+        end
+        lines.join("\n")
+      end
+
+      def self.parse(csv_string)
+        lines = csv_string.split("\n")
+        headers = lines.first.split(',')
+        lines[1..].map do |line|
+          values = line.split(',')
+          headers.zip(values).to_h
+        end
+      end
+
+      def self.write_file(path, rows, headers:)
+        File.write(path, generate(rows, headers: headers))
+      end
+    end
+  statistics.rb: |
+    module Statistics
+      def self.mean(numbers)
+        return 0 if numbers.empty?
+        numbers.sum.to_f / numbers.size
+      end
+
+      def self.median(numbers)
+        sorted = numbers.sort
+        mid = sorted.size / 2
+        sorted.size.odd? ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2.0
+      end
+
+      def self.standard_deviation(numbers)
+        avg = mean(numbers)
+        variance = numbers.map { |n| (n - avg) ** 2 }.sum / numbers.size
+        Math.sqrt(variance)
+      end
+
+      def self.percentile(numbers, pct)
+        sorted = numbers.sort
+        idx = (pct / 100.0 * (sorted.size - 1)).round
+        sorted[idx]
+      end
+    end
+  user_filter.rb: |
+    require_relative 'user'
+
+    class UserFilter
+      def initialize(users)
+        @users = users
+      end
+
+      def unique_emails
+        @users.map(&:email).uniq
+      end
+
+      def adults_only
+        @users.select(&:adult?)
+      end
+
+      def by_department(dept)
+        @users.select { |u| u.department == dept }
+      end
+
+      def names_sorted
+        @users.map(&:name).sort
+      end
+    end
+  team.rb: |
+    Team = Struct.new(:name, :lead, :members) do
+      def member_names
+        members.map(&:name)
+      end
+
+      def size
+        members.size
+      end
+
+      def find_by_email(email)
+        members.find { |m| m.email == email }
+      end
+    end
+  lib/collection_utils.rb: |
+    module CollectionUtils
+      def self.pluck(collection, attribute)
+        collection.map(&attribute)
+      end
+
+      def self.group_by_attribute(collection, attribute)
+        collection.group_by(&attribute)
+      end
+
+      def self.unique_values(collection, attribute)
+        collection.map(&attribute).uniq
+      end
+
+      def self.sort_by_attribute(collection, attribute)
+        collection.sort_by(&attribute)
+      end
+    end
+
+changed:
+  user.rb: |
+    class User
+      attr_reader :name, :email, :age, :department
+
+      def initialize(name:, email:, age:, department: nil)
+        @name = name
+        @email = email
+        @age = age
+        @department = department
+      end
+
+      def adult?
+        age >= 18
+      end
+    end
+  report.rb: |
+    require_relative 'user'
+
+    class Report
+      def initialize(users)
+        @users = users
+      end
+
+      def names
+        @users.map(&:name)
+      end
+
+      def emails
+        @users.map(&:email)
+      end
+    end
+
+must_include_files:
+  # Q1: user.rb defines attr_reader :name, :email used by symbol-to-proc in report.rb
+  - user.rb
+must_include_content_from:
+  user.rb:
+    - "attr_reader :name, :email, :age"
+    - "def initialize(name:, email:, age:"
+  report.rb:
+    - "map(&:name)"
+    - "map(&:email)"
+must_not_include:
+  # csv_exporter.rb: CSV generation, no require edge to User or Report
+  - CsvExporter
+  - generate
+  - parse
+  - write_file
+  # statistics.rb: numeric aggregation utility, not imported by report.rb
+  - Statistics
+  - standard_deviation
+  - median
+  - percentile
+  # user_filter.rb: HARDEST TRAP — requires user.rb, uses map(&:email) too
+  # Same source, same symbol-to-proc pattern, but different consumer
+  - UserFilter
+  - unique_emails
+  - adults_only
+  - by_department
+  - names_sorted
+  # team.rb: accesses .name and .email but on its own struct
+  - "Team ="
+  - member_names
+  - find_by_email
+  # lib/collection_utils.rb: generic map(&:attr) pattern
+  - CollectionUtils
+  - pluck
+  - group_by_attribute
+must_not_include_files:
+  - csv_exporter.rb
+  - statistics.rb
+  - user_filter.rb
+  - team.rb
+  - lib/collection_utils.rb
+max_fragments: 8
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

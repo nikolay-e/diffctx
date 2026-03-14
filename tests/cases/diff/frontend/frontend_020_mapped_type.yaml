@@ -1,0 +1,172 @@
+# Scenario: TypeScript file adds mapped types transforming model interfaces.
+#
+# Diff: mapped.ts creates ReadonlyDeep, Mutable, Optional, Nullable mapped types
+# and applies them to UserModel and ProductModel from models.ts.
+#
+# Reviewer questions:
+#   Q1: "What fields do UserModel and ProductModel have?" → models.ts (UNCHANGED).
+#   Q2: "What does ReadonlyUser look like?" → mapped.ts applies ReadonlyDeep<UserModel>.
+#
+# Not needed:
+#   - src/types/form.ts: type transformations but for form state (touched, dirty).
+#   - src/models/order.ts: another model but not referenced by any mapped type.
+
+initial:
+  src/models.ts: |
+    export interface UserModel {
+        id: string;
+        name: string;
+        email: string;
+        password: string;
+    }
+
+    export interface ProductModel {
+        id: string;
+        name: string;
+        price: number;
+        stock: number;
+    }
+  src/mapped.ts: |
+    console.log('initial');
+  src/types/form.ts: |
+    export type TouchedFields<T> = {
+        [K in keyof T]?: boolean;
+    };
+
+    export type DirtyFields<T> = {
+        [K in keyof T]?: boolean;
+    };
+
+    export type FormErrors<T> = {
+        [K in keyof T]?: string;
+    };
+
+    export interface FormState<T> {
+        values: T;
+        touched: TouchedFields<T>;
+        dirty: DirtyFields<T>;
+        errors: FormErrors<T>;
+        isSubmitting: boolean;
+    }
+  src/models/order.ts: |
+    export interface OrderItem {
+        productId: string;
+        quantity: number;
+        unitPrice: number;
+    }
+
+    export interface Order {
+        id: string;
+        customerId: string;
+        items: OrderItem[];
+        total: number;
+        status: 'pending' | 'confirmed' | 'shipped' | 'delivered';
+        createdAt: Date;
+    }
+
+    export function calculateTotal(items: OrderItem[]): number {
+        return items.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);
+    }
+
+changed:
+  src/models.ts: |
+    export interface UserModel {
+        id: string;
+        name: string;
+        email: string;
+        password: string;
+    }
+
+    export interface ProductModel {
+        id: string;
+        name: string;
+        price: number;
+        stock: number;
+    }
+  src/mapped.ts: |
+    import { UserModel, ProductModel } from './models';
+
+    export type ReadonlyDeep<T> = {
+        readonly [K in keyof T]: T[K];
+    };
+
+    export type Mutable<T> = {
+        -readonly [K in keyof T]: T[K];
+    };
+
+    export type Optional<T> = {
+        [K in keyof T]?: T[K];
+    };
+
+    export type Nullable<T> = {
+        [K in keyof T]: T[K] | null;
+    };
+
+    export type ReadonlyUser = ReadonlyDeep<UserModel>;
+    export type OptionalProduct = Optional<ProductModel>;
+    export type NullableUser = Nullable<UserModel>;
+  src/types/form.ts: |
+    export type TouchedFields<T> = {
+        [K in keyof T]?: boolean;
+    };
+
+    export type DirtyFields<T> = {
+        [K in keyof T]?: boolean;
+    };
+
+    export type FormErrors<T> = {
+        [K in keyof T]?: string;
+    };
+
+    export interface FormState<T> {
+        values: T;
+        touched: TouchedFields<T>;
+        dirty: DirtyFields<T>;
+        errors: FormErrors<T>;
+        isSubmitting: boolean;
+    }
+  src/models/order.ts: |
+    export interface OrderItem {
+        productId: string;
+        quantity: number;
+        unitPrice: number;
+    }
+
+    export interface Order {
+        id: string;
+        customerId: string;
+        items: OrderItem[];
+        total: number;
+        status: 'pending' | 'confirmed' | 'shipped' | 'delivered';
+        createdAt: Date;
+    }
+
+    export function calculateTotal(items: OrderItem[]): number {
+        return items.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);
+    }
+
+must_include_files:
+  - src/mapped.ts
+
+must_include_content_from:
+  src/mapped.ts:
+    - "type Optional<T> = {"
+    - "type ReadonlyUser = ReadonlyDeep<UserModel>"
+
+must_not_include:
+  # form.ts: mapped types but for form state management, different concern
+  - TouchedFields
+  - DirtyFields
+  - FormState
+  # order.ts: model but not referenced by any mapped type in the diff
+  - OrderItem
+  - calculateTotal
+
+must_not_include_files:
+  - src/types/form.ts
+  - src/models/order.ts
+
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

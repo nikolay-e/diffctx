@@ -1,0 +1,21 @@
+initial:
+  cycle.py: |
+    def placeholder():
+        pass
+changed:
+  cycle.py: |
+    def func_alpha():
+        func_beta()
+
+    def func_beta():
+        func_gamma()
+
+    def func_gamma():
+        func_alpha()
+must_include_files:
+- cycle.py
+must_include_content:
+- 'def func_alpha():'
+- 'def func_beta():'
+add_garbage_files: false
+skip_garbage_check: true

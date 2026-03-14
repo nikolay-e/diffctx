@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -10,17 +11,33 @@ from .tree import TreeBuildContext, build_tree
 from .version import __version__
 from .writer import write_tree_json, write_tree_markdown, write_tree_text, write_tree_yaml
 
+logging.getLogger("treemapper").addHandler(logging.NullHandler())
+
 __all__ = [
     "__version__",
     "build_diff_context",
     "map_directory",
     "to_json",
     "to_markdown",
-    "to_md",
     "to_text",
-    "to_txt",
     "to_yaml",
 ]
+
+
+def _root_display_name(user_path: str | Path, resolved: Path) -> str:
+    original_name = Path(user_path).name
+    if original_name:
+        return original_name
+    return str(resolved)
+
+
+def _resolve_path_if_exists(path: str | Path | None, label: str) -> Path | None:
+    if path is None:
+        return None
+    resolved = Path(path).resolve()
+    if not resolved.is_file():
+        raise FileNotFoundError(f"{label} '{path}' does not exist")
+    return resolved
 
 
 def map_directory(
@@ -37,8 +54,8 @@ def map_directory(
     if not root_dir.is_dir():
         raise ValueError(f"'{path}' is not a directory")
 
-    ignore_path = Path(ignore_file).resolve() if ignore_file else None
-    whitelist_path = Path(whitelist_file).resolve() if whitelist_file else None
+    ignore_path = _resolve_path_if_exists(ignore_file, "Ignore file")
+    whitelist_path = _resolve_path_if_exists(whitelist_file, "Whitelist file")
 
     ctx = TreeBuildContext(
         base_dir=root_dir,
@@ -51,7 +68,7 @@ def map_directory(
     )
 
     return {
-        "name": root_dir.name,
+        "name": _root_display_name(path, root_dir),
         "type": "directory",
         "children": build_tree(root_dir, ctx),
     }
@@ -79,7 +96,3 @@ def to_markdown(tree: dict[str, Any]) -> str:
     buf = io.StringIO()
     write_tree_markdown(buf, tree)
     return buf.getvalue()
-
-
-to_md = to_markdown
-to_txt = to_text

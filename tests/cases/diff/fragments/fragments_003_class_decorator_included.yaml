@@ -1,0 +1,71 @@
+initial:
+  decorated_class.py: |
+    from dataclasses import dataclass
+    from typing import Optional
+
+    def standalone_function_before():
+
+    class UnrelatedClassBefore:
+
+        def unrelated_method_before(self):
+
+    @dataclass
+    class MyClass:
+        value: int
+
+    def standalone_function_after():
+
+    class UnrelatedClassAfter:
+
+        def unrelated_method_after(self):
+
+        @staticmethod
+        def static_garbage():
+  models_garbage_003.py: |
+    from dataclasses import dataclass
+
+    @dataclass
+    class GarbageModel:
+        garbage_field: str = "GARBAGE_FRAG_model003"
+
+    class AnotherGarbageClass:
+        CONSTANT = "GARBAGE_FRAG_anotherclass003"
+changed:
+  decorated_class.py: |
+    from dataclasses import dataclass
+    from typing import Optional
+
+    def standalone_function_before():
+
+    class UnrelatedClassBefore:
+
+        def unrelated_method_before(self):
+
+    @dataclass
+    class MyClass:
+        value: int
+        name: str
+
+    def standalone_function_after():
+
+    class UnrelatedClassAfter:
+
+        def unrelated_method_after(self):
+
+        @staticmethod
+        def static_garbage():
+  models_garbage_003.py: |
+    from dataclasses import dataclass
+
+    @dataclass
+    class GarbageModel:
+        garbage_field: str = "GARBAGE_FRAG_model003"
+
+    class AnotherGarbageClass:
+        CONSTANT = "GARBAGE_FRAG_anotherclass003"
+must_include_files:
+- decorated_class.py
+must_not_include:
+- models_garbage_003.py
+add_garbage_files: false
+skip_garbage_check: true

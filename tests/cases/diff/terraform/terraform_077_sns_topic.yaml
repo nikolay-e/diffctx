@@ -1,0 +1,114 @@
+initial:
+  sns.tf: |
+    resource "aws_sns_topic" "alerts" {
+      name = "alert-notifications"
+    }
+  src/notifications.py: |
+    import boto3
+
+    def publish_alert(topic_arn: str, message: str):
+        sns = boto3.client("sns")
+        sns.publish(TopicArn=topic_arn, Message=message)
+
+  # --- Tricky garbage: sibling .tf with same aws_sns_topic resource type ---
+  garbage_sns_audit.tf: |
+    GARBAGE_TF_077_AUDIT_TOPIC_MARKER_A = "audit-trail"
+    GARBAGE_TF_077_COMPLIANCE_MARKER_B = "soc2"
+
+    resource "aws_sns_topic" "audit" {
+      name         = "audit-notifications"
+      display_name = "Audit Trail"
+    }
+
+    resource "aws_sns_topic_subscription" "audit_sqs" {
+      topic_arn = aws_sns_topic.audit.arn
+      protocol  = "sqs"
+      endpoint  = aws_sqs_queue.audit_log.arn
+    }
+
+  # --- Plain garbage: no overlap ---
+  garbage_config.py: |
+    GARBAGE_TF_077_CONFIG_MARKER_C = "app-settings"
+    GARBAGE_TF_077_ENV_MARKER_D = "production"
+
+    class AppConfig:
+        GARBAGE_TF_077_DEFAULTS_MARKER_E = True
+
+        def load(self, path: str) -> dict:
+            return {}
+
+changed:
+  sns.tf: |
+    resource "aws_sns_topic" "alerts" {
+      name         = "alert-notifications"
+      display_name = "System Alerts"
+    }
+
+    resource "aws_sns_topic_subscription" "email" {
+      topic_arn = aws_sns_topic.alerts.arn
+      protocol  = "email"
+      endpoint  = "alerts@example.com"
+    }
+  src/notifications.py: |
+    import boto3
+
+    def publish_alert(topic_arn: str, message: str):
+        sns = boto3.client("sns")
+        sns.publish(TopicArn=topic_arn, Message=message)
+
+  garbage_sns_audit.tf: |
+    GARBAGE_TF_077_AUDIT_TOPIC_MARKER_A = "audit-trail"
+    GARBAGE_TF_077_COMPLIANCE_MARKER_B = "soc2"
+
+    resource "aws_sns_topic" "audit" {
+      name         = "audit-notifications"
+      display_name = "Audit Trail"
+    }
+
+    resource "aws_sns_topic_subscription" "audit_sqs" {
+      topic_arn = aws_sns_topic.audit.arn
+      protocol  = "sqs"
+      endpoint  = aws_sqs_queue.audit_log.arn
+    }
+
+  garbage_config.py: |
+    GARBAGE_TF_077_CONFIG_MARKER_C = "app-settings"
+    GARBAGE_TF_077_ENV_MARKER_D = "production"
+
+    class AppConfig:
+        GARBAGE_TF_077_DEFAULTS_MARKER_E = True
+
+        def load(self, path: str) -> dict:
+            return {}
+
+# === Assertions ===
+
+must_include_files:
+- sns.tf
+
+must_include_content_from:
+  sns.tf:
+    - display_name = "System Alerts"
+    - 'resource "aws_sns_topic_subscription" "email"'
+    - protocol  = "email"
+    - endpoint  = "alerts@example.com"
+    - 'resource "aws_sns_topic" "alerts"'
+
+must_not_include:
+# Tricky garbage: sibling .tf with same resource type
+- GARBAGE_TF_077_AUDIT_TOPIC_MARKER_A
+- GARBAGE_TF_077_COMPLIANCE_MARKER_B
+# Plain garbage
+- GARBAGE_TF_077_CONFIG_MARKER_C
+- GARBAGE_TF_077_ENV_MARKER_D
+- GARBAGE_TF_077_DEFAULTS_MARKER_E
+
+must_not_include_files:
+- garbage_sns_audit.tf
+- garbage_config.py
+- src/notifications.py
+
+max_fragments: 3
+max_files: 1
+add_garbage_files: false
+skip_garbage_check: true

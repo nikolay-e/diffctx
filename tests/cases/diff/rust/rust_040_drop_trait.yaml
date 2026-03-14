@@ -1,0 +1,556 @@
+# Scenario: Connection gains a Drop impl for auto-disconnect, an ACTIVE_CONNECTIONS
+# counter, and uptime tracking. New ConnectionPool and ScopedConnection types
+# also implement Drop, plus a Resource trait with ResourceGuard<T: Resource>.
+#
+# Diff: src/connection.rs adds Drop impls for Connection, ConnectionPool,
+# ScopedConnection, and a generic ResourceGuard<T: Resource>.
+#
+# Reviewer questions:
+#   Q1: "What cleanup happens on drop?" -> src/connection.rs (CHANGED) shows
+#        Connection::drop auto-disconnects and decrements ACTIVE_CONNECTIONS.
+#   Q2: "Is the drop ordering correct for nested types?" -> ConnectionPool::drop
+#        logs before inner connections are dropped, ScopedConnection holds &mut pool.
+#
+# Trap files (plausible but no dependency on Connection or its Drop semantics):
+#   - src/file_handle.rs: wraps File with auto-close. Same "RAII cleanup" domain
+#     and implements Drop, but operates on files, not network connections.
+#   - src/transaction.rs: database transaction with commit/rollback on drop.
+#     Same "cleanup on scope exit" pattern but independent type and logic.
+#   - src/logger.rs: structured logging with connection metadata fields. Shares
+#     "connection" vocabulary (host, port) but only formats strings.
+
+initial:
+  src/lib.rs: |
+    pub mod connection;
+    pub mod file_handle;
+    pub mod transaction;
+    pub mod logger;
+  src/connection.rs: |
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    static CONNECTION_COUNT: AtomicUsize = AtomicUsize::new(0);
+
+    pub struct Connection {
+        host: String,
+        port: u16,
+        connected: bool,
+        id: usize,
+    }
+
+    impl Connection {
+        pub fn new(host: &str, port: u16) -> Self {
+            let id = CONNECTION_COUNT.fetch_add(1, Ordering::SeqCst);
+            println!("Creating connection {} to {}:{}", id, host, port);
+            Self {
+                host: host.to_string(),
+                port,
+                connected: true,
+                id,
+            }
+        }
+
+        pub fn disconnect(&mut self) {
+            if self.connected {
+                println!("Disconnecting connection {} from {}:{}", self.id, self.host, self.port);
+                self.connected = false;
+            }
+        }
+
+        pub fn is_connected(&self) -> bool {
+            self.connected
+        }
+
+        pub fn host(&self) -> &str {
+            &self.host
+        }
+
+        pub fn port(&self) -> u16 {
+            self.port
+        }
+
+        pub fn id(&self) -> usize {
+            self.id
+        }
+    }
+
+    pub fn active_connections() -> usize {
+        CONNECTION_COUNT.load(Ordering::SeqCst)
+    }
+  src/file_handle.rs: |
+    use std::fs::File;
+    use std::io::{self, Write, Read};
+    use std::path::PathBuf;
+
+    pub struct FileHandle {
+        file: File,
+        path: PathBuf,
+        bytes_written: usize,
+    }
+
+    impl FileHandle {
+        pub fn create(path: &str) -> io::Result<Self> {
+            let file = File::create(path)?;
+            Ok(Self {
+                file,
+                path: PathBuf::from(path),
+                bytes_written: 0,
+            })
+        }
+
+        pub fn write_data(&mut self, data: &[u8]) -> io::Result<()> {
+            self.file.write_all(data)?;
+            self.bytes_written += data.len();
+            Ok(())
+        }
+
+        pub fn path(&self) -> &str {
+            self.path.to_str().unwrap_or("")
+        }
+
+        pub fn bytes_written(&self) -> usize {
+            self.bytes_written
+        }
+    }
+
+    impl Drop for FileHandle {
+        fn drop(&mut self) {
+            let _ = self.file.flush();
+            println!("Closing file: {} ({} bytes written)", self.path(), self.bytes_written);
+        }
+    }
+  src/transaction.rs: |
+    pub enum TransactionState {
+        Active,
+        Committed,
+        RolledBack,
+    }
+
+    pub struct Transaction {
+        id: String,
+        state: TransactionState,
+        operations: Vec<String>,
+    }
+
+    impl Transaction {
+        pub fn begin(id: &str) -> Self {
+            println!("BEGIN transaction {}", id);
+            Self {
+                id: id.to_string(),
+                state: TransactionState::Active,
+                operations: Vec::new(),
+            }
+        }
+
+        pub fn execute(&mut self, op: &str) {
+            self.operations.push(op.to_string());
+        }
+
+        pub fn commit(&mut self) {
+            self.state = TransactionState::Committed;
+            println!("COMMIT transaction {} ({} ops)", self.id, self.operations.len());
+        }
+    }
+
+    impl Drop for Transaction {
+        fn drop(&mut self) {
+            if matches!(self.state, TransactionState::Active) {
+                println!("ROLLBACK transaction {} (auto)", self.id);
+                self.state = TransactionState::RolledBack;
+            }
+        }
+    }
+  src/logger.rs: |
+    pub struct Logger {
+        prefix: String,
+        level: LogLevel,
+    }
+
+    #[derive(Clone, Copy, PartialEq, PartialOrd)]
+    pub enum LogLevel {
+        Debug,
+        Info,
+        Warn,
+        Error,
+    }
+
+    impl Logger {
+        pub fn new(prefix: &str, level: LogLevel) -> Self {
+            Self {
+                prefix: prefix.to_string(),
+                level,
+            }
+        }
+
+        pub fn info(&self, msg: &str) {
+            if self.level <= LogLevel::Info {
+                println!("[{}][INFO] {}", self.prefix, msg);
+            }
+        }
+
+        pub fn error(&self, msg: &str) {
+            if self.level <= LogLevel::Error {
+                println!("[{}][ERROR] {}", self.prefix, msg);
+            }
+        }
+
+        pub fn with_context(&self, host: &str, port: u16) -> String {
+            format!("[{}] {}:{}", self.prefix, host, port)
+        }
+    }
+
+changed:
+  src/lib.rs: |
+    pub mod connection;
+    pub mod file_handle;
+    pub mod transaction;
+    pub mod logger;
+  src/connection.rs: |
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::time::{Duration, Instant};
+
+    static CONNECTION_COUNT: AtomicUsize = AtomicUsize::new(0);
+    static ACTIVE_CONNECTIONS: AtomicUsize = AtomicUsize::new(0);
+
+    pub struct Connection {
+        host: String,
+        port: u16,
+        connected: bool,
+        id: usize,
+        created_at: Instant,
+    }
+
+    impl Connection {
+        pub fn new(host: &str, port: u16) -> Self {
+            let id = CONNECTION_COUNT.fetch_add(1, Ordering::SeqCst);
+            ACTIVE_CONNECTIONS.fetch_add(1, Ordering::SeqCst);
+            println!("Creating connection {} to {}:{}", id, host, port);
+            Self {
+                host: host.to_string(),
+                port,
+                connected: true,
+                id,
+                created_at: Instant::now(),
+            }
+        }
+
+        pub fn is_connected(&self) -> bool {
+            self.connected
+        }
+
+        pub fn host(&self) -> &str {
+            &self.host
+        }
+
+        pub fn port(&self) -> u16 {
+            self.port
+        }
+
+        pub fn id(&self) -> usize {
+            self.id
+        }
+
+        pub fn uptime(&self) -> Duration {
+            self.created_at.elapsed()
+        }
+    }
+
+    impl Drop for Connection {
+        fn drop(&mut self) {
+            if self.connected {
+                println!("Auto-disconnecting connection {} from {}:{}", self.id, self.host, self.port);
+                self.connected = false;
+            }
+            ACTIVE_CONNECTIONS.fetch_sub(1, Ordering::SeqCst);
+            println!("Connection {} dropped after {:?}", self.id, self.uptime());
+        }
+    }
+
+    pub fn total_connections() -> usize {
+        CONNECTION_COUNT.load(Ordering::SeqCst)
+    }
+
+    pub fn active_connections() -> usize {
+        ACTIVE_CONNECTIONS.load(Ordering::SeqCst)
+    }
+
+    pub struct ConnectionPool {
+        connections: Vec<Connection>,
+        max_size: usize,
+        host: String,
+        port: u16,
+    }
+
+    impl ConnectionPool {
+        pub fn new(host: &str, port: u16, max_size: usize) -> Self {
+            Self {
+                connections: Vec::new(),
+                max_size,
+                host: host.to_string(),
+                port,
+            }
+        }
+
+        pub fn acquire(&mut self) -> Option<&Connection> {
+            if self.connections.len() < self.max_size {
+                self.connections.push(Connection::new(&self.host, self.port));
+                self.connections.last()
+            } else {
+                self.connections.iter().find(|c| c.is_connected())
+            }
+        }
+
+        pub fn size(&self) -> usize {
+            self.connections.len()
+        }
+
+        pub fn active(&self) -> usize {
+            self.connections.iter().filter(|c| c.is_connected()).count()
+        }
+
+        pub fn host(&self) -> &str {
+            &self.host
+        }
+
+        pub fn port(&self) -> u16 {
+            self.port
+        }
+    }
+
+    impl Drop for ConnectionPool {
+        fn drop(&mut self) {
+            println!(
+                "Dropping ConnectionPool for {}:{} with {} connections",
+                self.host,
+                self.port,
+                self.connections.len()
+            );
+        }
+    }
+
+    pub struct ScopedConnection<'a> {
+        pool: &'a mut ConnectionPool,
+        connection_index: usize,
+    }
+
+    impl<'a> ScopedConnection<'a> {
+        pub fn new(pool: &'a mut ConnectionPool) -> Option<Self> {
+            let idx = pool.connections.len();
+            if idx < pool.max_size {
+                pool.connections.push(Connection::new(&pool.host, pool.port));
+                Some(Self {
+                    pool,
+                    connection_index: idx,
+                })
+            } else {
+                None
+            }
+        }
+
+        pub fn connection(&self) -> &Connection {
+            &self.pool.connections[self.connection_index]
+        }
+    }
+
+    impl<'a> Drop for ScopedConnection<'a> {
+        fn drop(&mut self) {
+            println!(
+                "ScopedConnection releasing connection {}",
+                self.connection_index
+            );
+        }
+    }
+
+    pub trait Resource {
+        fn cleanup(&mut self);
+        fn is_valid(&self) -> bool;
+    }
+
+    impl Resource for Connection {
+        fn cleanup(&mut self) {
+            if self.connected {
+                println!("Cleaning up connection {}", self.id);
+                self.connected = false;
+            }
+        }
+
+        fn is_valid(&self) -> bool {
+            self.connected
+        }
+    }
+
+    pub struct ResourceGuard<T: Resource> {
+        resource: T,
+    }
+
+    impl<T: Resource> ResourceGuard<T> {
+        pub fn new(resource: T) -> Self {
+            Self { resource }
+        }
+
+        pub fn get(&self) -> &T {
+            &self.resource
+        }
+
+        pub fn get_mut(&mut self) -> &mut T {
+            &mut self.resource
+        }
+    }
+
+    impl<T: Resource> Drop for ResourceGuard<T> {
+        fn drop(&mut self) {
+            self.resource.cleanup();
+        }
+    }
+  src/file_handle.rs: |
+    use std::fs::File;
+    use std::io::{self, Write, Read};
+    use std::path::PathBuf;
+
+    pub struct FileHandle {
+        file: File,
+        path: PathBuf,
+        bytes_written: usize,
+    }
+
+    impl FileHandle {
+        pub fn create(path: &str) -> io::Result<Self> {
+            let file = File::create(path)?;
+            Ok(Self {
+                file,
+                path: PathBuf::from(path),
+                bytes_written: 0,
+            })
+        }
+
+        pub fn write_data(&mut self, data: &[u8]) -> io::Result<()> {
+            self.file.write_all(data)?;
+            self.bytes_written += data.len();
+            Ok(())
+        }
+
+        pub fn path(&self) -> &str {
+            self.path.to_str().unwrap_or("")
+        }
+
+        pub fn bytes_written(&self) -> usize {
+            self.bytes_written
+        }
+    }
+
+    impl Drop for FileHandle {
+        fn drop(&mut self) {
+            let _ = self.file.flush();
+            println!("Closing file: {} ({} bytes written)", self.path(), self.bytes_written);
+        }
+    }
+  src/transaction.rs: |
+    pub enum TransactionState {
+        Active,
+        Committed,
+        RolledBack,
+    }
+
+    pub struct Transaction {
+        id: String,
+        state: TransactionState,
+        operations: Vec<String>,
+    }
+
+    impl Transaction {
+        pub fn begin(id: &str) -> Self {
+            println!("BEGIN transaction {}", id);
+            Self {
+                id: id.to_string(),
+                state: TransactionState::Active,
+                operations: Vec::new(),
+            }
+        }
+
+        pub fn execute(&mut self, op: &str) {
+            self.operations.push(op.to_string());
+        }
+
+        pub fn commit(&mut self) {
+            self.state = TransactionState::Committed;
+            println!("COMMIT transaction {} ({} ops)", self.id, self.operations.len());
+        }
+    }
+
+    impl Drop for Transaction {
+        fn drop(&mut self) {
+            if matches!(self.state, TransactionState::Active) {
+                println!("ROLLBACK transaction {} (auto)", self.id);
+                self.state = TransactionState::RolledBack;
+            }
+        }
+    }
+  src/logger.rs: |
+    pub struct Logger {
+        prefix: String,
+        level: LogLevel,
+    }
+
+    #[derive(Clone, Copy, PartialEq, PartialOrd)]
+    pub enum LogLevel {
+        Debug,
+        Info,
+        Warn,
+        Error,
+    }
+
+    impl Logger {
+        pub fn new(prefix: &str, level: LogLevel) -> Self {
+            Self {
+                prefix: prefix.to_string(),
+                level,
+            }
+        }
+
+        pub fn info(&self, msg: &str) {
+            if self.level <= LogLevel::Info {
+                println!("[{}][INFO] {}", self.prefix, msg);
+            }
+        }
+
+        pub fn error(&self, msg: &str) {
+            if self.level <= LogLevel::Error {
+                println!("[{}][ERROR] {}", self.prefix, msg);
+            }
+        }
+
+        pub fn with_context(&self, host: &str, port: u16) -> String {
+            format!("[{}] {}:{}", self.prefix, host, port)
+        }
+    }
+
+must_include_files:
+  # Changed: Drop impls for Connection, ConnectionPool, ScopedConnection, ResourceGuard
+  - src/connection.rs
+must_include_content_from:
+  src/connection.rs:
+    - "use std::time::{Duration, Instant};"
+    - "ACTIVE_CONNECTIONS.fetch_add(1, Ordering::SeqCst);"
+    - "impl Drop for Connection {"
+    - "pub struct ConnectionPool {"
+    - "pub struct ResourceGuard<T: Resource> {"
+must_not_include:
+  # file_handle.rs: also has Drop but for File, no Connection dependency
+  - FileHandle
+  - write_data
+  - bytes_written
+  # transaction.rs: also has Drop but for DB transactions
+  - TransactionState
+  - "BEGIN transaction"
+  - ROLLBACK
+  # logger.rs: shares host/port vocabulary but just formats strings
+  - "struct Logger"
+  - LogLevel
+  - with_context
+must_not_include_files:
+  - src/file_handle.rs
+  - src/transaction.rs
+  - src/logger.rs
+max_fragments: 10
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

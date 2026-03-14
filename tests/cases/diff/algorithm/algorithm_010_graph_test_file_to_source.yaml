@@ -1,0 +1,291 @@
+initial:
+  src/calculator/operations.py: |
+    from typing import Union, List
+    from decimal import Decimal
+
+    Number = Union[int, float, Decimal]
+
+    def add(a: Number, b: Number) -> Number:
+        return a + b
+
+    def subtract(a: Number, b: Number) -> Number:
+        return a - b
+
+    def multiply(a: Number, b: Number) -> Number:
+        return a * b
+
+    def divide(a: Number, b: Number) -> Number:
+        if b == 0:
+            raise ValueError("Cannot divide by zero")
+        return a / b
+
+    def average(numbers: List[Number]) -> float:
+        if not numbers:
+            raise ValueError("Cannot calculate average of empty list")
+        return sum(numbers) / len(numbers)
+  tests/test_operations.py: |
+    import pytest
+    from src.calculator.operations import add, subtract, multiply, divide, average
+
+    class TestAdd:
+        def test_add_integers(self):
+            assert add(1, 2) == 3
+
+        def test_add_floats(self):
+            assert add(1.5, 2.5) == 4.0
+
+        def test_add_negative(self):
+            assert add(-1, 1) == 0
+
+    class TestDivide:
+        def test_divide_integers(self):
+            assert divide(10, 2) == 5
+
+        def test_divide_by_zero(self):
+            with pytest.raises(ValueError):
+                divide(10, 0)
+
+    class TestAverage:
+        def test_average_list(self):
+            assert average([1, 2, 3, 4, 5]) == 3.0
+
+  # --- Tricky garbage: name collision — another math module with add/subtract/divide ---
+  src/calculator/matrix_ops.py: |
+    from typing import List
+    GARBAGE_ALGO_010_MATRIX_OPS_G = "matrix"
+    GARBAGE_ALGO_010_LINALG_MARKER_H = True
+
+    Number = float
+
+    def add(a: List[List[float]], b: List[List[float]]) -> List[List[float]]:
+        return [[a[i][j] + b[i][j] for j in range(len(a[0]))] for i in range(len(a))]
+
+    def subtract(a: List[List[float]], b: List[List[float]]) -> List[List[float]]:
+        return [[a[i][j] - b[i][j] for j in range(len(a[0]))] for i in range(len(a))]
+
+    def multiply(a: List[List[float]], b: List[List[float]]) -> List[List[float]]:
+        return [[sum(a[i][k] * b[k][j] for k in range(len(b))) for j in range(len(b[0]))] for i in range(len(a))]
+
+    def divide(a: List[List[float]], scalar: float) -> List[List[float]]:
+        if scalar == 0:
+            raise ValueError("Cannot divide by zero")
+        return [[a[i][j] / scalar for j in range(len(a[0]))] for i in range(len(a))]
+
+  # --- Tricky garbage: test file that imports from same src module ---
+  tests/test_matrix_ops.py: |
+    import pytest
+    from src.calculator.matrix_ops import add, subtract, multiply, divide
+    GARBAGE_ALGO_010_MATRIX_TEST_I = "matrix_test"
+    GARBAGE_ALGO_010_TEST_SUITE_J = True
+
+    class TestMatrixAdd:
+        def test_add_matrices(self):
+            assert add([[1]], [[2]]) == [[3]]
+
+    class TestMatrixDivide:
+        def test_divide_by_zero(self):
+            with pytest.raises(ValueError):
+                divide([[1]], 0)
+
+  # --- Tricky garbage: structural sibling test with safe_divide-like pattern ---
+  tests/test_advanced_math.py: |
+    import pytest
+    GARBAGE_ALGO_010_ADV_MATH_K = "advanced"
+    GARBAGE_ALGO_010_PRECISION_MARKER_L = True
+
+    class TestSafeDivide:
+        def test_safe_divide_normal(self):
+            assert 10 / 2 == 5.0
+
+        def test_safe_divide_default(self):
+            result = 0.0
+            assert result == 0.0
+
+  # --- Plain garbage ---
+  garbage_fixtures.py: |
+    GARBAGE_ALGO_010_FIXTURE_MARKER_A = "fixture"
+    GARBAGE_ALGO_010_SETUP_MARKER_B = True
+
+    class TestFixtures:
+        GARBAGE_ALGO_010_DATA_MARKER_C = []
+
+        def setup(self):
+            pass
+  garbage_mocks.py: |
+    GARBAGE_ALGO_010_MOCK_MARKER_D = "mock"
+    GARBAGE_ALGO_010_PATCH_MARKER_E = True
+
+    class MockCalculator:
+        GARBAGE_ALGO_010_FAKE_MARKER_F = True
+
+        def add(self, a, b):
+            return 0
+changed:
+  src/calculator/operations.py: |
+    from typing import Union, List
+    from decimal import Decimal
+
+    Number = Union[int, float, Decimal]
+
+    def add(a: Number, b: Number) -> float:
+        return float(a) + float(b)
+
+    def subtract(a: Number, b: Number) -> float:
+        return float(a) - float(b)
+
+    def multiply(a: Number, b: Number) -> float:
+        return float(a) * float(b)
+
+    def divide(a: Number, b: Number) -> float:
+        if b == 0:
+            raise ValueError("Cannot divide by zero")
+        return float(a) / float(b)
+
+    def average(numbers: List[Number]) -> float:
+        if not numbers:
+            raise ValueError("Cannot calculate average of empty list")
+        return sum(float(n) for n in numbers) / len(numbers)
+
+    def safe_divide(a: Number, b: Number, default: float = 0.0) -> float:
+        try:
+            return divide(a, b)
+        except ValueError:
+            return default
+  tests/test_operations.py: |
+    import pytest
+    from src.calculator.operations import add, subtract, multiply, divide, average, safe_divide
+
+    class TestAdd:
+        def test_add_integers(self):
+            assert add(1, 2) == 3.0
+
+        def test_add_floats(self):
+            assert add(1.5, 2.5) == 4.0
+
+        def test_add_negative(self):
+            assert add(-1, 1) == 0.0
+
+    class TestDivide:
+        def test_divide_integers(self):
+            assert divide(10, 2) == 5.0
+
+        def test_divide_by_zero(self):
+            with pytest.raises(ValueError):
+                divide(10, 0)
+
+    class TestSafeDivide:
+        def test_safe_divide_normal(self):
+            assert safe_divide(10, 2) == 5.0
+
+        def test_safe_divide_by_zero(self):
+            assert safe_divide(10, 0) == 0.0
+
+    class TestAverage:
+        def test_average_list(self):
+            assert average([1, 2, 3, 4, 5]) == 3.0
+  src/calculator/matrix_ops.py: |
+    from typing import List
+    GARBAGE_ALGO_010_MATRIX_OPS_G = "matrix"
+    GARBAGE_ALGO_010_LINALG_MARKER_H = True
+
+    Number = float
+
+    def add(a: List[List[float]], b: List[List[float]]) -> List[List[float]]:
+        return [[a[i][j] + b[i][j] for j in range(len(a[0]))] for i in range(len(a))]
+
+    def subtract(a: List[List[float]], b: List[List[float]]) -> List[List[float]]:
+        return [[a[i][j] - b[i][j] for j in range(len(a[0]))] for i in range(len(a))]
+
+    def multiply(a: List[List[float]], b: List[List[float]]) -> List[List[float]]:
+        return [[sum(a[i][k] * b[k][j] for k in range(len(b))) for j in range(len(b[0]))] for i in range(len(a))]
+
+    def divide(a: List[List[float]], scalar: float) -> List[List[float]]:
+        if scalar == 0:
+            raise ValueError("Cannot divide by zero")
+        return [[a[i][j] / scalar for j in range(len(a[0]))] for i in range(len(a))]
+  tests/test_matrix_ops.py: |
+    import pytest
+    from src.calculator.matrix_ops import add, subtract, multiply, divide
+    GARBAGE_ALGO_010_MATRIX_TEST_I = "matrix_test"
+    GARBAGE_ALGO_010_TEST_SUITE_J = True
+
+    class TestMatrixAdd:
+        def test_add_matrices(self):
+            assert add([[1]], [[2]]) == [[3]]
+
+    class TestMatrixDivide:
+        def test_divide_by_zero(self):
+            with pytest.raises(ValueError):
+                divide([[1]], 0)
+  tests/test_advanced_math.py: |
+    import pytest
+    GARBAGE_ALGO_010_ADV_MATH_K = "advanced"
+    GARBAGE_ALGO_010_PRECISION_MARKER_L = True
+
+    class TestSafeDivide:
+        def test_safe_divide_normal(self):
+            assert 10 / 2 == 5.0
+
+        def test_safe_divide_default(self):
+            result = 0.0
+            assert result == 0.0
+  garbage_fixtures.py: |
+    GARBAGE_ALGO_010_FIXTURE_MARKER_A = "fixture"
+    GARBAGE_ALGO_010_SETUP_MARKER_B = True
+
+    class TestFixtures:
+        GARBAGE_ALGO_010_DATA_MARKER_C = []
+
+        def setup(self):
+            pass
+  garbage_mocks.py: |
+    GARBAGE_ALGO_010_MOCK_MARKER_D = "mock"
+    GARBAGE_ALGO_010_PATCH_MARKER_E = True
+
+    class MockCalculator:
+        GARBAGE_ALGO_010_FAKE_MARKER_F = True
+
+        def add(self, a, b):
+            return 0
+
+# === Assertions ===
+
+must_include_files:
+- src/calculator/operations.py
+- tests/test_operations.py
+
+must_include_content_from:
+  src/calculator/operations.py:
+    - return sum(float(n) for n in numbers) / len(numbers)
+    - 'def safe_divide(a: Number, b: Number, default: float = 0.0) -> float:'
+    - return divide(a, b)
+  tests/test_operations.py:
+    - assert safe_divide(10, 0) == 0.0
+
+must_not_include:
+# Plain garbage markers
+- GARBAGE_ALGO_010_FIXTURE_MARKER_A
+- GARBAGE_ALGO_010_SETUP_MARKER_B
+- GARBAGE_ALGO_010_DATA_MARKER_C
+- GARBAGE_ALGO_010_MOCK_MARKER_D
+- GARBAGE_ALGO_010_PATCH_MARKER_E
+- GARBAGE_ALGO_010_FAKE_MARKER_F
+# Tricky: name collision — same function names (add, subtract, multiply, divide)
+- GARBAGE_ALGO_010_MATRIX_OPS_G
+- GARBAGE_ALGO_010_LINALG_MARKER_H
+# Tricky: test file importing from same src/calculator, same pytest patterns
+- GARBAGE_ALGO_010_MATRIX_TEST_I
+- GARBAGE_ALGO_010_TEST_SUITE_J
+# Tricky: structural sibling test with TestSafeDivide class name overlap
+- GARBAGE_ALGO_010_ADV_MATH_K
+- GARBAGE_ALGO_010_PRECISION_MARKER_L
+
+must_not_include_files:
+- garbage_fixtures.py
+- garbage_mocks.py
+- tests/test_advanced_math.py
+
+max_fragments: 22
+max_files: 4
+add_garbage_files: false
+skip_garbage_check: true

@@ -143,7 +143,7 @@ jobs:
           git bundle create repo.bundle --all
 
       - name: Upload bundle as artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: git-repo-bundle
           path: repo.bundle
@@ -176,7 +176,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - name: Download git bundle
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: git-repo-bundle
 
@@ -274,7 +274,7 @@ jobs:
           fi
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.asset_name }}-binary
           path: ./repo/dist/treemapper-*
@@ -292,7 +292,7 @@ jobs:
       id-token: write
     steps:
       - name: Download git bundle
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: git-repo-bundle
 
@@ -369,7 +369,7 @@ jobs:
       contents: write
     steps:
       - name: Download git bundle
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: git-repo-bundle
 
@@ -422,7 +422,7 @@ jobs:
           echo "Successfully pushed version commit and tag"
 
       - name: Download all build artifacts
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           path: ./artifacts
 

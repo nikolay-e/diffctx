@@ -1,0 +1,143 @@
+initial:
+  chart/Chart.yaml: |
+    apiVersion: v2
+    name: worker-app
+    description: Background worker application
+    type: application
+    version: 2.0.0
+    appVersion: "2.0.0"
+  chart/values.yaml: |
+    replicaCount: 2
+    image:
+      repository: worker-app
+      tag: "2.0.0"
+    env:
+      - name: APP_ENV
+        value: development
+    resources:
+      limits:
+        cpu: 500m
+        memory: 512Mi
+  chart/templates/_helpers.tpl: |
+    {{- define "worker-app.fullname" -}}
+    {{- printf "%s-%s" .Release.Name .Chart.Name | trunc 63 | trimSuffix "-" }}
+    {{- end }}
+
+    {{- define "worker-app.labels" -}}
+    app.kubernetes.io/name: {{ .Chart.Name }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    {{- end }}
+  chart/templates/deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: {{ include "worker-app.fullname" . }}
+      labels:
+        {{- include "worker-app.labels" . | nindent 4 }}
+    spec:
+      replicas: {{ .Values.replicaCount }}
+      selector:
+        matchLabels:
+          {{- include "worker-app.labels" . | nindent 6 }}
+      template:
+        metadata:
+          labels:
+            {{- include "worker-app.labels" . | nindent 8 }}
+        spec:
+          containers:
+            - name: {{ .Chart.Name }}
+              image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+              env:
+                {{- toYaml .Values.env | nindent 14 }}
+              resources:
+                {{- toYaml .Values.resources | nindent 14 }}
+  chart/templates/istio-virtualservice.yaml: |
+    apiVersion: networking.istio.io/v1beta1
+    kind: VirtualService
+    metadata:
+    spec:
+      hosts:
+      http:
+        - route:
+            - destination:
+  chart/scripts/migrate.sh: |
+    #!/bin/bash
+    echo "Running migrations..."
+changed:
+  chart/Chart.yaml: |
+    apiVersion: v2
+    name: worker-app
+    description: Background worker application
+    type: application
+    version: 2.0.0
+    appVersion: "2.0.0"
+  chart/values.yaml: |
+    replicaCount: 2
+    image:
+      repository: worker-app
+      tag: "2.0.0"
+    env:
+      - name: APP_ENV
+        value: production
+      - name: LOG_LEVEL
+        value: warn
+      - name: DB_HOST
+        valueFrom:
+          secretKeyRef:
+            name: db-secret
+            key: host
+    resources:
+      limits:
+        cpu: 500m
+        memory: 512Mi
+  chart/templates/_helpers.tpl: |
+    {{- define "worker-app.fullname" -}}
+    {{- printf "%s-%s" .Release.Name .Chart.Name | trunc 63 | trimSuffix "-" }}
+    {{- end }}
+
+    {{- define "worker-app.labels" -}}
+    app.kubernetes.io/name: {{ .Chart.Name }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    {{- end }}
+  chart/templates/deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: {{ include "worker-app.fullname" . }}
+      labels:
+        {{- include "worker-app.labels" . | nindent 4 }}
+    spec:
+      replicas: {{ .Values.replicaCount }}
+      selector:
+        matchLabels:
+          {{- include "worker-app.labels" . | nindent 6 }}
+      template:
+        metadata:
+          labels:
+            {{- include "worker-app.labels" . | nindent 8 }}
+        spec:
+          containers:
+            - name: {{ .Chart.Name }}
+              image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+              env:
+                {{- toYaml .Values.env | nindent 14 }}
+              resources:
+                {{- toYaml .Values.resources | nindent 14 }}
+  chart/templates/istio-virtualservice.yaml: |
+    apiVersion: networking.istio.io/v1beta1
+    kind: VirtualService
+    metadata:
+    spec:
+      hosts:
+      http:
+        - route:
+            - destination:
+  chart/scripts/migrate.sh: |
+    #!/bin/bash
+    echo "Running migrations..."
+must_include_files:
+- chart/values.yaml
+must_include_content:
+- 'value: production'
+add_garbage_files: false
+skip_garbage_check: true

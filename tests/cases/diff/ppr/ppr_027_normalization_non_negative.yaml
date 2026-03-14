@@ -1,0 +1,167 @@
+initial:
+  mod0.py: |
+    def func0():
+        func1()
+  mod1.py: |
+    def func1():
+        func2()
+  mod2.py: |
+    def func2():
+        func0()
+  mod3.py: |
+    def func3():
+        func1()
+  mod4.py: |
+    def func4():
+        func2()
+  mod5.py: |
+    def func5():
+        func3()
+  mod6.py: |
+    def func6():
+        func4()
+  mod7.py: |
+    def func7():
+        func5()
+  mod8.py: |
+    def func8():
+        func6()
+  mod9.py: |
+    def func9():
+        func7()
+
+  # --- Tricky garbage: same func0 name, calls func1 like mod0 ---
+  garbage_func0_clone.py: |
+    GARBAGE_PPR027_CLONE_A = "clone"
+    GARBAGE_PPR027_CLONE_B = True
+
+    def func0():
+        func1()
+        return "unrelated_clone"
+
+    def func1():
+        GARBAGE_PPR027_INNER_C = 42
+        return None
+
+  # --- Tricky garbage: uses "modified" string like the diff ---
+  garbage_modifier.py: |
+    GARBAGE_PPR027_MODIFIER_D = "modifier"
+    GARBAGE_PPR027_MODIFIER_E = False
+
+    def modify_value():
+        return "modified"
+
+    class Modifier:
+        GARBAGE_PPR027_MODCLASS_F = 99
+
+        def apply_modified(self):
+            return "modified"
+
+  # --- Tricky garbage: chain of funcN calls, structural sibling ---
+  garbage_chain.py: |
+    GARBAGE_PPR027_CHAIN_G = "chain"
+    GARBAGE_PPR027_CHAIN_H = 0
+
+    def chain_start():
+        func3()
+
+    def chain_middle():
+        func5()
+
+changed:
+  mod0.py: |
+    def func0():
+        func1()
+        return "modified"
+  mod1.py: |
+    def func1():
+        func2()
+  mod2.py: |
+    def func2():
+        func0()
+  mod3.py: |
+    def func3():
+        func1()
+  mod4.py: |
+    def func4():
+        func2()
+  mod5.py: |
+    def func5():
+        func3()
+  mod6.py: |
+    def func6():
+        func4()
+  mod7.py: |
+    def func7():
+        func5()
+  mod8.py: |
+    def func8():
+        func6()
+  mod9.py: |
+    def func9():
+        func7()
+  garbage_func0_clone.py: |
+    GARBAGE_PPR027_CLONE_A = "clone"
+    GARBAGE_PPR027_CLONE_B = True
+
+    def func0():
+        func1()
+        return "unrelated_clone"
+
+    def func1():
+        GARBAGE_PPR027_INNER_C = 42
+        return None
+  garbage_modifier.py: |
+    GARBAGE_PPR027_MODIFIER_D = "modifier"
+    GARBAGE_PPR027_MODIFIER_E = False
+
+    def modify_value():
+        return "modified"
+
+    class Modifier:
+        GARBAGE_PPR027_MODCLASS_F = 99
+
+        def apply_modified(self):
+            return "modified"
+  garbage_chain.py: |
+    GARBAGE_PPR027_CHAIN_G = "chain"
+    GARBAGE_PPR027_CHAIN_H = 0
+
+    def chain_start():
+        func3()
+
+    def chain_middle():
+        func5()
+
+# === Assertions ===
+
+must_include_files:
+- mod0.py
+
+must_include_content_from:
+  mod0.py:
+    - 'def func0():'
+    - return "modified"
+
+must_not_include:
+# Tricky: same func0 name and calls func1
+- GARBAGE_PPR027_CLONE_A
+- GARBAGE_PPR027_CLONE_B
+- GARBAGE_PPR027_INNER_C
+# Tricky: uses "modified" string like the diff
+- GARBAGE_PPR027_MODIFIER_D
+- GARBAGE_PPR027_MODIFIER_E
+- GARBAGE_PPR027_MODCLASS_F
+# Tricky: chain of funcN calls, structural sibling
+- GARBAGE_PPR027_CHAIN_G
+- GARBAGE_PPR027_CHAIN_H
+
+must_not_include_files:
+- garbage_func0_clone.py
+- garbage_modifier.py
+- garbage_chain.py
+
+max_fragments: 6
+max_files: 4
+add_garbage_files: false
+skip_garbage_check: true

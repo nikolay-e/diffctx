@@ -343,7 +343,12 @@ def _extract_reexport_sources(code: str, sources: set[str]) -> None:
         sources.add(match.group(1))
 
 
-def _extract_imports(code: str) -> tuple[frozenset[str], frozenset[str]]:
+def extract_import_sources(code: str) -> frozenset[str]:
+    sources, _ = _extract_imports_full(code)
+    return sources
+
+
+def _extract_imports_full(code: str) -> tuple[frozenset[str], frozenset[str]]:
     import_sources: set[str] = set()
     imported_names: set[str] = set()
 
@@ -500,7 +505,7 @@ def analyze_javascript_fragment(code: str) -> JsFragmentInfo:
     if not code.strip():
         return _EMPTY_INFO
 
-    import_sources, imported_names = _extract_imports(code)
+    import_sources, imported_names = _extract_imports_full(code)
     exports = _extract_exports(code)
     defines = _extract_defines(code)
     calls = _extract_calls(code)

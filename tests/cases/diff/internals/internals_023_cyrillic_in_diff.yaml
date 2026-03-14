@@ -1,0 +1,14 @@
+initial:
+  cyrillic_diff.py: |
+    x = 0
+changed:
+  cyrillic_diff.py: |
+    # Cyrillic а vs Latin a
+    vаr_cyrillic = 1
+    var_latin = 2
+must_include_files:
+- cyrillic_diff.py
+must_include_content:
+- vаr_cyrillic = 1
+add_garbage_files: false
+skip_garbage_check: true

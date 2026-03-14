@@ -1,0 +1,16 @@
+initial:
+  korean_comments.py: |
+    def placeholder():
+        pass
+changed:
+  korean_comments.py: |
+    # 이것은 한국어 주석입니다
+    def calculate_total(items):
+        # 계산 로직
+        return sum(items)
+must_include_files:
+- korean_comments.py
+must_include_content:
+- 'def calculate_total(items):'
+add_garbage_files: false
+skip_garbage_check: true

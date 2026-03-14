@@ -1,0 +1,13 @@
+initial:
+  korean_str.py: |
+    x = 0
+changed:
+  korean_str.py: |
+    message = "안녕하세요"
+    result = process_data(input_value)
+must_include_files:
+- korean_str.py
+must_include_content:
+- message = "안녕하세요"
+add_garbage_files: false
+skip_garbage_check: true

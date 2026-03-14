@@ -1,0 +1,179 @@
+# Scenario: TypeScript file adds generic functions constrained by base interfaces.
+#
+# Diff: repository.ts adds findById<T extends BaseEntity>, updateEntity, and
+# Repository<T extends Identifiable> — all constrained by interfaces from entities.ts.
+#
+# Reviewer questions:
+#   Q1: "What does BaseEntity require?" → entities.ts (UNCHANGED) defines id, createdAt, updatedAt.
+#   Q2: "What is Identifiable vs BaseEntity?" → entities.ts shows Identifiable has
+#        only id, while BaseEntity adds timestamps.
+#
+# Not needed:
+#   - src/validators.ts: uses generics but for validation, not entity storage.
+#   - src/types/serializable.ts: another interface constraint but for JSON serialization.
+
+initial:
+  src/entities.ts: |
+    export interface BaseEntity {
+        id: string;
+        createdAt: Date;
+        updatedAt: Date;
+    }
+
+    export interface Identifiable {
+        id: string;
+    }
+
+    export interface Timestamped {
+        createdAt: Date;
+        updatedAt: Date;
+    }
+  src/repository.ts: |
+    console.log('initial');
+  src/validators.ts: |
+    export interface Validatable {
+        validate(): boolean;
+    }
+
+    export function validateAll<T extends Validatable>(items: T[]): boolean {
+        return items.every(item => item.validate());
+    }
+
+    export function findInvalid<T extends Validatable>(items: T[]): T[] {
+        return items.filter(item => !item.validate());
+    }
+
+    export class ValidationError extends Error {
+        constructor(public field: string, message: string) {
+            super(message);
+        }
+    }
+  src/types/serializable.ts: |
+    export interface Serializable {
+        toJSON(): Record<string, unknown>;
+        fromJSON(data: Record<string, unknown>): void;
+    }
+
+    export function serialize<T extends Serializable>(item: T): string {
+        return JSON.stringify(item.toJSON());
+    }
+
+    export function deserialize<T extends Serializable>(
+        json: string,
+        factory: () => T
+    ): T {
+        const instance = factory();
+        instance.fromJSON(JSON.parse(json));
+        return instance;
+    }
+
+changed:
+  src/entities.ts: |
+    export interface BaseEntity {
+        id: string;
+        createdAt: Date;
+        updatedAt: Date;
+    }
+
+    export interface Identifiable {
+        id: string;
+    }
+
+    export interface Timestamped {
+        createdAt: Date;
+        updatedAt: Date;
+    }
+  src/repository.ts: |
+    import { BaseEntity, Identifiable } from './entities';
+
+    export function findById<T extends BaseEntity>(
+        items: T[],
+        id: string
+    ): T | undefined {
+        return items.find(item => item.id === id);
+    }
+
+    export function updateEntity<T extends BaseEntity>(
+        entity: T,
+        updates: Partial<Omit<T, 'id' | 'createdAt'>>
+    ): T {
+        return {
+            ...entity,
+            ...updates,
+            updatedAt: new Date(),
+        };
+    }
+
+    export class Repository<T extends Identifiable> {
+        private items: Map<string, T> = new Map();
+
+        save(item: T): void {
+            this.items.set(item.id, item);
+        }
+
+        get(id: string): T | undefined {
+            return this.items.get(id);
+        }
+    }
+  src/validators.ts: |
+    export interface Validatable {
+        validate(): boolean;
+    }
+
+    export function validateAll<T extends Validatable>(items: T[]): boolean {
+        return items.every(item => item.validate());
+    }
+
+    export function findInvalid<T extends Validatable>(items: T[]): T[] {
+        return items.filter(item => !item.validate());
+    }
+
+    export class ValidationError extends Error {
+        constructor(public field: string, message: string) {
+            super(message);
+        }
+    }
+  src/types/serializable.ts: |
+    export interface Serializable {
+        toJSON(): Record<string, unknown>;
+        fromJSON(data: Record<string, unknown>): void;
+    }
+
+    export function serialize<T extends Serializable>(item: T): string {
+        return JSON.stringify(item.toJSON());
+    }
+
+    export function deserialize<T extends Serializable>(
+        json: string,
+        factory: () => T
+    ): T {
+        const instance = factory();
+        instance.fromJSON(JSON.parse(json));
+        return instance;
+    }
+
+must_include_files:
+  - src/repository.ts
+
+must_include_content_from:
+  src/repository.ts:
+    - "import { BaseEntity, Identifiable } from './entities'"
+    - "function findById<T extends BaseEntity>("
+
+must_not_include:
+  # validators.ts: generic constraints but for validation, not storage
+  - Validatable
+  - validateAll
+  - ValidationError
+  # serializable.ts: interface constraint but for serialization
+  - Serializable
+  - deserialize
+
+must_not_include_files:
+  - src/validators.ts
+  - src/types/serializable.ts
+
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

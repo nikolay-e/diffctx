@@ -1,0 +1,338 @@
+# Test: TypeScript type-definition discovery via rare-identifier expansion
+#
+# Scenario: service.ts changes to add PaymentMethod parameter and ProcessResult
+# return type, importing them from './types'. types.ts is UNCHANGED — it already
+# defines these interfaces but service.ts wasn't using them before.
+#
+# Core discovery chain:
+# 1. Only service.ts is a changed file → core fragment
+# 2. JavaScriptEdgeBuilder.discover_related_files: collects changed_names={"service"},
+#    finds candidates that IMPORT "service". types.ts has NO imports → NOT discovered
+#    here. JS edge builder only does BACKWARD discovery (who imports the changed file).
+# 3. concepts_from_diff_text extracts "paymentmethod", "processresult" from changed
+#    lines. Both pass: len≥4, not in CODE_STOPWORDS.
+# 4. _expand_universe_by_rare_identifiers builds inverted index of candidate files:
+#    - "paymentmethod" found in: types.ts, payment-processor.ts → count=2 ≤ _RARE_THRESHOLD(3)
+#    - "processresult" found in: types.ts → count=1 ≤ 3
+#    → Both types.ts and payment-processor.ts discovered via expansion
+# 5. JavaScriptEdgeBuilder.build() runs on all fragments (changed + discovered):
+#    - analyze_javascript_fragment(service.ts): type_refs includes PaymentMethod, ProcessResult
+#    - types.ts defines PaymentMethod, ProcessResult → name_to_defs maps them
+#    - Edge: service.ts → types.ts with type_ref weight 0.65 (_TS_WEIGHTS.type_ref)
+# 6. PPR from service.ts (core) propagates to types.ts via strong type_ref edge
+# 7. _collect_diff_line_needs: `payment: PaymentMethod` matches _TYPE_REF_RE
+#    → InformationNeed("signature", "paymentmethod", None, 0.7)
+# 8. types.ts fragment defines PaymentMethod (symbol_name="PaymentMethod")
+#    → _match_strength_typed returns 1.0 (defines + scope_match when scope=None)
+# 9. Greedy selector picks types.ts fragment: high PPR + high match_strength
+#
+# Trap rationale:
+# Trap 1 (payment-processor.ts): Discovered by SAME rare expansion as types.ts
+#   (shares "paymentmethod"), but after types.ts satisfies the PaymentMethod need
+#   with augmented_score=1.0+η·R, payment-processor.ts merely MENTIONS PaymentMethod
+#   (match_strength=0.3) with lower PPR → phi(max) unchanged → marginal gain ≈ 0.
+#   Tests diminishing returns in the first utility layer.
+# Trap 2 (validators.ts): Same directory as service.ts → SiblingEdgeBuilder creates
+#   edges with weight=0.05. But no shared rare identifiers ("validateshippingaddress"
+#   ≠ "paymentmethod"). Not discovered by rare expansion. Low PPR via 0.05 sibling
+#   edge dampened by alpha=0.60 restart. Tests that sibling edges alone don't select.
+# Trap 3 (order-events.ts): Imports from '../types' and uses Order type. But "order"
+#   is in CODE_STOPWORDS → filtered from concepts_from_diff_text → no rare expansion.
+#   JS edge builder: changed_names={"service"}, this file imports '../types' not
+#   './service' → not discovered. Tests that stopword-filtered identifiers don't
+#   trigger expansion.
+
+initial:
+  src/types.ts: |
+    export interface User {
+      id: number;
+      name: string;
+      email: string;
+    }
+
+    export interface Order {
+      id: number;
+      userId: number;
+      items: OrderItem[];
+      total: number;
+    }
+
+    export interface OrderItem {
+      productId: number;
+      quantity: number;
+      price: number;
+    }
+
+    export interface PaymentMethod {
+      type: 'card' | 'paypal' | 'bank';
+      details: Record<string, string>;
+    }
+
+    export interface ProcessResult {
+      success: boolean;
+      orderId: number;
+      transactionId?: string;
+    }
+  src/service.ts: |
+    import { User, Order } from './types';
+
+    /**
+     * Process an order for a user
+     * @param {User} user - The user placing the order
+     * @param {Order} order - The order to process
+     * @returns {boolean} Success status
+     */
+    function processOrder(user: User, order: Order): boolean {
+      return true;
+    }
+
+    export { processOrder };
+  # --- Trap 1: Discovered by rare expansion, NOT selected (diminishing returns) ---
+  # Contains "PaymentMethod" (rare identifier count=2 among candidates: here + types.ts)
+  # → discovered. But after types.ts DEFINES PaymentMethod (match_strength=1.0) for the
+  # signature need, this file only MENTIONS it (match_strength=0.3) → phi(max) unchanged.
+  # Also has lower PPR than types.ts (no direct edge from core service.ts, only reverse
+  # type_ref from types.ts with weight 0.65*0.5=0.325).
+  src/checkout/payment-processor.ts: |
+    import { PaymentMethod } from '../types';
+
+    export class PaymentProcessor {
+      private gateway: string;
+
+      constructor(gateway: string) {
+        this.gateway = gateway;
+      }
+
+      async processPayment(method: PaymentMethod, amount: number): Promise<boolean> {
+        console.log(`Processing ${amount} via ${this.gateway}`);
+        return true;
+      }
+
+      async refundPayment(transactionId: string): Promise<boolean> {
+        console.log(`Refunding transaction ${transactionId}`);
+        return true;
+      }
+    }
+  # --- Trap 2: Same directory, sibling edges only, no shared rare identifiers ---
+  # SiblingEdgeBuilder: weight=0.05 between files in same dir (src/).
+  # "validateshippingaddress", "validatepostalcode" are NOT diff concepts.
+  # Not discovered by rare expansion. PPR via 0.05 sibling edge is negligible
+  # (at alpha=0.60, 40% restart probability per step).
+  src/validators.ts: |
+    export function validateShippingAddress(address: {
+      street: string;
+      city: string;
+      zip: string;
+      country: string;
+    }): boolean {
+      return address.street.length > 0
+        && address.city.length > 0
+        && address.zip.length > 0;
+    }
+
+    export function validatePostalCode(code: string, country: string): boolean {
+      const patterns: Record<string, RegExp> = {
+        US: /^\d{5}(-\d{4})?$/,
+        UK: /^[A-Z]{1,2}\d[A-Z\d]?\s?\d[A-Z]{2}$/i,
+        DE: /^\d{5}$/,
+      };
+      return patterns[country]?.test(code) ?? false;
+    }
+  # --- Trap 3: Uses Order type (stopword), imports from '../types' not './service' ---
+  # "order" is in CODE_STOPWORDS → filtered by concepts_from_diff_text.
+  # _expand_universe_by_rare_identifiers never sees "order" as a concept.
+  # JS edge builder: changed_names={"service"}, this file's imports:
+  #   '../types' → normalized name "types" ≠ "service" → NOT discovered.
+  # "ordercreatedevent" and "ordercancelledevent" are NOT diff concepts.
+  src/events/order-events.ts: |
+    import { Order } from '../types';
+
+    export interface OrderCreatedEvent {
+      type: 'order.created';
+      payload: Order;
+      timestamp: Date;
+      correlationId: string;
+    }
+
+    export interface OrderCancelledEvent {
+      type: 'order.cancelled';
+      orderId: number;
+      reason: string;
+      timestamp: Date;
+      correlationId: string;
+    }
+
+    export function emitOrderEvent(event: OrderCreatedEvent | OrderCancelledEvent): void {
+      console.log(`Event: ${event.type} at ${event.timestamp}`);
+    }
+
+changed:
+  src/types.ts: |
+    export interface User {
+      id: number;
+      name: string;
+      email: string;
+    }
+
+    export interface Order {
+      id: number;
+      userId: number;
+      items: OrderItem[];
+      total: number;
+    }
+
+    export interface OrderItem {
+      productId: number;
+      quantity: number;
+      price: number;
+    }
+
+    export interface PaymentMethod {
+      type: 'card' | 'paypal' | 'bank';
+      details: Record<string, string>;
+    }
+
+    export interface ProcessResult {
+      success: boolean;
+      orderId: number;
+      transactionId?: string;
+    }
+  src/service.ts: |
+    import { User, Order, PaymentMethod, ProcessResult } from './types';
+
+    /**
+     * Process an order for a user
+     * @param {User} user - The user placing the order
+     * @param {Order} order - The order to process
+     * @param {PaymentMethod} payment - Payment method to use
+     * @returns {Promise<ProcessResult>} Processing result
+     * @throws {ValidationError} If order is invalid
+     */
+    async function processOrder(
+      user: User,
+      order: Order,
+      payment: PaymentMethod
+    ): Promise<ProcessResult> {
+      validateOrder(order);
+      return { success: true, orderId: order.id };
+    }
+
+    function validateOrder(order: Order): void {
+      if (order.items.length === 0) {
+        throw new Error('Order must have items');
+      }
+    }
+
+    export { processOrder };
+  src/checkout/payment-processor.ts: |
+    import { PaymentMethod } from '../types';
+
+    export class PaymentProcessor {
+      private gateway: string;
+
+      constructor(gateway: string) {
+        this.gateway = gateway;
+      }
+
+      async processPayment(method: PaymentMethod, amount: number): Promise<boolean> {
+        console.log(`Processing ${amount} via ${this.gateway}`);
+        return true;
+      }
+
+      async refundPayment(transactionId: string): Promise<boolean> {
+        console.log(`Refunding transaction ${transactionId}`);
+        return true;
+      }
+    }
+  src/validators.ts: |
+    export function validateShippingAddress(address: {
+      street: string;
+      city: string;
+      zip: string;
+      country: string;
+    }): boolean {
+      return address.street.length > 0
+        && address.city.length > 0
+        && address.zip.length > 0;
+    }
+
+    export function validatePostalCode(code: string, country: string): boolean {
+      const patterns: Record<string, RegExp> = {
+        US: /^\d{5}(-\d{4})?$/,
+        UK: /^[A-Z]{1,2}\d[A-Z\d]?\s?\d[A-Z]{2}$/i,
+        DE: /^\d{5}$/,
+      };
+      return patterns[country]?.test(code) ?? false;
+    }
+  src/events/order-events.ts: |
+    import { Order } from '../types';
+
+    export interface OrderCreatedEvent {
+      type: 'order.created';
+      payload: Order;
+      timestamp: Date;
+      correlationId: string;
+    }
+
+    export interface OrderCancelledEvent {
+      type: 'order.cancelled';
+      orderId: number;
+      reason: string;
+      timestamp: Date;
+      correlationId: string;
+    }
+
+    export function emitOrderEvent(event: OrderCreatedEvent | OrderCancelledEvent): void {
+      console.log(`Event: ${event.type} at ${event.timestamp}`);
+    }
+
+# === Assertions ===
+
+must_include_files:
+  - src/service.ts
+  # Core positive test: types.ts MUST be discovered despite being unchanged.
+  # JS edge builder does NOT discover it (only does backward discovery).
+  # Rare-identifier expansion on "paymentmethod" (count ≤ 3) discovers it.
+  # Strong type_ref edge (0.65) from service.ts gives high PPR.
+  # PaymentMethod signature need (priority 0.7) satisfied with match_strength=1.0.
+  - src/types.ts
+must_include_content_from:
+  src/service.ts:
+    - async function processOrder
+    - PaymentMethod
+    - ProcessResult
+    - validateOrder
+  src/types.ts:
+    # Verify that the type DEFINITIONS are included, not just the file
+    - interface PaymentMethod
+    - interface ProcessResult
+must_not_include:
+  # --- payment-processor.ts: discovered but NOT selected ---
+  # Shares "paymentmethod" rare identifier → discovered by expansion.
+  # But types.ts already satisfies PaymentMethod need (match_strength=1.0).
+  # This file only MENTIONS PaymentMethod (match_strength=0.3).
+  # phi(max(1.0+η·R_types, 0.3+η·R_processor)) = phi(1.0+η·R_types) unchanged.
+  # Marginal gain ≈ 0 → not selected.
+  - PaymentProcessor
+  - processPayment
+  - refundPayment
+  # --- validators.ts: NOT discovered ---
+  # No shared rare identifiers with diff. Only sibling edges (weight=0.05).
+  # "validateshippingaddress" and "validatepostalcode" are not diff concepts.
+  - validateShippingAddress
+  - validatePostalCode
+  # --- order-events.ts: NOT discovered ---
+  # "order" is in CODE_STOPWORDS → not a diff concept → no rare expansion.
+  # Import from '../types' ≠ changed name "service" → JS edge builder skips.
+  - OrderCreatedEvent
+  - OrderCancelledEvent
+  - emitOrderEvent
+  - correlationId
+must_not_include_files:
+  - src/checkout/payment-processor.ts
+  - src/validators.ts
+  - src/events/order-events.ts
+max_fragments: 8
+max_files: 2
+add_garbage_files: false
+skip_garbage_check: true

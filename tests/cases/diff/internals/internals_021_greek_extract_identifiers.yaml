@@ -1,0 +1,14 @@
+initial:
+  greek_ident.py: |
+    def placeholder():
+        pass
+changed:
+  greek_ident.py: |
+    def calculate_Δ(θ, φ):
+        return θ * cos(φ)
+must_include_files:
+- greek_ident.py
+must_include_content:
+- 'def calculate_Δ(θ, φ):'
+add_garbage_files: false
+skip_garbage_check: true

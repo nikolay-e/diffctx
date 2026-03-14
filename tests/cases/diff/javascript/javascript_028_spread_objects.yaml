@@ -1,0 +1,107 @@
+# Scenario: Spread operator merges imported objects — reviewer needs source values.
+#
+# Diff: config.ts is rewritten to import defaults and overrides from defaults.ts
+# and merge them with spread syntax: { ...defaults, ...overrides, version: '1.0' }.
+#
+# Reviewer questions:
+#   Q1: "What is the final merged result?"
+#       -> defaults.ts (UNCHANGED) defines defaults = { theme: 'light', language: 'en' }
+#          and overrides = { theme: 'dark' }. The reviewer must see both to understand
+#          that theme becomes 'dark' because overrides spreads second.
+#
+# Not needed:
+#   - theme-constants.ts: defines theme color palettes (light, dark).
+#     Conceptually related to "theme" but not imported by config.ts.
+#   - i18n.ts: internationalization referencing 'language'.
+#     Same field name overlap but different concern entirely.
+
+initial:
+  defaults.ts: |
+    export const defaults = {
+        theme: 'light',
+        language: 'en',
+    };
+
+    export const overrides = {
+        theme: 'dark',
+    };
+  config.ts: |
+    console.log('initial');
+  theme-constants.ts: |
+    export const THEMES = {
+        light: { bg: '#ffffff', fg: '#000000' },
+        dark: { bg: '#1a1a1a', fg: '#f0f0f0' },
+    };
+
+    export function getThemeColors(name: string) {
+        return THEMES[name as keyof typeof THEMES] ?? THEMES.light;
+    }
+  i18n.ts: |
+    const translations: Record<string, Record<string, string>> = {
+        en: { greeting: 'Hello', farewell: 'Goodbye' },
+        fr: { greeting: 'Bonjour', farewell: 'Au revoir' },
+    };
+
+    export function translate(key: string, locale: string = 'en'): string {
+        return translations[locale]?.[key] ?? key;
+    }
+
+changed:
+  defaults.ts: |
+    export const defaults = {
+        theme: 'light',
+        language: 'en',
+    };
+
+    export const overrides = {
+        theme: 'dark',
+    };
+  config.ts: |
+    import { defaults, overrides } from './defaults';
+
+    export const config = {
+        ...defaults,
+        ...overrides,
+        version: '1.0',
+    };
+  theme-constants.ts: |
+    export const THEMES = {
+        light: { bg: '#ffffff', fg: '#000000' },
+        dark: { bg: '#1a1a1a', fg: '#f0f0f0' },
+    };
+
+    export function getThemeColors(name: string) {
+        return THEMES[name as keyof typeof THEMES] ?? THEMES.light;
+    }
+  i18n.ts: |
+    const translations: Record<string, Record<string, string>> = {
+        en: { greeting: 'Hello', farewell: 'Goodbye' },
+        fr: { greeting: 'Bonjour', farewell: 'Au revoir' },
+    };
+
+    export function translate(key: string, locale: string = 'en'): string {
+        return translations[locale]?.[key] ?? key;
+    }
+
+must_include_files:
+  # Q1: defaults.ts defines both source objects for the spread merge
+  - defaults.ts
+must_include_content_from:
+  defaults.ts:
+    - "theme: 'light'"
+    - "theme: 'dark'"
+    - "language: 'en'"
+must_not_include:
+  # theme-constants.ts: color palettes, not imported by config.ts
+  - THEMES
+  - getThemeColors
+  # i18n.ts: translation system, different concern
+  - translate
+  - translations
+must_not_include_files:
+  - theme-constants.ts
+  - i18n.ts
+max_fragments: 5
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

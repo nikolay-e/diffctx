@@ -1,0 +1,351 @@
+# Scenario: UserTest gains test methods that instantiate User and verify behavior
+#   — reviewer needs User class to understand constructor and isValidEmail
+#
+# Diff shows:
+#   - class UserTest {}
+#   + require_once 'User.php'; testUserCreation() creates new User('John', 'john@...')
+#     and asserts $user->name, $user->email; testEmailValidation() calls isValidEmail()
+#
+# Reviewer questions:
+#   Q1: "What does new User('John', 'john@example.com') construct — what properties?"
+#       -> User has public string $name, string $email via promoted constructor.
+#   Q2: "What does isValidEmail() check — how does it validate?"
+#       -> Uses filter_var($this->email, FILTER_VALIDATE_EMAIL). Returns bool.
+#
+# Not needed for comprehension:
+#   - ProductTest.php: sibling test class with IDENTICAL test structure.
+#     Has testProductCreation/testPriceValidation. HARDEST TRAP: same
+#     test naming pattern, same assert style, same file location.
+#     But tests Product not User.
+#
+#   - EmailValidator.php: has isValidEmail(string) method. HARD TRAP:
+#     exact same method name as User->isValidEmail(). Also uses
+#     filter_var with FILTER_VALIDATE_EMAIL. But standalone validator
+#     class, not the User method being tested.
+#
+#   - UserRepository.php: user-domain class that stores User objects.
+#     Has find/save methods. Domain overlap. But not referenced by tests.
+#
+#   - AdminTest.php: another test class with similar structure. Has
+#     testAdminCreation() and testPermissions(). Same test pattern.
+#     But tests Admin not User.
+#
+#   - UserFixture.php: test helper that creates User instances.
+#     Has createTestUser() and createInvalidUser(). HARD TRAP:
+#     creates same objects as the test. But fixture helper, not the
+#     class definition the reviewer needs.
+
+initial:
+  User.php: |
+    <?php
+    class User {
+        public function __construct(
+            public string $name,
+            public string $email
+        ) {}
+
+        public function isValidEmail(): bool {
+            return filter_var($this->email, FILTER_VALIDATE_EMAIL) !== false;
+        }
+
+        public function getDisplayName(): string {
+            return ucfirst($this->name);
+        }
+
+        public function toArray(): array {
+            return ['name' => $this->name, 'email' => $this->email];
+        }
+    }
+  UserTest.php: |
+    <?php
+    class UserTest {}
+  ProductTest.php: |
+    <?php
+    class ProductTest {
+        public function testProductCreation(): void {
+            $name = 'Widget';
+            $price = 9.99;
+            assert($name === 'Widget');
+            assert($price > 0);
+        }
+
+        public function testPriceValidation(): void {
+            $price = -5.0;
+            $isValid = $price > 0;
+            assert($isValid === false);
+        }
+
+        public function testProductDisplay(): void {
+            $name = 'Gadget';
+            assert(ucfirst($name) === 'Gadget');
+        }
+    }
+  EmailValidator.php: |
+    <?php
+    class EmailValidator {
+        public function isValidEmail(string $email): bool {
+            return filter_var($email, FILTER_VALIDATE_EMAIL) !== false;
+        }
+
+        public function getDomain(string $email): string {
+            $parts = explode('@', $email);
+            return $parts[1] ?? '';
+        }
+
+        public function isDisposable(string $email): bool {
+            $disposable = ['tempmail.com', 'throwaway.com', 'mailinator.com'];
+            return in_array($this->getDomain($email), $disposable);
+        }
+
+        public function normalize(string $email): string {
+            return strtolower(trim($email));
+        }
+    }
+  UserRepository.php: |
+    <?php
+    class UserRepository {
+        private array $store = [];
+
+        public function find(int $id): ?array {
+            return $this->store[$id] ?? null;
+        }
+
+        public function save(array $userData): bool {
+            $this->store[] = $userData;
+            return true;
+        }
+
+        public function findByEmail(string $email): ?array {
+            foreach ($this->store as $user) {
+                if (($user['email'] ?? '') === $email) {
+                    return $user;
+                }
+            }
+            return null;
+        }
+    }
+  AdminTest.php: |
+    <?php
+    class AdminTest {
+        public function testAdminCreation(): void {
+            $name = 'SuperAdmin';
+            $role = 'admin';
+            assert($name === 'SuperAdmin');
+            assert($role === 'admin');
+        }
+
+        public function testPermissions(): void {
+            $permissions = ['read', 'write', 'delete'];
+            assert(count($permissions) === 3);
+            assert(in_array('delete', $permissions));
+        }
+    }
+  UserFixture.php: |
+    <?php
+    class UserFixture {
+        public static function createTestUser(): array {
+            return ['name' => 'TestUser', 'email' => 'test@example.com'];
+        }
+
+        public static function createInvalidUser(): array {
+            return ['name' => 'Invalid', 'email' => 'not-an-email'];
+        }
+
+        public static function createBatch(int $count): array {
+            $users = [];
+            for ($i = 0; $i < $count; $i++) {
+                $users[] = ['name' => "User{$i}", 'email' => "user{$i}@test.com"];
+            }
+            return $users;
+        }
+    }
+
+changed:
+  User.php: |
+    <?php
+    class User {
+        public function __construct(
+            public string $name,
+            public string $email
+        ) {}
+
+        public function isValidEmail(): bool {
+            return filter_var($this->email, FILTER_VALIDATE_EMAIL) !== false;
+        }
+
+        public function getDisplayName(): string {
+            return ucfirst($this->name);
+        }
+
+        public function toArray(): array {
+            return ['name' => $this->name, 'email' => $this->email];
+        }
+    }
+  UserTest.php: |
+    <?php
+    require_once 'User.php';
+
+    class UserTest {
+        public function testUserCreation(): void {
+            $user = new User('John', 'john@example.com');
+
+            assert($user->name === 'John');
+            assert($user->email === 'john@example.com');
+        }
+
+        public function testEmailValidation(): void {
+            $validUser = new User('John', 'john@example.com');
+            $invalidUser = new User('Jane', 'invalid-email');
+
+            assert($validUser->isValidEmail() === true);
+            assert($invalidUser->isValidEmail() === false);
+        }
+    }
+  ProductTest.php: |
+    <?php
+    class ProductTest {
+        public function testProductCreation(): void {
+            $name = 'Widget';
+            $price = 9.99;
+            assert($name === 'Widget');
+            assert($price > 0);
+        }
+
+        public function testPriceValidation(): void {
+            $price = -5.0;
+            $isValid = $price > 0;
+            assert($isValid === false);
+        }
+
+        public function testProductDisplay(): void {
+            $name = 'Gadget';
+            assert(ucfirst($name) === 'Gadget');
+        }
+    }
+  EmailValidator.php: |
+    <?php
+    class EmailValidator {
+        public function isValidEmail(string $email): bool {
+            return filter_var($email, FILTER_VALIDATE_EMAIL) !== false;
+        }
+
+        public function getDomain(string $email): string {
+            $parts = explode('@', $email);
+            return $parts[1] ?? '';
+        }
+
+        public function isDisposable(string $email): bool {
+            $disposable = ['tempmail.com', 'throwaway.com', 'mailinator.com'];
+            return in_array($this->getDomain($email), $disposable);
+        }
+
+        public function normalize(string $email): string {
+            return strtolower(trim($email));
+        }
+    }
+  UserRepository.php: |
+    <?php
+    class UserRepository {
+        private array $store = [];
+
+        public function find(int $id): ?array {
+            return $this->store[$id] ?? null;
+        }
+
+        public function save(array $userData): bool {
+            $this->store[] = $userData;
+            return true;
+        }
+
+        public function findByEmail(string $email): ?array {
+            foreach ($this->store as $user) {
+                if (($user['email'] ?? '') === $email) {
+                    return $user;
+                }
+            }
+            return null;
+        }
+    }
+  AdminTest.php: |
+    <?php
+    class AdminTest {
+        public function testAdminCreation(): void {
+            $name = 'SuperAdmin';
+            $role = 'admin';
+            assert($name === 'SuperAdmin');
+            assert($role === 'admin');
+        }
+
+        public function testPermissions(): void {
+            $permissions = ['read', 'write', 'delete'];
+            assert(count($permissions) === 3);
+            assert(in_array('delete', $permissions));
+        }
+    }
+  UserFixture.php: |
+    <?php
+    class UserFixture {
+        public static function createTestUser(): array {
+            return ['name' => 'TestUser', 'email' => 'test@example.com'];
+        }
+
+        public static function createInvalidUser(): array {
+            return ['name' => 'Invalid', 'email' => 'not-an-email'];
+        }
+
+        public static function createBatch(int $count): array {
+            $users = [];
+            for ($i = 0; $i < $count; $i++) {
+                $users[] = ['name' => "User{$i}", 'email' => "user{$i}@test.com"];
+            }
+            return $users;
+        }
+    }
+
+must_include_files:
+  - UserTest.php
+  # Q1/Q2: Reviewer needs User to verify constructor params and isValidEmail behavior
+  - User.php
+
+must_include_content_from:
+  UserTest.php:
+    - "new User('John', 'john@example.com')"
+    - "isValidEmail"
+    - "$user->name === 'John'"
+  User.php:
+    - "public function isValidEmail(): bool"
+    - "public string $name"
+    - "public string $email"
+
+must_not_include:
+  # --- ProductTest.php: HARDEST TRAP — identical test structure, same assert style ---
+  - "class ProductTest"
+  - "testProductCreation"
+  - "testPriceValidation"
+  # --- EmailValidator.php: HARD TRAP — has isValidEmail, same FILTER_VALIDATE_EMAIL ---
+  - "class EmailValidator"
+  - "isDisposable"
+  - "getDomain"
+  # --- UserRepository.php: user-domain, stores users, domain overlap ---
+  - "class UserRepository"
+  - "findByEmail"
+  # --- AdminTest.php: sibling test class, same test pattern ---
+  - "class AdminTest"
+  - "testAdminCreation"
+  - "testPermissions"
+  # --- UserFixture.php: HARD TRAP — creates User instances like the test ---
+  - "class UserFixture"
+  - "createTestUser"
+  - "createInvalidUser"
+
+must_not_include_files:
+  - ProductTest.php
+  - EmailValidator.php
+  - UserRepository.php
+  - AdminTest.php
+  - UserFixture.php
+
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

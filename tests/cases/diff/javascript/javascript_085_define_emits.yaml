@@ -1,0 +1,256 @@
+# Scenario: ContactForm.vue goes from stub to a full Vue 3 component that
+#   imports FormEvents from ./events and uses defineEmits<FormEvents>() to
+#   type-check emitted events.
+#
+# Diff shows:
+#   - <template><div>initial</div></template>
+#   + <script setup lang="ts"> with defineEmits<FormEvents>()
+#   + handleSubmit() emits 'submit' with { name, email }
+#   + cancel button emits 'cancel'
+#   + <template> with form, inputs, and buttons
+#
+# Reviewer questions:
+#   Q1: "What events does FormEvents define — does emit('submit', {...}) match?"
+#       -> events.ts: FormEvents = { submit: [data: { name: string; email: string }];
+#          cancel: [] }. The component emits 'submit' with { name: name.value,
+#          email: email.value } — matches the payload type. 'cancel' is emitted
+#          with no args — matches the empty tuple. Reviewer confirms type safety.
+#
+#   Q2: "Are there other events defined that the component doesn't emit?"
+#       -> events.ts only defines 'submit' and 'cancel'. The component uses
+#          both. Reviewer confirms completeness.
+#
+# Not needed for comprehension:
+#   - src/components/ContactList.vue: Sibling Vue component that LISTENS for
+#     events from ContactForm. Direct structural edge: parent-child event
+#     relationship. But how the parent handles events doesn't help review
+#     whether defineEmits is correctly typed.
+#
+#   - src/composables/useForm.ts: Generic form composable with validation.
+#     ContactForm uses its own ref() state, not this composable. Similar
+#     domain (forms) but no import relationship.
+#
+#   - src/types/formValidation.ts: Form validation rules. The component
+#     doesn't validate fields in this diff. Different form concern.
+
+initial:
+  events.ts: |
+    export interface FormEvents {
+        submit: [data: { name: string; email: string }];
+        cancel: [];
+    }
+  ContactForm.vue: |
+    <template><div>initial</div></template>
+  # --- Not needed: parent component that listens for form events ---
+  src/components/ContactList.vue: |
+    <script setup lang="ts">
+    import { ref } from 'vue';
+    import ContactForm from './ContactForm.vue';
+
+    const contacts = ref<{ name: string; email: string }[]>([]);
+    const showForm = ref(false);
+
+    function handleSubmit(data: { name: string; email: string }) {
+        contacts.value.push(data);
+        showForm.value = false;
+    }
+
+    function handleCancel() {
+        showForm.value = false;
+    }
+    </script>
+
+    <template>
+        <div>
+            <button @click="showForm = true">Add Contact</button>
+            <ContactForm v-if="showForm" @submit="handleSubmit" @cancel="handleCancel" />
+            <ul>
+                <li v-for="c in contacts" :key="c.email">{{ c.name }} ({{ c.email }})</li>
+            </ul>
+        </div>
+    </template>
+  # --- Not needed: form composable, not imported by ContactForm ---
+  src/composables/useForm.ts: |
+    import { ref, reactive } from 'vue';
+
+    export function useForm<T extends Record<string, unknown>>(initial: T) {
+        const values = reactive({ ...initial });
+        const errors = ref<Record<string, string>>({});
+
+        function reset() {
+            Object.assign(values, initial);
+            errors.value = {};
+        }
+
+        function validate(): boolean {
+            errors.value = {};
+            for (const [key, val] of Object.entries(values)) {
+                if (val === '' || val === null || val === undefined) {
+                    errors.value[key] = `${key} is required`;
+                }
+            }
+            return Object.keys(errors.value).length === 0;
+        }
+
+        return { values, errors, reset, validate };
+    }
+  # --- Not needed: validation rules, not used in this diff ---
+  src/types/formValidation.ts: |
+    export interface ValidationRule {
+        name: string;
+        validate: (value: string) => boolean;
+        message: string;
+    }
+
+    export const emailRule: ValidationRule = {
+        name: 'email',
+        validate: (v: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v),
+        message: 'Invalid email format',
+    };
+
+    export const requiredRule: ValidationRule = {
+        name: 'required',
+        validate: (v: string) => v.trim().length > 0,
+        message: 'This field is required',
+    };
+
+changed:
+  events.ts: |
+    export interface FormEvents {
+        submit: [data: { name: string; email: string }];
+        cancel: [];
+    }
+  ContactForm.vue: |
+    <script setup lang="ts">
+    import { ref } from 'vue';
+    import type { FormEvents } from './events';
+
+    const name = ref('');
+    const email = ref('');
+
+    const emit = defineEmits<FormEvents>();
+
+    function handleSubmit() {
+        emit('submit', { name: name.value, email: email.value });
+    }
+    </script>
+
+    <template>
+        <form @submit.prevent="handleSubmit">
+            <input v-model="name" />
+            <input v-model="email" />
+            <button type="submit">Submit</button>
+            <button type="button" @click="emit('cancel')">Cancel</button>
+        </form>
+    </template>
+  src/components/ContactList.vue: |
+    <script setup lang="ts">
+    import { ref } from 'vue';
+    import ContactForm from './ContactForm.vue';
+
+    const contacts = ref<{ name: string; email: string }[]>([]);
+    const showForm = ref(false);
+
+    function handleSubmit(data: { name: string; email: string }) {
+        contacts.value.push(data);
+        showForm.value = false;
+    }
+
+    function handleCancel() {
+        showForm.value = false;
+    }
+    </script>
+
+    <template>
+        <div>
+            <button @click="showForm = true">Add Contact</button>
+            <ContactForm v-if="showForm" @submit="handleSubmit" @cancel="handleCancel" />
+            <ul>
+                <li v-for="c in contacts" :key="c.email">{{ c.name }} ({{ c.email }})</li>
+            </ul>
+        </div>
+    </template>
+  src/composables/useForm.ts: |
+    import { ref, reactive } from 'vue';
+
+    export function useForm<T extends Record<string, unknown>>(initial: T) {
+        const values = reactive({ ...initial });
+        const errors = ref<Record<string, string>>({});
+
+        function reset() {
+            Object.assign(values, initial);
+            errors.value = {};
+        }
+
+        function validate(): boolean {
+            errors.value = {};
+            for (const [key, val] of Object.entries(values)) {
+                if (val === '' || val === null || val === undefined) {
+                    errors.value[key] = `${key} is required`;
+                }
+            }
+            return Object.keys(errors.value).length === 0;
+        }
+
+        return { values, errors, reset, validate };
+    }
+  src/types/formValidation.ts: |
+    export interface ValidationRule {
+        name: string;
+        validate: (value: string) => boolean;
+        message: string;
+    }
+
+    export const emailRule: ValidationRule = {
+        name: 'email',
+        validate: (v: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v),
+        message: 'Invalid email format',
+    };
+
+    export const requiredRule: ValidationRule = {
+        name: 'required',
+        validate: (v: string) => v.trim().length > 0,
+        message: 'This field is required',
+    };
+
+must_include_files:
+  - ContactForm.vue
+  # Q1+Q2: FormEvents interface defines the emit contract.
+  # Reviewer must see the event names and payload types to verify
+  # defineEmits<FormEvents>() is correctly typed.
+  - events.ts
+
+must_include_content_from:
+  ContactForm.vue:
+    - "<script setup lang=\"ts\">"
+    - "defineEmits<FormEvents>()"
+  events.ts:
+    - "interface FormEvents"
+    - "submit:"
+    - "cancel: []"
+
+must_not_include:
+  # --- ContactList.vue: parent component, listens for events ---
+  # Direct structural edge: @submit="handleSubmit" @cancel="handleCancel"
+  # binds the exact events from FormEvents. But HOW the parent handles
+  # events doesn't help review whether defineEmits is correctly typed.
+  - ContactList
+  - handleCancel
+  - "contacts.value.push"
+  # --- useForm.ts: form composable, not imported ---
+  - useForm
+  - "reactive({ ...initial })"
+  # --- formValidation.ts: validation rules, not used in diff ---
+  - ValidationRule
+  - emailRule
+  - requiredRule
+
+must_not_include_files:
+  - src/components/ContactList.vue
+  - src/composables/useForm.ts
+  - src/types/formValidation.ts
+
+max_fragments: 8
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

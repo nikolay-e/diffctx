@@ -1,0 +1,64 @@
+initial:
+  chart/Chart.yaml: |
+    apiVersion: v2
+    name: templ-app
+    version: 1.0.0
+  chart/values.yaml: |
+    image:
+      repository: myapp
+      tag: latest
+  chart/templates/deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: myapp
+    spec:
+      template:
+        spec:
+          containers:
+            - name: app
+              image: myapp:latest
+  chart/templates/linkerd-smi.yaml: |
+    apiVersion: split.smi-spec.io/v1alpha2
+    kind: TrafficSplit
+    metadata:
+    spec:
+      backends:
+  chart/docs/template-patterns.md: |
+    # Template Patterns
+    ## Best Practices
+changed:
+  chart/Chart.yaml: |
+    apiVersion: v2
+    name: templ-app
+    version: 1.0.0
+  chart/values.yaml: |
+    image:
+      repository: myapp
+      tag: latest
+  chart/templates/deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: {{ .Release.Name }}-{{ .Chart.Name }}
+    spec:
+      template:
+        spec:
+          containers:
+            - name: {{ .Chart.Name }}
+              image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+  chart/templates/linkerd-smi.yaml: |
+    apiVersion: split.smi-spec.io/v1alpha2
+    kind: TrafficSplit
+    metadata:
+    spec:
+      backends:
+  chart/docs/template-patterns.md: |
+    # Template Patterns
+    ## Best Practices
+must_include_files:
+- chart/templates/deployment.yaml
+must_include_content:
+- 'name: {{ .Release.Name }}-{{ .Chart.Name }}'
+add_garbage_files: false
+skip_garbage_check: true

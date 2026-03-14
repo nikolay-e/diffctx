@@ -1,0 +1,118 @@
+# Scenario: App.tsx is rewritten to import Card from Card.tsx and render it
+# with title="Welcome" and children content.
+#
+# Diff: App.tsx adds `import { Card } from './Card'` and renders
+# `<Card title="Welcome"><p>Hello World</p></Card>`.
+#
+# Reviewer questions:
+#   Q1: "What props does Card accept?"
+#       -> Card.tsx (UNCHANGED) defines CardProps with title: string and
+#          children: React.ReactNode. Reviewer verifies App passes valid props.
+#
+# Not needed:
+#   - Header.tsx: another UI component in the same directory (HeaderProps with
+#     title, subtitle). Sibling component not used by App.tsx.
+#   - Card.styles.ts: CSS-in-JS styling for Card (container, title styles).
+#     Visual concern, not related to the props interface.
+
+initial:
+  Card.tsx: |
+    interface CardProps {
+        title: string;
+        children: React.ReactNode;
+    }
+
+    export function Card({ title, children }: CardProps) {
+        return (
+            <div className="card">
+                <h2>{title}</h2>
+                {children}
+            </div>
+        );
+    }
+  App.tsx: |
+    console.log('initial');
+  Header.tsx: |
+    interface HeaderProps {
+        title: string;
+        subtitle?: string;
+    }
+
+    export function Header({ title, subtitle }: HeaderProps) {
+        return (
+            <header>
+                <h1>{title}</h1>
+                {subtitle && <p>{subtitle}</p>}
+            </header>
+        );
+    }
+  Card.styles.ts: |
+    export const cardStyles = {
+        container: { border: '1px solid #ddd', borderRadius: '8px', padding: '16px' },
+        title: { fontSize: '18px', fontWeight: 'bold' as const, marginBottom: '8px' },
+    };
+changed:
+  Card.tsx: |
+    interface CardProps {
+        title: string;
+        children: React.ReactNode;
+    }
+
+    export function Card({ title, children }: CardProps) {
+        return (
+            <div className="card">
+                <h2>{title}</h2>
+                {children}
+            </div>
+        );
+    }
+  App.tsx: |
+    import { Card } from './Card';
+
+    export function App() {
+        return (
+            <Card title="Welcome">
+                <p>Hello World</p>
+            </Card>
+        );
+    }
+  Header.tsx: |
+    interface HeaderProps {
+        title: string;
+        subtitle?: string;
+    }
+
+    export function Header({ title, subtitle }: HeaderProps) {
+        return (
+            <header>
+                <h1>{title}</h1>
+                {subtitle && <p>{subtitle}</p>}
+            </header>
+        );
+    }
+  Card.styles.ts: |
+    export const cardStyles = {
+        container: { border: '1px solid #ddd', borderRadius: '8px', padding: '16px' },
+        title: { fontSize: '18px', fontWeight: 'bold' as const, marginBottom: '8px' },
+    };
+must_include_files:
+  # Q1: Card.tsx defines the props interface that App.tsx must satisfy
+  - Card.tsx
+must_include_content_from:
+  Card.tsx:
+    - "interface CardProps {"
+    - "title: string"
+must_not_include:
+  # Header.tsx: sibling component not used by App.tsx
+  - HeaderProps
+  - subtitle
+  # Card.styles.ts: styling, not related to prop interface
+  - cardStyles
+  - borderRadius
+must_not_include_files:
+  - Header.tsx
+  - Card.styles.ts
+max_fragments: 5
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

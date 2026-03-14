@@ -1,0 +1,383 @@
+initial:
+  module.py: |
+    class MyClass:
+        def __init__(self):
+            self.state = {}
+
+        def method(self):
+            return self._internal_process()
+
+        def _internal_process(self):
+            return self._helper()
+
+        def _helper(self):
+            return 42
+
+        class NestedProcessor:
+            def nested_method(self):
+                return "nested"
+
+            def _nested_private(self):
+                return "private_nested"
+  inheritance/base.py: |
+    class BaseClass:
+        def base_method(self):
+            return "base"
+
+        def template_method(self):
+            return self._hook()
+
+        def _hook(self):
+            raise NotImplementedError
+  inheritance/derived.py: |
+    from inheritance.base import BaseClass
+
+    class DerivedClass(BaseClass):
+        def _hook(self):
+            return "derived_hook"
+
+        def derived_method(self):
+            return self.base_method() + "_derived"
+
+        def override_example(self):
+            return super().template_method()
+  complex/multi_level.py: |
+    class OuterClass:
+        class MiddleClass:
+            class InnerClass:
+                def deep_method(self):
+                    return "deep"
+
+            def middle_method(self):
+                inner = self.InnerClass()
+                return inner.deep_method()
+
+        def outer_method(self):
+            middle = self.MiddleClass()
+            return middle.middle_method()
+
+  # --- Tricky garbage: has self.cache dict and clear_cache method like the diff ---
+  garbage_lru_store.py: |
+    GARBAGE_GRAPH_006_LRU_STORE_A = "lru_store"
+    GARBAGE_GRAPH_006_LRU_STORE_B = True
+
+    class LRUStore:
+        def __init__(self, capacity=100):
+            self.cache = {}
+            self.capacity = capacity
+
+        def lookup(self, key):
+            if key in self.cache:
+                return self.cache[key]
+            return None
+
+        def insert(self, key, value):
+            self.cache[key] = value
+
+        def clear_cache(self):
+            self.cache.clear()
+
+  # --- Tricky garbage: class with __init__ setting self.state like MyClass ---
+  garbage_session_tracker.py: |
+    GARBAGE_GRAPH_006_SESSION_TRACKER_C = "sessions"
+    GARBAGE_GRAPH_006_SESSION_TRACKER_D = 42
+
+    class SessionTracker:
+        def __init__(self):
+            self.state = {}
+            self.active_count = 0
+
+        def register(self, session_id):
+            self.state[session_id] = True
+            self.active_count += 1
+
+        def unregister(self, session_id):
+            self.state.pop(session_id, None)
+            self.active_count -= 1
+
+        class SessionMetrics:
+            GARBAGE_GRAPH_006_SESSION_METRICS_E = "metrics"
+
+            def get_active(self):
+                return 0
+
+  # --- Tricky garbage: same directory as module.py, similar class shape ---
+  garbage_component.py: |
+    GARBAGE_GRAPH_006_COMPONENT_F = "component"
+    GARBAGE_GRAPH_006_COMPONENT_G = False
+
+    class Component:
+        def __init__(self):
+            self.state = {}
+
+        def render(self):
+            if "output" in self.state:
+                return self.state["output"]
+            return self._build()
+
+        def _build(self):
+            return "<div>component</div>"
+
+  garbage/unrelated_class_GARBAGE_GRAPH_pqr001.py: |
+    class Calculator_GARBAGE_GRAPH_pqr001:
+        def add(self, a, b):
+            return a + b
+
+        def subtract(self, a, b):
+            return a - b
+
+        def multiply(self, a, b):
+            return a * b
+
+        def divide(self, a, b):
+            if b == 0:
+                raise ValueError("Cannot divide by zero")
+            return a / b
+
+        class AdvancedOps_GARBAGE_GRAPH_pqr001:
+            def power(self, base, exp):
+                return base ** exp
+
+            def sqrt(self, n):
+                return n ** 0.5
+  garbage/state_machine_GARBAGE_GRAPH_pqr002.py: |
+    class StateMachine_GARBAGE_GRAPH_pqr002:
+        def __init__(self):
+            self.state = "initial"
+
+        def transition(self, event):
+            if self.state == "initial" and event == "start":
+                self.state = "running"
+            elif self.state == "running" and event == "stop":
+                self.state = "stopped"
+            return self.state
+
+        def reset(self):
+            self.state = "initial"
+  garbage/visitor_pattern_GARBAGE_GRAPH_pqr003.py: |
+    class Visitor_GARBAGE_GRAPH_pqr003:
+        def visit_node_a(self, node):
+            pass
+
+        def visit_node_b(self, node):
+            pass
+
+    class NodeA_GARBAGE_GRAPH_pqr003:
+        def accept(self, visitor):
+            return visitor.visit_node_a(self)
+
+    class NodeB_GARBAGE_GRAPH_pqr003:
+        def accept(self, visitor):
+            return visitor.visit_node_b(self)
+changed:
+  module.py: |
+    class MyClass:
+        def __init__(self):
+            self.state = {}
+            self.cache = {}
+
+        def method(self):
+            if "result" in self.cache:
+                return self.cache["result"]
+            result = self._internal_process()
+            self.cache["result"] = result
+            return result
+
+        def _internal_process(self):
+            return self._helper()
+
+        def _helper(self):
+            return 42
+
+        def clear_cache(self):
+            self.cache.clear()
+
+        class NestedProcessor:
+            def nested_method(self):
+                return "nested"
+
+            def _nested_private(self):
+                return "private_nested"
+  inheritance/base.py: |
+    class BaseClass:
+        def base_method(self):
+            return "base"
+
+        def template_method(self):
+            return self._hook()
+
+        def _hook(self):
+            raise NotImplementedError
+  inheritance/derived.py: |
+    from inheritance.base import BaseClass
+
+    class DerivedClass(BaseClass):
+        def _hook(self):
+            return "derived_hook"
+
+        def derived_method(self):
+            return self.base_method() + "_derived"
+
+        def override_example(self):
+            return super().template_method()
+  complex/multi_level.py: |
+    class OuterClass:
+        class MiddleClass:
+            class InnerClass:
+                def deep_method(self):
+                    return "deep"
+
+            def middle_method(self):
+                inner = self.InnerClass()
+                return inner.deep_method()
+
+        def outer_method(self):
+            middle = self.MiddleClass()
+            return middle.middle_method()
+  garbage_lru_store.py: |
+    GARBAGE_GRAPH_006_LRU_STORE_A = "lru_store"
+    GARBAGE_GRAPH_006_LRU_STORE_B = True
+
+    class LRUStore:
+        def __init__(self, capacity=100):
+            self.cache = {}
+            self.capacity = capacity
+
+        def lookup(self, key):
+            if key in self.cache:
+                return self.cache[key]
+            return None
+
+        def insert(self, key, value):
+            self.cache[key] = value
+
+        def clear_cache(self):
+            self.cache.clear()
+  garbage_session_tracker.py: |
+    GARBAGE_GRAPH_006_SESSION_TRACKER_C = "sessions"
+    GARBAGE_GRAPH_006_SESSION_TRACKER_D = 42
+
+    class SessionTracker:
+        def __init__(self):
+            self.state = {}
+            self.active_count = 0
+
+        def register(self, session_id):
+            self.state[session_id] = True
+            self.active_count += 1
+
+        def unregister(self, session_id):
+            self.state.pop(session_id, None)
+            self.active_count -= 1
+
+        class SessionMetrics:
+            GARBAGE_GRAPH_006_SESSION_METRICS_E = "metrics"
+
+            def get_active(self):
+                return 0
+  garbage_component.py: |
+    GARBAGE_GRAPH_006_COMPONENT_F = "component"
+    GARBAGE_GRAPH_006_COMPONENT_G = False
+
+    class Component:
+        def __init__(self):
+            self.state = {}
+
+        def render(self):
+            if "output" in self.state:
+                return self.state["output"]
+            return self._build()
+
+        def _build(self):
+            return "<div>component</div>"
+  garbage/unrelated_class_GARBAGE_GRAPH_pqr001.py: |
+    class Calculator_GARBAGE_GRAPH_pqr001:
+        def add(self, a, b):
+            return a + b
+
+        def subtract(self, a, b):
+            return a - b
+
+        def multiply(self, a, b):
+            return a * b
+
+        def divide(self, a, b):
+            if b == 0:
+                raise ValueError("Cannot divide by zero")
+            return a / b
+
+        class AdvancedOps_GARBAGE_GRAPH_pqr001:
+            def power(self, base, exp):
+                return base ** exp
+
+            def sqrt(self, n):
+                return n ** 0.5
+  garbage/state_machine_GARBAGE_GRAPH_pqr002.py: |
+    class StateMachine_GARBAGE_GRAPH_pqr002:
+        def __init__(self):
+            self.state = "initial"
+
+        def transition(self, event):
+            if self.state == "initial" and event == "start":
+                self.state = "running"
+            elif self.state == "running" and event == "stop":
+                self.state = "stopped"
+            return self.state
+
+        def reset(self):
+            self.state = "initial"
+  garbage/visitor_pattern_GARBAGE_GRAPH_pqr003.py: |
+    class Visitor_GARBAGE_GRAPH_pqr003:
+        def visit_node_a(self, node):
+            pass
+
+        def visit_node_b(self, node):
+            pass
+
+    class NodeA_GARBAGE_GRAPH_pqr003:
+        def accept(self, visitor):
+            return visitor.visit_node_a(self)
+
+    class NodeB_GARBAGE_GRAPH_pqr003:
+        def accept(self, visitor):
+            return visitor.visit_node_b(self)
+
+# === Assertions ===
+
+must_include_files:
+- module.py
+
+must_include_content_from:
+  module.py:
+    - self.cache = {}
+    - 'if "result" in self.cache:'
+    - 'def clear_cache(self):'
+
+must_not_include:
+# Plain garbage markers
+- GARBAGE_GRAPH_pqr001
+- GARBAGE_GRAPH_pqr002
+- GARBAGE_GRAPH_pqr003
+# Tricky: has self.cache dict and clear_cache() method like the diff
+- GARBAGE_GRAPH_006_LRU_STORE_A
+- GARBAGE_GRAPH_006_LRU_STORE_B
+# Tricky: has self.state and nested class, same init pattern as MyClass
+- GARBAGE_GRAPH_006_SESSION_TRACKER_C
+- GARBAGE_GRAPH_006_SESSION_TRACKER_D
+- GARBAGE_GRAPH_006_SESSION_METRICS_E
+# Tricky: same directory, similar state-check pattern in render method
+- GARBAGE_GRAPH_006_COMPONENT_F
+- GARBAGE_GRAPH_006_COMPONENT_G
+
+must_not_include_files:
+- garbage/unrelated_class_GARBAGE_GRAPH_pqr001.py
+- garbage/state_machine_GARBAGE_GRAPH_pqr002.py
+- garbage/visitor_pattern_GARBAGE_GRAPH_pqr003.py
+- garbage_lru_store.py
+- garbage_session_tracker.py
+- garbage_component.py
+
+max_fragments: 8
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

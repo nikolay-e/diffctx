@@ -1,0 +1,157 @@
+# Scenario: build.sbt adds new library dependencies (cats-effect, fs2, scalatest)
+# and compiler options to a Scala 3 project that already uses cats-core.
+#
+# Diff: build.sbt adds three new libraryDependencies and a scalacOptions block.
+#
+# Reviewer questions:
+#   Q1: "Which existing code already uses the cats ecosystem?"
+#       -> src/main/scala/Main.scala (UNCHANGED) imports cats.syntax.all._,
+#          confirming the project's existing cats-core usage. Reviewer can assess
+#          whether cats-effect and fs2 extend or conflict with current usage.
+#   Q2: "Will -Xfatal-warnings break the existing codebase?"
+#       -> Main.scala is the only source file — reviewer checks if it would
+#          compile cleanly under stricter settings.
+#
+# Not needed:
+#   - project/plugins.sbt: sbt plugin config (sbt-assembly, sbt-native-packager).
+#     Build plugins are orthogonal to library deps and scalacOptions.
+#   - project/build.properties: just pins sbt version, no bearing on deps.
+#   - src/main/scala/config/AppConfig.scala: application configuration object
+#     using typesafe-config. Same "build dependency" domain (config is a dependency),
+#     but changing library deps doesn't affect existing config code.
+#   - src/main/scala/utils/MathUtils.scala: pure Scala utility with no cats usage.
+#     Tests whether -Xfatal-warnings might break it, but that's speculative —
+#     the reviewer needs Main.scala (the actual cats user) to assess impact.
+#   - src/test/scala/MainSpec.scala: test for Main that imports cats.syntax.all._.
+#     Same cats import, but test expectations don't help assess dependency
+#     compatibility or compiler flag impact.
+
+initial:
+  build.sbt: |
+    name := "myapp"
+    version := "0.1.0"
+    scalaVersion := "3.3.0"
+
+    libraryDependencies ++= Seq(
+      "org.typelevel" %% "cats-core" % "2.9.0"
+    )
+  src/main/scala/Main.scala: |
+    package myapp
+
+    import cats.syntax.all._
+
+    object Main extends App {
+      val result = Option(42).map(_ + 1)
+      println(result.show)
+
+      val validated = (Option("hello"), Option(42)).mapN { (s, n) =>
+        s"$s: $n"
+      }
+      println(validated.getOrElse("none"))
+    }
+  project/plugins.sbt: |
+    addSbtPlugin("com.eed3si9n" % "sbt-assembly" % "2.1.1")
+    addSbtPlugin("com.github.sbt" % "sbt-native-packager" % "1.9.16")
+  project/build.properties: |
+    sbt.version=1.9.7
+  src/main/scala/config/AppConfig.scala: |
+    package myapp.config
+
+    object AppConfig {
+      val appName: String = "myapp"
+      val port: Int = 8080
+      val host: String = "0.0.0.0"
+
+      def baseUrl: String = s"http://$host:$port"
+
+      def isProduction: Boolean = {
+        sys.env.getOrElse("ENV", "development") == "production"
+      }
+
+      def logLevel: String = if (isProduction) "INFO" else "DEBUG"
+    }
+  src/main/scala/utils/MathUtils.scala: |
+    package myapp.utils
+
+    object MathUtils {
+      def factorial(n: Int): BigInt = {
+        if (n <= 1) BigInt(1) else BigInt(n) * factorial(n - 1)
+      }
+
+      def gcd(a: Int, b: Int): Int = {
+        if (b == 0) a else gcd(b, a % b)
+      }
+
+      def isPrime(n: Int): Boolean = {
+        if (n < 2) false
+        else (2 to math.sqrt(n).toInt).forall(n % _ != 0)
+      }
+    }
+  src/test/scala/MainSpec.scala: |
+    package myapp
+
+    import cats.syntax.all._
+    import org.scalatest.flatspec.AnyFlatSpec
+    import org.scalatest.matchers.should.Matchers
+
+    class MainSpec extends AnyFlatSpec with Matchers {
+      "result" should "be Some(43)" in {
+        val result = Option(42).map(_ + 1)
+        result.show should be("Some(43)")
+      }
+
+      "validated" should "combine options" in {
+        val combined = (Option("hello"), Option(42)).mapN((s, n) => s"$s: $n")
+        combined should be(Some("hello: 42"))
+      }
+    }
+changed:
+  build.sbt: |
+    name := "myapp"
+    version := "0.1.0"
+    scalaVersion := "3.3.0"
+
+    libraryDependencies ++= Seq(
+      "org.typelevel" %% "cats-core" % "2.9.0",
+      "org.typelevel" %% "cats-effect" % "3.5.0",
+      "co.fs2" %% "fs2-core" % "3.7.0",
+      "org.scalatest" %% "scalatest" % "3.2.15" % Test
+    )
+
+    scalacOptions ++= Seq(
+      "-deprecation",
+      "-feature",
+      "-Xfatal-warnings"
+    )
+must_include_files:
+  # Q1+Q2: Main.scala imports cats — reviewer checks ecosystem fit and compiler compat
+  - src/main/scala/Main.scala
+must_include_content_from:
+  src/main/scala/Main.scala:
+    - "import cats.syntax.all._"
+    - "result.show"
+must_not_include:
+  # plugins.sbt: sbt plugins for packaging, unrelated to deps or compiler flags
+  - sbt-assembly
+  - sbt-native-packager
+  # AppConfig.scala: application config, not related to build deps
+  - "object AppConfig"
+  - "isProduction"
+  - "logLevel"
+  # MathUtils.scala: pure Scala, no cats dependency
+  - "object MathUtils"
+  - "factorial"
+  - "isPrime"
+  # MainSpec.scala: test file, same cats import but doesn't help assess impact
+  - "class MainSpec"
+  - "result.show should be"
+must_not_include_files:
+  - project/build.properties
+  - project/plugins.sbt
+  - src/main/scala/config/AppConfig.scala
+  - src/main/scala/utils/MathUtils.scala
+  - src/test/scala/MainSpec.scala
+max_fragments: 5
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

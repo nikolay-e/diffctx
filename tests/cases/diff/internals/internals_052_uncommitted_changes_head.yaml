@@ -1,0 +1,18 @@
+initial:
+  base.py: |
+    def base_func():
+        return "base"
+changed:
+  base.py: |
+    def base_func():
+        return "modified"
+
+    def new_func():
+        return "new"
+must_include_files:
+- base.py
+must_include_content:
+- return "modified"
+- 'def new_func():'
+add_garbage_files: false
+skip_garbage_check: true

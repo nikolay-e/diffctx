@@ -1,0 +1,51 @@
+initial:
+  sparse.md: |+
+    # Section 1
+
+    # Section 2
+
+    Content here.
+
+    # Section 3
+
+  garbage_sparse_053.md: |
+    # Empty Garbage Doc Section GARBAGE_FRAG_garbempty053
+
+    # Garbage Doc With Content GARBAGE_FRAG_garbcontent053
+    GARBAGE_FRAG_garbline053a
+
+    # Another Empty GARBAGE_FRAG_garbanotherempty053
+
+    GARBAGE_FRAG_garbline053b
+changed:
+  sparse.md: |+
+    # Section 1
+
+    # Section 2
+
+    Modified content here.
+
+    # Section 3
+
+  garbage_sparse_053.md: |
+    # Empty Garbage Doc Section GARBAGE_FRAG_garbempty053
+
+    # Garbage Doc With Content GARBAGE_FRAG_garbcontent053
+    GARBAGE_FRAG_garbline053a
+
+    # Another Empty GARBAGE_FRAG_garbanotherempty053
+
+    GARBAGE_FRAG_garbline053b
+must_include_files:
+- sparse.md
+must_include_content:
+- Modified content here.
+must_not_include:
+- GARBAGE_FRAG_garbanotherempty053
+- GARBAGE_FRAG_garbcontent053
+- GARBAGE_FRAG_garbempty053
+- GARBAGE_FRAG_garbline053a
+- GARBAGE_FRAG_garbline053b
+- garbage_sparse_053.md
+add_garbage_files: false
+skip_garbage_check: true

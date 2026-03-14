@@ -1,0 +1,187 @@
+# Scenario: main.ts is rewritten to import targetFunction from functions.ts
+#   and call it via eval('targetFunction()'). Only main.ts is changed.
+#
+# Diff shows:
+#   - console.log('initial');
+#   + import { targetFunction } from './functions';
+#   + function dynamicCall() { const result = eval('targetFunction()'); return result; }
+#   + console.log(dynamicCall());
+#
+# Reviewer questions:
+#   Q1: "What does targetFunction return — is the eval result meaningful?"
+#       -> functions.ts (UNCHANGED) exports targetFunction that returns 'called'.
+#          The reviewer must see the implementation to understand what eval produces.
+#
+#   Q2: "Does targetFunction have side effects that make eval unsafe?"
+#       -> Same file: it only returns a string. No side effects. Reviewer needs
+#          the function body to confirm eval is safe here.
+#
+# Not needed for comprehension:
+#   - analytics.service.ts: Angular service using HttpClient to fetch analytics.
+#     Imports Injectable, HttpClient — same @angular pattern as many JS files.
+#     Has nothing to do with targetFunction or eval. Structural trap: it's a
+#     sibling .ts file with imports and function calls.
+#
+#   - string-utils.ts: String manipulation helpers (capitalize, truncate, slugify).
+#     Similar utility-style module like functions.ts, but not imported by main.ts.
+#     Trap: another utility file exporting functions, same directory level.
+#
+#   - eval-sanitizer.ts: Sanitizes strings before eval — DIRECT keyword overlap
+#     with "eval" in the diff. Contains sanitizeForEval() and isEvalSafe().
+#     HARDEST TRAP: shares the "eval" concept and could seem relevant to reviewing
+#     eval usage. But main.ts does not import or use this sanitizer.
+
+initial:
+  functions.ts: |
+    export function targetFunction() {
+        return 'called';
+    }
+  main.ts: |
+    console.log('initial');
+  analytics.service.ts: |
+    import { Injectable } from '@angular/core';
+    import { HttpClient } from '@angular/common/http';
+    import { Observable } from 'rxjs';
+
+    @Injectable({ providedIn: 'root' })
+    export class AnalyticsService {
+        constructor(private http: HttpClient) {}
+
+        trackEvent(category: string, action: string): Observable<void> {
+            return this.http.post<void>('/api/analytics', { category, action });
+        }
+
+        getMetrics(period: string): Observable<Record<string, number>> {
+            return this.http.get<Record<string, number>>(`/api/analytics/metrics?period=${period}`);
+        }
+    }
+  string-utils.ts: |
+    export function capitalize(str: string): string {
+        return str.charAt(0).toUpperCase() + str.slice(1);
+    }
+
+    export function truncate(str: string, maxLength: number): string {
+        return str.length > maxLength ? str.slice(0, maxLength) + '...' : str;
+    }
+
+    export function slugify(str: string): string {
+        return str.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+    }
+  eval-sanitizer.ts: |
+    export function sanitizeForEval(input: string): string {
+        const forbidden = ['require', 'import', 'process', 'global', '__dirname'];
+        for (const keyword of forbidden) {
+            if (input.includes(keyword)) {
+                throw new Error(`Forbidden keyword in eval input: ${keyword}`);
+            }
+        }
+        return input;
+    }
+
+    export function isEvalSafe(code: string): boolean {
+        const dangerousPatterns = [/\beval\b/, /Function\(/, /setTimeout\(\s*['"`]/];
+        return !dangerousPatterns.some(p => p.test(code));
+    }
+
+changed:
+  functions.ts: |
+    export function targetFunction() {
+        return 'called';
+    }
+  main.ts: |
+    import { targetFunction } from './functions';
+
+    function dynamicCall() {
+        const result = eval('targetFunction()');
+        return result;
+    }
+
+    console.log(dynamicCall());
+  analytics.service.ts: |
+    import { Injectable } from '@angular/core';
+    import { HttpClient } from '@angular/common/http';
+    import { Observable } from 'rxjs';
+
+    @Injectable({ providedIn: 'root' })
+    export class AnalyticsService {
+        constructor(private http: HttpClient) {}
+
+        trackEvent(category: string, action: string): Observable<void> {
+            return this.http.post<void>('/api/analytics', { category, action });
+        }
+
+        getMetrics(period: string): Observable<Record<string, number>> {
+            return this.http.get<Record<string, number>>(`/api/analytics/metrics?period=${period}`);
+        }
+    }
+  string-utils.ts: |
+    export function capitalize(str: string): string {
+        return str.charAt(0).toUpperCase() + str.slice(1);
+    }
+
+    export function truncate(str: string, maxLength: number): string {
+        return str.length > maxLength ? str.slice(0, maxLength) + '...' : str;
+    }
+
+    export function slugify(str: string): string {
+        return str.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+    }
+  eval-sanitizer.ts: |
+    export function sanitizeForEval(input: string): string {
+        const forbidden = ['require', 'import', 'process', 'global', '__dirname'];
+        for (const keyword of forbidden) {
+            if (input.includes(keyword)) {
+                throw new Error(`Forbidden keyword in eval input: ${keyword}`);
+            }
+        }
+        return input;
+    }
+
+    export function isEvalSafe(code: string): boolean {
+        const dangerousPatterns = [/\beval\b/, /Function\(/, /setTimeout\(\s*['"`]/];
+        return !dangerousPatterns.some(p => p.test(code));
+    }
+
+must_include_files:
+  - main.ts
+  # Q1+Q2: targetFunction is imported and called via eval. Reviewer needs to see
+  # the function body to verify eval result and safety.
+  - functions.ts
+
+must_include_content_from:
+  main.ts:
+    - "import { targetFunction } from './functions'"
+    - "eval('targetFunction()')"
+  functions.ts:
+    - "export function targetFunction()"
+    - "return 'called'"
+
+must_not_include:
+  # --- analytics.service.ts: unrelated Angular service ---
+  # Sibling .ts file with imports and exports but no connection to
+  # targetFunction or eval. Different domain (analytics HTTP calls).
+  - AnalyticsService
+  - trackEvent
+  - getMetrics
+  # --- string-utils.ts: utility module, same pattern as functions.ts ---
+  # Another module exporting functions, but not imported by main.ts.
+  - capitalize
+  - truncate
+  - slugify
+  # --- eval-sanitizer.ts: KEYWORD OVERLAP with "eval" ---
+  # HARDEST TRAP. Contains sanitizeForEval and isEvalSafe — direct
+  # keyword overlap with eval() in the diff. But main.ts does not
+  # import or use this sanitizer.
+  - sanitizeForEval
+  - isEvalSafe
+  - "Forbidden keyword in eval input"
+
+must_not_include_files:
+  - analytics.service.ts
+  - string-utils.ts
+  - eval-sanitizer.ts
+
+max_fragments: 5
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

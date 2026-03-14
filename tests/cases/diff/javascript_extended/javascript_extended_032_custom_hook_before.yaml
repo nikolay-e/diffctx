@@ -1,6 +1,0 @@
-useApi.ts: "import { useState, useEffect } from 'react';\n\nexport function useApi<T>(url: string) {\n    const [data, setData] = useState<T | null>(null);\n    const [loading, setLoading] = useState(true);\n\
-  \    const [error, setError] = useState<Error | null>(null);\n\n    useEffect(() => {\n        fetch(url)\n            .then(res => res.json())\n            .then(setData)\n            .catch(setError)\n\
-  \            .finally(() => setLoading(false));\n    }, [url]);\n\n    return { data, loading, error };\n}\n\n// react_adv_garbage_marker_006\n"
-UserList.tsx: 'console.log(''initial'');
-
-  '

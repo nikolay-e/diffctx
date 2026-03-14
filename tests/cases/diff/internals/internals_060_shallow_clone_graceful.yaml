@@ -1,0 +1,12 @@
+initial:
+  file_4.py: |
+    def func_4():
+        return 4
+changed:
+  file_4.py: |
+    def func_4():
+        return 400
+must_include_files:
+- file_4.py
+add_garbage_files: false
+skip_garbage_check: true

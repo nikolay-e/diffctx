@@ -6,29 +6,60 @@ from typing import Any
 
 from .types import Fragment
 
-_FUNC_NAME_RE = re.compile(r"^\s*(?:async\s+)?def\s+(\w+)\s*\(", re.MULTILINE)
-_CLASS_NAME_RE = re.compile(r"^\s*class\s+(\w+)\s*[:\(]", re.MULTILINE)
-_MD_HEADING_RE = re.compile(r"^#{1,6}\s+([^\n]+)$", re.MULTILINE)  # NOSONAR(S5852)
-
-
-def _preview(content: str, max_chars: int = 150) -> str:
-    text = " ".join(content.split())
-    return text[:max_chars] + "..." if len(text) > max_chars else text
+_SYMBOL_PATTERNS: dict[str, list[re.Pattern[str]]] = {
+    "function": [
+        re.compile(r"^\s*(?:async\s+)?def\s+(\w+)\s*\(", re.MULTILINE),  # Python
+        re.compile(r"^\s*(?:export\s+)?(?:async\s+)?function\s+(\w+)\s*[\(<]", re.MULTILINE),  # JS/TS
+        re.compile(
+            r"^\s*(?:export\s+)?(?:const|let|var)\s+(\w+)\s*=\s*(?:async\s+)?(?:\([^)]*\)|\w)\s*=>", re.MULTILINE
+        ),  # Arrow
+        re.compile(r"^func\s+(?:\([^)]+\)\s+)?(\w+)\s*[\(\[]", re.MULTILINE),  # Go
+        re.compile(r"^\s*(?:pub\s+)?(?:async\s+)?fn\s+(\w+)\s*[\(<]", re.MULTILINE),  # Rust
+        re.compile(r"^\s*(?:(?:public|private|protected|static)\s+)*\w[\w<>\[\],]*\s+(\w+)\s*\(", re.MULTILINE),  # Java/C#
+    ],
+    "class": [
+        re.compile(r"^\s*class\s+(\w+)\s*[:\({\s]", re.MULTILINE),  # Python/JS/TS/Java
+        re.compile(r"^\s*(?:export\s+)?(?:abstract\s+)?class\s+(\w+)", re.MULTILINE),  # TS/Java
+    ],
+    "struct": [
+        re.compile(r"^\s*(?:pub\s+)?struct\s+(\w+)", re.MULTILINE),  # Rust/Go
+        re.compile(r"^\s*type\s+(\w+)\s+struct\s*\{", re.MULTILINE),  # Go
+    ],
+    "interface": [
+        re.compile(r"^\s*(?:export\s+)?interface\s+(\w+)", re.MULTILINE),  # TS/Java
+        re.compile(r"^\s*type\s+(\w+)\s+interface\s*\{", re.MULTILINE),  # Go
+        re.compile(r"^\s*(?:pub\s+)?trait\s+(\w+)", re.MULTILINE),  # Rust
+    ],
+    "enum": [
+        re.compile(r"^\s*(?:pub\s+)?enum\s+(\w+)", re.MULTILINE),  # Rust/Java/TS
+        re.compile(r"^\s*class\s+(\w+)\s*\(.*Enum\)", re.MULTILINE),  # Python Enum
+    ],
+    "impl": [
+        re.compile(r"^\s*impl(?:<[^>]+>)?\s+(\w+)", re.MULTILINE),  # Rust
+    ],
+    "type": [
+        re.compile(r"^\s*(?:export\s+)?type\s+(\w+)", re.MULTILINE),  # TS
+        re.compile(r"^\s*type\s+(\w+)\s", re.MULTILINE),  # Go
+    ],
+    "module": [
+        re.compile(r"^\s*(?:pub\s+)?mod\s+(\w+)", re.MULTILINE),  # Rust
+        re.compile(r"^\s*package\s+(\w+)", re.MULTILINE),  # Go/Java
+    ],
+    "section": [
+        re.compile(r"^#{1,6}\s+(\S[^\n]*)$", re.MULTILINE),
+    ],
+}
 
 
 def _extract_symbol(frag: Fragment) -> str | None:
-    if frag.kind == "function":
-        match = _FUNC_NAME_RE.search(frag.content)
+    patterns = _SYMBOL_PATTERNS.get(frag.kind)
+    if not patterns:
+        return None
+    for pattern in patterns:
+        match = pattern.search(frag.content)
         if match:
-            return match.group(1)
-    elif frag.kind == "class":
-        match = _CLASS_NAME_RE.search(frag.content)
-        if match:
-            return match.group(1)
-    elif frag.kind == "section":
-        match = _MD_HEADING_RE.search(frag.content)
-        if match:
-            return match.group(1).strip()[:50]
+            result = match.group(1).strip()
+            return result[:50] if frag.kind == "section" else result
     return None
 
 
@@ -62,11 +93,15 @@ def _create_fragment_entry(frag: Fragment, path_str: str) -> dict[str, Any]:
         entry["symbol"] = symbol
     if frag.content:
         entry["content"] = frag.content
-        entry["preview"] = _preview(frag.content)
     return entry
 
 
-def build_partial_tree(repo_root: Path, selected: list[Fragment]) -> dict[str, Any]:
+def _root_display_name(repo_root: Path) -> str:
+    resolved = repo_root.resolve()
+    return resolved.name or str(resolved)
+
+
+def build_diff_context_output(repo_root: Path, selected: list[Fragment]) -> dict[str, Any]:
     by_path = _group_by_path(selected, repo_root)
     fragments_out: list[dict[str, Any]] = []
 
@@ -76,10 +111,12 @@ def build_partial_tree(repo_root: Path, selected: list[Fragment]) -> dict[str, A
         for frag in frags:
             fragments_out.append(_create_fragment_entry(frag, path_str))
 
-    resolved_root = repo_root.resolve()
     return {
-        "name": resolved_root.name,
+        "name": _root_display_name(repo_root),
         "type": "diff_context",
         "fragment_count": len(fragments_out),
         "fragments": fragments_out,
     }
+
+
+build_partial_tree = build_diff_context_output

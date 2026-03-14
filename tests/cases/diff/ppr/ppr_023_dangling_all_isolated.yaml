@@ -1,0 +1,102 @@
+# Scenario: isolated1 changes return to 100; all nodes are isolated (no imports)
+# Changed: isolated1.py — isolated1() returns 100 (was 1)
+# Reviewer needs: isolated1.py (changed, only relevant change)
+# Trap: alt_isolated.py — defines isolated1() too, name collision but different module
+# Trap: isolated4.py — structural sibling matching isolated1/isolated2/isolated3 naming
+# Trap: template_engine.py — completely unrelated
+
+initial:
+  isolated1.py: |
+    def isolated1():
+        return 1
+  isolated2.py: |
+    def isolated2():
+        return 2
+  isolated3.py: |
+    def isolated3():
+        return 3
+  alt_isolated.py: |
+    def isolated1():
+        return "alternate_isolated"
+
+    class IsolatedGroup:
+        def run_all(self):
+            return isolated1()
+  isolated4.py: |
+    def isolated4():
+        return 4
+
+    class Isolated4Runner:
+        def execute(self):
+            return isolated4()
+  template_engine.py: |
+    TEMPLATE_FORMAT = "jinja2"
+    FILE_EXTENSION = ".html"
+
+    class TemplateRenderer:
+        def render(self, template: str):
+            pass
+
+changed:
+  isolated1.py: |
+    def isolated1():
+        return 100
+  isolated2.py: |
+    def isolated2():
+        return 2
+  isolated3.py: |
+    def isolated3():
+        return 3
+  alt_isolated.py: |
+    def isolated1():
+        return "alternate_isolated"
+
+    class IsolatedGroup:
+        def run_all(self):
+            return isolated1()
+  isolated4.py: |
+    def isolated4():
+        return 4
+
+    class Isolated4Runner:
+        def execute(self):
+            return isolated4()
+  template_engine.py: |
+    TEMPLATE_FORMAT = "jinja2"
+    FILE_EXTENSION = ".html"
+
+    class TemplateRenderer:
+        def render(self, template: str):
+            pass
+
+# === Assertions ===
+
+must_include:
+- isolated1
+- return 100
+
+must_include_files:
+- isolated1.py
+
+must_include_content_from:
+  isolated1.py:
+    - 'def isolated1():'
+    - return 100
+
+must_not_include:
+- IsolatedGroup
+- alternate_isolated
+- Isolated4Runner
+- isolated4
+- TemplateRenderer
+- TEMPLATE_FORMAT
+
+must_not_include_files:
+- alt_isolated.py
+- isolated4.py
+- template_engine.py
+
+max_fragments: 4
+max_files: 2
+add_garbage_files: false
+skip_garbage_check: true

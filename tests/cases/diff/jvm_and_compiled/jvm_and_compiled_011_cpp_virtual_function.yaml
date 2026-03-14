@@ -1,0 +1,185 @@
+# Scenario: widget.cpp goes from empty main to Button class that overrides
+#   virtual draw() and resize() from Drawable base class.
+#
+# Reviewer questions:
+#   Q1: "What pure virtual methods does Drawable declare?"
+#       -> drawable.h: draw() = 0 and resize(int w, int h) = 0.
+#          Button must implement both. Reviewer must verify signatures match.
+#
+#   Q2: "Does Button correctly use 'override' on both methods?"
+#       -> Diff shows 'void draw() override' and 'void resize(int w, int h) override'.
+#          Reviewer needs drawable.h to confirm these match exactly.
+#
+#   Q3: "Is the virtual destructor handled correctly?"
+#       -> drawable.h: virtual ~Drawable() = default. Button doesn't declare
+#          destructor — inherits the defaulted virtual one. This is correct.
+#
+# Not needed:
+#   - ui/checkbox.cpp: Another class inheriting Drawable. IDENTICAL override
+#     pattern (draw() override, resize() override). Different widget type.
+#
+#   - ui/widget_factory.cpp: Factory that creates Button and other widgets.
+#     Direct structural edge (new Button()). But factory pattern doesn't
+#     help review whether virtual function overrides are correct.
+#
+#   - ui/event_handler.h: Interface with virtual onClick() = 0. Similar
+#     pure virtual pattern. Different interface, unrelated to drawing.
+#
+#   - tests/widget_test.cpp: Tests Button::draw() and resize(). Calls
+#     the methods being overridden. But test behavior doesn't verify
+#     that the override declarations match the base class.
+
+initial:
+  include/drawable.h: |
+    #pragma once
+
+    class Drawable {
+    public:
+        virtual ~Drawable() = default;
+        virtual void draw() = 0;
+        virtual void resize(int w, int h) = 0;
+    };
+
+  src/widget.cpp: |
+    #include <iostream>
+    int main() { return 0; }
+
+  src/checkbox.cpp: |
+    #include "drawable.h"
+    #include <iostream>
+
+    class Checkbox : public Drawable {
+        bool checked_ = false;
+    public:
+        void draw() override {
+            std::cout << (checked_ ? "[x]" : "[ ]") << std::endl;
+        }
+
+        void resize(int w, int h) override {
+            std::cout << "Checkbox resize: " << w << "x" << h << std::endl;
+        }
+
+        void toggle() { checked_ = !checked_; }
+    };
+
+  src/widget_factory.cpp: |
+    #include "drawable.h"
+    #include <memory>
+    #include <string>
+
+    class WidgetFactory {
+    public:
+        static std::unique_ptr<Drawable> create(const std::string& type) {
+            if (type == "button") {
+                return nullptr;
+            }
+            if (type == "checkbox") {
+                return nullptr;
+            }
+            return nullptr;
+        }
+
+        static void renderAll(const std::vector<std::unique_ptr<Drawable>>& widgets) {
+            for (const auto& w : widgets) {
+                w->draw();
+            }
+        }
+    };
+
+  include/event_handler.h: |
+    #pragma once
+
+    class EventHandler {
+    public:
+        virtual ~EventHandler() = default;
+        virtual void onClick(int x, int y) = 0;
+        virtual void onHover(int x, int y) = 0;
+        virtual void onKeyPress(char key) = 0;
+    };
+
+  tests/widget_test.cpp: |
+    #include "drawable.h"
+    #include <cassert>
+    #include <sstream>
+
+    class TestButton : public Drawable {
+        std::string lastDraw_;
+    public:
+        void draw() override { lastDraw_ = "drawn"; }
+        void resize(int w, int h) override { lastDraw_ = "resized"; }
+        const std::string& lastDraw() const { return lastDraw_; }
+    };
+
+    void test_draw() {
+        TestButton btn;
+        btn.draw();
+        assert(btn.lastDraw() == "drawn");
+    }
+
+    void test_resize() {
+        TestButton btn;
+        btn.resize(100, 50);
+        assert(btn.lastDraw() == "resized");
+    }
+
+changed:
+  src/widget.cpp: |
+    #include "drawable.h"
+    #include <iostream>
+
+    class Button : public Drawable {
+    public:
+        void draw() override {
+            std::cout << "Drawing button" << std::endl;
+        }
+
+        void resize(int w, int h) override {
+            std::cout << "Resizing to " << w << "x" << h << std::endl;
+        }
+    };
+
+must_include_files:
+  - src/widget.cpp
+  # Q1+Q2+Q3: Reviewer needs Drawable to verify pure virtual declarations
+  # match the override signatures in Button.
+  - include/drawable.h
+
+must_include_content_from:
+  src/widget.cpp:
+    - "class Button : public Drawable"
+    - "void draw() override"
+    - "void resize(int w, int h) override"
+  include/drawable.h:
+    - "virtual void draw() = 0"
+    - "virtual void resize(int w, int h) = 0"
+    - "virtual ~Drawable() = default"
+
+must_not_include:
+  # --- checkbox.cpp: identical override pattern, different widget ---
+  - Checkbox
+  - "checked_"
+  - toggle
+  # --- widget_factory.cpp: creates widgets, different concern ---
+  - WidgetFactory
+  - renderAll
+  - "create(const std::string"
+  # --- event_handler.h: similar virtual pattern, different interface ---
+  - EventHandler
+  - onClick
+  - onHover
+  - onKeyPress
+  # --- tests ---
+  - TestButton
+  - test_draw
+  - test_resize
+
+must_not_include_files:
+  - src/checkbox.cpp
+  - src/widget_factory.cpp
+  - include/event_handler.h
+  - tests/widget_test.cpp
+
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

@@ -1,0 +1,210 @@
+# Test 005: ProductController extends BaseController abstract class
+#           — reviewer needs BaseController to verify abstract method implementations
+#
+# Scenario: ProductController changes from standalone to extending BaseController.
+# It implements getModelName(), getValidationRules(), and adds store()/show()
+# that use inherited validate() and respond() methods.
+#
+# Reviewer questions:
+#   Q1: "What abstract methods must ProductController implement?"
+#       -> getModelName(): string and getValidationRules(): array.
+#   Q2: "What do the inherited validate() and respond() methods do?"
+#       -> validate() checks required fields from rules, respond() wraps status+data.
+#
+# Trap files (plausible but unrelated):
+#   - src/Controllers/CategoryController.php: another controller that could
+#     extend BaseController, but is independent of this change.
+#   - src/Models/Product.php: shares "Product" naming but is a data model,
+#     not imported or referenced by ProductController.
+
+initial:
+  src/Controllers/BaseController.php: |
+    <?php
+    namespace App\Controllers;
+
+    abstract class BaseController {
+        abstract protected function getModelName(): string;
+        abstract protected function getValidationRules(): array;
+
+        public function index(): array {
+            return ['model' => $this->getModelName(), 'action' => 'list'];
+        }
+
+        protected function respond(int $status, array $data): array {
+            return ['status' => $status, 'data' => $data, 'model' => $this->getModelName()];
+        }
+
+        protected function validate(array $data): bool {
+            $rules = $this->getValidationRules();
+            foreach ($rules as $field => $required) {
+                if ($required && !isset($data[$field])) {
+                    return false;
+                }
+            }
+            return true;
+        }
+    }
+  src/Controllers/ProductController.php: |
+    <?php
+    namespace App\Controllers;
+
+    class ProductController {
+        public function list(): array {
+            return [];
+        }
+    }
+  src/Controllers/CategoryController.php: |
+    <?php
+    namespace App\Controllers;
+
+    class CategoryController {
+        private array $categories = [];
+
+        public function index(): array {
+            return $this->categories;
+        }
+
+        public function create(string $name, ?string $parentId = null): array {
+            $category = ['name' => $name, 'parent' => $parentId];
+            $this->categories[] = $category;
+            return $category;
+        }
+    }
+  src/Models/Product.php: |
+    <?php
+    namespace App\Models;
+
+    class Product {
+        public string $name;
+        public float $price;
+        public string $sku;
+
+        public function __construct(string $name, float $price, string $sku) {
+            $this->name = $name;
+            $this->price = $price;
+            $this->sku = $sku;
+        }
+
+        public function isAvailable(): bool {
+            return $this->price > 0;
+        }
+    }
+
+changed:
+  src/Controllers/BaseController.php: |
+    <?php
+    namespace App\Controllers;
+
+    abstract class BaseController {
+        abstract protected function getModelName(): string;
+        abstract protected function getValidationRules(): array;
+
+        public function index(): array {
+            return ['model' => $this->getModelName(), 'action' => 'list'];
+        }
+
+        protected function respond(int $status, array $data): array {
+            return ['status' => $status, 'data' => $data, 'model' => $this->getModelName()];
+        }
+
+        protected function validate(array $data): bool {
+            $rules = $this->getValidationRules();
+            foreach ($rules as $field => $required) {
+                if ($required && !isset($data[$field])) {
+                    return false;
+                }
+            }
+            return true;
+        }
+    }
+  src/Controllers/ProductController.php: |
+    <?php
+    namespace App\Controllers;
+
+    class ProductController extends BaseController {
+        protected function getModelName(): string {
+            return 'Product';
+        }
+
+        protected function getValidationRules(): array {
+            return ['name' => true, 'price' => true, 'sku' => false];
+        }
+
+        public function store(array $data): array {
+            if (!$this->validate($data)) {
+                return $this->respond(422, ['error' => 'Validation failed']);
+            }
+            return $this->respond(201, ['product' => $data]);
+        }
+
+        public function show(int $id): array {
+            return $this->respond(200, ['id' => $id, 'model' => $this->getModelName()]);
+        }
+    }
+  src/Controllers/CategoryController.php: |
+    <?php
+    namespace App\Controllers;
+
+    class CategoryController {
+        private array $categories = [];
+
+        public function index(): array {
+            return $this->categories;
+        }
+
+        public function create(string $name, ?string $parentId = null): array {
+            $category = ['name' => $name, 'parent' => $parentId];
+            $this->categories[] = $category;
+            return $category;
+        }
+    }
+  src/Models/Product.php: |
+    <?php
+    namespace App\Models;
+
+    class Product {
+        public string $name;
+        public float $price;
+        public string $sku;
+
+        public function __construct(string $name, float $price, string $sku) {
+            $this->name = $name;
+            $this->price = $price;
+            $this->sku = $sku;
+        }
+
+        public function isAvailable(): bool {
+            return $this->price > 0;
+        }
+    }
+
+must_include_files:
+  - src/Controllers/ProductController.php
+  # Q1/Q2: Reviewer needs BaseController to verify abstract contract and inherited behavior
+  - src/Controllers/BaseController.php
+
+must_include_content_from:
+  src/Controllers/ProductController.php:
+    - "extends BaseController"
+    - "$this->validate($data)"
+    - "$this->respond(201"
+  src/Controllers/BaseController.php:
+    - "abstract protected function getModelName(): string"
+    - "abstract protected function getValidationRules(): array"
+
+must_not_include:
+  # --- CategoryController.php: sibling controller, could extend BaseController but doesn't ---
+  - "class CategoryController"
+  - "parentId"
+  # --- Models/Product.php: shares "Product" name but is a data model, not referenced ---
+  - "class Product"
+  - "isAvailable"
+
+must_not_include_files:
+  - src/Controllers/CategoryController.php
+  - src/Models/Product.php
+
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

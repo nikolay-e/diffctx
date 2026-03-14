@@ -1,0 +1,224 @@
+# Scenario: UserController.php extends BaseController — implements the abstract
+# getModel() method and uses the inherited respond() helper.
+#
+# Diff: UserController.php changes from an empty class to a subclass of
+# BaseController with getModel() returning 'User' and a show() action that
+# calls $this->respond().
+#
+# Reviewer questions:
+#   Q1: "What abstract methods must UserController implement?"
+#       -> src/Controllers/BaseController.php (UNCHANGED) declares
+#          `abstract protected function getModel(): string`. Reviewer checks
+#          that UserController fulfills this contract.
+#   Q2: "What does the inherited respond() method do?"
+#       -> BaseController.php shows respond(array) echoes JSON. Reviewer
+#          understands the output format of UserController::show().
+#   Q3: "What does index() return?"
+#       -> BaseController::index() calls $this->getModel(). Reviewer sees
+#          that UserController inheriting index() will return ['model' => 'User'].
+#
+# Not needed:
+#   - src/Controllers/ProductController.php: another BaseController subclass
+#     with identical structure — extends BaseController, implements getModel(),
+#     uses respond(). HARDEST TRAP: same inheritance hierarchy, same patterns.
+#     But reviewing a sibling controller doesn't help verify UserController.
+#   - src/Controllers/OrderController.php: yet another BaseController subclass.
+#     Same extends/getModel/respond pattern. Amplifies the sibling trap.
+#   - src/Models/User.php: the User model entity class. UserController only
+#     returns the string 'User' — it doesn't import or instantiate the model.
+#   - src/Middleware/RateLimiter.php: request middleware for rate limiting.
+#     Different concern, not referenced by UserController or BaseController.
+#   - src/Routes/web.php: route registration that maps URLs to UserController
+#     methods. Direct consumer of the changed class, but routing config
+#     doesn't help understand the abstract contract or respond() behavior.
+#   - tests/UserControllerTest.php: tests that instantiate UserController and
+#     call show(). Uses the exact methods from the diff but test expectations
+#     don't define the BaseController contract.
+
+initial:
+  src/Controllers/UserController.php: |
+    <?php
+    namespace App\Controllers;
+
+    class UserController {
+    }
+  src/Controllers/BaseController.php: |
+    <?php
+    namespace App\Controllers;
+
+    abstract class BaseController {
+        abstract protected function getModel(): string;
+
+        public function index(): array {
+            return ['model' => $this->getModel()];
+        }
+
+        protected function respond(array $data): void {
+            header('Content-Type: application/json');
+            echo json_encode($data);
+        }
+
+        protected function respondError(string $message, int $code = 400): void {
+            http_response_code($code);
+            $this->respond(['error' => $message, 'code' => $code]);
+        }
+    }
+  src/Controllers/ProductController.php: |
+    <?php
+    namespace App\Controllers;
+
+    class ProductController extends BaseController {
+        protected function getModel(): string {
+            return 'Product';
+        }
+
+        public function show(int $id): void {
+            $this->respond(['id' => $id, 'model' => $this->getModel()]);
+        }
+
+        public function list(): void {
+            $this->respond(['model' => $this->getModel(), 'items' => []]);
+        }
+    }
+  src/Controllers/OrderController.php: |
+    <?php
+    namespace App\Controllers;
+
+    class OrderController extends BaseController {
+        protected function getModel(): string {
+            return 'Order';
+        }
+
+        public function show(int $id): void {
+            $this->respond(['id' => $id, 'model' => $this->getModel()]);
+        }
+
+        public function cancel(int $id): void {
+            $this->respond(['id' => $id, 'status' => 'cancelled']);
+        }
+    }
+  src/Models/User.php: |
+    <?php
+    namespace App\Models;
+
+    class User {
+        public int $id;
+        public string $name;
+        public string $email;
+
+        public function __construct(int $id, string $name, string $email) {
+            $this->id = $id;
+            $this->name = $name;
+            $this->email = $email;
+        }
+
+        public function toArray(): array {
+            return ['id' => $this->id, 'name' => $this->name, 'email' => $this->email];
+        }
+    }
+  src/Middleware/RateLimiter.php: |
+    <?php
+    namespace App\Middleware;
+
+    class RateLimiter {
+        private int $maxRequests;
+        private int $windowSeconds;
+
+        public function __construct(int $maxRequests = 60, int $windowSeconds = 60) {
+            $this->maxRequests = $maxRequests;
+            $this->windowSeconds = $windowSeconds;
+        }
+
+        public function check(string $clientIp): bool {
+            return true;
+        }
+
+        public function getLimit(): int {
+            return $this->maxRequests;
+        }
+    }
+  src/Routes/web.php: |
+    <?php
+    use App\Controllers\UserController;
+    use App\Controllers\ProductController;
+
+    $router->get('/users/{id}', [UserController::class, 'show']);
+    $router->get('/users', [UserController::class, 'index']);
+    $router->get('/products/{id}', [ProductController::class, 'show']);
+    $router->get('/products', [ProductController::class, 'list']);
+  tests/UserControllerTest.php: |
+    <?php
+    namespace Tests;
+
+    use App\Controllers\UserController;
+    use PHPUnit\Framework\TestCase;
+
+    class UserControllerTest extends TestCase {
+        private UserController $controller;
+
+        protected function setUp(): void {
+            $this->controller = new UserController();
+        }
+
+        public function testIndex(): void {
+            $result = $this->controller->index();
+            $this->assertEquals(['model' => 'User'], $result);
+        }
+
+        public function testGetModelReturnsUser(): void {
+            $result = $this->controller->index();
+            $this->assertArrayHasKey('model', $result);
+        }
+    }
+changed:
+  src/Controllers/UserController.php: |
+    <?php
+    namespace App\Controllers;
+
+    class UserController extends BaseController {
+        protected function getModel(): string {
+            return 'User';
+        }
+
+        public function show(int $id): void {
+            $this->respond(['id' => $id, 'model' => $this->getModel()]);
+        }
+    }
+must_include_files:
+  # Q1+Q2+Q3: BaseController defines the abstract contract and inherited methods
+  - src/Controllers/BaseController.php
+must_include_content_from:
+  src/Controllers/BaseController.php:
+    - "abstract protected function getModel(): string"
+    - "protected function respond(array $data): void"
+    - "return ['model' => $this->getModel()]"
+must_not_include:
+  # ProductController.php: IDENTICAL sibling — same extends, same getModel, same respond
+  - "class ProductController"
+  - "return 'Product'"
+  # OrderController.php: another sibling with same inheritance pattern
+  - "class OrderController"
+  - "return 'Order'"
+  # User.php: model entity, UserController returns string 'User' not the class
+  - "namespace App\\Models"
+  - "public function toArray"
+  # RateLimiter.php: middleware, different concern
+  - "class RateLimiter"
+  - "maxRequests"
+  # web.php: route config, consumer of UserController
+  - "$router->get"
+  - "UserController::class"
+  # UserControllerTest.php: test for the changed class
+  - "class UserControllerTest"
+  - "testIndex"
+must_not_include_files:
+  - src/Controllers/ProductController.php
+  - src/Controllers/OrderController.php
+  - src/Models/User.php
+  - src/Middleware/RateLimiter.php
+  - src/Routes/web.php
+  - tests/UserControllerTest.php
+max_fragments: 5
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

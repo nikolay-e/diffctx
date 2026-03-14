@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import logging
 import sys
 from dataclasses import dataclass
 from functools import lru_cache
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 CHUNK_SIZE = 500_000
 CHUNK_THRESHOLD = 1_000_000
@@ -31,20 +34,23 @@ def _get_encoder(encoding: str) -> Any | None:
 def count_tokens(text: str, encoding: str = "o200k_base") -> TokenCountResult:
     encoder = _get_encoder(encoding)
     if not encoder:
+        logger.debug("tiktoken unavailable, using char/4 approximation")
         return TokenCountResult(len(text) // 4, False, "approximation")
 
     text_len = len(text)
     if text_len <= CHUNK_THRESHOLD:
+        logger.debug("Token counting: exact mode (%d chars)", text_len)
         return TokenCountResult(len(encoder.encode(text)), True, encoding)
 
     if text_len > SAMPLE_CHAR_THRESHOLD:
+        logger.debug("Token counting: sampled mode (%d chars, %d samples)", text_len, SAMPLE_COUNT)
         return _count_tokens_sampled(text, text_len, encoder, encoding)
 
+    logger.debug("Token counting: chunked mode (%d chars)", text_len)
     total = 0
     for i in range(0, text_len, CHUNK_SIZE):
         chunk = text[i : i + CHUNK_SIZE]
         total += len(encoder.encode(chunk))
-    # BPE tokenizers are context-sensitive: chunking can give inaccurate counts
     return TokenCountResult(total, False, encoding)
 
 
@@ -52,7 +58,7 @@ def _count_tokens_sampled(text: str, text_len: int, encoder: Any, encoding: str)
     num_chunks = text_len // CHUNK_SIZE
     step = max(1, num_chunks // SAMPLE_COUNT)
     sampled_tokens = 0
-    sampled_chars = 0  # len(chunk) returns characters, not bytes
+    sampled_chars = 0
 
     for i in range(0, num_chunks, step):
         start = i * CHUNK_SIZE
@@ -65,7 +71,6 @@ def _count_tokens_sampled(text: str, text_len: int, encoder: Any, encoding: str)
     if sampled_chars == 0:
         return TokenCountResult(text_len // 4, False, "approximation")
 
-    # text_len is also in characters, so units are consistent
     tokens_per_char = sampled_tokens / sampled_chars
     estimated_total = int(tokens_per_char * text_len)
     return TokenCountResult(estimated_total, False, encoding)

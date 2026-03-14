@@ -1,0 +1,109 @@
+# Scenario: Adding edgelambda.amazonaws.com as additional principal to an IAM
+#   policy document to support Lambda@Edge.
+# Reviewer questions:
+#   1. What IAM role uses this policy document? (main.tf)
+#   2. Is there a CloudFront distribution that needs Lambda@Edge? (cdn.tf)
+# Traps:
+#   - ecs/iam.tf: another IAM policy document but for ECS tasks (same data source, different service)
+#   - variables.tf: variable definitions (unrelated to IAM)
+
+initial:
+  iam.tf: |
+    data "aws_iam_policy_document" "lambda_assume" {
+      statement {
+        actions = ["sts:AssumeRole"]
+        principals {
+          type        = "Service"
+          identifiers = ["lambda.amazonaws.com"]
+        }
+      }
+    }
+  main.tf: |
+    resource "aws_iam_role" "lambda" {
+      name               = "lambda-role"
+      assume_role_policy = data.aws_iam_policy_document.lambda_assume.json
+    }
+
+    resource "aws_lambda_function" "edge" {
+      function_name = "edge-handler"
+      role          = aws_iam_role.lambda.arn
+      runtime       = "nodejs20.x"
+      handler       = "index.handler"
+      filename      = "edge.zip"
+    }
+  cdn.tf: |
+    resource "aws_cloudfront_distribution" "main" {
+      enabled = true
+
+      default_cache_behavior {
+        lambda_function_association {
+          event_type   = "viewer-request"
+          lambda_arn   = aws_lambda_function.edge.qualified_arn
+          include_body = false
+        }
+
+        allowed_methods        = ["GET", "HEAD"]
+        cached_methods         = ["GET", "HEAD"]
+        target_origin_id       = "s3-origin"
+        viewer_protocol_policy = "redirect-to-https"
+      }
+
+      origin {
+        domain_name = "mybucket.s3.amazonaws.com"
+        origin_id   = "s3-origin"
+      }
+    }
+  ecs/iam.tf: |
+    data "aws_iam_policy_document" "ecs_assume" {
+      statement {
+        actions = ["sts:AssumeRole"]
+        principals {
+          type        = "Service"
+          identifiers = ["ecs-tasks.amazonaws.com"]
+        }
+      }
+    }
+  variables.tf: |
+    variable "environment" {
+      default = "production"
+    }
+
+changed:
+  iam.tf: |
+    data "aws_iam_policy_document" "lambda_assume" {
+      statement {
+        actions = ["sts:AssumeRole"]
+        principals {
+          type        = "Service"
+          identifiers = ["lambda.amazonaws.com", "edgelambda.amazonaws.com"]
+        }
+      }
+    }
+
+must_include_files:
+  - iam.tf
+  - main.tf
+  - cdn.tf
+
+must_include_content_from:
+  iam.tf:
+    - '["lambda.amazonaws.com", "edgelambda.amazonaws.com"]'
+  main.tf:
+    - data.aws_iam_policy_document.lambda_assume.json
+  cdn.tf:
+    - lambda_function_association {
+
+must_not_include:
+  # ECS IAM - same data source type but for ECS tasks, not Lambda
+  - ecs-tasks.amazonaws.com
+  # Variables - unrelated input definitions
+  - variable "environment" {
+
+must_not_include_files:
+  - ecs/iam.tf
+  - variables.tf
+
+max_fragments: 5
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

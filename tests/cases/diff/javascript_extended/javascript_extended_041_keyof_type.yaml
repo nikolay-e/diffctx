@@ -1,0 +1,237 @@
+# Scenario: getter.ts goes from stub to a module that imports AppConfig and
+#   defaultConfig, then uses keyof AppConfig to build type-safe config accessors.
+#
+# Diff shows:
+#   - console.log('initial')
+#   + import { AppConfig, defaultConfig } from './config';
+#   + type ConfigKey = keyof AppConfig;
+#   + getConfigValue<K>(), getDefaultValue<K>(), getAllKeys() functions
+#
+# Reviewer questions:
+#   Q1: "What fields does AppConfig have — which keys does keyof produce?"
+#       -> src/config.ts: AppConfig has apiUrl, timeout, debug, maxRetries,
+#          logLevel. So ConfigKey = 'apiUrl' | 'timeout' | 'debug' | 'maxRetries'
+#          | 'logLevel'. Reviewer must see the interface to verify the keyof
+#          constraint is meaningful.
+#
+#   Q2: "What values does defaultConfig hold — is getDefaultValue safe?"
+#       -> src/config.ts: defaultConfig provides values for all five fields.
+#          getAllKeys() uses Object.keys(defaultConfig), which will enumerate
+#          all of them. Reviewer confirms no missing keys.
+#
+# Not needed for comprehension:
+#   - src/services/configLoader.ts: Loads config from environment variables.
+#     Imports AppConfig from the same module. Direct structural edge: same
+#     import source. But env-loading logic doesn't help review whether
+#     keyof-based accessors correctly constrain key types.
+#
+#   - src/services/configWatcher.ts: Watches filesystem for config changes.
+#     Also imports AppConfig. Same import source but file-watch concern
+#     is irrelevant to type-safe key access patterns.
+#
+#   - src/middleware/configMiddleware.ts: Express middleware that injects
+#     config into request. Uses AppConfig type but different usage pattern.
+
+initial:
+  src/config.ts: |
+    export interface AppConfig {
+        apiUrl: string;
+        timeout: number;
+        debug: boolean;
+        maxRetries: number;
+        logLevel: string;
+    }
+
+    export const defaultConfig: AppConfig = {
+        apiUrl: 'http://localhost:3000',
+        timeout: 5000,
+        debug: false,
+        maxRetries: 3,
+        logLevel: 'info',
+    };
+  src/getter.ts: |
+    console.log('initial');
+  # --- Not needed: loads config from env, same import but different concern ---
+  src/services/configLoader.ts: |
+    import { AppConfig } from '../config';
+
+    export function loadConfigFromEnv(): Partial<AppConfig> {
+        return {
+            apiUrl: process.env.API_URL,
+            timeout: process.env.TIMEOUT ? parseInt(process.env.TIMEOUT, 10) : undefined,
+            debug: process.env.DEBUG === 'true',
+            logLevel: process.env.LOG_LEVEL,
+        };
+    }
+
+    export function mergeConfigs(base: AppConfig, overrides: Partial<AppConfig>): AppConfig {
+        return { ...base, ...Object.fromEntries(Object.entries(overrides).filter(([_, v]) => v !== undefined)) } as AppConfig;
+    }
+  # --- Not needed: file watcher, same import but filesystem concern ---
+  src/services/configWatcher.ts: |
+    import { AppConfig } from '../config';
+    import { EventEmitter } from 'events';
+
+    export class ConfigWatcher extends EventEmitter {
+        private interval: ReturnType<typeof setInterval> | null = null;
+
+        start(path: string, pollMs: number = 5000): void {
+            this.interval = setInterval(() => {
+                this.emit('change', path);
+            }, pollMs);
+        }
+
+        stop(): void {
+            if (this.interval) clearInterval(this.interval);
+        }
+    }
+
+    export function watchConfig(path: string): ConfigWatcher {
+        const watcher = new ConfigWatcher();
+        watcher.start(path);
+        return watcher;
+    }
+  # --- Not needed: middleware, uses AppConfig but different layer ---
+  src/middleware/configMiddleware.ts: |
+    import { Request, Response, NextFunction } from 'express';
+    import { AppConfig, defaultConfig } from '../config';
+
+    export function configMiddleware(config: AppConfig = defaultConfig) {
+        return (req: Request, res: Response, next: NextFunction) => {
+            (req as any).appConfig = config;
+            next();
+        };
+    }
+
+    export function getConfigFromRequest(req: Request): AppConfig {
+        return (req as any).appConfig ?? defaultConfig;
+    }
+
+changed:
+  src/config.ts: |
+    export interface AppConfig {
+        apiUrl: string;
+        timeout: number;
+        debug: boolean;
+        maxRetries: number;
+        logLevel: string;
+    }
+
+    export const defaultConfig: AppConfig = {
+        apiUrl: 'http://localhost:3000',
+        timeout: 5000,
+        debug: false,
+        maxRetries: 3,
+        logLevel: 'info',
+    };
+  src/getter.ts: |
+    import { AppConfig, defaultConfig } from './config';
+
+    type ConfigKey = keyof AppConfig;
+
+    function getConfigValue<K extends ConfigKey>(config: AppConfig, key: K): AppConfig[K] {
+        return config[key];
+    }
+
+    function getDefaultValue<K extends ConfigKey>(key: K): AppConfig[K] {
+        return defaultConfig[key];
+    }
+
+    function getAllKeys(): ConfigKey[] {
+        return Object.keys(defaultConfig) as ConfigKey[];
+    }
+
+    export { ConfigKey, getConfigValue, getDefaultValue, getAllKeys };
+  src/services/configLoader.ts: |
+    import { AppConfig } from '../config';
+
+    export function loadConfigFromEnv(): Partial<AppConfig> {
+        return {
+            apiUrl: process.env.API_URL,
+            timeout: process.env.TIMEOUT ? parseInt(process.env.TIMEOUT, 10) : undefined,
+            debug: process.env.DEBUG === 'true',
+            logLevel: process.env.LOG_LEVEL,
+        };
+    }
+
+    export function mergeConfigs(base: AppConfig, overrides: Partial<AppConfig>): AppConfig {
+        return { ...base, ...Object.fromEntries(Object.entries(overrides).filter(([_, v]) => v !== undefined)) } as AppConfig;
+    }
+  src/services/configWatcher.ts: |
+    import { AppConfig } from '../config';
+    import { EventEmitter } from 'events';
+
+    export class ConfigWatcher extends EventEmitter {
+        private interval: ReturnType<typeof setInterval> | null = null;
+
+        start(path: string, pollMs: number = 5000): void {
+            this.interval = setInterval(() => {
+                this.emit('change', path);
+            }, pollMs);
+        }
+
+        stop(): void {
+            if (this.interval) clearInterval(this.interval);
+        }
+    }
+
+    export function watchConfig(path: string): ConfigWatcher {
+        const watcher = new ConfigWatcher();
+        watcher.start(path);
+        return watcher;
+    }
+  src/middleware/configMiddleware.ts: |
+    import { Request, Response, NextFunction } from 'express';
+    import { AppConfig, defaultConfig } from '../config';
+
+    export function configMiddleware(config: AppConfig = defaultConfig) {
+        return (req: Request, res: Response, next: NextFunction) => {
+            (req as any).appConfig = config;
+            next();
+        };
+    }
+
+    export function getConfigFromRequest(req: Request): AppConfig {
+        return (req as any).appConfig ?? defaultConfig;
+    }
+
+must_include_files:
+  - src/getter.ts
+  # Q1+Q2: AppConfig interface defines the keys that keyof produces.
+  # defaultConfig provides the runtime values getAllKeys enumerates.
+  - src/config.ts
+
+must_include_content_from:
+  src/getter.ts:
+    - "import { AppConfig, defaultConfig } from './config'"
+    - "type ConfigKey = keyof AppConfig"
+  src/config.ts:
+    - "interface AppConfig"
+    - "apiUrl: string"
+    - "defaultConfig: AppConfig"
+
+must_not_include:
+  # --- configLoader.ts: imports AppConfig, but env-loading concern ---
+  # HARDEST TRAP: same import source as the diff. Loads config from
+  # environment variables. But env-loading doesn't help understand
+  # whether keyof AppConfig produces the right key union.
+  - loadConfigFromEnv
+  - mergeConfigs
+  # --- configWatcher.ts: imports AppConfig, filesystem watcher ---
+  - ConfigWatcher
+  - watchConfig
+  # --- configMiddleware.ts: imports AppConfig AND defaultConfig ---
+  # Both names appear in the diff's import. But middleware injection
+  # doesn't help review type-safe key access patterns.
+  - configMiddleware
+  - getConfigFromRequest
+
+must_not_include_files:
+  - src/services/configLoader.ts
+  - src/services/configWatcher.ts
+  - src/middleware/configMiddleware.ts
+
+max_fragments: 8
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

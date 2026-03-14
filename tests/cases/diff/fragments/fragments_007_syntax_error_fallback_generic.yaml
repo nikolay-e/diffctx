@@ -1,0 +1,53 @@
+initial:
+  broken.py: |+
+    import os
+    from pathlib import Path
+
+    def valid_before_broken():
+
+    def broken(:
+        x = [1, 2
+        return x
+
+    def valid_after_broken():
+
+    class GarbageAfterClass:
+
+  garbage_broken_030.py: |
+    def garbage_function_030():
+        return "GARBAGE_FRAG_garbagefunc030"
+
+    class GarbageBroken030:
+        VALUE = "GARBAGE_FRAG_garbagevalue030"
+
+    GARBAGE_MODULE_CONST = "GARBAGE_FRAG_moduleconst030"
+changed:
+  broken.py: |+
+    import os
+    from pathlib import Path
+
+    def valid_before_broken():
+
+    def broken(:
+        x = [1, 2, 3
+        return x
+
+    def valid_after_broken():
+
+    class GarbageAfterClass:
+
+  garbage_broken_030.py: |
+    def garbage_function_030():
+        return "GARBAGE_FRAG_garbagefunc030"
+
+    class GarbageBroken030:
+        VALUE = "GARBAGE_FRAG_garbagevalue030"
+
+    GARBAGE_MODULE_CONST = "GARBAGE_FRAG_moduleconst030"
+must_include_files:
+- broken.py
+must_not_include:
+- GARBAGE_MODULE_CONST
+- garbage_broken_030.py
+add_garbage_files: false
+skip_garbage_check: true

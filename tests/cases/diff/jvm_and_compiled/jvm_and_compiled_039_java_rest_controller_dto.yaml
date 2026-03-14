@@ -1,0 +1,378 @@
+# Scenario: UserDto gains Bean Validation annotations (@NotBlank, @Size,
+#   @Email) and a new email field with getter/setter. The UserController
+#   consumes UserDto but is not changed.
+#
+# Diff shows:
+#   - UserDto with id and name only
+#   + import javax.validation.constraints.*, @NotBlank/@Size on name,
+#     @Email on new email field, email getter/setter
+#
+# Reviewer questions:
+#   Q1: "Which endpoints return UserDto — are they affected by new fields?"
+#       -> Needs UserController.java: @RestController returning UserDto
+#          from getUser(). Reviewer must check if controller sets email.
+#
+#   Q2: "Is @Valid used anywhere to trigger the new validation annotations?"
+#       -> Needs UserController.java to check for @Valid on @RequestBody.
+#
+# Not needed for comprehension:
+#   - ProductDto.java: IDENTICAL DTO in same package — getters/setters,
+#     private fields. HARDEST TRAP: sibling DTO, same structure. But
+#     ProductDto has no import/dependency edge to UserDto.
+#
+#   - UserService.java: Business logic creating UserDto instances. Direct
+#     producer of the DTO. But service logic doesn't help review
+#     whether validation annotations are correctly placed.
+#
+#   - ValidationConfig.java: Spring @Configuration for validator bean.
+#     Same validation vocabulary. Infrastructure, not DTO-specific.
+#
+#   - UserDtoTest.java: Tests UserDto validation. References the changed
+#     class. But test assertions don't help review annotation placement.
+#
+#   - OrderDto.java: Another DTO with validation annotations. Same
+#     javax.validation.constraints imports. Different entity.
+
+initial:
+  src/main/java/com/example/dto/UserDto.java: |
+    package com.example.dto;
+
+    public class UserDto {
+        private Long id;
+        private String name;
+
+        public Long getId() { return id; }
+        public void setId(Long id) { this.id = id; }
+        public String getName() { return name; }
+        public void setName(String name) { this.name = name; }
+    }
+  src/main/java/com/example/UserController.java: |
+    package com.example;
+
+    import com.example.dto.UserDto;
+    import org.springframework.web.bind.annotation.*;
+
+    @RestController
+    @RequestMapping("/api/users")
+    public class UserController {
+        @GetMapping("/{id}")
+        public UserDto getUser(@PathVariable Long id) {
+            UserDto dto = new UserDto();
+            dto.setId(id);
+            dto.setName("User");
+            return dto;
+        }
+
+        @PostMapping
+        public UserDto createUser(@RequestBody UserDto dto) {
+            dto.setId(1L);
+            return dto;
+        }
+    }
+  src/main/java/com/example/dto/ProductDto.java: |
+    package com.example.dto;
+
+    import javax.validation.constraints.*;
+
+    public class ProductDto {
+        private Long id;
+
+        @NotBlank
+        @Size(min = 1, max = 200)
+        private String title;
+
+        @Positive
+        private double price;
+
+        private String category;
+
+        public Long getId() { return id; }
+        public void setId(Long id) { this.id = id; }
+        public String getTitle() { return title; }
+        public void setTitle(String title) { this.title = title; }
+        public double getPrice() { return price; }
+        public void setPrice(double price) { this.price = price; }
+        public String getCategory() { return category; }
+        public void setCategory(String category) { this.category = category; }
+    }
+  src/main/java/com/example/UserService.java: |
+    package com.example;
+
+    import com.example.dto.UserDto;
+    import org.springframework.stereotype.Service;
+
+    @Service
+    public class UserService {
+        public UserDto createUser(String name, String email) {
+            UserDto dto = new UserDto();
+            dto.setName(name);
+            return dto;
+        }
+
+        public UserDto updateUser(Long id, String name) {
+            UserDto dto = new UserDto();
+            dto.setId(id);
+            dto.setName(name);
+            return dto;
+        }
+    }
+  src/main/java/com/example/config/ValidationConfig.java: |
+    package com.example.config;
+
+    import org.springframework.context.annotation.Bean;
+    import org.springframework.context.annotation.Configuration;
+    import org.springframework.validation.beanvalidation.LocalValidatorFactoryBean;
+
+    @Configuration
+    public class ValidationConfig {
+        @Bean
+        public LocalValidatorFactoryBean validator() {
+            return new LocalValidatorFactoryBean();
+        }
+    }
+  src/test/java/com/example/UserDtoTest.java: |
+    package com.example;
+
+    import com.example.dto.UserDto;
+    import org.junit.jupiter.api.Test;
+    import javax.validation.Validation;
+    import javax.validation.Validator;
+    import static org.junit.jupiter.api.Assertions.*;
+
+    class UserDtoTest {
+        private final Validator validator = Validation.buildDefaultValidatorFactory().getValidator();
+
+        @Test
+        void validUserDto() {
+            UserDto dto = new UserDto();
+            dto.setName("John");
+            var violations = validator.validate(dto);
+            assertTrue(violations.isEmpty());
+        }
+    }
+  src/main/java/com/example/dto/OrderDto.java: |
+    package com.example.dto;
+
+    import javax.validation.constraints.*;
+    import java.math.BigDecimal;
+
+    public class OrderDto {
+        private Long id;
+
+        @NotNull
+        private Long customerId;
+
+        @Positive
+        private BigDecimal amount;
+
+        @NotBlank
+        private String status;
+
+        public Long getId() { return id; }
+        public void setId(Long id) { this.id = id; }
+        public Long getCustomerId() { return customerId; }
+        public void setCustomerId(Long customerId) { this.customerId = customerId; }
+        public BigDecimal getAmount() { return amount; }
+        public void setAmount(BigDecimal amount) { this.amount = amount; }
+    }
+
+changed:
+  src/main/java/com/example/dto/UserDto.java: |
+    package com.example.dto;
+
+    import javax.validation.constraints.*;
+
+    public class UserDto {
+        private Long id;
+
+        @NotBlank
+        @Size(min = 2, max = 100)
+        private String name;
+
+        @Email
+        private String email;
+
+        public Long getId() { return id; }
+        public void setId(Long id) { this.id = id; }
+        public String getName() { return name; }
+        public void setName(String name) { this.name = name; }
+        public String getEmail() { return email; }
+        public void setEmail(String email) { this.email = email; }
+    }
+  src/main/java/com/example/UserController.java: |
+    package com.example;
+
+    import com.example.dto.UserDto;
+    import org.springframework.web.bind.annotation.*;
+
+    @RestController
+    @RequestMapping("/api/users")
+    public class UserController {
+        @GetMapping("/{id}")
+        public UserDto getUser(@PathVariable Long id) {
+            UserDto dto = new UserDto();
+            dto.setId(id);
+            dto.setName("User");
+            return dto;
+        }
+
+        @PostMapping
+        public UserDto createUser(@RequestBody UserDto dto) {
+            dto.setId(1L);
+            return dto;
+        }
+    }
+  src/main/java/com/example/dto/ProductDto.java: |
+    package com.example.dto;
+
+    import javax.validation.constraints.*;
+
+    public class ProductDto {
+        private Long id;
+
+        @NotBlank
+        @Size(min = 1, max = 200)
+        private String title;
+
+        @Positive
+        private double price;
+
+        private String category;
+
+        public Long getId() { return id; }
+        public void setId(Long id) { this.id = id; }
+        public String getTitle() { return title; }
+        public void setTitle(String title) { this.title = title; }
+        public double getPrice() { return price; }
+        public void setPrice(double price) { this.price = price; }
+        public String getCategory() { return category; }
+        public void setCategory(String category) { this.category = category; }
+    }
+  src/main/java/com/example/UserService.java: |
+    package com.example;
+
+    import com.example.dto.UserDto;
+    import org.springframework.stereotype.Service;
+
+    @Service
+    public class UserService {
+        public UserDto createUser(String name, String email) {
+            UserDto dto = new UserDto();
+            dto.setName(name);
+            return dto;
+        }
+
+        public UserDto updateUser(Long id, String name) {
+            UserDto dto = new UserDto();
+            dto.setId(id);
+            dto.setName(name);
+            return dto;
+        }
+    }
+  src/main/java/com/example/config/ValidationConfig.java: |
+    package com.example.config;
+
+    import org.springframework.context.annotation.Bean;
+    import org.springframework.context.annotation.Configuration;
+    import org.springframework.validation.beanvalidation.LocalValidatorFactoryBean;
+
+    @Configuration
+    public class ValidationConfig {
+        @Bean
+        public LocalValidatorFactoryBean validator() {
+            return new LocalValidatorFactoryBean();
+        }
+    }
+  src/test/java/com/example/UserDtoTest.java: |
+    package com.example;
+
+    import com.example.dto.UserDto;
+    import org.junit.jupiter.api.Test;
+    import javax.validation.Validation;
+    import javax.validation.Validator;
+    import static org.junit.jupiter.api.Assertions.*;
+
+    class UserDtoTest {
+        private final Validator validator = Validation.buildDefaultValidatorFactory().getValidator();
+
+        @Test
+        void validUserDto() {
+            UserDto dto = new UserDto();
+            dto.setName("John");
+            var violations = validator.validate(dto);
+            assertTrue(violations.isEmpty());
+        }
+    }
+  src/main/java/com/example/dto/OrderDto.java: |
+    package com.example.dto;
+
+    import javax.validation.constraints.*;
+    import java.math.BigDecimal;
+
+    public class OrderDto {
+        private Long id;
+
+        @NotNull
+        private Long customerId;
+
+        @Positive
+        private BigDecimal amount;
+
+        @NotBlank
+        private String status;
+
+        public Long getId() { return id; }
+        public void setId(Long id) { this.id = id; }
+        public Long getCustomerId() { return customerId; }
+        public void setCustomerId(Long customerId) { this.customerId = customerId; }
+        public BigDecimal getAmount() { return amount; }
+        public void setAmount(BigDecimal amount) { this.amount = amount; }
+    }
+
+must_include_files:
+  - src/main/java/com/example/dto/UserDto.java
+  - src/main/java/com/example/UserController.java
+
+must_include_content_from:
+  src/main/java/com/example/dto/UserDto.java:
+    - "import javax.validation.constraints.*"
+    - "@NotBlank"
+    - "@Size(min = 2, max = 100)"
+    - "@Email"
+    - "public String getEmail() { return email; }"
+  src/main/java/com/example/UserController.java:
+    - "import com.example.dto.UserDto"
+    - '@RequestMapping("/api/users")'
+    - "public UserDto getUser"
+
+must_not_include:
+  # ProductDto.java: sibling DTO with same validation annotations
+  - ProductDto
+  - getTitle
+  - "@Positive"
+  # UserService.java: creates UserDto, but doesn't help review annotations
+  - UserService
+  - updateUser
+  # ValidationConfig.java: validator infrastructure
+  - ValidationConfig
+  - LocalValidatorFactoryBean
+  # UserDtoTest.java: tests DTO validation
+  - UserDtoTest
+  - buildDefaultValidatorFactory
+  - violations
+  # OrderDto.java: another validated DTO
+  - OrderDto
+  - customerId
+  - "@NotNull"
+
+must_not_include_files:
+  - src/main/java/com/example/dto/ProductDto.java
+  - src/main/java/com/example/UserService.java
+  - src/main/java/com/example/config/ValidationConfig.java
+  - src/test/java/com/example/UserDtoTest.java
+  - src/main/java/com/example/dto/OrderDto.java
+
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

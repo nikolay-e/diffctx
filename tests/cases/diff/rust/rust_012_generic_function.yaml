@@ -1,0 +1,257 @@
+# Scenario: Generalizing identity from i32 to generic, adding compose/curry/min_by/max_by
+# Changed: src/utils.rs — identity<T>, swap<T>, compare<T>, min_by, max_by, compose, curry, Transformer::transform
+# Reviewer questions: Are the higher-order function signatures correct? Does curry clone correctly?
+# Trap files:
+#   - src/iterator_ext.rs: Iterator extension methods — similar generic/FnOnce patterns but no import
+#   - src/predicate.rs: Predicate combinators — "function composition" domain overlap but independent
+initial:
+  src/lib.rs: |
+    pub mod utils;
+    pub mod iterator_ext;
+    pub mod predicate;
+  src/utils.rs: |
+    use std::fmt::Display;
+
+    pub fn identity(x: i32) -> i32 {
+        x
+    }
+
+    pub fn stringify<T: Display>(value: T) -> String {
+        format!("{}", value)
+    }
+
+    pub fn apply<T, F>(value: T, f: F) -> T
+    where
+        F: FnOnce(T) -> T,
+    {
+        f(value)
+    }
+
+    pub struct Transformer<T> {
+        value: T,
+    }
+
+    impl<T> Transformer<T> {
+        pub fn new(value: T) -> Self {
+            Self { value }
+        }
+    }
+  src/iterator_ext.rs: |
+    pub trait IteratorExt: Iterator {
+        fn take_while_inclusive<P>(self, predicate: P) -> TakeWhileInclusive<Self, P>
+        where
+            Self: Sized,
+            P: FnMut(&Self::Item) -> bool,
+        {
+            TakeWhileInclusive { iter: self, predicate, done: false }
+        }
+    }
+
+    impl<I: Iterator> IteratorExt for I {}
+
+    pub struct TakeWhileInclusive<I, P> {
+        iter: I,
+        predicate: P,
+        done: bool,
+    }
+
+    impl<I: Iterator, P: FnMut(&I::Item) -> bool> Iterator for TakeWhileInclusive<I, P> {
+        type Item = I::Item;
+
+        fn next(&mut self) -> Option<Self::Item> {
+            if self.done { return None; }
+            let item = self.iter.next()?;
+            if !(self.predicate)(&item) {
+                self.done = true;
+            }
+            Some(item)
+        }
+    }
+  src/predicate.rs: |
+    pub struct Predicate<T> {
+        f: Box<dyn Fn(&T) -> bool>,
+    }
+
+    impl<T: 'static> Predicate<T> {
+        pub fn new<F: Fn(&T) -> bool + 'static>(f: F) -> Self {
+            Self { f: Box::new(f) }
+        }
+
+        pub fn test(&self, value: &T) -> bool {
+            (self.f)(value)
+        }
+
+        pub fn and(self, other: Self) -> Self {
+            Self::new(move |v| (self.f)(v) && (other.f)(v))
+        }
+
+        pub fn or(self, other: Self) -> Self {
+            Self::new(move |v| (self.f)(v) || (other.f)(v))
+        }
+
+        pub fn negate(self) -> Self {
+            Self::new(move |v| !(self.f)(v))
+        }
+    }
+changed:
+  src/lib.rs: |
+    pub mod utils;
+    pub mod iterator_ext;
+    pub mod predicate;
+  src/utils.rs: |
+    use std::cmp::Ordering;
+    use std::fmt::Display;
+
+    pub fn identity<T>(x: T) -> T {
+        x
+    }
+
+    pub fn swap<T>(a: T, b: T) -> (T, T) {
+        (b, a)
+    }
+
+    pub fn compare<T: PartialOrd>(a: &T, b: &T) -> Ordering {
+        a.partial_cmp(b).unwrap_or(Ordering::Equal)
+    }
+
+    pub fn min_by<T, F, K>(a: T, b: T, mut key_fn: F) -> T
+    where
+        F: FnMut(&T) -> K,
+        K: Ord,
+    {
+        if key_fn(&a) <= key_fn(&b) { a } else { b }
+    }
+
+    pub fn max_by<T, F, K>(a: T, b: T, mut key_fn: F) -> T
+    where
+        F: FnMut(&T) -> K,
+        K: Ord,
+    {
+        if key_fn(&a) >= key_fn(&b) { a } else { b }
+    }
+
+    pub fn stringify<T: Display>(value: T) -> String {
+        format!("{}", value)
+    }
+
+    pub fn apply<T, F>(value: T, f: F) -> T
+    where
+        F: FnOnce(T) -> T,
+    {
+        f(value)
+    }
+
+    pub fn compose<A, B, C, F, G>(f: F, g: G) -> impl Fn(A) -> C
+    where
+        F: Fn(A) -> B,
+        G: Fn(B) -> C,
+    {
+        move |x| g(f(x))
+    }
+
+    pub fn curry<A, B, C, F>(f: F) -> impl Fn(A) -> impl Fn(B) -> C
+    where
+        F: Fn(A, B) -> C + Clone,
+        A: Clone,
+    {
+        move |a: A| {
+            let f = f.clone();
+            let a = a.clone();
+            move |b: B| f(a.clone(), b)
+        }
+    }
+
+    pub struct Transformer<T> {
+        value: T,
+    }
+
+    impl<T> Transformer<T> {
+        pub fn new(value: T) -> Self {
+            Self { value }
+        }
+
+        pub fn transform<U, F>(self, f: F) -> Transformer<U>
+        where
+            F: FnOnce(T) -> U,
+        {
+            Transformer { value: f(self.value) }
+        }
+
+        pub fn into_inner(self) -> T {
+            self.value
+        }
+    }
+  src/iterator_ext.rs: |
+    pub trait IteratorExt: Iterator {
+        fn take_while_inclusive<P>(self, predicate: P) -> TakeWhileInclusive<Self, P>
+        where
+            Self: Sized,
+            P: FnMut(&Self::Item) -> bool,
+        {
+            TakeWhileInclusive { iter: self, predicate, done: false }
+        }
+    }
+
+    impl<I: Iterator> IteratorExt for I {}
+
+    pub struct TakeWhileInclusive<I, P> {
+        iter: I,
+        predicate: P,
+        done: bool,
+    }
+
+    impl<I: Iterator, P: FnMut(&I::Item) -> bool> Iterator for TakeWhileInclusive<I, P> {
+        type Item = I::Item;
+
+        fn next(&mut self) -> Option<Self::Item> {
+            if self.done { return None; }
+            let item = self.iter.next()?;
+            if !(self.predicate)(&item) {
+                self.done = true;
+            }
+            Some(item)
+        }
+    }
+  src/predicate.rs: |
+    pub struct Predicate<T> {
+        f: Box<dyn Fn(&T) -> bool>,
+    }
+
+    impl<T: 'static> Predicate<T> {
+        pub fn new<F: Fn(&T) -> bool + 'static>(f: F) -> Self {
+            Self { f: Box::new(f) }
+        }
+
+        pub fn test(&self, value: &T) -> bool {
+            (self.f)(value)
+        }
+
+        pub fn and(self, other: Self) -> Self {
+            Self::new(move |v| (self.f)(v) && (other.f)(v))
+        }
+
+        pub fn or(self, other: Self) -> Self {
+            Self::new(move |v| (self.f)(v) || (other.f)(v))
+        }
+
+        pub fn negate(self) -> Self {
+            Self::new(move |v| !(self.f)(v))
+        }
+    }
+must_include_files:
+- src/utils.rs
+must_include_content:
+- use std::cmp::Ordering;
+- 'pub fn identity<T>(x: T) -> T {'
+must_not_include:
+- IteratorExt
+- TakeWhileInclusive
+- Predicate
+- iterator_ext.rs
+- predicate.rs
+must_not_include_files:
+- src/iterator_ext.rs
+- src/predicate.rs
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

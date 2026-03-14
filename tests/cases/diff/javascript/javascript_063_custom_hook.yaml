@@ -1,0 +1,149 @@
+# Reviewer sees: UserList.tsx now uses useApi hook to fetch and render users.
+# Q1: "What does useApi return — does the destructuring match?"
+#     -> useApi.ts: returns { data, loading, error }. Component uses
+#        all three for conditional rendering. Shapes align.
+# Q2: "How does useApi handle fetch errors?"
+#     -> useApi.ts: catches errors and sets error state. Component
+#        renders error.message when error is truthy.
+#
+# Not needed:
+#   - useLocalStorage.ts: different hook (localStorage persistence).
+#     Same hook pattern but unrelated purpose.
+#   - UserCard.tsx: child component rendering a single user.
+#     Not imported by UserList in this change.
+
+initial:
+  src/hooks/useApi.ts: |
+    import { useState, useEffect } from 'react';
+
+    export function useApi<T>(url: string) {
+        const [data, setData] = useState<T | null>(null);
+        const [loading, setLoading] = useState(true);
+        const [error, setError] = useState<Error | null>(null);
+
+        useEffect(() => {
+            fetch(url)
+                .then(res => res.json())
+                .then(setData)
+                .catch(setError)
+                .finally(() => setLoading(false));
+        }, [url]);
+
+        return { data, loading, error };
+    }
+  src/components/UserList.tsx: |
+    export function UserList() {
+        return <div>Placeholder</div>;
+    }
+  src/hooks/useLocalStorage.ts: |
+    import { useState } from 'react';
+
+    export function useLocalStorage<T>(key: string, initialValue: T): [T, (v: T) => void] {
+        const [value, setValue] = useState<T>(() => {
+            try {
+                const stored = localStorage.getItem(key);
+                return stored ? JSON.parse(stored) : initialValue;
+            } catch { return initialValue; }
+        });
+        const setAndStore = (v: T) => {
+            setValue(v);
+            localStorage.setItem(key, JSON.stringify(v));
+        };
+        return [value, setAndStore];
+    }
+  src/components/UserCard.tsx: |
+    interface UserCardProps {
+        name: string;
+        email: string;
+    }
+
+    export function UserCard({ name, email }: UserCardProps) {
+        return (
+            <div className="user-card">
+                <h3>{name}</h3>
+                <p>{email}</p>
+            </div>
+        );
+    }
+changed:
+  src/hooks/useApi.ts: |
+    import { useState, useEffect } from 'react';
+
+    export function useApi<T>(url: string) {
+        const [data, setData] = useState<T | null>(null);
+        const [loading, setLoading] = useState(true);
+        const [error, setError] = useState<Error | null>(null);
+
+        useEffect(() => {
+            fetch(url)
+                .then(res => res.json())
+                .then(setData)
+                .catch(setError)
+                .finally(() => setLoading(false));
+        }, [url]);
+
+        return { data, loading, error };
+    }
+  src/components/UserList.tsx: |
+    import { useApi } from '../hooks/useApi';
+
+    interface User {
+        id: string;
+        name: string;
+    }
+
+    export function UserList() {
+        const { data, loading, error } = useApi<User[]>('/api/users');
+        if (loading) return <div>Loading...</div>;
+        if (error) return <div>Error: {error.message}</div>;
+        return <ul>{data?.map(u => <li key={u.id}>{u.name}</li>)}</ul>;
+    }
+  src/hooks/useLocalStorage.ts: |
+    import { useState } from 'react';
+
+    export function useLocalStorage<T>(key: string, initialValue: T): [T, (v: T) => void] {
+        const [value, setValue] = useState<T>(() => {
+            try {
+                const stored = localStorage.getItem(key);
+                return stored ? JSON.parse(stored) : initialValue;
+            } catch { return initialValue; }
+        });
+        const setAndStore = (v: T) => {
+            setValue(v);
+            localStorage.setItem(key, JSON.stringify(v));
+        };
+        return [value, setAndStore];
+    }
+  src/components/UserCard.tsx: |
+    interface UserCardProps {
+        name: string;
+        email: string;
+    }
+
+    export function UserCard({ name, email }: UserCardProps) {
+        return (
+            <div className="user-card">
+                <h3>{name}</h3>
+                <p>{email}</p>
+            </div>
+        );
+    }
+must_include_files:
+  # Unchanged file — the imported hook. Reviewer needs to verify
+  # the return shape { data, loading, error } matches destructuring.
+  - src/hooks/useApi.ts
+must_include_content_from:
+  src/hooks/useApi.ts:
+    - "return { data, loading, error }"
+    - "function useApi"
+must_not_include:
+  # useLocalStorage.ts: different hook, localStorage persistence
+  - useLocalStorage
+  - localStorage
+  # UserCard.tsx: child component not imported
+  - UserCardProps
+  - user-card
+max_fragments: 5
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

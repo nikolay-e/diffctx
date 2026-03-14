@@ -1,0 +1,254 @@
+# Scenario: Dispatcher uses getattr() to dynamically call action methods
+# Changed: dispatcher.py imports actions and uses getattr(actions, method_name) to dispatch
+# Reviewer questions: Is getattr fallback safe? What if action_name doesn't exist?
+# Trap 1: command_parser.py — parses command strings, shares "dispatch/command" vocabulary but independent
+# Trap 2: plugin_loader.py — loads plugins dynamically, shares "dynamic call" domain but no dep
+initial:
+  actions.py: |
+    from typing import Dict, Any, Optional, List
+    from dataclasses import dataclass, field
+    from datetime import datetime
+    from enum import Enum
+
+    class ActionPriority(Enum):
+        LOW = 1
+        NORMAL = 2
+        HIGH = 3
+
+    @dataclass
+    class ActionResult:
+        action: str
+        data: Any
+        success: bool
+        timestamp: datetime = field(default_factory=datetime.now)
+        error_message: str = ""
+
+        def to_dict(self) -> dict:
+            return {
+                "action": self.action,
+                "data": self.data,
+                "success": self.success,
+                "error_message": self.error_message
+            }
+
+    class ActionHandler:
+        def __init__(self):
+            self._history: List[ActionResult] = []
+
+        def process(self, data: Any) -> ActionResult:
+            result = {"action": "process", "data": data, "processed": True}
+            return ActionResult(action="process", data=result, success=True)
+
+        def validate(self, data: Any) -> ActionResult:
+            is_valid = data is not None and bool(data)
+            return ActionResult(
+                action="validate",
+                data={"valid": is_valid},
+                success=is_valid
+            )
+
+        def transform(self, data: Any) -> ActionResult:
+            if isinstance(data, str):
+                transformed = data.upper()
+            else:
+                transformed = str(data)
+            return ActionResult(action="transform", data=transformed, success=True)
+
+        def get_history(self, limit: int = 10) -> List[ActionResult]:
+            return self._history[-limit:]
+  dispatcher.py: |
+    def dispatch():
+        pass
+  command_parser.py: |
+    from typing import Dict, Any, Optional, List, Tuple
+    from dataclasses import dataclass
+
+    @dataclass
+    class ParsedCommand:
+        name: str
+        args: List[str]
+        kwargs: Dict[str, str]
+
+    class CommandParser:
+        def __init__(self, prefix: str = "/"):
+            self._prefix = prefix
+
+        def parse(self, input_str: str) -> Optional[ParsedCommand]:
+            if not input_str.startswith(self._prefix):
+                return None
+            parts = input_str[len(self._prefix):].split()
+            if not parts:
+                return None
+            name = parts[0]
+            args = [p for p in parts[1:] if "=" not in p]
+            kwargs = dict(p.split("=", 1) for p in parts[1:] if "=" in p)
+            return ParsedCommand(name=name, args=args, kwargs=kwargs)
+  plugin_loader.py: |
+    import importlib
+    from typing import Dict, Any, Optional, Type
+
+    class PluginLoader:
+        def __init__(self):
+            self._plugins: Dict[str, Any] = {}
+
+        def load(self, module_path: str, class_name: str) -> Optional[Type]:
+            try:
+                module = importlib.import_module(module_path)
+                return getattr(module, class_name, None)
+            except ImportError:
+                return None
+
+        def register(self, name: str, plugin: Any) -> None:
+            self._plugins[name] = plugin
+
+        def get(self, name: str) -> Optional[Any]:
+            return self._plugins.get(name)
+changed:
+  actions.py: |
+    from typing import Dict, Any, Optional, List
+    from dataclasses import dataclass, field
+    from datetime import datetime
+    from enum import Enum
+
+    class ActionPriority(Enum):
+        LOW = 1
+        NORMAL = 2
+        HIGH = 3
+
+    @dataclass
+    class ActionResult:
+        action: str
+        data: Any
+        success: bool
+        timestamp: datetime = field(default_factory=datetime.now)
+        error_message: str = ""
+
+        def to_dict(self) -> dict:
+            return {
+                "action": self.action,
+                "data": self.data,
+                "success": self.success,
+                "error_message": self.error_message
+            }
+
+    class ActionHandler:
+        def __init__(self):
+            self._history: List[ActionResult] = []
+
+        def process(self, data: Any) -> ActionResult:
+            result = {"action": "process", "data": data, "processed": True}
+            return ActionResult(action="process", data=result, success=True)
+
+        def validate(self, data: Any) -> ActionResult:
+            is_valid = data is not None and bool(data)
+            return ActionResult(
+                action="validate",
+                data={"valid": is_valid},
+                success=is_valid
+            )
+
+        def transform(self, data: Any) -> ActionResult:
+            if isinstance(data, str):
+                transformed = data.upper()
+            else:
+                transformed = str(data)
+            return ActionResult(action="transform", data=transformed, success=True)
+
+        def get_history(self, limit: int = 10) -> List[ActionResult]:
+            return self._history[-limit:]
+  dispatcher.py: |
+    from actions import ActionHandler, ActionResult, ActionPriority
+    from typing import Any, Optional, List
+
+    handler = ActionHandler()
+
+    class DynamicDispatcher:
+        def __init__(self, action_handler: ActionHandler = None):
+            self.handler = action_handler or ActionHandler()
+            self._dispatch_count = 0
+
+        def dispatch(self, action: str, data: Any) -> Optional[ActionResult]:
+            method = getattr(self.handler, action, None)
+            if method is None:
+                return ActionResult(
+                    action=action, data=None, success=False,
+                    error_message=f"Unknown action: {action}"
+                )
+            self._dispatch_count += 1
+            return method(data)
+
+        def batch_dispatch(self, actions: List[dict]) -> List[ActionResult]:
+            results = []
+            for spec in actions:
+                result = self.dispatch(spec.get("action"), spec.get("data"))
+                results.append(result)
+            return results
+
+    def dispatch(action: str, data: Any) -> Optional[ActionResult]:
+        method = getattr(handler, action, None)
+        if method:
+            return method(data)
+        return None
+  command_parser.py: |
+    from typing import Dict, Any, Optional, List, Tuple
+    from dataclasses import dataclass
+
+    @dataclass
+    class ParsedCommand:
+        name: str
+        args: List[str]
+        kwargs: Dict[str, str]
+
+    class CommandParser:
+        def __init__(self, prefix: str = "/"):
+            self._prefix = prefix
+
+        def parse(self, input_str: str) -> Optional[ParsedCommand]:
+            if not input_str.startswith(self._prefix):
+                return None
+            parts = input_str[len(self._prefix):].split()
+            if not parts:
+                return None
+            name = parts[0]
+            args = [p for p in parts[1:] if "=" not in p]
+            kwargs = dict(p.split("=", 1) for p in parts[1:] if "=" in p)
+            return ParsedCommand(name=name, args=args, kwargs=kwargs)
+  plugin_loader.py: |
+    import importlib
+    from typing import Dict, Any, Optional, Type
+
+    class PluginLoader:
+        def __init__(self):
+            self._plugins: Dict[str, Any] = {}
+
+        def load(self, module_path: str, class_name: str) -> Optional[Type]:
+            try:
+                module = importlib.import_module(module_path)
+                return getattr(module, class_name, None)
+            except ImportError:
+                return None
+
+        def register(self, name: str, plugin: Any) -> None:
+            self._plugins[name] = plugin
+
+        def get(self, name: str) -> Optional[Any]:
+            return self._plugins.get(name)
+must_include_files:
+- dispatcher.py
+- actions.py
+must_include_content_from:
+  dispatcher.py:
+  - 'from actions import ActionHandler, ActionResult, ActionPriority'
+  - 'def __init__(self, action_handler: ActionHandler = None):'
+must_not_include:
+- CommandParser
+- ParsedCommand
+- PluginLoader
+- plugin_loader
+must_not_include_files:
+- command_parser.py
+- plugin_loader.py
+add_garbage_files: false
+skip_garbage_check: true
+max_fragments: 10
+max_files: 5

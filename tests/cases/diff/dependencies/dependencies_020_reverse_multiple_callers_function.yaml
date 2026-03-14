@@ -1,0 +1,112 @@
+initial:
+  core/calculator.py: |
+    def calculate(x: float) -> float:
+        return x * 2
+  services/billing.py: |
+    from core.calculator import calculate
+
+    def compute_bill(amount: float) -> float:
+        base = calculate(amount)
+        return base + 10
+  services/pricing.py: |
+    from core.calculator import calculate
+
+    def get_price(value: float) -> float:
+        return calculate(value) * 1.1
+  api/endpoints.py: |
+    from core.calculator import calculate
+
+    def handle_request(data: dict) -> dict:
+        result = calculate(data["value"])
+        return {"result": result}
+  utils/helpers.py: |
+    def format_output(value: float) -> str:
+        return f"Result: {value:.2f}"
+
+  # --- Tricky: different calculate function in unrelated module (name collision, no import link) ---
+  math/geometry.py: |
+    GARBAGE_DEP_020_GEOM_CALC_A = "geometry_module"
+    GARBAGE_DEP_020_GEOM_AREA_B = True
+
+    def calculate(x: float, y: float) -> float:
+        GARBAGE_DEP_020_GEOM_BODY_C = "area_calc"
+        return x * y
+
+  # --- Tricky: same core/ directory sibling with similar numeric function ---
+  core/transformer.py: |
+    GARBAGE_DEP_020_TRANSFORM_MOD_G = "core_sibling"
+    GARBAGE_DEP_020_TRANSFORM_TYPE_H = "numeric"
+
+    def transform(x: float) -> float:
+        GARBAGE_DEP_020_TRANSFORM_BODY_I = True
+        return x * 2
+
+changed:
+  core/calculator.py: |
+    def calculate(x: float, precision: int = 2) -> float:
+        result = x * 2
+        return round(result, precision)
+  services/billing.py: |
+    from core.calculator import calculate
+
+    def compute_bill(amount: float) -> float:
+        base = calculate(amount)
+        return base + 10
+  services/pricing.py: |
+    from core.calculator import calculate
+
+    def get_price(value: float) -> float:
+        return calculate(value) * 1.1
+  api/endpoints.py: |
+    from core.calculator import calculate
+
+    def handle_request(data: dict) -> dict:
+        result = calculate(data["value"])
+        return {"result": result}
+  utils/helpers.py: |
+    def format_output(value: float) -> str:
+        return f"Result: {value:.2f}"
+  math/geometry.py: |
+    GARBAGE_DEP_020_GEOM_CALC_A = "geometry_module"
+    GARBAGE_DEP_020_GEOM_AREA_B = True
+
+    def calculate(x: float, y: float) -> float:
+        GARBAGE_DEP_020_GEOM_BODY_C = "area_calc"
+        return x * y
+  core/transformer.py: |
+    GARBAGE_DEP_020_TRANSFORM_MOD_G = "core_sibling"
+    GARBAGE_DEP_020_TRANSFORM_TYPE_H = "numeric"
+
+    def transform(x: float) -> float:
+        GARBAGE_DEP_020_TRANSFORM_BODY_I = True
+        return x * 2
+
+# === Assertions ===
+
+must_include_files:
+- core/calculator.py
+
+must_include_content_from:
+  core/calculator.py:
+    - 'def calculate(x: float, precision: int = 2) -> float:'
+    - round(result, precision)
+
+must_not_include:
+# Tricky: different calculate function (name collision, different signature)
+- GARBAGE_DEP_020_GEOM_CALC_A
+- GARBAGE_DEP_020_GEOM_AREA_B
+- GARBAGE_DEP_020_GEOM_BODY_C
+# Tricky: same core/ directory sibling with similar numeric transform
+- GARBAGE_DEP_020_TRANSFORM_MOD_G
+- GARBAGE_DEP_020_TRANSFORM_TYPE_H
+- GARBAGE_DEP_020_TRANSFORM_BODY_I
+
+must_not_include_files:
+- math/geometry.py
+- core/transformer.py
+- utils/helpers.py
+
+max_fragments: 8
+max_files: 5
+add_garbage_files: false
+skip_garbage_check: true

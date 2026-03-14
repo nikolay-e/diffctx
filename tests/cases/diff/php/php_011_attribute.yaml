@@ -1,0 +1,373 @@
+# Scenario: ApiController uses Route attribute for endpoint declaration
+#   — reviewer needs Route attribute class to understand constructor params
+#
+# Diff shows:
+#   - class ApiController { users(): array }
+#   + use App\Attributes\Route; adds #[Route('/api/users', 'GET')],
+#     #[Route('/api/users', 'POST', middleware: ['auth'])],
+#     #[Route('/api/users/{id}', 'DELETE', middleware: ['auth', 'admin'])]
+#
+# Reviewer questions:
+#   Q1: "What parameters does the Route attribute accept?"
+#       -> (string $path, string $method = 'GET', array $middleware = []).
+#   Q2: "Is the middleware parameter validated or just stored?"
+#       -> Just stored as array, with getMethod() returning uppercased.
+#   Q3: "Is TARGET_METHOD correct for method-level attributes?"
+#       -> Yes, #[Attribute(Attribute::TARGET_METHOD)] is declared.
+#
+# Not needed for comprehension:
+#   - src/Attributes/Validate.php: sibling attribute in same Attributes namespace.
+#     Also uses #[Attribute(...)]. HARDEST TRAP: same namespace, same PHP attribute
+#     mechanism, same constructor pattern. But TARGET_PARAMETER not TARGET_METHOD,
+#     and not applied to ApiController.
+#
+#   - src/Controllers/AdminController.php: sibling controller in same namespace.
+#     Also has users() method. HARD TRAP: same method name, same namespace,
+#     same return type. But doesn't use Route attribute.
+#
+#   - src/Attributes/Middleware.php: another attribute in same namespace.
+#     Handles middleware configuration — domain overlap with Route's middleware
+#     parameter. Same #[Attribute] pattern. But independent attribute.
+#
+#   - src/Controllers/AuthController.php: another controller that would use
+#     auth middleware. Same Controllers namespace. Has login/logout methods.
+#     But doesn't help understand Route attribute parameters.
+#
+#   - src/Routing/Router.php: processes Route attributes at runtime. Calls
+#     getPath() and getMethod() on Route instances. Direct consumer of the
+#     attribute. But doesn't help verify attribute constructor params.
+
+initial:
+  src/Attributes/Route.php: |
+    <?php
+    namespace App\Attributes;
+
+    #[Attribute(Attribute::TARGET_METHOD)]
+    class Route {
+        public function __construct(
+            public string $path,
+            public string $method = 'GET',
+            public array $middleware = []
+        ) {}
+
+        public function getPath(): string {
+            return $this->path;
+        }
+
+        public function getMethod(): string {
+            return strtoupper($this->method);
+        }
+
+        public function getMiddleware(): array {
+            return $this->middleware;
+        }
+    }
+  src/Controllers/ApiController.php: |
+    <?php
+    namespace App\Controllers;
+
+    class ApiController {
+        public function users(): array {
+            return ['users' => []];
+        }
+    }
+  src/Attributes/Validate.php: |
+    <?php
+    namespace App\Attributes;
+
+    #[Attribute(Attribute::TARGET_PARAMETER)]
+    class Validate {
+        public function __construct(
+            public string $rule,
+            public ?string $message = null
+        ) {}
+
+        public function getRule(): string {
+            return $this->rule;
+        }
+
+        public function getMessage(): string {
+            return $this->message ?? "Validation failed for rule: {$this->rule}";
+        }
+    }
+  src/Controllers/AdminController.php: |
+    <?php
+    namespace App\Controllers;
+
+    class AdminController {
+        public function dashboard(): array {
+            return ['page' => 'admin_dashboard', 'stats' => []];
+        }
+
+        public function users(): array {
+            return ['admin_users' => [], 'total' => 0];
+        }
+
+        public function settings(): array {
+            return ['settings' => ['maintenance' => false, 'debug' => false]];
+        }
+    }
+  src/Attributes/Middleware.php: |
+    <?php
+    namespace App\Attributes;
+
+    #[Attribute(Attribute::TARGET_CLASS | Attribute::TARGET_METHOD)]
+    class Middleware {
+        public function __construct(
+            public array $names,
+            public bool $global = false
+        ) {}
+
+        public function getNames(): array {
+            return $this->names;
+        }
+
+        public function isGlobal(): bool {
+            return $this->global;
+        }
+    }
+  src/Controllers/AuthController.php: |
+    <?php
+    namespace App\Controllers;
+
+    class AuthController {
+        public function login(string $username, string $password): array {
+            return ['token' => 'jwt_token_here', 'expires_in' => 3600];
+        }
+
+        public function logout(string $token): array {
+            return ['revoked' => true];
+        }
+
+        public function refresh(string $token): array {
+            return ['token' => 'new_jwt_token', 'expires_in' => 3600];
+        }
+    }
+  src/Routing/Router.php: |
+    <?php
+    namespace App\Routing;
+
+    class Router {
+        private array $routes = [];
+
+        public function registerController(string $controllerClass): void {
+            $reflection = new \ReflectionClass($controllerClass);
+            foreach ($reflection->getMethods() as $method) {
+                $attributes = $method->getAttributes(\App\Attributes\Route::class);
+                foreach ($attributes as $attr) {
+                    $route = $attr->newInstance();
+                    $this->routes[] = [
+                        'path' => $route->getPath(),
+                        'method' => $route->getMethod(),
+                        'handler' => [$controllerClass, $method->getName()],
+                    ];
+                }
+            }
+        }
+
+        public function match(string $path, string $method): ?array {
+            foreach ($this->routes as $route) {
+                if ($route['path'] === $path && $route['method'] === strtoupper($method)) {
+                    return $route['handler'];
+                }
+            }
+            return null;
+        }
+    }
+
+changed:
+  src/Attributes/Route.php: |
+    <?php
+    namespace App\Attributes;
+
+    #[Attribute(Attribute::TARGET_METHOD)]
+    class Route {
+        public function __construct(
+            public string $path,
+            public string $method = 'GET',
+            public array $middleware = []
+        ) {}
+
+        public function getPath(): string {
+            return $this->path;
+        }
+
+        public function getMethod(): string {
+            return strtoupper($this->method);
+        }
+
+        public function getMiddleware(): array {
+            return $this->middleware;
+        }
+    }
+  src/Controllers/ApiController.php: |
+    <?php
+    namespace App\Controllers;
+
+    use App\Attributes\Route;
+
+    class ApiController {
+        #[Route('/api/users', 'GET')]
+        public function users(): array {
+            return ['users' => []];
+        }
+
+        #[Route('/api/users', 'POST', middleware: ['auth'])]
+        public function createUser(array $data): array {
+            return ['user' => $data, 'created' => true];
+        }
+
+        #[Route('/api/users/{id}', 'DELETE', middleware: ['auth', 'admin'])]
+        public function deleteUser(int $id): array {
+            return ['deleted' => $id];
+        }
+    }
+  src/Attributes/Validate.php: |
+    <?php
+    namespace App\Attributes;
+
+    #[Attribute(Attribute::TARGET_PARAMETER)]
+    class Validate {
+        public function __construct(
+            public string $rule,
+            public ?string $message = null
+        ) {}
+
+        public function getRule(): string {
+            return $this->rule;
+        }
+
+        public function getMessage(): string {
+            return $this->message ?? "Validation failed for rule: {$this->rule}";
+        }
+    }
+  src/Controllers/AdminController.php: |
+    <?php
+    namespace App\Controllers;
+
+    class AdminController {
+        public function dashboard(): array {
+            return ['page' => 'admin_dashboard', 'stats' => []];
+        }
+
+        public function users(): array {
+            return ['admin_users' => [], 'total' => 0];
+        }
+
+        public function settings(): array {
+            return ['settings' => ['maintenance' => false, 'debug' => false]];
+        }
+    }
+  src/Attributes/Middleware.php: |
+    <?php
+    namespace App\Attributes;
+
+    #[Attribute(Attribute::TARGET_CLASS | Attribute::TARGET_METHOD)]
+    class Middleware {
+        public function __construct(
+            public array $names,
+            public bool $global = false
+        ) {}
+
+        public function getNames(): array {
+            return $this->names;
+        }
+
+        public function isGlobal(): bool {
+            return $this->global;
+        }
+    }
+  src/Controllers/AuthController.php: |
+    <?php
+    namespace App\Controllers;
+
+    class AuthController {
+        public function login(string $username, string $password): array {
+            return ['token' => 'jwt_token_here', 'expires_in' => 3600];
+        }
+
+        public function logout(string $token): array {
+            return ['revoked' => true];
+        }
+
+        public function refresh(string $token): array {
+            return ['token' => 'new_jwt_token', 'expires_in' => 3600];
+        }
+    }
+  src/Routing/Router.php: |
+    <?php
+    namespace App\Routing;
+
+    class Router {
+        private array $routes = [];
+
+        public function registerController(string $controllerClass): void {
+            $reflection = new \ReflectionClass($controllerClass);
+            foreach ($reflection->getMethods() as $method) {
+                $attributes = $method->getAttributes(\App\Attributes\Route::class);
+                foreach ($attributes as $attr) {
+                    $route = $attr->newInstance();
+                    $this->routes[] = [
+                        'path' => $route->getPath(),
+                        'method' => $route->getMethod(),
+                        'handler' => [$controllerClass, $method->getName()],
+                    ];
+                }
+            }
+        }
+
+        public function match(string $path, string $method): ?array {
+            foreach ($this->routes as $route) {
+                if ($route['path'] === $path && $route['method'] === strtoupper($method)) {
+                    return $route['handler'];
+                }
+            }
+            return null;
+        }
+    }
+
+must_include_files:
+  - src/Controllers/ApiController.php
+  # Q1/Q2/Q3: Reviewer needs Route attribute to understand constructor parameters
+  - src/Attributes/Route.php
+
+must_include_content_from:
+  src/Controllers/ApiController.php:
+    - "#[Route('/api/users', 'POST', middleware: ['auth'])]"
+    - "use App\\Attributes\\Route"
+  src/Attributes/Route.php:
+    - "public string $path"
+    - "public string $method = 'GET'"
+    - "public array $middleware = []"
+
+must_not_include:
+  # --- Validate.php: HARDEST TRAP — sibling attribute, same namespace, same #[Attribute] ---
+  - "class Validate"
+  - "TARGET_PARAMETER"
+  - "getRule"
+  # --- AdminController.php: sibling controller, also has users() method ---
+  - "class AdminController"
+  - "admin_dashboard"
+  - "maintenance"
+  # --- Middleware.php: same namespace, middleware domain overlap ---
+  - "class Middleware"
+  - "isGlobal"
+  # --- AuthController.php: auth domain overlap with middleware: ['auth'] ---
+  - "class AuthController"
+  - "jwt_token_here"
+  # --- Router.php: processes Route attributes, calls getPath/getMethod ---
+  - "class Router"
+  - "registerController"
+  - "ReflectionClass"
+
+must_not_include_files:
+  - src/Attributes/Validate.php
+  - src/Controllers/AdminController.php
+  - src/Attributes/Middleware.php
+  - src/Controllers/AuthController.php
+  - src/Routing/Router.php
+
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

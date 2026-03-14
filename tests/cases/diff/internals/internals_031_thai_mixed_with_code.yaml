@@ -1,0 +1,16 @@
+initial:
+  thai_mixed.py: |
+    def placeholder():
+        pass
+changed:
+  thai_mixed.py: |
+    # ฟังก์ชันคำนวณ
+    def compute(x):  # คำนวณค่า
+        # ส่งคืนผลลัพธ์
+        return x * 2
+must_include_files:
+- thai_mixed.py
+must_include_content:
+- 'def compute(x):  # คำนวณค่า'
+add_garbage_files: false
+skip_garbage_check: true

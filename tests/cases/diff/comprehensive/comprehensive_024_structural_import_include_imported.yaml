@@ -1,0 +1,32 @@
+initial:
+  helpers.py: |
+    def normalize(data):
+        return [x.strip() for x in data]
+
+    def validate(data):
+        return all(x for x in data)
+  processor.py: |
+    def process(data):
+        return data
+changed:
+  helpers.py: |
+    def normalize(data):
+        return [x.strip() for x in data]
+
+    def validate(data):
+        return all(x for x in data)
+  processor.py: |
+    from helpers import normalize, validate
+
+    def process(data):
+        data = normalize(data)
+        if validate(data):
+            return data
+        return []
+must_include_files:
+- processor.py
+must_include_content:
+- from helpers import normalize, validate
+- data = normalize(data)
+add_garbage_files: false
+skip_garbage_check: true

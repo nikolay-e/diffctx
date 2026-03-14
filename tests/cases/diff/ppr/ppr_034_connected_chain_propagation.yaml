@@ -1,0 +1,137 @@
+initial:
+  start.py: |
+    from middle import middle_func
+
+    def start_func():
+        return middle_func()
+  middle.py: |
+    from end import end_func
+
+    def middle_func():
+        return end_func()
+  end.py: |
+    def end_func():
+        return "end"
+
+  # --- Tricky garbage: imports middle_func like start.py ---
+  garbage_middle_consumer.py: |
+    from middle import middle_func
+    GARBAGE_PPR034_CONSUMER_A = "middle_consumer"
+    GARBAGE_PPR034_CONSUMER_B = True
+
+    def consume_middle():
+        return middle_func()
+
+    class MiddleWrapper:
+        GARBAGE_PPR034_WRAPPER_C = 99
+
+        def wrap(self):
+            return middle_func()
+
+  # --- Tricky garbage: same start_func name ---
+  garbage_start_mirror.py: |
+    GARBAGE_PPR034_MIRROR_D = "start_mirror"
+    GARBAGE_PPR034_MIRROR_E = False
+
+    def start_func():
+        return "unrelated_start"
+
+    def start_helper():
+        GARBAGE_PPR034_HELPER_F = 42
+        return start_func()
+
+  # --- Tricky garbage: uses result variable and "_modified" like the diff ---
+  garbage_result_handler.py: |
+    GARBAGE_PPR034_RESULT_G = "result_handler"
+    GARBAGE_PPR034_RESULT_H = 0
+
+    def handle_result():
+        result = "something"
+        return result + "_modified"
+
+    def get_result():
+        return "modified"
+
+changed:
+  start.py: |
+    from middle import middle_func
+
+    def start_func():
+        result = middle_func()
+        return result + "_modified"
+  middle.py: |
+    from end import end_func
+
+    def middle_func():
+        return end_func()
+  end.py: |
+    def end_func():
+        return "end"
+  garbage_middle_consumer.py: |
+    from middle import middle_func
+    GARBAGE_PPR034_CONSUMER_A = "middle_consumer"
+    GARBAGE_PPR034_CONSUMER_B = True
+
+    def consume_middle():
+        return middle_func()
+
+    class MiddleWrapper:
+        GARBAGE_PPR034_WRAPPER_C = 99
+
+        def wrap(self):
+            return middle_func()
+  garbage_start_mirror.py: |
+    GARBAGE_PPR034_MIRROR_D = "start_mirror"
+    GARBAGE_PPR034_MIRROR_E = False
+
+    def start_func():
+        return "unrelated_start"
+
+    def start_helper():
+        GARBAGE_PPR034_HELPER_F = 42
+        return start_func()
+  garbage_result_handler.py: |
+    GARBAGE_PPR034_RESULT_G = "result_handler"
+    GARBAGE_PPR034_RESULT_H = 0
+
+    def handle_result():
+        result = "something"
+        return result + "_modified"
+
+    def get_result():
+        return "modified"
+
+# === Assertions ===
+
+must_include_files:
+- start.py
+
+must_include_content_from:
+  start.py:
+    - 'def start_func():'
+    - result = middle_func()
+    - return result + "_modified"
+    - from middle import middle_func
+
+must_not_include:
+# Tricky: imports middle_func like start.py
+- GARBAGE_PPR034_CONSUMER_A
+- GARBAGE_PPR034_CONSUMER_B
+- GARBAGE_PPR034_WRAPPER_C
+# Tricky: same start_func name
+- GARBAGE_PPR034_MIRROR_D
+- GARBAGE_PPR034_MIRROR_E
+- GARBAGE_PPR034_HELPER_F
+# Tricky: uses result variable and "_modified"
+- GARBAGE_PPR034_RESULT_G
+- GARBAGE_PPR034_RESULT_H
+
+must_not_include_files:
+- garbage_middle_consumer.py
+- garbage_start_mirror.py
+- garbage_result_handler.py
+
+max_fragments: 5
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

@@ -1,0 +1,30 @@
+initial:
+  values.yaml: |
+    apiKey: ""
+  templates/secret.yaml: |
+    apiVersion: v1
+    kind: Secret
+    data:
+      api-key: {{ .Values.apiKey | b64enc }}
+  unrelated.txt: |
+    garbage_marker_12345
+    unused_marker_67890
+changed:
+  values.yaml: |
+    apiKey: ""
+  templates/secret.yaml: |
+    apiVersion: v1
+    kind: Secret
+    data:
+      api-key: {{ required "apiKey is required" .Values.apiKey | b64enc }}
+  unrelated.txt: |
+    garbage_marker_12345
+    unused_marker_67890
+must_include_files:
+- templates/secret.yaml
+must_include_content:
+- 'api-key: {{ required "apiKey is required" .Values.apiKey | b64enc }}'
+must_not_include:
+- unrelated.txt
+add_garbage_files: false
+skip_garbage_check: true

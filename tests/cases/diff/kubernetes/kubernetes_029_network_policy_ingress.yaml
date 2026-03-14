@@ -1,0 +1,485 @@
+# Scenario: Default-deny NetworkPolicy replaced with fine-grained ingress rules
+#   allowing only api-gateway, order-service pods, and monitoring namespace Prometheus
+#   to reach payment-service on ports 8080 and 8443.
+#
+# Diff shows:
+#   - name: default-deny-all with podSelector: {} and no rules
+#   + name: payment-service-ingress with specific podSelector, role-based from
+#     rules, cross-namespace selector for monitoring, and explicit port allowlists
+#
+# Reviewer questions:
+#   Q1: "Which pods does this policy target — does the selector match the deployment?"
+#       -> Needs k8s/base/deployment.yaml: the deployment has labels
+#          app: payment-service, tier: backend, security: high — the policy's
+#          podSelector uses app: payment-service, confirming the match.
+#
+#   Q2: "Are the allowed ports (8080, 8443) consistent with the container ports?"
+#       -> Same deployment file: container exposes containerPort 8080 (http) and
+#          8443 (https). The policy whitelists exactly those ports.
+#
+#   Q3: "Does the service route traffic to these same ports?"
+#       -> Needs k8s/base/service.yaml: targetPort 8080 and 8443, confirming
+#          the service aligns with the network policy port allowlist.
+#
+# Not needed for comprehension:
+#   - k8s/base/secret.yaml: Contains payment-secrets used by the deployment,
+#     but the network policy change doesn't touch secrets — understanding secret
+#     contents doesn't help review ingress rules.
+#
+#   - k8s/apps/order-service/deployment.yaml: The order-service is one of the
+#     ALLOWED sources in the policy (role: order-service). Direct structural edge.
+#     But the policy only checks labels, not order-service internals. Reviewer
+#     needs to verify label match, not order-service implementation.
+#
+#   - k8s/apps/gateway/deployment.yaml: The api-gateway is the other ALLOWED
+#     source. Same reasoning — the policy references role: api-gateway label,
+#     but understanding the gateway's config doesn't help verify the policy rules.
+#
+#   - k8s/monitoring/prometheus-deployment.yaml: Prometheus from monitoring
+#     namespace is allowed via namespaceSelector+podSelector. But the policy
+#     references labels, not the Prometheus deployment details.
+#
+#   - k8s/policies/global-deny.yaml: Cluster-wide default deny policy. Shares
+#     NetworkPolicy kind and "deny" vocabulary. But it's a separate baseline
+#     policy in a different scope — doesn't affect this namespace-scoped policy.
+
+initial:
+  k8s/base/deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: payment-service
+      namespace: production
+      labels:
+        app: payment-service
+        tier: backend
+        security: high
+    spec:
+      replicas: 3
+      selector:
+        matchLabels:
+          app: payment-service
+      template:
+        metadata:
+          labels:
+            app: payment-service
+            tier: backend
+            security: high
+        spec:
+          containers:
+          - name: payment
+            image: registry.example.com/payment-service:v1.8.0
+            ports:
+            - containerPort: 8080
+              name: http
+            - containerPort: 8443
+              name: https
+            env:
+            - name: ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: payment-secrets
+                  key: encryption-key
+            resources:
+              requests:
+                memory: "512Mi"
+                cpu: "500m"
+              limits:
+                memory: "1Gi"
+                cpu: "1000m"
+  k8s/base/service.yaml: |
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: payment-service
+      namespace: production
+    spec:
+      selector:
+        app: payment-service
+      ports:
+      - name: http
+        port: 80
+        targetPort: 8080
+      - name: https
+        port: 443
+        targetPort: 8443
+  k8s/base/networkpolicy.yaml: |
+    apiVersion: networking.k8s.io/v1
+    kind: NetworkPolicy
+    metadata:
+      name: default-deny-all
+      namespace: production
+    spec:
+      podSelector: {}
+      policyTypes:
+      - Ingress
+      - Egress
+  k8s/base/secret.yaml: |
+    apiVersion: v1
+    kind: Secret
+    metadata:
+      name: payment-secrets
+      namespace: production
+    type: Opaque
+    data:
+      encryption-key: base64encodedkey==
+  k8s/apps/order-service/deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: order-service
+      namespace: production
+      labels:
+        app: order-service
+        role: order-service
+    spec:
+      replicas: 3
+      selector:
+        matchLabels:
+          app: order-service
+      template:
+        metadata:
+          labels:
+            app: order-service
+            role: order-service
+        spec:
+          containers:
+          - name: order
+            image: registry.example.com/order-service:v2.1.0
+            ports:
+            - containerPort: 8080
+            env:
+            - name: PAYMENT_URL
+              value: "http://payment-service.production.svc:80"
+            resources:
+              requests:
+                memory: "256Mi"
+                cpu: "250m"
+  k8s/apps/gateway/deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: api-gateway
+      namespace: production
+      labels:
+        app: api-gateway
+        role: api-gateway
+    spec:
+      replicas: 2
+      selector:
+        matchLabels:
+          app: api-gateway
+      template:
+        metadata:
+          labels:
+            app: api-gateway
+            role: api-gateway
+        spec:
+          containers:
+          - name: gateway
+            image: registry.example.com/api-gateway:v3.0.0
+            ports:
+            - containerPort: 8080
+            - containerPort: 8443
+            env:
+            - name: UPSTREAM_PAYMENT
+              value: "http://payment-service.production.svc:80"
+            resources:
+              requests:
+                memory: "128Mi"
+                cpu: "100m"
+  k8s/monitoring/prometheus-deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: prometheus
+      namespace: monitoring
+      labels:
+        app: prometheus
+    spec:
+      replicas: 1
+      selector:
+        matchLabels:
+          app: prometheus
+      template:
+        metadata:
+          labels:
+            app: prometheus
+        spec:
+          containers:
+          - name: prometheus
+            image: prom/prometheus:v2.48.0
+            ports:
+            - containerPort: 9090
+            args:
+            - --config.file=/etc/prometheus/prometheus.yml
+            - --storage.tsdb.retention.time=15d
+  k8s/policies/global-deny.yaml: |
+    apiVersion: networking.k8s.io/v1
+    kind: NetworkPolicy
+    metadata:
+      name: cluster-default-deny
+      namespace: kube-system
+    spec:
+      podSelector: {}
+      policyTypes:
+      - Ingress
+      - Egress
+      egress:
+      - to:
+        - namespaceSelector: {}
+        ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+changed:
+  k8s/base/deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: payment-service
+      namespace: production
+      labels:
+        app: payment-service
+        tier: backend
+        security: high
+    spec:
+      replicas: 3
+      selector:
+        matchLabels:
+          app: payment-service
+      template:
+        metadata:
+          labels:
+            app: payment-service
+            tier: backend
+            security: high
+        spec:
+          containers:
+          - name: payment
+            image: registry.example.com/payment-service:v1.8.0
+            ports:
+            - containerPort: 8080
+              name: http
+            - containerPort: 8443
+              name: https
+            env:
+            - name: ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: payment-secrets
+                  key: encryption-key
+            resources:
+              requests:
+                memory: "512Mi"
+                cpu: "500m"
+              limits:
+                memory: "1Gi"
+                cpu: "1000m"
+  k8s/base/service.yaml: |
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: payment-service
+      namespace: production
+    spec:
+      selector:
+        app: payment-service
+      ports:
+      - name: http
+        port: 80
+        targetPort: 8080
+      - name: https
+        port: 443
+        targetPort: 8443
+  k8s/base/networkpolicy.yaml: |
+    apiVersion: networking.k8s.io/v1
+    kind: NetworkPolicy
+    metadata:
+      name: payment-service-ingress
+      namespace: production
+      labels:
+        app: payment-service
+        security: high
+    spec:
+      podSelector:
+        matchLabels:
+          app: payment-service
+      policyTypes:
+      - Ingress
+      ingress:
+      - from:
+        - podSelector:
+            matchLabels:
+              role: api-gateway
+        - podSelector:
+            matchLabels:
+              role: order-service
+        - namespaceSelector:
+            matchLabels:
+              name: monitoring
+          podSelector:
+            matchLabels:
+              app: prometheus
+        ports:
+        - protocol: TCP
+          port: 8080
+        - protocol: TCP
+          port: 8443
+  k8s/base/secret.yaml: |
+    apiVersion: v1
+    kind: Secret
+    metadata:
+      name: payment-secrets
+      namespace: production
+    type: Opaque
+    data:
+      encryption-key: base64encodedkey==
+  k8s/apps/order-service/deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: order-service
+      namespace: production
+      labels:
+        app: order-service
+        role: order-service
+    spec:
+      replicas: 3
+      selector:
+        matchLabels:
+          app: order-service
+      template:
+        metadata:
+          labels:
+            app: order-service
+            role: order-service
+        spec:
+          containers:
+          - name: order
+            image: registry.example.com/order-service:v2.1.0
+            ports:
+            - containerPort: 8080
+            env:
+            - name: PAYMENT_URL
+              value: "http://payment-service.production.svc:80"
+            resources:
+              requests:
+                memory: "256Mi"
+                cpu: "250m"
+  k8s/apps/gateway/deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: api-gateway
+      namespace: production
+      labels:
+        app: api-gateway
+        role: api-gateway
+    spec:
+      replicas: 2
+      selector:
+        matchLabels:
+          app: api-gateway
+      template:
+        metadata:
+          labels:
+            app: api-gateway
+            role: api-gateway
+        spec:
+          containers:
+          - name: gateway
+            image: registry.example.com/api-gateway:v3.0.0
+            ports:
+            - containerPort: 8080
+            - containerPort: 8443
+            env:
+            - name: UPSTREAM_PAYMENT
+              value: "http://payment-service.production.svc:80"
+            resources:
+              requests:
+                memory: "128Mi"
+                cpu: "100m"
+  k8s/monitoring/prometheus-deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: prometheus
+      namespace: monitoring
+      labels:
+        app: prometheus
+    spec:
+      replicas: 1
+      selector:
+        matchLabels:
+          app: prometheus
+      template:
+        metadata:
+          labels:
+            app: prometheus
+        spec:
+          containers:
+          - name: prometheus
+            image: prom/prometheus:v2.48.0
+            ports:
+            - containerPort: 9090
+            args:
+            - --config.file=/etc/prometheus/prometheus.yml
+            - --storage.tsdb.retention.time=15d
+  k8s/policies/global-deny.yaml: |
+    apiVersion: networking.k8s.io/v1
+    kind: NetworkPolicy
+    metadata:
+      name: cluster-default-deny
+      namespace: kube-system
+    spec:
+      podSelector: {}
+      policyTypes:
+      - Ingress
+      - Egress
+      egress:
+      - to:
+        - namespaceSelector: {}
+        ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+
+must_include_files:
+  - k8s/base/networkpolicy.yaml
+
+must_include_content_from:
+  k8s/base/networkpolicy.yaml:
+    - "name: payment-service-ingress"
+    - "role: api-gateway"
+    - "role: order-service"
+    - "port: 8080"
+
+must_not_include:
+  # --- order-service deployment: allowed source, but policy only checks labels ---
+  - "order-service:v2.1.0"
+  - PAYMENT_URL
+  # --- gateway deployment: other allowed source, same reasoning ---
+  - "api-gateway:v3.0.0"
+  - UPSTREAM_PAYMENT
+  # --- prometheus deployment: monitoring source, policy checks labels only ---
+  - "prom/prometheus"
+  - "storage.tsdb.retention"
+  # --- global deny: separate cluster-wide policy in kube-system ---
+  - cluster-default-deny
+  # --- secret: deployment dependency, not network policy concern ---
+  - base64encodedkey
+
+must_not_include_files:
+  - k8s/apps/order-service/deployment.yaml
+  - k8s/apps/gateway/deployment.yaml
+  - k8s/monitoring/prometheus-deployment.yaml
+  - k8s/policies/global-deny.yaml
+  - k8s/base/secret.yaml
+
+max_fragments: 8
+max_files: 4
+add_garbage_files: false
+skip_garbage_check: true

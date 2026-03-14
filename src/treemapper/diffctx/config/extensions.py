@@ -44,7 +44,10 @@ OTHER_CODE_EXTENSIONS = frozenset(
     {
         ".lua",
         ".r",
+        ".R",
         ".jl",
+        ".pl",
+        ".pm",
         ".ex",
         ".exs",
         ".erl",
@@ -52,6 +55,7 @@ OTHER_CODE_EXTENSIONS = frozenset(
         ".clj",
         ".lisp",
         ".ml",
+        ".mli",
         ".nim",
         ".v",
         ".zig",
@@ -65,6 +69,9 @@ OTHER_CODE_EXTENSIONS = frozenset(
         ".s",
         ".vhd",
         ".sv",
+        ".vue",
+        ".svelte",
+        ".dart",
     }
 )
 

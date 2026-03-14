@@ -1,0 +1,618 @@
+# Scenario: APIClient methods gain decorator-based rate limiting, retry,
+#   timing, and caching. Only api.py is changed.
+#
+# Diff shows:
+#   + from decorators import rate_limit, retry, timed, cached
+#   + @rate_limit(calls_per_second=100, burst=10)
+#   + @retry(max_attempts=3, delay=0.5)
+#   + @timed("api_call")  on call_api()
+#   + @cached(ttl_seconds=60)  on get()
+#
+# Reviewer questions:
+#   Q1: "Is the decorator stacking order correct? Does @retry wrap @timed
+#       or vice versa?"
+#       -> @rate_limit is outermost (applied first), then @retry, then @timed
+#         (innermost). So timing includes retries, rate limit is per-attempt.
+#         Reviewer must see decorator implementations to verify this is correct.
+#
+#   Q2: "What does @cached(ttl_seconds=60) do — does it cache across
+#       different endpoint arguments?"
+#       -> cached() keys on `str((args, sorted(kwargs.items())))`, so
+#         different endpoints get different cache entries. Reviewer must
+#         verify the cache key strategy handles `self` argument correctly.
+#
+#   Q3: "Does @rate_limit with burst=10 mean 10 calls can happen instantly?"
+#       -> Yes, burst_tokens starts at burst value and decrements. Reviewer
+#         must verify the token bucket implementation.
+#
+# Not needed for comprehension:
+#   - test_api.py: Tests APIClient with decorator behavior — calls get()
+#     multiple times, asserts caching works, measures timing. Direct
+#     structural edge: imports APIClient and calls decorated methods.
+#     But test expectations don't help verify decorator implementations.
+#
+#   - api_factory.py: Factory that constructs APIClient instances with
+#     specific base_url/api_key. Direct structural edge: imports and
+#     instantiates the changed class. But construction logic doesn't
+#     help review decorator stacking correctness.
+#
+#   - middleware.py: HTTP middleware with IDENTICAL wrapping pattern —
+#     chains of functions that wrap a handler, timing via perf_counter,
+#     logging elapsed time. HARD TRAP: same "wrap function, measure time"
+#     pattern. But uses request/response pipeline, not Python decorators.
+#
+#   - circuit_breaker.py: Fault tolerance with retry/failure semantics.
+#     Shares "retry", "failure_count", "exception handling" vocabulary.
+#     But independent pattern, not imported by api.py.
+
+initial:
+  decorators.py: |
+    import functools
+    import time
+    import logging
+    from typing import Callable, TypeVar, Any, Optional, Dict
+    from dataclasses import dataclass
+    from datetime import datetime, timedelta
+    import threading
+
+    logger = logging.getLogger(__name__)
+
+    F = TypeVar('F', bound=Callable[..., Any])
+
+    @dataclass
+    class RateLimitState:
+        calls: int = 0
+        window_start: datetime = None
+
+        def reset(self) -> None:
+            self.calls = 0
+            self.window_start = datetime.now()
+
+    class RateLimitExceeded(Exception):
+        def __init__(self, retry_after: float):
+            self.retry_after = retry_after
+            super().__init__(f"Rate limit exceeded. Retry after {retry_after:.1f}s")
+
+    def rate_limit(calls_per_second: int = 10, burst: int = 0):
+        def decorator(func: F) -> F:
+            state = RateLimitState()
+            lock = threading.Lock()
+            last_call = [0.0]
+            burst_tokens = [burst]
+
+            @functools.wraps(func)
+            def wrapper(*args: Any, **kwargs: Any) -> Any:
+                with lock:
+                    now = time.time()
+                    elapsed = now - last_call[0]
+                    burst_tokens[0] = min(burst, burst_tokens[0] + elapsed * calls_per_second)
+                    if burst_tokens[0] >= 1:
+                        burst_tokens[0] -= 1
+                    elif elapsed < 1.0 / calls_per_second:
+                        sleep_time = 1.0 / calls_per_second - elapsed
+                        time.sleep(sleep_time)
+                    last_call[0] = time.time()
+                    return func(*args, **kwargs)
+            return wrapper
+        return decorator
+
+    def retry(max_attempts: int = 3, delay: float = 1.0, backoff: float = 2.0, exceptions: tuple = (Exception,)):
+        def decorator(func: F) -> F:
+            @functools.wraps(func)
+            def wrapper(*args: Any, **kwargs: Any) -> Any:
+                current_delay = delay
+                last_exception = None
+                for attempt in range(max_attempts):
+                    try:
+                        return func(*args, **kwargs)
+                    except exceptions as e:
+                        last_exception = e
+                        if attempt < max_attempts - 1:
+                            logger.warning(f"Attempt {attempt + 1} failed: {e}. Retrying in {current_delay}s")
+                            time.sleep(current_delay)
+                            current_delay *= backoff
+                raise last_exception
+            return wrapper
+        return decorator
+
+    def timed(name: Optional[str] = None):
+        def decorator(func: F) -> F:
+            func_name = name or func.__name__
+            @functools.wraps(func)
+            def wrapper(*args: Any, **kwargs: Any) -> Any:
+                start = time.perf_counter()
+                try:
+                    return func(*args, **kwargs)
+                finally:
+                    elapsed = time.perf_counter() - start
+                    logger.info(f"{func_name} took {elapsed:.3f}s")
+            return wrapper
+        return decorator
+
+    def cached(ttl_seconds: int = 300):
+        def decorator(func: F) -> F:
+            cache: Dict[str, tuple] = {}
+            lock = threading.Lock()
+            @functools.wraps(func)
+            def wrapper(*args: Any, **kwargs: Any) -> Any:
+                key = str((args, sorted(kwargs.items())))
+                with lock:
+                    if key in cache:
+                        value, expires_at = cache[key]
+                        if datetime.now() < expires_at:
+                            return value
+                    result = func(*args, **kwargs)
+                    cache[key] = (result, datetime.now() + timedelta(seconds=ttl_seconds))
+                    return result
+            return wrapper
+        return decorator
+  api.py: |
+    from typing import Dict, Any, Optional, List
+    import time
+    import random
+
+    class APIError(Exception):
+        def __init__(self, status_code: int, message: str):
+            self.status_code = status_code
+            self.message = message
+            super().__init__(message)
+
+    class APIClient:
+        def __init__(self, base_url: str, api_key: str):
+            self.base_url = base_url
+            self.api_key = api_key
+            self._request_count = 0
+
+        def call_api(self, endpoint: str, method: str = "GET", data: Optional[Dict] = None) -> Dict[str, Any]:
+            self._request_count += 1
+            time.sleep(0.01)
+            return {"endpoint": endpoint, "method": method, "status": "success"}
+
+        def get(self, endpoint: str) -> Dict[str, Any]:
+            return self.call_api(endpoint, "GET")
+
+        def post(self, endpoint: str, data: Dict[str, Any]) -> Dict[str, Any]:
+            return self.call_api(endpoint, "POST", data)
+
+        def get_request_count(self) -> int:
+            return self._request_count
+  test_api.py: |
+    from api import APIClient
+
+    class TestAPIClient:
+        def setup(self):
+            self.client = APIClient("https://api.test.com", "test-key")
+
+        def test_get_is_cached(self):
+            r1 = self.client.get("/users")
+            r2 = self.client.get("/users")
+            assert self.client.get_request_count() == 1
+
+        def test_post_not_cached(self):
+            self.client.post("/users", {"name": "Alice"})
+            self.client.post("/users", {"name": "Bob"})
+            assert self.client.get_request_count() == 2
+
+        def test_rate_limit_burst(self):
+            for i in range(10):
+                self.client.call_api(f"/endpoint_{i}")
+  api_factory.py: |
+    from api import APIClient
+
+    class APIClientFactory:
+        def __init__(self, default_base_url: str = "https://api.prod.com"):
+            self._base_url = default_base_url
+            self._clients: dict[str, APIClient] = {}
+
+        def create(self, api_key: str, base_url: str = None) -> APIClient:
+            url = base_url or self._base_url
+            key = f"{url}:{api_key}"
+            if key not in self._clients:
+                self._clients[key] = APIClient(url, api_key)
+            return self._clients[key]
+
+        def get_active_count(self) -> int:
+            return len(self._clients)
+  middleware.py: |
+    import time
+    import logging
+    from typing import Dict, Any, Callable, Optional
+    from dataclasses import dataclass
+
+    logger = logging.getLogger(__name__)
+
+    @dataclass
+    class RequestContext:
+        method: str
+        path: str
+        headers: Dict[str, str]
+        start_time: float
+
+    class MiddlewareChain:
+        def __init__(self):
+            self._middlewares: list[Callable] = []
+
+        def add(self, middleware: Callable) -> None:
+            self._middlewares.append(middleware)
+
+        def execute(self, context: RequestContext, handler: Callable) -> Any:
+            chain = handler
+            for mw in reversed(self._middlewares):
+                chain = lambda ctx, next_handler=chain, middleware=mw: middleware(ctx, next_handler)
+            return chain(context)
+
+    def logging_middleware(context: RequestContext, next_handler: Callable) -> Any:
+        logger.info(f"{context.method} {context.path}")
+        result = next_handler(context)
+        elapsed = time.time() - context.start_time
+        logger.info(f"Completed in {elapsed:.3f}s")
+        return result
+
+    def timing_middleware(context: RequestContext, next_handler: Callable) -> Any:
+        start = time.perf_counter()
+        result = next_handler(context)
+        elapsed = time.perf_counter() - start
+        return result
+  circuit_breaker.py: |
+    import time
+    from typing import Callable, Any, Optional
+    from dataclasses import dataclass
+    from enum import Enum
+
+    class CircuitState(Enum):
+        CLOSED = "closed"
+        OPEN = "open"
+        HALF_OPEN = "half_open"
+
+    @dataclass
+    class CircuitBreakerConfig:
+        failure_threshold: int = 5
+        recovery_timeout: float = 30.0
+        half_open_max_calls: int = 1
+
+    class CircuitBreaker:
+        def __init__(self, config: CircuitBreakerConfig):
+            self._config = config
+            self._state = CircuitState.CLOSED
+            self._failure_count = 0
+            self._last_failure_time: Optional[float] = None
+
+        def call(self, func: Callable, *args: Any, **kwargs: Any) -> Any:
+            if self._state == CircuitState.OPEN:
+                if time.time() - self._last_failure_time > self._config.recovery_timeout:
+                    self._state = CircuitState.HALF_OPEN
+                else:
+                    raise RuntimeError("Circuit breaker is open")
+            try:
+                result = func(*args, **kwargs)
+                self._on_success()
+                return result
+            except Exception as e:
+                self._on_failure()
+                raise
+
+        def _on_success(self) -> None:
+            self._failure_count = 0
+            self._state = CircuitState.CLOSED
+
+        def _on_failure(self) -> None:
+            self._failure_count += 1
+            self._last_failure_time = time.time()
+            if self._failure_count >= self._config.failure_threshold:
+                self._state = CircuitState.OPEN
+changed:
+  decorators.py: |
+    import functools
+    import time
+    import logging
+    from typing import Callable, TypeVar, Any, Optional, Dict
+    from dataclasses import dataclass
+    from datetime import datetime, timedelta
+    import threading
+
+    logger = logging.getLogger(__name__)
+
+    F = TypeVar('F', bound=Callable[..., Any])
+
+    @dataclass
+    class RateLimitState:
+        calls: int = 0
+        window_start: datetime = None
+
+        def reset(self) -> None:
+            self.calls = 0
+            self.window_start = datetime.now()
+
+    class RateLimitExceeded(Exception):
+        def __init__(self, retry_after: float):
+            self.retry_after = retry_after
+            super().__init__(f"Rate limit exceeded. Retry after {retry_after:.1f}s")
+
+    def rate_limit(calls_per_second: int = 10, burst: int = 0):
+        def decorator(func: F) -> F:
+            state = RateLimitState()
+            lock = threading.Lock()
+            last_call = [0.0]
+            burst_tokens = [burst]
+
+            @functools.wraps(func)
+            def wrapper(*args: Any, **kwargs: Any) -> Any:
+                with lock:
+                    now = time.time()
+                    elapsed = now - last_call[0]
+                    burst_tokens[0] = min(burst, burst_tokens[0] + elapsed * calls_per_second)
+                    if burst_tokens[0] >= 1:
+                        burst_tokens[0] -= 1
+                    elif elapsed < 1.0 / calls_per_second:
+                        sleep_time = 1.0 / calls_per_second - elapsed
+                        time.sleep(sleep_time)
+                    last_call[0] = time.time()
+                    return func(*args, **kwargs)
+            return wrapper
+        return decorator
+
+    def retry(max_attempts: int = 3, delay: float = 1.0, backoff: float = 2.0, exceptions: tuple = (Exception,)):
+        def decorator(func: F) -> F:
+            @functools.wraps(func)
+            def wrapper(*args: Any, **kwargs: Any) -> Any:
+                current_delay = delay
+                last_exception = None
+                for attempt in range(max_attempts):
+                    try:
+                        return func(*args, **kwargs)
+                    except exceptions as e:
+                        last_exception = e
+                        if attempt < max_attempts - 1:
+                            logger.warning(f"Attempt {attempt + 1} failed: {e}. Retrying in {current_delay}s")
+                            time.sleep(current_delay)
+                            current_delay *= backoff
+                raise last_exception
+            return wrapper
+        return decorator
+
+    def timed(name: Optional[str] = None):
+        def decorator(func: F) -> F:
+            func_name = name or func.__name__
+            @functools.wraps(func)
+            def wrapper(*args: Any, **kwargs: Any) -> Any:
+                start = time.perf_counter()
+                try:
+                    return func(*args, **kwargs)
+                finally:
+                    elapsed = time.perf_counter() - start
+                    logger.info(f"{func_name} took {elapsed:.3f}s")
+            return wrapper
+        return decorator
+
+    def cached(ttl_seconds: int = 300):
+        def decorator(func: F) -> F:
+            cache: Dict[str, tuple] = {}
+            lock = threading.Lock()
+            @functools.wraps(func)
+            def wrapper(*args: Any, **kwargs: Any) -> Any:
+                key = str((args, sorted(kwargs.items())))
+                with lock:
+                    if key in cache:
+                        value, expires_at = cache[key]
+                        if datetime.now() < expires_at:
+                            return value
+                    result = func(*args, **kwargs)
+                    cache[key] = (result, datetime.now() + timedelta(seconds=ttl_seconds))
+                    return result
+            return wrapper
+        return decorator
+  api.py: |
+    from typing import Dict, Any, Optional, List
+    import time
+    import random
+    from decorators import rate_limit, retry, timed, cached
+
+    class APIError(Exception):
+        def __init__(self, status_code: int, message: str):
+            self.status_code = status_code
+            self.message = message
+            super().__init__(message)
+
+    class APIClient:
+        def __init__(self, base_url: str, api_key: str):
+            self.base_url = base_url
+            self.api_key = api_key
+            self._request_count = 0
+
+        @rate_limit(calls_per_second=100, burst=10)
+        @retry(max_attempts=3, delay=0.5)
+        @timed("api_call")
+        def call_api(self, endpoint: str, method: str = "GET", data: Optional[Dict] = None) -> Dict[str, Any]:
+            self._request_count += 1
+            time.sleep(0.01)
+            return {"endpoint": endpoint, "method": method, "status": "success"}
+
+        @cached(ttl_seconds=60)
+        def get(self, endpoint: str) -> Dict[str, Any]:
+            return self.call_api(endpoint, "GET")
+
+        def post(self, endpoint: str, data: Dict[str, Any]) -> Dict[str, Any]:
+            return self.call_api(endpoint, "POST", data)
+
+        def get_request_count(self) -> int:
+            return self._request_count
+  test_api.py: |
+    from api import APIClient
+
+    class TestAPIClient:
+        def setup(self):
+            self.client = APIClient("https://api.test.com", "test-key")
+
+        def test_get_is_cached(self):
+            r1 = self.client.get("/users")
+            r2 = self.client.get("/users")
+            assert self.client.get_request_count() == 1
+
+        def test_post_not_cached(self):
+            self.client.post("/users", {"name": "Alice"})
+            self.client.post("/users", {"name": "Bob"})
+            assert self.client.get_request_count() == 2
+
+        def test_rate_limit_burst(self):
+            for i in range(10):
+                self.client.call_api(f"/endpoint_{i}")
+  api_factory.py: |
+    from api import APIClient
+
+    class APIClientFactory:
+        def __init__(self, default_base_url: str = "https://api.prod.com"):
+            self._base_url = default_base_url
+            self._clients: dict[str, APIClient] = {}
+
+        def create(self, api_key: str, base_url: str = None) -> APIClient:
+            url = base_url or self._base_url
+            key = f"{url}:{api_key}"
+            if key not in self._clients:
+                self._clients[key] = APIClient(url, api_key)
+            return self._clients[key]
+
+        def get_active_count(self) -> int:
+            return len(self._clients)
+  middleware.py: |
+    import time
+    import logging
+    from typing import Dict, Any, Callable, Optional
+    from dataclasses import dataclass
+
+    logger = logging.getLogger(__name__)
+
+    @dataclass
+    class RequestContext:
+        method: str
+        path: str
+        headers: Dict[str, str]
+        start_time: float
+
+    class MiddlewareChain:
+        def __init__(self):
+            self._middlewares: list[Callable] = []
+
+        def add(self, middleware: Callable) -> None:
+            self._middlewares.append(middleware)
+
+        def execute(self, context: RequestContext, handler: Callable) -> Any:
+            chain = handler
+            for mw in reversed(self._middlewares):
+                chain = lambda ctx, next_handler=chain, middleware=mw: middleware(ctx, next_handler)
+            return chain(context)
+
+    def logging_middleware(context: RequestContext, next_handler: Callable) -> Any:
+        logger.info(f"{context.method} {context.path}")
+        result = next_handler(context)
+        elapsed = time.time() - context.start_time
+        logger.info(f"Completed in {elapsed:.3f}s")
+        return result
+
+    def timing_middleware(context: RequestContext, next_handler: Callable) -> Any:
+        start = time.perf_counter()
+        result = next_handler(context)
+        elapsed = time.perf_counter() - start
+        return result
+  circuit_breaker.py: |
+    import time
+    from typing import Callable, Any, Optional
+    from dataclasses import dataclass
+    from enum import Enum
+
+    class CircuitState(Enum):
+        CLOSED = "closed"
+        OPEN = "open"
+        HALF_OPEN = "half_open"
+
+    @dataclass
+    class CircuitBreakerConfig:
+        failure_threshold: int = 5
+        recovery_timeout: float = 30.0
+        half_open_max_calls: int = 1
+
+    class CircuitBreaker:
+        def __init__(self, config: CircuitBreakerConfig):
+            self._config = config
+            self._state = CircuitState.CLOSED
+            self._failure_count = 0
+            self._last_failure_time: Optional[float] = None
+
+        def call(self, func: Callable, *args: Any, **kwargs: Any) -> Any:
+            if self._state == CircuitState.OPEN:
+                if time.time() - self._last_failure_time > self._config.recovery_timeout:
+                    self._state = CircuitState.HALF_OPEN
+                else:
+                    raise RuntimeError("Circuit breaker is open")
+            try:
+                result = func(*args, **kwargs)
+                self._on_success()
+                return result
+            except Exception as e:
+                self._on_failure()
+                raise
+
+        def _on_success(self) -> None:
+            self._failure_count = 0
+            self._state = CircuitState.CLOSED
+
+        def _on_failure(self) -> None:
+            self._failure_count += 1
+            self._last_failure_time = time.time()
+            if self._failure_count >= self._config.failure_threshold:
+                self._state = CircuitState.OPEN
+
+must_include_files:
+  - api.py
+  # Q1+Q2+Q3: api.py stacks @rate_limit, @retry, @timed, @cached.
+  # Reviewer must see each decorator's implementation to verify stacking
+  # order, cache key strategy, and burst token logic.
+  - decorators.py
+
+must_include_content_from:
+  api.py:
+    - "from decorators import rate_limit, retry, timed, cached"
+    - "@rate_limit(calls_per_second=100, burst=10)"
+    - "@retry(max_attempts=3, delay=0.5)"
+    - '@timed("api_call")'
+    - "@cached(ttl_seconds=60)"
+  decorators.py:
+    - "def rate_limit(calls_per_second"
+    - "burst_tokens"
+    - "def retry(max_attempts"
+    - "def cached(ttl_seconds"
+    - "expires_at"
+
+must_not_include:
+  # --- test_api.py: imports APIClient, tests decorated behavior ---
+  # Direct structural edge: calls get(), post(), call_api() — the exact
+  # decorated methods. But test assertions don't help verify decorator
+  # implementation correctness.
+  - TestAPIClient
+  - test_get_is_cached
+  - test_post_not_cached
+  - test_rate_limit_burst
+  # --- api_factory.py: imports APIClient, constructs instances ---
+  # Direct structural edge: imports the changed class. But factory
+  # construction doesn't help review decorator stacking.
+  - APIClientFactory
+  - get_active_count
+  # --- middleware.py: HARD TRAP — identical wrapping/timing pattern ---
+  - MiddlewareChain
+  - RequestContext
+  - logging_middleware
+  - timing_middleware
+  # --- circuit_breaker.py: retry/failure vocabulary overlap ---
+  - CircuitBreaker
+  - CircuitState
+  - CircuitBreakerConfig
+
+must_not_include_files:
+  - test_api.py
+  - api_factory.py
+  - middleware.py
+  - circuit_breaker.py
+
+add_garbage_files: false
+skip_garbage_check: true
+max_fragments: 10
+max_files: 4

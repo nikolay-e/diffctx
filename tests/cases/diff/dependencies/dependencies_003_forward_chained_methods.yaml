@@ -1,0 +1,273 @@
+initial:
+  database/query.py: |
+    class QueryBuilder:
+        def __init__(self, table: str):
+            self.table = table
+            self.filters = []
+            self.limit_val = None
+            self.order_col = None
+
+        def query(self, table: str) -> "QueryBuilder":
+            return QueryBuilder(table)
+
+        def filter(self, **kwargs) -> "QueryBuilder":
+            self.filters.append(kwargs)
+            return self
+
+        def limit(self, n: int) -> "QueryBuilder":
+            self.limit_val = n
+            return self
+
+        def order_by(self, column: str) -> "QueryBuilder":
+            self.order_col = column
+            return self
+
+        def execute(self) -> list:
+            return []
+  query.py: |
+    def run_query():
+        pass
+
+  # --- Tricky: also has a QueryBuilder with chained methods (name collision) ---
+  database/mongo_query.py: |
+    GARBAGE_DEP_003_MONGO_BUILDER_C = "mongo_query"
+    GARBAGE_DEP_003_MONGO_CHAIN_D = True
+
+    class QueryBuilder:
+        def __init__(self, collection: str):
+            GARBAGE_DEP_003_MONGO_INIT_E = "init"
+            self.collection = collection
+            self.pipeline = []
+
+        def filter(self, **kwargs) -> "QueryBuilder":
+            self.pipeline.append({"$match": kwargs})
+            return self
+
+        def limit(self, n: int) -> "QueryBuilder":
+            self.pipeline.append({"$limit": n})
+            return self
+
+        def order_by(self, field: str) -> "QueryBuilder":
+            self.pipeline.append({"$sort": {field: 1}})
+            return self
+
+        def execute(self) -> list:
+            return []
+
+  # --- Tricky: imports from database.query and uses the same chaining pattern ---
+  reports/data_loader.py: |
+    from database.query import QueryBuilder
+    GARBAGE_DEP_003_LOADER_IMPORT_F = "data_loader"
+    GARBAGE_DEP_003_LOADER_BATCH_G = 500
+
+    class ReportDataLoader:
+        GARBAGE_DEP_003_LOADER_CLASS_H = True
+
+        def load_users(self) -> list:
+            return QueryBuilder("users").filter(active=True).order_by("created_at").limit(100).execute()
+
+        def load_orders(self) -> list:
+            return QueryBuilder("orders").filter(status="completed").limit(50).execute()
+
+  # --- Tricky: file named query.py in different directory (structural sibling confusion) ---
+  utils/query.py: |
+    GARBAGE_DEP_003_UTILS_QUERY_I = "utils_query_helper"
+    GARBAGE_DEP_003_UTILS_PARSE_J = True
+
+    def parse_query_string(qs: str) -> dict:
+        pairs = qs.split("&")
+        return {k: v for k, v in (p.split("=") for p in pairs if "=" in p)}
+
+    def run_query(sql: str) -> list:
+        GARBAGE_DEP_003_UTILS_RUN_K = "execute"
+        return []
+
+  # --- Plain garbage ---
+  garbage/color_palette_GARBAGE_DEP_003_COLOR_A.py: |
+    def generate_palette_GARBAGE_DEP_003_COLOR_A(base_hex: str, count: int) -> list:
+        return [f"#{i:06x}" for i in range(count)]
+
+    def hex_to_rgb_GARBAGE_DEP_003_COLOR_A(hex_color: str) -> tuple:
+        h = hex_color.lstrip("#")
+        return tuple(int(h[i:i+2], 16) for i in (0, 2, 4))
+
+    class ColorScheme_GARBAGE_DEP_003_COLOR_A:
+        def __init__(self, primary: str, secondary: str):
+            self.primary = primary
+            self.secondary = secondary
+
+        def complementary(self) -> str:
+            return f"complement({self.primary})"
+  garbage/fitness_tracker_GARBAGE_DEP_003_FITNESS_B.py: |
+    from datetime import datetime
+
+    def calculate_bmi_GARBAGE_DEP_003_FITNESS_B(weight_kg: float, height_m: float) -> float:
+        return weight_kg / (height_m ** 2)
+
+    def daily_calories_GARBAGE_DEP_003_FITNESS_B(steps: int) -> float:
+        return steps * 0.04
+
+    class WorkoutLog_GARBAGE_DEP_003_FITNESS_B:
+        def __init__(self):
+            self.sessions = []
+
+        def add_session(self, exercise: str, duration_min: int) -> None:
+            self.sessions.append({"exercise": exercise, "duration": duration_min, "date": str(datetime.now())})
+changed:
+  database/query.py: |
+    class QueryBuilder:
+        def __init__(self, table: str):
+            self.table = table
+            self.filters = []
+            self.limit_val = None
+            self.order_col = None
+
+        def query(self, table: str) -> "QueryBuilder":
+            return QueryBuilder(table)
+
+        def filter(self, **kwargs) -> "QueryBuilder":
+            self.filters.append(kwargs)
+            return self
+
+        def limit(self, n: int) -> "QueryBuilder":
+            self.limit_val = n
+            return self
+
+        def order_by(self, column: str) -> "QueryBuilder":
+            self.order_col = column
+            return self
+
+        def execute(self) -> list:
+            return []
+  query.py: |
+    from database.query import QueryBuilder
+
+    def run_query():
+        db = QueryBuilder("users")
+        result = db.query("users").filter(active=True).order_by("name").limit(10)
+        return result.execute()
+  database/mongo_query.py: |
+    GARBAGE_DEP_003_MONGO_BUILDER_C = "mongo_query"
+    GARBAGE_DEP_003_MONGO_CHAIN_D = True
+
+    class QueryBuilder:
+        def __init__(self, collection: str):
+            GARBAGE_DEP_003_MONGO_INIT_E = "init"
+            self.collection = collection
+            self.pipeline = []
+
+        def filter(self, **kwargs) -> "QueryBuilder":
+            self.pipeline.append({"$match": kwargs})
+            return self
+
+        def limit(self, n: int) -> "QueryBuilder":
+            self.pipeline.append({"$limit": n})
+            return self
+
+        def order_by(self, field: str) -> "QueryBuilder":
+            self.pipeline.append({"$sort": {field: 1}})
+            return self
+
+        def execute(self) -> list:
+            return []
+  reports/data_loader.py: |
+    from database.query import QueryBuilder
+    GARBAGE_DEP_003_LOADER_IMPORT_F = "data_loader"
+    GARBAGE_DEP_003_LOADER_BATCH_G = 500
+
+    class ReportDataLoader:
+        GARBAGE_DEP_003_LOADER_CLASS_H = True
+
+        def load_users(self) -> list:
+            return QueryBuilder("users").filter(active=True).order_by("created_at").limit(100).execute()
+
+        def load_orders(self) -> list:
+            return QueryBuilder("orders").filter(status="completed").limit(50).execute()
+  utils/query.py: |
+    GARBAGE_DEP_003_UTILS_QUERY_I = "utils_query_helper"
+    GARBAGE_DEP_003_UTILS_PARSE_J = True
+
+    def parse_query_string(qs: str) -> dict:
+        pairs = qs.split("&")
+        return {k: v for k, v in (p.split("=") for p in pairs if "=" in p)}
+
+    def run_query(sql: str) -> list:
+        GARBAGE_DEP_003_UTILS_RUN_K = "execute"
+        return []
+  garbage/color_palette_GARBAGE_DEP_003_COLOR_A.py: |
+    def generate_palette_GARBAGE_DEP_003_COLOR_A(base_hex: str, count: int) -> list:
+        return [f"#{i:06x}" for i in range(count)]
+
+    def hex_to_rgb_GARBAGE_DEP_003_COLOR_A(hex_color: str) -> tuple:
+        h = hex_color.lstrip("#")
+        return tuple(int(h[i:i+2], 16) for i in (0, 2, 4))
+
+    class ColorScheme_GARBAGE_DEP_003_COLOR_A:
+        def __init__(self, primary: str, secondary: str):
+            self.primary = primary
+            self.secondary = secondary
+
+        def complementary(self) -> str:
+            return f"complement({self.primary})"
+  garbage/fitness_tracker_GARBAGE_DEP_003_FITNESS_B.py: |
+    from datetime import datetime
+
+    def calculate_bmi_GARBAGE_DEP_003_FITNESS_B(weight_kg: float, height_m: float) -> float:
+        return weight_kg / (height_m ** 2)
+
+    def daily_calories_GARBAGE_DEP_003_FITNESS_B(steps: int) -> float:
+        return steps * 0.04
+
+    class WorkoutLog_GARBAGE_DEP_003_FITNESS_B:
+        def __init__(self):
+            self.sessions = []
+
+        def add_session(self, exercise: str, duration_min: int) -> None:
+            self.sessions.append({"exercise": exercise, "duration": duration_min, "date": str(datetime.now())})
+
+# === Assertions ===
+
+must_include_files:
+- query.py
+- database/query.py
+
+must_include_content_from:
+  query.py:
+    - from database.query import QueryBuilder
+    - db = QueryBuilder("users")
+    - db.query("users").filter(active=True)
+    - 'def run_query():'
+  database/query.py:
+    - 'class QueryBuilder:'
+    - 'def __init__(self, table: str):'
+    - 'def query(self, table: str) -> "QueryBuilder":'
+    - 'def filter(self, **kwargs) -> "QueryBuilder":'
+
+must_not_include:
+# Plain garbage
+- GARBAGE_DEP_003_COLOR_A
+- GARBAGE_DEP_003_FITNESS_B
+# Tricky: same class name QueryBuilder with identical chaining API
+- GARBAGE_DEP_003_MONGO_BUILDER_C
+- GARBAGE_DEP_003_MONGO_CHAIN_D
+- GARBAGE_DEP_003_MONGO_INIT_E
+# Tricky: imports QueryBuilder from database.query and uses same chain pattern
+- GARBAGE_DEP_003_LOADER_IMPORT_F
+- GARBAGE_DEP_003_LOADER_BATCH_G
+- GARBAGE_DEP_003_LOADER_CLASS_H
+# Tricky: file named query.py with run_query function (structural sibling)
+- GARBAGE_DEP_003_UTILS_QUERY_I
+- GARBAGE_DEP_003_UTILS_PARSE_J
+- GARBAGE_DEP_003_UTILS_RUN_K
+
+must_not_include_files:
+- database/mongo_query.py
+- reports/data_loader.py
+- utils/query.py
+- garbage/color_palette_GARBAGE_DEP_003_COLOR_A.py
+- garbage/fitness_tracker_GARBAGE_DEP_003_FITNESS_B.py
+
+max_fragments: 6
+max_files: 2
+add_garbage_files: false
+skip_garbage_check: true

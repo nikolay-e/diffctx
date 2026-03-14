@@ -1,0 +1,267 @@
+# Scenario: app.php starts using the Invoice model's static factory methods —
+# Invoice::generateDraft() and Invoice::lookupByNumber() — to create and
+# retrieve invoice records.
+#
+# Diff: app.php changes from a bare "echo" to requiring Invoice.php, adding
+# a `use` statement, and calling Invoice::generateDraft() and Invoice::lookupByNumber().
+#
+# Reviewer questions:
+#   Q1: "What does Invoice::generateDraft() return and what state does it modify?"
+#       -> src/Models/Invoice.php (UNCHANGED) defines generateDraft(string, float):
+#          creates a new Invoice with auto-incremented id, stores it in static
+#          $invoices array, and returns the instance.
+#   Q2: "What does Invoice::lookupByNumber() return when not found?"
+#       -> Invoice.php shows lookupByNumber(int): ?self — returns null if not found.
+#          Reviewer checks that app.php handles the nullable return correctly.
+#
+# Not needed:
+#   - src/Models/Receipt.php: another model with similar static factory methods
+#     (issueReceipt, findReceipt). Same Models namespace, same static $storage
+#     pattern, same auto-increment ID. HARDEST TRAP: structurally identical
+#     sibling model, but app.php only references Invoice.
+#   - src/Models/Payment.php: payment model with similar static methods
+#     (createPayment, findByTransactionId). Same pattern, different entity.
+#   - src/Database/Connection.php: database connection singleton with getInstance().
+#     Also uses static factory pattern, but different namespace and concern.
+#   - src/Services/InvoiceService.php: service layer that calls Invoice::generateDraft()
+#     and Invoice::lookupByNumber() — the EXACT same methods from the diff.
+#     Direct structural edge as a consumer, but understanding how another caller
+#     uses Invoice doesn't help review whether app.php's usage is correct.
+#   - tests/InvoiceTest.php: test file that constructs Invoice objects and calls
+#     the same static methods. Imports Invoice, exercises generateDraft/lookupByNumber.
+#     But test assertions verify behavior, not the API contract itself.
+#   - src/Formatters/InvoiceFormatter.php: formats Invoice objects for display.
+#     Takes Invoice as parameter, accesses $number, $client, $totalAmount — the
+#     exact same fields accessed in the diff. But formatting doesn't help
+#     understand the factory method signatures.
+
+initial:
+  src/app.php: |
+    <?php
+    echo "Hello World";
+  src/Models/Invoice.php: |
+    <?php
+    namespace App\Models;
+
+    class Invoice {
+        private static array $invoices = [];
+        public int $number;
+        public string $client;
+        public float $totalAmount;
+
+        public function __construct(int $number, string $client, float $totalAmount) {
+            $this->number = $number;
+            $this->client = $client;
+            $this->totalAmount = $totalAmount;
+        }
+
+        public static function lookupByNumber(int $number): ?self {
+            return self::$invoices[$number] ?? null;
+        }
+
+        public static function generateDraft(string $client, float $totalAmount): self {
+            $number = count(self::$invoices) + 1;
+            $invoice = new self($number, $client, $totalAmount);
+            self::$invoices[$number] = $invoice;
+            return $invoice;
+        }
+
+        public static function allInvoices(): array {
+            return array_values(self::$invoices);
+        }
+    }
+  src/Models/Receipt.php: |
+    <?php
+    namespace App\Models;
+
+    class Receipt {
+        private static array $receipts = [];
+        public int $id;
+        public string $buyer;
+        public float $paidAmount;
+        public string $currency;
+
+        public function __construct(int $id, string $buyer, float $paidAmount, string $currency = 'USD') {
+            $this->id = $id;
+            $this->buyer = $buyer;
+            $this->paidAmount = $paidAmount;
+            $this->currency = $currency;
+        }
+
+        public static function issueReceipt(string $buyer, float $paidAmount): self {
+            $id = count(self::$receipts) + 1;
+            $receipt = new self($id, $buyer, $paidAmount);
+            self::$receipts[$id] = $receipt;
+            return $receipt;
+        }
+
+        public static function findReceipt(int $id): ?self {
+            return self::$receipts[$id] ?? null;
+        }
+
+        public static function allReceipts(): array {
+            return array_values(self::$receipts);
+        }
+    }
+  src/Models/Payment.php: |
+    <?php
+    namespace App\Models;
+
+    class Payment {
+        private static array $payments = [];
+        public string $transactionId;
+        public float $amount;
+        public string $status;
+
+        public function __construct(string $transactionId, float $amount, string $status = 'pending') {
+            $this->transactionId = $transactionId;
+            $this->amount = $amount;
+            $this->status = $status;
+        }
+
+        public static function createPayment(float $amount): self {
+            $txId = 'txn_' . count(self::$payments) + 1;
+            $payment = new self($txId, $amount);
+            self::$payments[$txId] = $payment;
+            return $payment;
+        }
+
+        public static function findByTransactionId(string $txId): ?self {
+            return self::$payments[$txId] ?? null;
+        }
+    }
+  src/Database/Connection.php: |
+    <?php
+    namespace App\Database;
+
+    class Connection {
+        private static ?self $instance = null;
+        private string $dsn;
+
+        private function __construct(string $dsn) {
+            $this->dsn = $dsn;
+        }
+
+        public static function getInstance(string $dsn = 'sqlite::memory:'): self {
+            if (self::$instance === null) {
+                self::$instance = new self($dsn);
+            }
+            return self::$instance;
+        }
+
+        public function getDsn(): string {
+            return $this->dsn;
+        }
+    }
+  src/Services/InvoiceService.php: |
+    <?php
+    namespace App\Services;
+
+    use App\Models\Invoice;
+
+    class InvoiceService {
+        public function createInvoice(string $client, float $amount): Invoice {
+            $invoice = Invoice::generateDraft($client, $amount);
+            return $invoice;
+        }
+
+        public function getInvoice(int $number): ?Invoice {
+            return Invoice::lookupByNumber($number);
+        }
+
+        public function listAll(): array {
+            return Invoice::allInvoices();
+        }
+    }
+  tests/InvoiceTest.php: |
+    <?php
+    namespace Tests;
+
+    use App\Models\Invoice;
+    use PHPUnit\Framework\TestCase;
+
+    class InvoiceTest extends TestCase {
+        public function testGenerateDraft(): void {
+            $invoice = Invoice::generateDraft('Test Corp', 500.00);
+            $this->assertInstanceOf(Invoice::class, $invoice);
+            $this->assertEquals('Test Corp', $invoice->client);
+            $this->assertEquals(500.00, $invoice->totalAmount);
+        }
+
+        public function testLookupByNumber(): void {
+            $invoice = Invoice::generateDraft('Lookup Corp', 750.00);
+            $found = Invoice::lookupByNumber($invoice->number);
+            $this->assertNotNull($found);
+            $this->assertEquals('Lookup Corp', $found->client);
+        }
+    }
+  src/Formatters/InvoiceFormatter.php: |
+    <?php
+    namespace App\Formatters;
+
+    use App\Models\Invoice;
+
+    class InvoiceFormatter {
+        public function format(Invoice $invoice): string {
+            return sprintf(
+                "Invoice #%d: %s - $%.2f",
+                $invoice->number,
+                $invoice->client,
+                $invoice->totalAmount
+            );
+        }
+
+        public function formatShort(Invoice $invoice): string {
+            return sprintf("#%d: $%.2f", $invoice->number, $invoice->totalAmount);
+        }
+    }
+changed:
+  src/app.php: |
+    <?php
+    require_once 'Models/Invoice.php';
+
+    use App\Models\Invoice;
+
+    $invoice = Invoice::generateDraft('Acme Corp', 1500.00);
+    $found = Invoice::lookupByNumber($invoice->number);
+    echo $found->client . ": $" . $found->totalAmount . "\n";
+must_include_files:
+  # Q1+Q2: Invoice.php defines generateDraft() and lookupByNumber() called by app.php
+  - src/Models/Invoice.php
+must_include_content_from:
+  src/Models/Invoice.php:
+    - "public static function generateDraft(string $client, float $totalAmount): self"
+    - "public static function lookupByNumber(int $number): ?self"
+    - "self::$invoices[$number] ?? null"
+must_not_include:
+  # Receipt.php: identical static factory pattern, same namespace, different entity
+  - "class Receipt"
+  - "issueReceipt"
+  - "findReceipt"
+  # Payment.php: same static factory pattern, same namespace
+  - "class Payment"
+  - "createPayment"
+  - "findByTransactionId"
+  # Connection.php: static getInstance singleton, different namespace
+  - "class Connection"
+  - "getInstance"
+  # InvoiceService.php: calls Invoice::generateDraft() — exact same methods
+  - "class InvoiceService"
+  - "createInvoice"
+  # InvoiceTest.php: tests for the same static methods
+  - "class InvoiceTest"
+  - "testGenerateDraft"
+  # InvoiceFormatter.php: accesses same Invoice fields
+  - "class InvoiceFormatter"
+  - "formatShort"
+must_not_include_files:
+  - src/Models/Receipt.php
+  - src/Models/Payment.php
+  - src/Database/Connection.php
+  - src/Services/InvoiceService.php
+  - tests/InvoiceTest.php
+  - src/Formatters/InvoiceFormatter.php
+max_fragments: 5
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

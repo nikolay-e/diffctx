@@ -1,0 +1,186 @@
+# Scenario: app.cpp goes from empty main to using log() variadic template
+#   from logger.h that uses fold expression to stream arbitrary arguments.
+#
+# Reviewer questions:
+#   Q1: "What does log(Args... args) do — how does the fold expression work?"
+#       -> include/logger.h: template<typename... Args> void log(Args... args)
+#          uses ((oss << args << " "), ...) fold expression to concatenate
+#          all arguments into an ostringstream. Reviewer must verify this
+#          correctly handles the mixed types (string, string, int, double)
+#          passed in the diff.
+#
+#   Q2: "Is log() safe to call with zero arguments?"
+#       -> logger.h: empty parameter pack produces empty fold — oss outputs
+#          nothing, then writes endl. Not dangerous but worth noting.
+#
+# Not needed:
+#   - include/format.h: Another variadic template utility. Same template
+#     parameter pack pattern. Formats strings with sprintf-style placeholders.
+#     Similar but different functionality.
+#
+#   - src/diagnostics.cpp: Also uses log() from logger.h. Direct structural
+#     edge (includes logger.h, calls log()). But seeing another caller
+#     doesn't help review whether this caller's arguments are correct.
+#
+#   - include/print.h: Variadic template that prints to stderr. Same
+#     fold expression pattern. Different output target.
+#
+#   - tests/logger_test.cpp: Tests log() with captured output. Same types.
+#     But test assertions don't help review the caller's usage.
+
+initial:
+  include/logger.h: |
+    #pragma once
+    #include <iostream>
+    #include <sstream>
+
+    template<typename... Args>
+    void log(Args... args) {
+        std::ostringstream oss;
+        ((oss << args << " "), ...);
+        std::cout << oss.str() << std::endl;
+    }
+
+  src/app.cpp: |
+    #include <iostream>
+    int main() { return 0; }
+
+  include/format.h: |
+    #pragma once
+    #include <string>
+    #include <sstream>
+
+    template<typename T>
+    std::string toString(const T& value) {
+        std::ostringstream oss;
+        oss << value;
+        return oss.str();
+    }
+
+    template<typename... Args>
+    std::string format(const std::string& pattern, Args... args) {
+        std::string result = pattern;
+        int index = 0;
+        ((result.replace(result.find("{}"), 2, toString(args)), ++index), ...);
+        return result;
+    }
+
+  src/diagnostics.cpp: |
+    #include "logger.h"
+    #include <string>
+
+    class Diagnostics {
+        std::string component_;
+    public:
+        Diagnostics(const std::string& name) : component_(name) {}
+
+        void info(const std::string& message) {
+            log("[INFO]", component_, message);
+        }
+
+        void warn(const std::string& message) {
+            log("[WARN]", component_, message);
+        }
+
+        void error(const std::string& message, int code) {
+            log("[ERROR]", component_, message, "code:", code);
+        }
+    };
+
+  include/print.h: |
+    #pragma once
+    #include <iostream>
+    #include <sstream>
+
+    template<typename... Args>
+    void print_err(Args... args) {
+        std::ostringstream oss;
+        ((oss << args << " "), ...);
+        std::cerr << oss.str() << std::endl;
+    }
+
+    template<typename... Args>
+    void print_debug(Args... args) {
+        #ifdef DEBUG
+        std::ostringstream oss;
+        ((oss << "[DBG] " << args << " "), ...);
+        std::cerr << oss.str() << std::endl;
+        #endif
+    }
+
+  tests/logger_test.cpp: |
+    #include "logger.h"
+    #include <cassert>
+    #include <sstream>
+
+    void test_log_single_arg() {
+        std::ostringstream capture;
+        auto old = std::cout.rdbuf(capture.rdbuf());
+        log("hello");
+        std::cout.rdbuf(old);
+        assert(capture.str().find("hello") != std::string::npos);
+    }
+
+    void test_log_multiple_args() {
+        std::ostringstream capture;
+        auto old = std::cout.rdbuf(capture.rdbuf());
+        log("value:", 42, 3.14);
+        std::cout.rdbuf(old);
+        assert(capture.str().find("42") != std::string::npos);
+    }
+
+changed:
+  src/app.cpp: |
+    #include "logger.h"
+
+    void process() {
+        log("Starting", "process", 42, 3.14);
+        log("Done");
+    }
+
+must_include_files:
+  - src/app.cpp
+  # Q1+Q2: Reviewer needs logger.h to understand how log() handles the
+  # variadic arguments and verify the fold expression pattern.
+  - include/logger.h
+
+must_include_content_from:
+  src/app.cpp:
+    - '#include "logger.h"'
+    - 'log("Starting", "process", 42, 3.14)'
+    - 'log("Done")'
+  include/logger.h:
+    - "template<typename... Args>"
+    - "void log(Args... args)"
+    - "((oss << args << \" \"), ...)"
+
+must_not_include:
+  # --- format.h: similar variadic template, different utility ---
+  - "format(const std::string"
+  - toString
+  - "result.replace"
+  # --- diagnostics.cpp: another log() caller ---
+  - Diagnostics
+  - component_
+  - "[INFO]"
+  - "[WARN]"
+  - "[ERROR]"
+  # --- print.h: similar fold expression, different output target ---
+  - print_err
+  - print_debug
+  - "std::cerr"
+  # --- tests ---
+  - test_log_single_arg
+  - test_log_multiple_args
+  - "rdbuf"
+
+must_not_include_files:
+  - include/format.h
+  - src/diagnostics.cpp
+  - include/print.h
+  - tests/logger_test.cpp
+
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

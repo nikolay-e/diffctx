@@ -1,0 +1,132 @@
+# Scenario: Add an ECS Fargate service referencing existing cluster and task def
+#
+# Reviewer questions:
+#   1. What task definition does this service run? (task.tf defines aws_ecs_task_definition.app)
+#   2. What network config is used? (network.tf defines subnets and security groups)
+#
+# The diff adds aws_ecs_service "app" to ecs.tf. task.tf (unchanged) defines
+# the task definition the service references. A reviewer needs task.tf to
+# verify the container config, ports, and resource allocation.
+#
+# Traps: ecs_workers.tf has same aws_ecs_service type but for background workers.
+# scripts/deploy.sh is operational, not Terraform.
+
+initial:
+  ecs.tf: |
+    resource "aws_ecs_cluster" "main" {
+      name = "main-cluster"
+    }
+  task.tf: |
+    resource "aws_ecs_task_definition" "app" {
+      family                   = "app-task"
+      network_mode             = "awsvpc"
+      requires_compatibilities = ["FARGATE"]
+      cpu                      = "256"
+      memory                   = "512"
+
+      container_definitions = jsonencode([{
+        name  = "app"
+        image = "myapp:latest"
+        portMappings = [{
+          containerPort = 8080
+        }]
+      }])
+    }
+  ecs_workers.tf: |
+    resource "aws_ecs_service" "worker" {
+      name            = "worker-service"
+      cluster         = aws_ecs_cluster.main.id
+      task_definition = aws_ecs_task_definition.worker.arn
+      desired_count   = 4
+      launch_type     = "FARGATE"
+
+      network_configuration {
+        subnets         = var.private_subnet_ids
+        security_groups = [aws_security_group.worker.id]
+      }
+    }
+  scripts/deploy.sh: |
+    #!/bin/bash
+    set -euo pipefail
+    echo "Deploying ECS services..."
+    aws ecs update-service --cluster main-cluster --service app-service --force-new-deployment
+
+changed:
+  ecs.tf: |
+    resource "aws_ecs_cluster" "main" {
+      name = "main-cluster"
+    }
+
+    resource "aws_ecs_service" "app" {
+      name            = "app-service"
+      cluster         = aws_ecs_cluster.main.id
+      task_definition = aws_ecs_task_definition.app.arn
+      desired_count   = 2
+      launch_type     = "FARGATE"
+
+      network_configuration {
+        subnets         = var.subnet_ids
+        security_groups = [aws_security_group.app.id]
+      }
+    }
+  task.tf: |
+    resource "aws_ecs_task_definition" "app" {
+      family                   = "app-task"
+      network_mode             = "awsvpc"
+      requires_compatibilities = ["FARGATE"]
+      cpu                      = "256"
+      memory                   = "512"
+
+      container_definitions = jsonencode([{
+        name  = "app"
+        image = "myapp:latest"
+        portMappings = [{
+          containerPort = 8080
+        }]
+      }])
+    }
+  ecs_workers.tf: |
+    resource "aws_ecs_service" "worker" {
+      name            = "worker-service"
+      cluster         = aws_ecs_cluster.main.id
+      task_definition = aws_ecs_task_definition.worker.arn
+      desired_count   = 4
+      launch_type     = "FARGATE"
+
+      network_configuration {
+        subnets         = var.private_subnet_ids
+        security_groups = [aws_security_group.worker.id]
+      }
+    }
+  scripts/deploy.sh: |
+    #!/bin/bash
+    set -euo pipefail
+    echo "Deploying ECS services..."
+    aws ecs update-service --cluster main-cluster --service app-service --force-new-deployment
+
+must_include_files:
+# Unchanged task definition that the new service references
+- task.tf
+
+must_include_content_from:
+  task.tf:
+    # Reviewer needs the task def to verify container config and resources
+    - resource "aws_ecs_task_definition" "app" {
+    - containerPort = 8080
+
+must_not_include:
+# Worker service is same type but for background processing
+- worker-service
+- aws_ecs_task_definition.worker.arn
+- aws_security_group.worker.id
+# Deploy script is operational, not infrastructure
+- aws ecs update-service
+
+must_not_include_files:
+- ecs_workers.tf  # same resource type, different concern (workers)
+- scripts/deploy.sh  # operational script, not Terraform
+
+max_fragments: 4
+max_files: 2
+add_garbage_files: false
+skip_garbage_check: true

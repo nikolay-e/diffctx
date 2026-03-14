@@ -1,0 +1,281 @@
+# Scenario: parallel.sh adds a second background task and proper wait handling.
+# Sources jobs.sh for long_process() and compress_logs().
+#
+# Reviewer questions:
+#   Q1: "What does long_process do — how long does it take?"
+#       -> jobs.sh: sleep 30. Reviewer verifies parallel approach is reasonable.
+#   Q2: "What does compress_logs do?"
+#       -> jobs.sh: gzip .log files in a directory. Reviewer checks conflicts.
+#
+# Not needed:
+#   - scheduler.sh: cron-based task scheduling, different mechanism.
+#   - timeout-guard.sh: timeout wrapper, not sourced by parallel.sh.
+#   - scripts/monitor_jobs.sh: HARDEST TRAP — sources jobs.sh, runs
+#     long_process and compress_logs with monitoring. Same source, same
+#     function calls. But monitoring wrapper, not job definition.
+#   - scripts/sequential.sh: runs same functions sequentially.
+#     Sources jobs.sh, calls same functions. But serial execution.
+#   - lib/job_queue.sh: generic job queue implementation.
+#     Related "background job" concept but not sourced.
+
+initial:
+  lib/jobs.sh: |
+    #!/bin/bash
+
+    long_process() {
+        local label=${1:-default}
+        sleep 30
+        echo "Long process [$label] complete"
+    }
+
+    compress_logs() {
+        local dir=${1:-/var/log}
+        for f in "$dir"/*.log; do
+            gzip -k "$f" 2>/dev/null
+        done
+        echo "Compression finished for $dir"
+    }
+  parallel.sh: |
+    #!/bin/bash
+    source ./lib/jobs.sh
+
+    long_process "batch-1" &
+    pid1=$!
+    echo "Started job: $pid1"
+    wait $pid1
+  scheduler.sh: |
+    #!/bin/bash
+
+    CRON_DIR="/etc/cron.d"
+
+    add_cron_job() {
+        local name=$1
+        local schedule=$2
+        local command=$3
+        echo "$schedule root $command" > "$CRON_DIR/$name"
+    }
+
+    remove_cron_job() {
+        local name=$1
+        rm -f "$CRON_DIR/$name"
+    }
+
+    list_cron_jobs() {
+        ls -1 "$CRON_DIR"
+    }
+  timeout-guard.sh: |
+    #!/bin/bash
+
+    run_with_timeout() {
+        local seconds=$1
+        shift
+        timeout "$seconds" "$@"
+        local exit_code=$?
+        if [[ $exit_code -eq 124 ]]; then
+            echo "Command timed out after ${seconds}s"
+        fi
+        return $exit_code
+    }
+
+    kill_after_timeout() {
+        local seconds=$1
+        local pid=$2
+        sleep "$seconds"
+        kill -9 "$pid" 2>/dev/null
+    }
+  scripts/monitor_jobs.sh: |
+    #!/bin/bash
+    source ./lib/jobs.sh
+
+    echo "Starting monitored execution..."
+    long_process "monitored" &
+    pid=$!
+    while kill -0 "$pid" 2>/dev/null; do
+        echo "Job $pid still running..."
+        sleep 5
+    done
+    compress_logs "/var/log/app" &
+    wait
+    echo "All monitored jobs finished"
+  scripts/sequential.sh: |
+    #!/bin/bash
+    source ./lib/jobs.sh
+
+    echo "Running sequentially..."
+    long_process "step-1"
+    echo "Step 1 done"
+    compress_logs "/var/log"
+    echo "Step 2 done"
+  lib/job_queue.sh: |
+    #!/bin/bash
+    JOB_QUEUE=()
+
+    enqueue_job() {
+        JOB_QUEUE+=("$1")
+    }
+
+    run_queue() {
+        for job in "${JOB_QUEUE[@]}"; do
+            eval "$job" &
+        done
+        wait
+    }
+
+changed:
+  lib/jobs.sh: |
+    #!/bin/bash
+
+    long_process() {
+        local label=${1:-default}
+        sleep 30
+        echo "Long process [$label] complete"
+    }
+
+    compress_logs() {
+        local dir=${1:-/var/log}
+        for f in "$dir"/*.log; do
+            gzip -k "$f" 2>/dev/null
+        done
+        echo "Compression finished for $dir"
+    }
+  parallel.sh: |
+    #!/bin/bash
+    source ./lib/jobs.sh
+
+    long_process "batch-1" &
+    pid1=$!
+
+    compress_logs "/var/log/app" &
+    pid2=$!
+
+    echo "Started background jobs: $pid1 $pid2"
+
+    wait $pid1
+    echo "Job 1 (long_process) complete: $?"
+
+    wait $pid2
+    echo "Job 2 (compress_logs) complete: $?"
+
+    wait
+    echo "All jobs finished"
+  scheduler.sh: |
+    #!/bin/bash
+
+    CRON_DIR="/etc/cron.d"
+
+    add_cron_job() {
+        local name=$1
+        local schedule=$2
+        local command=$3
+        echo "$schedule root $command" > "$CRON_DIR/$name"
+    }
+
+    remove_cron_job() {
+        local name=$1
+        rm -f "$CRON_DIR/$name"
+    }
+
+    list_cron_jobs() {
+        ls -1 "$CRON_DIR"
+    }
+  timeout-guard.sh: |
+    #!/bin/bash
+
+    run_with_timeout() {
+        local seconds=$1
+        shift
+        timeout "$seconds" "$@"
+        local exit_code=$?
+        if [[ $exit_code -eq 124 ]]; then
+            echo "Command timed out after ${seconds}s"
+        fi
+        return $exit_code
+    }
+
+    kill_after_timeout() {
+        local seconds=$1
+        local pid=$2
+        sleep "$seconds"
+        kill -9 "$pid" 2>/dev/null
+    }
+  scripts/monitor_jobs.sh: |
+    #!/bin/bash
+    source ./lib/jobs.sh
+
+    echo "Starting monitored execution..."
+    long_process "monitored" &
+    pid=$!
+    while kill -0 "$pid" 2>/dev/null; do
+        echo "Job $pid still running..."
+        sleep 5
+    done
+    compress_logs "/var/log/app" &
+    wait
+    echo "All monitored jobs finished"
+  scripts/sequential.sh: |
+    #!/bin/bash
+    source ./lib/jobs.sh
+
+    echo "Running sequentially..."
+    long_process "step-1"
+    echo "Step 1 done"
+    compress_logs "/var/log"
+    echo "Step 2 done"
+  lib/job_queue.sh: |
+    #!/bin/bash
+    JOB_QUEUE=()
+
+    enqueue_job() {
+        JOB_QUEUE+=("$1")
+    }
+
+    run_queue() {
+        for job in "${JOB_QUEUE[@]}"; do
+            eval "$job" &
+        done
+        wait
+    }
+
+must_include_files:
+  - lib/jobs.sh
+  - parallel.sh
+
+must_include_content_from:
+  lib/jobs.sh:
+    - "long_process()"
+    - "compress_logs()"
+  parallel.sh:
+    - "compress_logs"
+    - "long_process"
+    - "wait $pid1"
+
+must_not_include:
+  # --- scheduler.sh: cron-based ---
+  - add_cron_job
+  - remove_cron_job
+  - CRON_DIR
+  # --- timeout-guard.sh: timeout wrapper ---
+  - run_with_timeout
+  - kill_after_timeout
+  # --- monitor_jobs.sh: HARDEST TRAP, sources jobs.sh ---
+  - "Starting monitored execution"
+  - "Job $pid still running"
+  - "All monitored jobs finished"
+  # --- sequential.sh: same functions, serial ---
+  - "Running sequentially"
+  - "Step 1 done"
+  # --- job_queue.sh: generic queue ---
+  - JOB_QUEUE
+  - enqueue_job
+
+must_not_include_files:
+  - scheduler.sh
+  - timeout-guard.sh
+  - scripts/monitor_jobs.sh
+  - scripts/sequential.sh
+  - lib/job_queue.sh
+
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

@@ -13,6 +13,8 @@ from .markdown import MistuneMarkdownStrategy, RegexMarkdownStrategy
 from .python import PythonAstStrategy
 from .text import ParagraphStrategy, PySBDTextStrategy
 
+logger = logging.getLogger(__name__)
+
 
 def _make_tree_sitter_strategy() -> object | None:
     try:
@@ -57,7 +59,7 @@ class FragmentationEngine:
                     if result:
                         return result
                 except Exception as e:
-                    logging.warning("Strategy %s failed for %s: %s", type(strategy).__name__, path, e)
+                    logger.warning("Strategy %s failed for %s: %s", type(strategy).__name__, path, e)
                     continue
 
         return GenericStrategy().fragment(path, content)

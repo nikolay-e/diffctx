@@ -1,0 +1,215 @@
+initial:
+  src/main.py: |
+    from src.greeting import create_greeting
+    from src.config import DEFAULT_LANGUAGE
+
+    def hello():
+        pass
+
+    def world():
+        message = create_greeting("world", DEFAULT_LANGUAGE)
+        return message
+
+    def farewell(name):
+        return f"Goodbye, {name}!"
+  src/greeting.py: |
+    from src.config import GREETING_TEMPLATES
+
+    def create_greeting(name, language):
+        template = GREETING_TEMPLATES.get(language, "Hello, {name}!")
+        return template.format(name=name)
+
+    def create_formal_greeting(title, last_name, language):
+        template = GREETING_TEMPLATES.get(language, "Dear {title} {last_name},")
+        return template.format(title=title, last_name=last_name)
+  src/config.py: |
+    DEFAULT_LANGUAGE = "en"
+    MAX_GREETING_LENGTH = 256
+
+    GREETING_TEMPLATES = {
+        "en": "Hello, {name}!",
+        "es": "Hola, {name}!",
+        "fr": "Bonjour, {name}!",
+        "de": "Hallo, {name}!",
+    }
+
+    LOG_FORMAT = "%(asctime)s - %(levelname)s - %(message)s"
+
+  # --- Tricky: calls create_greeting and uses DEFAULT_LANGUAGE (same symbols as diff) ---
+  src/cli.py: |
+    from src.greeting import create_greeting
+    from src.config import DEFAULT_LANGUAGE
+    GARBAGE_COMP_001_CLI_MARKER_G = "cli_tool"
+
+    def run_cli():
+        GARBAGE_COMP_001_CLI_RUN_H = True
+        name = input("Enter name: ")
+        greeting = create_greeting(name, DEFAULT_LANGUAGE)
+        print(greeting)
+
+    def parse_args():
+        GARBAGE_COMP_001_CLI_ARGS_I = "argparse"
+        return {"name": "default"}
+
+  # --- Tricky: has create_greeting in different module (name collision) ---
+  src/email_greeting.py: |
+    GARBAGE_COMP_001_EMAIL_MARKER_J = "email_templates"
+
+    def create_greeting(recipient, style="formal"):
+        GARBAGE_COMP_001_EMAIL_TMPL_K = "Dear"
+        if style == "formal":
+            return f"Dear {recipient},"
+        return f"Hi {recipient},"
+
+    def send_greeting_email(to, greeting):
+        GARBAGE_COMP_001_EMAIL_SEND_L = "smtp"
+        pass
+
+  # --- Plain garbage ---
+  garbage_telemetry.py: |
+    GARBAGE_COMP_001_METRIC_TRACKER_A = "pageviews"
+    GARBAGE_COMP_001_SESSION_COUNTER_B = "sessions"
+
+    class GarbageTelemetryCollector:
+        GARBAGE_COMP_001_FLUSH_INTERVAL_C = 30
+        def collect(self):
+            pass
+  garbage_cache_warmer.py: |
+    GARBAGE_COMP_001_WARMUP_BATCH_D = "preload"
+    GARBAGE_COMP_001_EVICTION_POLICY_E = "lru"
+
+    class GarbageCacheWarmer:
+        GARBAGE_COMP_001_TTL_SECONDS_F = 3600
+        def warm(self):
+            pass
+
+changed:
+  src/main.py: |
+    from src.greeting import create_greeting
+    from src.config import DEFAULT_LANGUAGE
+
+    def hello():
+        greeting = create_greeting("world", DEFAULT_LANGUAGE)
+        print(greeting)
+        return greeting
+
+    def world():
+        message = create_greeting("world", DEFAULT_LANGUAGE)
+        return message
+
+    def farewell(name):
+        return f"Goodbye, {name}!"
+  src/greeting.py: |
+    from src.config import GREETING_TEMPLATES
+
+    def create_greeting(name, language):
+        template = GREETING_TEMPLATES.get(language, "Hello, {name}!")
+        return template.format(name=name)
+
+    def create_formal_greeting(title, last_name, language):
+        template = GREETING_TEMPLATES.get(language, "Dear {title} {last_name},")
+        return template.format(title=title, last_name=last_name)
+  src/config.py: |
+    DEFAULT_LANGUAGE = "en"
+    MAX_GREETING_LENGTH = 256
+
+    GREETING_TEMPLATES = {
+        "en": "Hello, {name}!",
+        "es": "Hola, {name}!",
+        "fr": "Bonjour, {name}!",
+        "de": "Hallo, {name}!",
+    }
+
+    LOG_FORMAT = "%(asctime)s - %(levelname)s - %(message)s"
+  src/cli.py: |
+    from src.greeting import create_greeting
+    from src.config import DEFAULT_LANGUAGE
+    GARBAGE_COMP_001_CLI_MARKER_G = "cli_tool"
+
+    def run_cli():
+        GARBAGE_COMP_001_CLI_RUN_H = True
+        name = input("Enter name: ")
+        greeting = create_greeting(name, DEFAULT_LANGUAGE)
+        print(greeting)
+
+    def parse_args():
+        GARBAGE_COMP_001_CLI_ARGS_I = "argparse"
+        return {"name": "default"}
+  src/email_greeting.py: |
+    GARBAGE_COMP_001_EMAIL_MARKER_J = "email_templates"
+
+    def create_greeting(recipient, style="formal"):
+        GARBAGE_COMP_001_EMAIL_TMPL_K = "Dear"
+        if style == "formal":
+            return f"Dear {recipient},"
+        return f"Hi {recipient},"
+
+    def send_greeting_email(to, greeting):
+        GARBAGE_COMP_001_EMAIL_SEND_L = "smtp"
+        pass
+  garbage_telemetry.py: |
+    GARBAGE_COMP_001_METRIC_TRACKER_A = "pageviews"
+    GARBAGE_COMP_001_SESSION_COUNTER_B = "sessions"
+
+    class GarbageTelemetryCollector:
+        GARBAGE_COMP_001_FLUSH_INTERVAL_C = 30
+        def collect(self):
+            pass
+  garbage_cache_warmer.py: |
+    GARBAGE_COMP_001_WARMUP_BATCH_D = "preload"
+    GARBAGE_COMP_001_EVICTION_POLICY_E = "lru"
+
+    class GarbageCacheWarmer:
+        GARBAGE_COMP_001_TTL_SECONDS_F = 3600
+        def warm(self):
+            pass
+
+# === Assertions ===
+
+must_include_files:
+- src/main.py
+- src/greeting.py
+- src/config.py
+
+must_include_content_from:
+  src/main.py:
+    # Diff content — hello() body filled in
+    - greeting = create_greeting("world", DEFAULT_LANGUAGE)
+    - print(greeting)
+    - return greeting
+    - 'def hello():'
+  src/greeting.py:
+    # Forward dependency — definition of create_greeting called in diff
+    - 'def create_greeting(name, language):'
+    - return template.format(name=name)
+  src/config.py:
+    # Forward dependency — DEFAULT_LANGUAGE used in diff
+    - 'DEFAULT_LANGUAGE = "en"'
+
+must_not_include:
+# Plain garbage
+- GARBAGE_COMP_001_METRIC_TRACKER_A
+- GARBAGE_COMP_001_SESSION_COUNTER_B
+- GARBAGE_COMP_001_FLUSH_INTERVAL_C
+- GARBAGE_COMP_001_WARMUP_BATCH_D
+- GARBAGE_COMP_001_EVICTION_POLICY_E
+- GARBAGE_COMP_001_TTL_SECONDS_F
+# Tricky: same imports, same function calls, same variable names as diff
+- GARBAGE_COMP_001_CLI_MARKER_G
+- GARBAGE_COMP_001_CLI_RUN_H
+- GARBAGE_COMP_001_CLI_ARGS_I
+# Tricky: function named create_greeting (name collision with actual dependency)
+- GARBAGE_COMP_001_EMAIL_MARKER_J
+- GARBAGE_COMP_001_EMAIL_TMPL_K
+- GARBAGE_COMP_001_EMAIL_SEND_L
+
+must_not_include_files:
+- src/cli.py
+- src/email_greeting.py
+- garbage_telemetry.py
+- garbage_cache_warmer.py
+
+max_fragments: 8
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

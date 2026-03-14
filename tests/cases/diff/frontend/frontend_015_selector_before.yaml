@@ -1,7 +1,0 @@
-selectors.ts: "import { createSelector } from '@reduxjs/toolkit';\nimport type { RootState } from './store';\n\nexport const selectUsers = (state: RootState) => state.user.users;\nexport const selectLoading\
-  \ = (state: RootState) => state.user.loading;\n\nexport const selectActiveUsers = createSelector(\n    [selectUsers],\n    (users) => users.filter(user => user.email.includes('@'))\n);\n\nexport const\
-  \ selectUserCount = createSelector(\n    [selectUsers],\n    (users) => users.length\n);\n\nexport const selectActiveUserCount = createSelector(\n    [selectActiveUsers],\n    (activeUsers) => activeUsers.length\n\
-  );\n\n// redux_garbage_marker_002\n"
-store.ts: "import { configureStore } from '@reduxjs/toolkit';\nimport userReducer from './userSlice';\n\nexport const store = configureStore({\n    reducer: {\n        user: userReducer,\n    },\n});\n\n\
-  export type RootState = ReturnType<typeof store.getState>;\nexport type AppDispatch = typeof store.dispatch;\n"
-UserStats.tsx: "import React from 'react';\n\nexport function UserStats() {\n    return <div>Initial</div>;\n}\n"

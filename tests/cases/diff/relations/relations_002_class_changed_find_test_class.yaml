@@ -1,0 +1,131 @@
+# Test: UserService gains deactivate() method — test class must be pulled for context
+#
+# Scenario: user_service.py adds a new deactivate() method. tests/test_user_service.py
+# (UNCHANGED) imports UserService and tests add_user. A reviewer needs the test to
+# understand existing coverage and verify deactivate() needs a new test.
+#
+# Reviewer questions:
+#   Q1: "Is there already test coverage for user deactivation?"
+#       -> tests/test_user_service.py (UNCHANGED) only tests add_user — no
+#          deactivate test yet.
+#   Q2: "Does the existing test fixture set up enough state for deactivate?"
+#       -> Test creates UserService() and calls add_user — deactivate uses user_id.
+#
+# Trap files (plausible but unrelated):
+#   - notification_service.py: sends notifications to users — same "user" domain
+#     but UserService doesn't depend on it.
+#   - permission_checker.py: checks user permissions — related user concept
+#     but no import from UserService.
+
+initial:
+  user_service.py: |
+    class UserService:
+        def __init__(self):
+            self.users = []
+
+        def add_user(self, name):
+            self.users.append(name)
+  tests/test_user_service.py: |
+    from user_service import UserService
+
+    class TestUserService:
+        def test_add_user(self):
+            service = UserService()
+            service.add_user("Alice")
+            assert "Alice" in service.users
+  notification_service.py: |
+    class NotificationService:
+        def __init__(self, channel="email"):
+            self.channel = channel
+            self.sent = []
+
+        def send(self, user_id, message):
+            entry = {"user_id": user_id, "message": message, "channel": self.channel}
+            self.sent.append(entry)
+            return entry
+
+        def get_history(self, user_id):
+            return [n for n in self.sent if n["user_id"] == user_id]
+  permission_checker.py: |
+    class PermissionChecker:
+        ROLES = {"admin": ["read", "write", "delete"], "user": ["read"], "editor": ["read", "write"]}
+
+        def __init__(self, role="user"):
+            self.role = role
+
+        def can(self, action):
+            allowed = self.ROLES.get(self.role, [])
+            return action in allowed
+
+        def require(self, action):
+            if not self.can(action):
+                raise PermissionError(f"Role '{self.role}' cannot '{action}'")
+changed:
+  user_service.py: |
+    class UserService:
+        def __init__(self):
+            self.users = []
+
+        def add_user(self, name):
+            self.users.append(name)
+
+        def deactivate(self, user_id):
+            pass
+  tests/test_user_service.py: |
+    from user_service import UserService
+
+    class TestUserService:
+        def test_add_user(self):
+            service = UserService()
+            service.add_user("Alice")
+            assert "Alice" in service.users
+  notification_service.py: |
+    class NotificationService:
+        def __init__(self, channel="email"):
+            self.channel = channel
+            self.sent = []
+
+        def send(self, user_id, message):
+            entry = {"user_id": user_id, "message": message, "channel": self.channel}
+            self.sent.append(entry)
+            return entry
+
+        def get_history(self, user_id):
+            return [n for n in self.sent if n["user_id"] == user_id]
+  permission_checker.py: |
+    class PermissionChecker:
+        ROLES = {"admin": ["read", "write", "delete"], "user": ["read"], "editor": ["read", "write"]}
+
+        def __init__(self, role="user"):
+            self.role = role
+
+        def can(self, action):
+            allowed = self.ROLES.get(self.role, [])
+            return action in allowed
+
+        def require(self, action):
+            if not self.can(action):
+                raise PermissionError(f"Role '{self.role}' cannot '{action}'")
+must_include_files:
+  - user_service.py
+  # Q1/Q2: test class imports UserService — reviewer needs existing coverage
+  - tests/test_user_service.py
+must_include_content_from:
+  user_service.py:
+    - "def deactivate(self, user_id):"
+  tests/test_user_service.py:
+    - "from user_service import UserService"
+must_not_include:
+  # notification_service.py: notifications — no dependency from UserService
+  - NotificationService
+  - get_history
+  # permission_checker.py: permissions — no dependency from UserService
+  - PermissionChecker
+  - PermissionError
+must_not_include_files:
+  - notification_service.py
+  - permission_checker.py
+max_fragments: 5
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

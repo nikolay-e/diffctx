@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import bisect
 import heapq
 import logging
 import math
@@ -7,8 +8,11 @@ import statistics
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .config.limits import UTILITY
 from .types import Fragment, FragmentId
 from .utility import InformationNeed, UtilityState, apply_fragment, compute_density, marginal_gain, utility_value
+
+logger = logging.getLogger(__name__)
 
 _BASELINE_K_MAX = 5
 _CORE_BUDGET_FRACTION = 0.70
@@ -26,17 +30,60 @@ class SelectionResult:
     utility: float
 
 
+class _IntervalIndex:
+    def __init__(self) -> None:
+        self._by_path: dict[Path, list[tuple[int, int]]] = {}
+        self._ids: set[FragmentId] = set()
+
+    def add(self, frag_id: FragmentId) -> None:
+        self._ids.add(frag_id)
+        intervals = self._by_path.get(frag_id.path)
+        if intervals is None:
+            intervals = []
+            self._by_path[frag_id.path] = intervals
+        bisect.insort(intervals, (frag_id.start_line, frag_id.end_line))
+
+    def __contains__(self, frag_id: FragmentId) -> bool:
+        return frag_id in self._ids
+
+    def overlaps(self, frag: Fragment) -> bool:
+        intervals = self._by_path.get(frag.path)
+        if not intervals:
+            return False
+        upper = bisect.bisect_right(intervals, (frag.end_line, float("inf")))
+        for i in range(upper):
+            start, end = intervals[i]
+            if start == frag.start_line and end == frag.end_line:
+                continue
+            if end >= frag.start_line:
+                return True
+        return False
+
+    def is_superset_of(self, frag: Fragment) -> bool:
+        intervals = self._by_path.get(frag.path)
+        if not intervals:
+            return False
+        upper = bisect.bisect_right(intervals, (frag.start_line, float("inf")))
+        for i in range(upper):
+            start, end = intervals[i]
+            if start == frag.start_line and end == frag.end_line:
+                continue
+            if start <= frag.start_line and frag.end_line <= end:
+                return True
+        return False
+
+
 @dataclass
 class _SelectionState:
     selected: list[Fragment] = field(default_factory=list)
-    selected_ids: set[FragmentId] = field(default_factory=set)
+    selected_ids: _IntervalIndex = field(default_factory=_IntervalIndex)
     remaining_budget: int = 0
     utility_state: UtilityState = field(default_factory=UtilityState)
 
 
 def _log_and_return(result: SelectionResult, core_ids: set[FragmentId]) -> SelectionResult:
     core_count = sum(1 for f in result.selected if f.id in core_ids)
-    logging.debug(  # nosemgrep: python-logger-credential-disclosure
+    logger.debug(  # nosemgrep: python-logger-credential-disclosure
         "Selection: frags=%d core=%d tokens=%d reason=%s utility=%.4f",
         len(result.selected),
         core_count,
@@ -60,7 +107,7 @@ def _select_core_fragments(
     sorted_core = sorted(core_fragments, key=lambda f: rel.get(f.id, 0.0), reverse=True)
 
     for frag in sorted_core:
-        if _is_subset_of_selected(frag, state.selected_ids):
+        if state.selected_ids.is_superset_of(frag):
             continue
         if core_used + frag.token_count > core_budget:
             sig = sig_lookup.get(frag.id) if sig_lookup else None
@@ -109,7 +156,7 @@ def _find_best_candidate_heap(
     heap: list[_HeapEntry],
     current_version: int,
     id_to_frag: dict[FragmentId, Fragment],
-    selected_ids: set[FragmentId],
+    selected_ids: _IntervalIndex,
     remaining_budget: int,
     rel: dict[FragmentId, float],
     needs: tuple[InformationNeed, ...],
@@ -123,7 +170,7 @@ def _find_best_candidate_heap(
             continue
         if frag.token_count > remaining_budget:
             continue
-        if _overlaps_with_selected(frag, selected_ids):
+        if selected_ids.overlaps(frag):
             continue
 
         if entry.version < current_version:
@@ -142,7 +189,7 @@ def _find_best_candidate_heap(
 
 def _find_best_singleton(
     non_core: list[Fragment],
-    base_selected_ids: set[FragmentId],
+    base_selected_ids: _IntervalIndex,
     base_budget: int,
     rel: dict[FragmentId, float],
     needs: tuple[InformationNeed, ...],
@@ -153,13 +200,22 @@ def _find_best_singleton(
     for f in non_core:
         if f.token_count > base_budget:
             continue
-        if _overlaps_with_selected(f, base_selected_ids):
+        if base_selected_ids.overlaps(f):
             continue
         gain = marginal_gain(f, rel.get(f.id, 0.0), needs, base_state)
         if gain > best_gain:
             best_gain = gain
             best_singleton = f
     return best_singleton, best_gain
+
+
+def _compute_r_cap(rel: dict[FragmentId, float]) -> float:
+    values = [v for v in rel.values() if v > 0]
+    if len(values) < 2:
+        return max(values[0], 1e-9) if values else 1.0
+    med = statistics.median(values)
+    std = statistics.stdev(values)
+    return max(med + UTILITY.r_cap_sigma * std, 1e-9)
 
 
 def lazy_greedy_select(
@@ -169,6 +225,7 @@ def lazy_greedy_select(
     needs: tuple[InformationNeed, ...],
     budget_tokens: int,
     tau: float = 0.08,
+    file_importance: dict[Path, float] | None = None,
 ) -> SelectionResult:
     if not fragments:
         return _log_and_return(
@@ -191,6 +248,10 @@ def lazy_greedy_select(
             sig_lookup[cf.id] = sig_by_loc[key]
 
     state = _SelectionState(remaining_budget=budget_tokens)
+    state.utility_state.r_cap = _compute_r_cap(rel)
+    state.utility_state.changed_dirs = frozenset(cid.path.parent for cid in core_ids)
+    if file_importance is not None:
+        state.utility_state.file_importance = file_importance
     _select_core_fragments(core_fragments, rel, needs, state, budget_tokens, sig_lookup)
 
     if state.remaining_budget <= 0:
@@ -209,7 +270,7 @@ def lazy_greedy_select(
     base_selected = list(state.selected)
     base_budget = state.remaining_budget
 
-    candidates = [f for f in non_core_fragments if not _overlaps_with_selected(f, state.selected_ids)]
+    candidates = [f for f in non_core_fragments if not state.selected_ids.overlaps(f)]
     baseline_k = _adaptive_baseline_k(len(candidates))
     id_to_frag: dict[FragmentId, Fragment] = {}
     heap = _build_initial_heap(candidates, rel, needs, state.utility_state, id_to_frag)
@@ -217,7 +278,9 @@ def lazy_greedy_select(
     selections_for_baseline, threshold = _run_greedy_loop_heap(heap, id_to_frag, state, rel, needs, tau, baseline_k)
 
     greedy_utility = utility_value(state.utility_state)
-    base_selected_ids = {f.id for f in base_selected}
+    base_selected_ids = _IntervalIndex()
+    for f in base_selected:
+        base_selected_ids.add(f.id)
 
     singleton_result = _try_singleton_improvement(
         non_core_fragments,
@@ -294,7 +357,7 @@ def _run_greedy_loop_heap(
 
 def _try_singleton_improvement(
     non_core: list[Fragment],
-    base_selected_ids: set[FragmentId],
+    base_selected_ids: _IntervalIndex,
     base_budget: int,
     base_selected: list[Fragment],
     rel: dict[FragmentId, float],
@@ -353,25 +416,3 @@ def _determine_final_result(
         SelectionResult(selected=state.selected, reason=reason, used_tokens=used, utility=greedy_utility),
         core_ids,
     )
-
-
-def _overlaps_with_selected(frag: Fragment, selected_ids: set[FragmentId]) -> bool:
-    for sel_id in selected_ids:
-        if sel_id.path != frag.path:
-            continue
-        if sel_id == frag.id:
-            continue
-        if max(frag.start_line, sel_id.start_line) <= min(frag.end_line, sel_id.end_line):
-            return True
-    return False
-
-
-def _is_subset_of_selected(frag: Fragment, selected_ids: set[FragmentId]) -> bool:
-    for sel_id in selected_ids:
-        if sel_id.path != frag.path:
-            continue
-        if sel_id == frag.id:
-            continue
-        if sel_id.start_line <= frag.start_line and frag.end_line <= sel_id.end_line:
-            return True
-    return False

@@ -1,0 +1,194 @@
+# Scenario: widget.cpp goes from empty main to Widget class that inherits from
+#   both Drawable and Clickable interfaces, overriding draw() and onClick().
+#
+# Reviewer questions:
+#   Q1: "What does Drawable require — is draw() override correct?"
+#       -> include/interfaces.h: Drawable has virtual void draw() = 0.
+#          Widget implements draw() override. Signatures must match.
+#
+#   Q2: "What does Clickable require — is onClick() override correct?"
+#       -> include/interfaces.h: Clickable has virtual void onClick() = 0.
+#          Widget implements onClick() override. Same file, different class.
+#
+#   Q3: "Is diamond inheritance an issue here?"
+#       -> interfaces.h: Drawable and Clickable are independent base classes
+#          (no shared base). No diamond problem. Reviewer must verify.
+#
+# Not needed:
+#   - src/panel.cpp: Another class inheriting Drawable + Clickable.
+#     IDENTICAL multiple inheritance pattern. Different widget type.
+#
+#   - include/resizable.h: Another interface (virtual resize() = 0).
+#     Same pure virtual pattern. Widget doesn't implement it.
+#
+#   - src/widget_manager.cpp: Stores pointers to Drawable*. Direct structural
+#     edge (uses Drawable base). But management doesn't help review the
+#     multiple inheritance implementation.
+#
+#   - tests/widget_test.cpp: Tests Widget::draw() and onClick(). Same types.
+#     But test assertions don't verify interface conformance.
+
+initial:
+  include/interfaces.h: |
+    #pragma once
+
+    class Drawable {
+    public:
+        virtual ~Drawable() = default;
+        virtual void draw() = 0;
+    };
+
+    class Clickable {
+    public:
+        virtual ~Clickable() = default;
+        virtual void onClick() = 0;
+    };
+
+  src/widget.cpp: |
+    #include <iostream>
+    int main() { return 0; }
+
+  src/panel.cpp: |
+    #include "interfaces.h"
+    #include <iostream>
+    #include <string>
+
+    class Panel : public Drawable, public Clickable {
+        std::string title_;
+        bool expanded_ = true;
+    public:
+        Panel(const std::string& title) : title_(title) {}
+
+        void draw() override {
+            std::cout << "Panel: " << title_;
+            std::cout << (expanded_ ? " [expanded]" : " [collapsed]") << std::endl;
+        }
+
+        void onClick() override {
+            expanded_ = !expanded_;
+            std::cout << "Panel toggled: " << title_ << std::endl;
+        }
+    };
+
+  include/resizable.h: |
+    #pragma once
+
+    class Resizable {
+    public:
+        virtual ~Resizable() = default;
+        virtual void resize(int width, int height) = 0;
+        virtual int getWidth() const = 0;
+        virtual int getHeight() const = 0;
+    };
+
+  src/widget_manager.cpp: |
+    #include "interfaces.h"
+    #include <vector>
+    #include <memory>
+
+    class WidgetManager {
+        std::vector<std::unique_ptr<Drawable>> drawables_;
+        std::vector<Clickable*> clickables_;
+    public:
+        void addDrawable(std::unique_ptr<Drawable> w) {
+            drawables_.push_back(std::move(w));
+        }
+
+        void registerClickable(Clickable* c) {
+            clickables_.push_back(c);
+        }
+
+        void renderAll() {
+            for (const auto& d : drawables_) d->draw();
+        }
+
+        void handleClick() {
+            for (auto* c : clickables_) c->onClick();
+        }
+    };
+
+  tests/widget_test.cpp: |
+    #include "interfaces.h"
+    #include <cassert>
+    #include <sstream>
+
+    class MockWidget : public Drawable, public Clickable {
+        int drawCount_ = 0;
+        int clickCount_ = 0;
+    public:
+        void draw() override { drawCount_++; }
+        void onClick() override { clickCount_++; }
+        int drawCount() const { return drawCount_; }
+        int clickCount() const { return clickCount_; }
+    };
+
+    void test_widget_draws() {
+        MockWidget w;
+        w.draw();
+        assert(w.drawCount() == 1);
+    }
+
+changed:
+  src/widget.cpp: |
+    #include "interfaces.h"
+    #include <iostream>
+
+    class Widget : public Drawable, public Clickable {
+    public:
+        void draw() override {
+            std::cout << "Drawing widget" << std::endl;
+        }
+
+        void onClick() override {
+            std::cout << "Widget clicked" << std::endl;
+        }
+    };
+
+must_include_files:
+  - src/widget.cpp
+  # Q1+Q2+Q3: Reviewer needs interfaces.h to verify both Drawable and
+  # Clickable interfaces and their required pure virtual methods.
+  - include/interfaces.h
+
+must_include_content_from:
+  src/widget.cpp:
+    - "class Widget : public Drawable, public Clickable"
+    - "void draw() override"
+    - "void onClick() override"
+  include/interfaces.h:
+    - "virtual void draw() = 0"
+    - "virtual void onClick() = 0"
+    - "virtual ~Drawable() = default"
+    - "virtual ~Clickable() = default"
+
+must_not_include:
+  # --- panel.cpp: identical multiple inheritance, different class ---
+  - "class Panel"
+  - expanded_
+  - "Panel toggled"
+  - title_
+  # --- resizable.h: similar interface, not implemented by Widget ---
+  - Resizable
+  - getWidth
+  - getHeight
+  # --- widget_manager.cpp: manages widgets, different concern ---
+  - WidgetManager
+  - renderAll
+  - handleClick
+  - registerClickable
+  # --- tests ---
+  - MockWidget
+  - drawCount
+  - clickCount
+  - test_widget_draws
+
+must_not_include_files:
+  - src/panel.cpp
+  - include/resizable.h
+  - src/widget_manager.cpp
+  - tests/widget_test.cpp
+
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

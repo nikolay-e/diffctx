@@ -1,0 +1,247 @@
+# Scenario: Expanding Circle impl block with constructors, area, geometry methods
+# Changed: src/circle.rs — added new(), with_center(), area(), circumference(), contains_point(), scale(), translate()
+# Reviewer questions: Does MIN_RADIUS guard apply to all constructors? Is contains_point boundary correct?
+# Trap files:
+#   - src/sphere.rs: 3D sphere geometry — very similar vocabulary (radius, center) but no import/dependency
+#   - src/bounds.rs: Axis-aligned bounding box — geometry domain but independent module
+initial:
+  src/lib.rs: |
+    pub mod circle;
+    pub mod sphere;
+    pub mod bounds;
+  src/circle.rs: |
+    use std::f64::consts::PI;
+    use std::fmt;
+
+    #[derive(Debug, Clone, PartialEq)]
+    pub struct Circle {
+        pub radius: f64,
+        center_x: f64,
+        center_y: f64,
+    }
+
+    impl Circle {
+        pub const MIN_RADIUS: f64 = 0.001;
+
+        pub fn unit() -> Self {
+            Self {
+                radius: 1.0,
+                center_x: 0.0,
+                center_y: 0.0,
+            }
+        }
+    }
+
+    impl fmt::Display for Circle {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(f, "Circle(r={}, center=({}, {}))", self.radius, self.center_x, self.center_y)
+        }
+    }
+
+    impl Default for Circle {
+        fn default() -> Self {
+            Self::unit()
+        }
+    }
+  src/sphere.rs: |
+    use std::f64::consts::PI;
+
+    pub struct Sphere {
+        pub radius: f64,
+        center_x: f64,
+        center_y: f64,
+        center_z: f64,
+    }
+
+    impl Sphere {
+        pub fn new(radius: f64) -> Self {
+            Self {
+                radius,
+                center_x: 0.0,
+                center_y: 0.0,
+                center_z: 0.0,
+            }
+        }
+
+        pub fn volume(&self) -> f64 {
+            (4.0 / 3.0) * PI * self.radius.powi(3)
+        }
+
+        pub fn surface_area(&self) -> f64 {
+            4.0 * PI * self.radius.powi(2)
+        }
+    }
+  src/bounds.rs: |
+    #[derive(Debug, Clone)]
+    pub struct BoundingBox {
+        pub min_x: f64,
+        pub min_y: f64,
+        pub max_x: f64,
+        pub max_y: f64,
+    }
+
+    impl BoundingBox {
+        pub fn new(min_x: f64, min_y: f64, max_x: f64, max_y: f64) -> Self {
+            Self { min_x, min_y, max_x, max_y }
+        }
+
+        pub fn width(&self) -> f64 {
+            self.max_x - self.min_x
+        }
+
+        pub fn height(&self) -> f64 {
+            self.max_y - self.min_y
+        }
+
+        pub fn contains(&self, x: f64, y: f64) -> bool {
+            x >= self.min_x && x <= self.max_x && y >= self.min_y && y <= self.max_y
+        }
+    }
+changed:
+  src/lib.rs: |
+    pub mod circle;
+    pub mod sphere;
+    pub mod bounds;
+  src/circle.rs: |
+    use std::f64::consts::PI;
+    use std::fmt;
+
+    #[derive(Debug, Clone, PartialEq)]
+    pub struct Circle {
+        pub radius: f64,
+        center_x: f64,
+        center_y: f64,
+    }
+
+    impl Circle {
+        pub const MIN_RADIUS: f64 = 0.001;
+
+        pub fn new(radius: f64) -> Self {
+            Self {
+                radius: radius.max(Self::MIN_RADIUS),
+                center_x: 0.0,
+                center_y: 0.0,
+            }
+        }
+
+        pub fn with_center(radius: f64, center_x: f64, center_y: f64) -> Self {
+            Self {
+                radius: radius.max(Self::MIN_RADIUS),
+                center_x,
+                center_y,
+            }
+        }
+
+        pub fn unit() -> Self {
+            Self::new(1.0)
+        }
+
+        pub fn area(&self) -> f64 {
+            PI * self.radius * self.radius
+        }
+
+        pub fn circumference(&self) -> f64 {
+            2.0 * PI * self.radius
+        }
+
+        pub fn diameter(&self) -> f64 {
+            2.0 * self.radius
+        }
+
+        pub fn contains_point(&self, x: f64, y: f64) -> bool {
+            let dx = x - self.center_x;
+            let dy = y - self.center_y;
+            (dx * dx + dy * dy).sqrt() <= self.radius
+        }
+
+        pub fn scale(&mut self, factor: f64) {
+            self.radius *= factor.abs();
+        }
+
+        pub fn translate(&mut self, dx: f64, dy: f64) {
+            self.center_x += dx;
+            self.center_y += dy;
+        }
+    }
+
+    impl fmt::Display for Circle {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(f, "Circle(r={}, center=({}, {}))", self.radius, self.center_x, self.center_y)
+        }
+    }
+
+    impl Default for Circle {
+        fn default() -> Self {
+            Self::unit()
+        }
+    }
+  src/sphere.rs: |
+    use std::f64::consts::PI;
+
+    pub struct Sphere {
+        pub radius: f64,
+        center_x: f64,
+        center_y: f64,
+        center_z: f64,
+    }
+
+    impl Sphere {
+        pub fn new(radius: f64) -> Self {
+            Self {
+                radius,
+                center_x: 0.0,
+                center_y: 0.0,
+                center_z: 0.0,
+            }
+        }
+
+        pub fn volume(&self) -> f64 {
+            (4.0 / 3.0) * PI * self.radius.powi(3)
+        }
+
+        pub fn surface_area(&self) -> f64 {
+            4.0 * PI * self.radius.powi(2)
+        }
+    }
+  src/bounds.rs: |
+    #[derive(Debug, Clone)]
+    pub struct BoundingBox {
+        pub min_x: f64,
+        pub min_y: f64,
+        pub max_x: f64,
+        pub max_y: f64,
+    }
+
+    impl BoundingBox {
+        pub fn new(min_x: f64, min_y: f64, max_x: f64, max_y: f64) -> Self {
+            Self { min_x, min_y, max_x, max_y }
+        }
+
+        pub fn width(&self) -> f64 {
+            self.max_x - self.min_x
+        }
+
+        pub fn height(&self) -> f64 {
+            self.max_y - self.min_y
+        }
+
+        pub fn contains(&self, x: f64, y: f64) -> bool {
+            x >= self.min_x && x <= self.max_x && y >= self.min_y && y <= self.max_y
+        }
+    }
+must_include_files:
+- src/circle.rs
+must_include_content:
+- 'pub fn new(radius: f64) -> Self {'
+- 'pub fn with_center(radius: f64, center_x: f64, center_y: f64) -> Self {'
+must_not_include:
+- Sphere
+- BoundingBox
+- sphere.rs
+- bounds.rs
+must_not_include_files:
+- src/sphere.rs
+- src/bounds.rs
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

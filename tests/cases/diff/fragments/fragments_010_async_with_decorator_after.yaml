@@ -1,5 +1,0 @@
-async_decorated.py: "import asyncio\nfrom functools import wraps\n\ndef async_decorator(func):\n    @wraps(func)\n    async def wrapper(*args, **kwargs):\n        return await func(*args, **kwargs)\n  \
-  \  return wrapper\n\ndef sync_decorator_041():\n\nasync def unrelated_async_041():\n\nclass UnrelatedDecoratedClass:\n\n    @staticmethod\n    async def static_async():\n\n@async_decorator\nasync def\
-  \ decorated_async():\n    await other()\n    return True\n\n@async_decorator\nasync def another_decorated_041():\n\nclass AnotherDecClass:\n    @async_decorator\n    async def decorated_method(self):\n"
-garbage_async_dec_041.py: "async def garbage_async_decorated():\n    return \"GARBAGE_FRAG_garbageasyncdec041\"\n\nclass GarbageDecClass041:\n    VALUE = \"GARBAGE_FRAG_garbagedecclass041\"\n\nGARBAGE_DEC_CONST\
-  \ = \"GARBAGE_FRAG_garbagedecconst041\"\n"

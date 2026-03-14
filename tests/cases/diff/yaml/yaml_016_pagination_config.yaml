@@ -1,0 +1,291 @@
+# Scenario: Pagination config increases limits and adds cursor_based: true.
+#   Only config/api.yaml is changed.
+#
+# Diff shows:
+#   - default_limit: 20 → 50
+#   - max_limit: 100 → 200
+#   + cursor_based: true (NEW key)
+#
+# Reviewer questions:
+#   Q1: "Does the code actually support cursor-based pagination?"
+#       -> Needs src/pagination.py: the Paginator class uses offset-based
+#         pagination — query.offset(offset).limit(limit). There is NO
+#         cursor implementation. cursor_based: true in the config is
+#         completely inert. Without seeing pagination.py, the reviewer
+#         would assume cursor_based enables an existing feature. This
+#         is a potential bug and THE critical review finding.
+#
+#   Q2: "Will the new limits (50, 200) actually take effect?"
+#       -> pagination.py constructor defaults are (20, 100) — matching
+#         the OLD config. If config loading doesn't pass the new values,
+#         the limits silently stay at 20/100. The reviewer must see the
+#         constructor defaults to assess this risk.
+#
+#   Q3: "What are the new limit values and what changed?"
+#       -> Answerable directly from the diff.
+#
+# Not needed for comprehension:
+#   - src/config_loader.py: Loads YAML config files including api.yaml.
+#     Structural edge: it reads the exact file being changed and passes
+#     values to Paginator.__init__(). But understanding HOW config is
+#     loaded (YAML parsing, env var overrides, file paths) doesn't help
+#     review WHETHER the new values are problematic. The reviewer
+#     questions are "does cursor_based do anything" and "do the limits
+#     match the code defaults" — both answered by pagination.py alone.
+#
+#   - src/api/list_endpoint.py: An API endpoint that instantiates
+#     Paginator and calls paginate(). Structural edge: it's a consumer
+#     of the Paginator class. But seeing how a specific endpoint calls
+#     paginate(query, page, limit) doesn't help review whether
+#     cursor_based is implemented or whether defaults match config.
+#
+#   - tests/test_pagination.py: Tests for Paginator — calls paginate()
+#     with various limits, asserts page_info. Structural edge to the
+#     same class. But test cases verify current behavior; they don't
+#     help the reviewer assess whether the CONFIG change is correct.
+#
+#   - config/search.yaml: Search/filtering config. Different feature
+#     domain entirely, no relationship to pagination.
+#
+#   - src/sorting.py: Result ordering logic. Often used alongside
+#     pagination in list endpoints, but sorting configuration has
+#     zero dependency on pagination limits or cursor mode.
+#
+#   - config/rate_limits.yaml: API rate limiting config. Same config/
+#     directory, same YAML format, references API endpoints. But rate
+#     limiting is orthogonal to pagination.
+
+initial:
+  config/api.yaml: |
+    pagination:
+      default_limit: 20
+      max_limit: 100
+
+  src/pagination.py: |
+    from typing import Any, Dict, Optional
+
+    class Paginator:
+        def __init__(self, default_limit: int = 20, max_limit: int = 100):
+            self.default_limit = default_limit
+            self.max_limit = max_limit
+
+        def paginate(self, query: Any, page: int, limit: Optional[int] = None) -> Any:
+            limit = min(limit or self.default_limit, self.max_limit)
+            offset = (page - 1) * limit
+            return query.offset(offset).limit(limit)
+
+        def get_page_info(self, total: int, page: int, limit: int) -> Dict:
+            pages = (total + limit - 1) // limit
+            return {
+                "total": total,
+                "page": page,
+                "per_page": limit,
+                "pages": pages,
+                "has_next": page < pages,
+                "has_prev": page > 1,
+            }
+
+  src/config_loader.py: |
+    import yaml
+    import os
+    from typing import Any, Dict
+
+    CONFIG_DIR = os.path.join(os.path.dirname(__file__), '..', 'config')
+
+    def load_yaml(filename: str) -> Dict[str, Any]:
+        path = os.path.join(CONFIG_DIR, filename)
+        with open(path) as f:
+            return yaml.safe_load(f)
+
+    def load_api_config() -> Dict[str, Any]:
+        raw = load_yaml('api.yaml')
+        return {
+            'pagination': {
+                'default_limit': raw.get('pagination', {}).get('default_limit', 20),
+                'max_limit': raw.get('pagination', {}).get('max_limit', 100),
+            }
+        }
+
+    def load_search_config() -> Dict[str, Any]:
+        return load_yaml('search.yaml')
+
+  src/api/list_endpoint.py: |
+    from src.pagination import Paginator
+    from src.config_loader import load_api_config
+    from src.sorting import Sorter
+
+    class ListEndpoint:
+        def __init__(self):
+            config = load_api_config()
+            pagination_config = config['pagination']
+            self.paginator = Paginator(
+                default_limit=pagination_config['default_limit'],
+                max_limit=pagination_config['max_limit'],
+            )
+            self.sorter = Sorter()
+
+        def handle(self, query, page: int = 1, limit: int = None,
+                   sort_field: str = None, sort_dir: str = None):
+            sorted_query = self.sorter.apply(query, sort_field, sort_dir)
+            results = self.paginator.paginate(sorted_query, page, limit)
+            total = query.count()
+            page_info = self.paginator.get_page_info(total, page, limit or self.paginator.default_limit)
+            return {"data": results, "pagination": page_info}
+
+  tests/test_pagination.py: |
+    from src.pagination import Paginator
+
+    def test_paginate_default_limit():
+        paginator = Paginator()
+        # mock query object
+        class MockQuery:
+            def offset(self, n): self._offset = n; return self
+            def limit(self, n): self._limit = n; return self
+        q = MockQuery()
+        paginator.paginate(q, page=1)
+        assert q._offset == 0
+        assert q._limit == 20
+
+    def test_paginate_respects_max():
+        paginator = Paginator(default_limit=20, max_limit=100)
+        class MockQuery:
+            def offset(self, n): self._offset = n; return self
+            def limit(self, n): self._limit = n; return self
+        q = MockQuery()
+        paginator.paginate(q, page=1, limit=500)
+        assert q._limit == 100
+
+    def test_page_info():
+        paginator = Paginator()
+        info = paginator.get_page_info(total=95, page=2, limit=20)
+        assert info["pages"] == 5
+        assert info["has_next"] is True
+        assert info["has_prev"] is True
+
+    def test_page_info_last_page():
+        paginator = Paginator()
+        info = paginator.get_page_info(total=95, page=5, limit=20)
+        assert info["has_next"] is False
+
+  config/search.yaml: |
+    search:
+      max_query_length: 256
+      min_query_length: 2
+      fuzzy_matching: true
+      highlight: true
+      filters:
+        - field: status
+          type: enum
+          values: [active, inactive, pending]
+        - field: created_at
+          type: date_range
+
+  src/sorting.py: |
+    from enum import Enum
+    from typing import Any, Optional
+
+    class SortDirection(Enum):
+        ASC = "asc"
+        DESC = "desc"
+
+    class Sorter:
+        ALLOWED_FIELDS = {"name", "created_at", "updated_at", "price"}
+
+        def __init__(self, default_field: str = "created_at", default_dir: str = "desc"):
+            self.default_field = default_field
+            self.default_dir = SortDirection(default_dir)
+
+        def apply(self, query: Any, field: Optional[str] = None,
+                  direction: Optional[str] = None) -> Any:
+            field = field if field in self.ALLOWED_FIELDS else self.default_field
+            direction = SortDirection(direction) if direction else self.default_dir
+            return query.order_by(field, direction.value)
+
+  config/rate_limits.yaml: |
+    rate_limits:
+      default:
+        requests_per_minute: 60
+        burst: 10
+      endpoints:
+        /api/list:
+          requests_per_minute: 120
+          burst: 20
+        /api/search:
+          requests_per_minute: 30
+          burst: 5
+
+changed:
+  config/api.yaml: |
+    pagination:
+      default_limit: 50
+      max_limit: 200
+      cursor_based: true
+
+must_include_files:
+  # Q1: cursor_based: true in config, but pagination.py is PURELY
+  # offset-based (query.offset().limit()). No cursor implementation
+  # exists. Without seeing this, the reviewer would assume cursor_based
+  # enables something. This is THE critical review finding — the config
+  # advertises a feature the code doesn't support.
+  #
+  # Q2: Constructor defaults are (20, 100) — matching the OLD config.
+  # Reviewer must see this mismatch to assess whether new values load.
+  - src/pagination.py
+
+must_include_content_from:
+  src/pagination.py:
+    # Offset-based implementation — proves no cursor support exists
+    - "query.offset(offset).limit(limit)"
+    # Defaults match OLD config, not new — potential silent failure
+    - "default_limit: int = 20, max_limit: int = 100"
+    # Page-based info, not cursor-based
+    - '"has_next": page < pages'
+
+must_not_include:
+  # --- config_loader.py: reads the exact file being changed ---
+  # Direct structural edge: parses api.yaml, passes values to Paginator.
+  # But HOW yaml is loaded (file paths, .get() chains, env overrides)
+  # doesn't help answer "does cursor_based do anything" or "do defaults
+  # match." Both are answered by pagination.py alone.
+  - load_yaml
+  - load_api_config
+  - CONFIG_DIR
+  - "yaml.safe_load"
+  # --- api/list_endpoint.py: instantiates Paginator from config ---
+  # Structural edge: consumes both config_loader and Paginator.
+  # But seeing how one endpoint constructs a Paginator doesn't help
+  # review whether cursor_based is implemented.
+  - ListEndpoint
+  - sorted_query
+  - "pagination_config['default_limit']"
+  # --- tests/test_pagination.py: tests the Paginator class ---
+  # Structural edge: imports Paginator, calls paginate() with limits.
+  # Tests verify current behavior, not whether the config change is sound.
+  - test_paginate_default_limit
+  - test_paginate_respects_max
+  - test_page_info
+  - MockQuery
+  # --- config/search.yaml: search config, different feature ---
+  - fuzzy_matching
+  - max_query_length
+  - min_query_length
+  # --- sorting.py: ordering logic, orthogonal to pagination ---
+  - SortDirection
+  - ALLOWED_FIELDS
+  - Sorter
+  # --- rate_limits.yaml: same config/ dir, same YAML format ---
+  - requests_per_minute
+  - burst
+
+must_not_include_files:
+  - src/config_loader.py
+  - src/api/list_endpoint.py
+  - tests/test_pagination.py
+  - config/search.yaml
+  - src/sorting.py
+  - config/rate_limits.yaml
+
+max_fragments: 5
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

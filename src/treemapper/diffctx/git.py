@@ -73,7 +73,7 @@ def _parse_path_line(line: str, repo_root: Path) -> tuple[str, Path | None]:
 
 
 def parse_diff(repo_root: Path, diff_range: str) -> list[DiffHunk]:
-    output = run_git(repo_root, ["diff", "--unified=0", diff_range])
+    output = run_git(repo_root, ["diff", "--unified=0", "-M", diff_range])
     hunks: list[DiffHunk] = []
     old_path: Path | None = None
     new_path: Path | None = None
@@ -97,7 +97,7 @@ def parse_diff(repo_root: Path, diff_range: str) -> list[DiffHunk]:
 
 
 def get_changed_files(repo_root: Path, diff_range: str) -> list[Path]:
-    output = run_git(repo_root, ["diff", "--name-only", diff_range])
+    output = run_git(repo_root, ["diff", "--name-only", "-M", diff_range])
     files: list[Path] = []
     for line in output.splitlines():
         line = line.strip()
@@ -118,6 +118,21 @@ def split_diff_range(diff_range: str) -> tuple[str | None, str | None]:
 def get_untracked_files(repo_root: Path) -> list[Path]:
     output = run_git(repo_root, ["ls-files", "--others", "--exclude-standard"])
     return [repo_root / line.strip() for line in output.splitlines() if line.strip()]
+
+
+def get_deleted_files(repo_root: Path, diff_range: str) -> set[Path]:
+    output = run_git(repo_root, ["diff", "--diff-filter=D", "--name-only", "-M", diff_range])
+    return {(repo_root / line.strip()).resolve() for line in output.splitlines() if line.strip()}
+
+
+def get_renamed_old_paths(repo_root: Path, diff_range: str) -> set[Path]:
+    output = run_git(repo_root, ["diff", "--diff-filter=R", "--name-status", "-M", diff_range])
+    old_paths: set[Path] = set()
+    for line in output.splitlines():
+        parts = line.strip().split("\t")
+        if len(parts) >= 3 and parts[0].startswith("R"):
+            old_paths.add((repo_root / parts[1]).resolve())
+    return old_paths
 
 
 def show_file_at_revision(repo_root: Path, rev: str, rel_path: Path) -> str:

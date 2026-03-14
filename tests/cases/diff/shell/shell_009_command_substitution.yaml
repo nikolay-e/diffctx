@@ -1,0 +1,203 @@
+# Scenario: backup.sh gains additional command substitutions to capture git hash,
+# file count, and disk space. It sources env.sh which defines BACKUP_DIR.
+#
+# Diff: scripts/backup.sh adds $(date +%H-%M-%S), $(git rev-parse --short HEAD),
+# $(find . -type f | wc -l), and $(df -h "$BACKUP_DIR" | awk ...) substitutions
+# alongside the existing $(date +%Y-%m-%d) and $(hostname). Also uses BACKUP_DIR
+# in the tar command.
+#
+# Reviewer questions:
+#   Q1: "Where is BACKUP_DIR defined and what value does it have?"
+#       -> env.sh: BACKUP_DIR="/var/backups/app". The new tar and df commands
+#          both reference this path.
+#
+#   Q2: "What format does the archive follow?"
+#       -> env.sh: BACKUP_PREFIX="nightly". Combined with hostname and date
+#          substitutions to form "${BACKUP_PREFIX}_${hostname}_${date}_${time}".
+#
+# Not needed for comprehension:
+#   - scripts/rotate.sh: Manages old backups in /var/backups.
+#     STRUCTURAL TRAP: references same BACKUP_DIR path, runs find on
+#     the same directory. But rotation policy, not backup creation.
+#
+#   - scripts/notify.sh: Sends Slack alerts about backup status.
+#     STRUCTURAL TRAP: related "backup notification" domain.
+#     But alerting, not backup config.
+#
+#   - scripts/verify.sh: Verifies backup integrity after creation.
+#     HARDEST TRAP: reads BACKUP_DIR, lists tar.gz files, runs tar -tzf
+#     on the same archive path pattern. Direct post-backup operation on
+#     same files. But verification doesn't define backup config.
+#
+#   - scripts/restore.sh: Restores from backup to BACKUP_DIR.
+#     STRUCTURAL TRAP: references BACKUP_DIR, BACKUP_PREFIX, runs tar
+#     with same naming pattern. But restore is reverse operation.
+#
+#   - cron/backup_cron.sh: Cron wrapper that invokes backup.sh.
+#     STRUCTURAL TRAP: calls ./scripts/backup.sh directly. But
+#     scheduling wrapper, not config definition.
+
+initial:
+  scripts/backup.sh: |
+    #!/bin/bash
+    source ./env.sh
+
+    current_date=$(date +%Y-%m-%d)
+    hostname=$(hostname)
+
+    backup_name="${BACKUP_PREFIX}_${hostname}_${current_date}"
+    echo "Creating backup: $backup_name"
+  env.sh: |
+    #!/bin/bash
+    export BACKUP_DIR="/var/backups/app"
+    export BACKUP_PREFIX="nightly"
+    export RETENTION_DAYS=30
+  scripts/rotate.sh: |
+    #!/bin/bash
+    source ./env.sh
+    find "$BACKUP_DIR" -name "*.tar.gz" -mtime +${RETENTION_DAYS} -delete
+    echo "Old backups removed from $BACKUP_DIR"
+  scripts/notify.sh: |
+    #!/bin/bash
+    SLACK_WEBHOOK="https://hooks.slack.com/services/XXX"
+    send_notification() {
+        local message=$1
+        curl -s -X POST "$SLACK_WEBHOOK" -d "{\"text\": \"$message\"}"
+    }
+  scripts/verify.sh: |
+    #!/bin/bash
+    source ./env.sh
+    latest=$(ls -t "$BACKUP_DIR"/*.tar.gz 2>/dev/null | head -1)
+    if [[ -n "$latest" ]]; then
+        file_count=$(tar -tzf "$latest" | wc -l)
+        echo "Latest backup: $latest ($file_count files)"
+        tar -tzf "$latest" > /dev/null 2>&1 && echo "Integrity: OK" || echo "Integrity: FAILED"
+    else
+        echo "No backups found in $BACKUP_DIR"
+    fi
+  scripts/restore.sh: |
+    #!/bin/bash
+    source ./env.sh
+    RESTORE_DIR="/tmp/restore"
+    backup_file=$1
+    if [[ -z "$backup_file" ]]; then
+        backup_file=$(ls -t "$BACKUP_DIR"/${BACKUP_PREFIX}_*.tar.gz | head -1)
+    fi
+    mkdir -p "$RESTORE_DIR"
+    tar xzf "$backup_file" -C "$RESTORE_DIR"
+    echo "Restored to $RESTORE_DIR"
+  cron/backup_cron.sh: |
+    #!/bin/bash
+    SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+    LOG_FILE="/var/log/backup_cron.log"
+    echo "=== $(date) ===" >> "$LOG_FILE"
+    flock -n /tmp/backup.lock "$SCRIPT_DIR/../scripts/backup.sh" >> "$LOG_FILE" 2>&1
+
+changed:
+  scripts/backup.sh: |
+    #!/bin/bash
+    source ./env.sh
+
+    current_date=$(date +%Y-%m-%d)
+    current_time=$(date +%H-%M-%S)
+    hostname=$(hostname)
+    git_hash=$(git rev-parse --short HEAD 2>/dev/null || echo "nogit")
+
+    backup_name="${BACKUP_PREFIX}_${hostname}_${current_date}_${current_time}"
+    echo "Creating backup: $backup_name"
+    echo "Git version: $git_hash"
+
+    file_count=$(find . -type f | wc -l)
+    echo "Total files: $file_count"
+
+    disk_free=$(df -h "$BACKUP_DIR" | awk 'NR==2 {print $4}')
+    echo "Available disk at $BACKUP_DIR: $disk_free"
+
+    tar czf "${BACKUP_DIR}/${backup_name}.tar.gz" .
+  env.sh: |
+    #!/bin/bash
+    export BACKUP_DIR="/var/backups/app"
+    export BACKUP_PREFIX="nightly"
+    export RETENTION_DAYS=30
+  scripts/rotate.sh: |
+    #!/bin/bash
+    source ./env.sh
+    find "$BACKUP_DIR" -name "*.tar.gz" -mtime +${RETENTION_DAYS} -delete
+    echo "Old backups removed from $BACKUP_DIR"
+  scripts/notify.sh: |
+    #!/bin/bash
+    SLACK_WEBHOOK="https://hooks.slack.com/services/XXX"
+    send_notification() {
+        local message=$1
+        curl -s -X POST "$SLACK_WEBHOOK" -d "{\"text\": \"$message\"}"
+    }
+  scripts/verify.sh: |
+    #!/bin/bash
+    source ./env.sh
+    latest=$(ls -t "$BACKUP_DIR"/*.tar.gz 2>/dev/null | head -1)
+    if [[ -n "$latest" ]]; then
+        file_count=$(tar -tzf "$latest" | wc -l)
+        echo "Latest backup: $latest ($file_count files)"
+        tar -tzf "$latest" > /dev/null 2>&1 && echo "Integrity: OK" || echo "Integrity: FAILED"
+    else
+        echo "No backups found in $BACKUP_DIR"
+    fi
+  scripts/restore.sh: |
+    #!/bin/bash
+    source ./env.sh
+    RESTORE_DIR="/tmp/restore"
+    backup_file=$1
+    if [[ -z "$backup_file" ]]; then
+        backup_file=$(ls -t "$BACKUP_DIR"/${BACKUP_PREFIX}_*.tar.gz | head -1)
+    fi
+    mkdir -p "$RESTORE_DIR"
+    tar xzf "$backup_file" -C "$RESTORE_DIR"
+    echo "Restored to $RESTORE_DIR"
+  cron/backup_cron.sh: |
+    #!/bin/bash
+    SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+    LOG_FILE="/var/log/backup_cron.log"
+    echo "=== $(date) ===" >> "$LOG_FILE"
+    flock -n /tmp/backup.lock "$SCRIPT_DIR/../scripts/backup.sh" >> "$LOG_FILE" 2>&1
+
+must_include_files:
+  - scripts/backup.sh
+  - env.sh
+
+must_include_content_from:
+  env.sh:
+    - BACKUP_DIR="/var/backups/app"
+    - BACKUP_PREFIX="nightly"
+  scripts/backup.sh:
+    - "${BACKUP_DIR}/${backup_name}.tar.gz"
+    - 'disk_free=$(df -h "$BACKUP_DIR"'
+
+must_not_include:
+  # --- rotate.sh: references BACKUP_DIR but for cleanup ---
+  - "-mtime +${RETENTION_DAYS}"
+  - "Old backups removed"
+  # --- notify.sh: Slack alerting ---
+  - SLACK_WEBHOOK
+  - send_notification
+  # --- verify.sh: HARDEST TRAP, reads BACKUP_DIR, lists tar.gz ---
+  - "Integrity: OK"
+  - "Integrity: FAILED"
+  - "tar -tzf"
+  # --- restore.sh: reverse operation on same paths ---
+  - RESTORE_DIR
+  - "Restored to"
+  # --- backup_cron.sh: scheduling wrapper ---
+  - "flock -n"
+  - "backup.lock"
+
+must_not_include_files:
+  - scripts/rotate.sh
+  - scripts/notify.sh
+  - scripts/verify.sh
+  - scripts/restore.sh
+  - cron/backup_cron.sh
+
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

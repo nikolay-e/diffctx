@@ -1,0 +1,124 @@
+# Scenario: mod0 and mod2 change return values (100, 200); mod1/mod3/mod4 unchanged — normalization test
+# Changed: mod0.py returns 100, mod2.py returns 200 (both changed)
+# Reviewer needs: mod0.py (changed) + mod2.py (changed)
+# Trap: func_registry.py — defines func0/func2 with same names, name collision
+# Trap: numeric_processor.py — returns 100/200 like the changed values, value overlap
+# Trap: mod_validator.py — structural sibling matching modN naming convention
+
+initial:
+  mod0.py: |
+    def func0():
+        return 0
+  mod1.py: |
+    def func1():
+        return 1
+  mod2.py: |
+    def func2():
+        return 2
+  mod3.py: |
+    def func3():
+        return 3
+  mod4.py: |
+    def func4():
+        return 4
+  func_registry.py: |
+    def func0():
+        return "unrelated_zero"
+
+    def func2():
+        return "unrelated_two"
+
+    class FuncRegistry:
+        def get_func(self, n):
+            return n
+  numeric_processor.py: |
+    def compute_hundred():
+        return 100
+
+    def compute_two_hundred():
+        return 200
+
+    class NumericProcessor:
+        def process(self, value):
+            return value * 100
+  mod_validator.py: |
+    def mod_helper():
+        return 0
+
+    def mod_validator():
+        return True
+
+changed:
+  mod0.py: |
+    def func0():
+        return 100
+  mod1.py: |
+    def func1():
+        return 1
+  mod2.py: |
+    def func2():
+        return 200
+  mod3.py: |
+    def func3():
+        return 3
+  mod4.py: |
+    def func4():
+        return 4
+  func_registry.py: |
+    def func0():
+        return "unrelated_zero"
+
+    def func2():
+        return "unrelated_two"
+
+    class FuncRegistry:
+        def get_func(self, n):
+            return n
+  numeric_processor.py: |
+    def compute_hundred():
+        return 100
+
+    def compute_two_hundred():
+        return 200
+
+    class NumericProcessor:
+        def process(self, value):
+            return value * 100
+  mod_validator.py: |
+    def mod_helper():
+        return 0
+
+    def mod_validator():
+        return True
+
+# === Assertions ===
+
+must_include_files:
+- mod0.py
+- mod2.py
+
+must_include_content_from:
+  mod0.py:
+    - 'def func0():'
+    - return 100
+  mod2.py:
+    - 'def func2():'
+    - return 200
+
+must_not_include:
+- FuncRegistry
+- unrelated_zero
+- NumericProcessor
+- compute_hundred
+- mod_helper
+- mod_validator
+
+must_not_include_files:
+- func_registry.py
+- numeric_processor.py
+- mod_validator.py
+
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

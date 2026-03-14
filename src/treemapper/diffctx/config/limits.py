@@ -8,6 +8,7 @@ class AlgorithmLimits:
     max_file_size: int = 100_000
     max_fragments: int = 200
     max_generated_fragments: int = 5
+    max_generated_lines: int = 30
     max_candidate_files: int = 5000
     max_discovered_files: int = 200
     skip_expensive_threshold: int = 2000
@@ -50,8 +51,18 @@ class SiblingConfig:
     max_files_per_dir: int = 20
 
 
+@dataclass(frozen=True)
+class UtilityConfig:
+    eta: float = 0.20
+    gamma: float = 0.10
+    r_cap_sigma: float = 2.0
+    proximity_decay: float = 0.30
+    peripheral_cap: float = 0.15
+
+
 LIMITS = AlgorithmLimits()
 PPR = PPRConfig()
 LEXICAL = LexicalConfig()
 COCHANGE = CochangeConfig()
 SIBLING = SiblingConfig()
+UTILITY = UtilityConfig()

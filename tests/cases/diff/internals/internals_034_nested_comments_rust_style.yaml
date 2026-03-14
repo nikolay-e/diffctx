@@ -1,0 +1,16 @@
+initial:
+  nested.rs: |
+    fn placeholder() {}
+changed:
+  nested.rs: |
+    /* /* nested comment */ */
+    fn process_data() {
+        let result = calculate_value();
+        result
+    }
+must_include_files:
+- nested.rs
+must_include_content:
+- fn process_data() {
+add_garbage_files: false
+skip_garbage_check: true

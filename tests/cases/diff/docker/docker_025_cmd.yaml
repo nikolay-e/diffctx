@@ -1,0 +1,201 @@
+# Scenario: FastAPI Dockerfile refactored to multi-stage build with separate
+# ENTRYPOINT/CMD split, configurable ARGs for WORKERS/PORT, non-root user,
+# and HEALTHCHECK. The application code and requirements are unchanged.
+#
+# Reviewer questions:
+#   1. Does src/server.py accept --host, --port, --workers CLI args matching CMD defaults?
+#   2. Does the app expose /health for the new HEALTHCHECK endpoint?
+#   3. Does requirements.txt include uvicorn for the new ENTRYPOINT invocation?
+
+initial:
+  src/server.py: |
+    import argparse
+    import uvicorn
+    from fastapi import FastAPI
+
+    app = FastAPI()
+
+    @app.get("/health")
+    def health():
+        return {"status": "healthy"}
+
+    def main():
+        parser = argparse.ArgumentParser()
+        parser.add_argument('--host', default='0.0.0.0')
+        parser.add_argument('--port', type=int, default=8080)
+        parser.add_argument('--workers', type=int, default=4)
+        parser.add_argument('--reload', action='store_true')
+        args = parser.parse_args()
+
+        uvicorn.run(
+            "server:app",
+            host=args.host,
+            port=args.port,
+            workers=args.workers,
+            reload=args.reload
+        )
+
+    if __name__ == '__main__':
+        main()
+  requirements.txt: |
+    fastapi==0.108.0
+    uvicorn[standard]==0.25.0
+    pydantic==2.5.3
+  Dockerfile: |
+    FROM python:3.11-slim
+    WORKDIR /app
+    COPY requirements.txt .
+    RUN pip install -r requirements.txt
+    COPY src/ ./src/
+    ENTRYPOINT ["python", "src/server.py"]
+
+  # Trap: dev run script — invokes same server.py with --reload flag
+  scripts/run_dev.sh: |
+    #!/bin/bash
+    export PYTHONPATH=.
+    python src/server.py --reload --host 127.0.0.1
+
+  # Trap: K8s deployment — specifies command/args similar to ENTRYPOINT/CMD
+  k8s/deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: fastapi-app
+    spec:
+      template:
+        spec:
+          containers:
+            - name: app
+              command: ["python", "-m", "src.server"]
+              args: ["--host", "0.0.0.0", "--port", "8080"]
+
+  # Trap: docker-compose override — same CMD concept in different format
+  docker-compose.override.yml: |
+    version: '3.8'
+    services:
+      app:
+        command: ["--reload", "--host", "0.0.0.0"]
+
+changed:
+  src/server.py: |
+    import argparse
+    import uvicorn
+    from fastapi import FastAPI
+
+    app = FastAPI()
+
+    @app.get("/health")
+    def health():
+        return {"status": "healthy"}
+
+    def main():
+        parser = argparse.ArgumentParser()
+        parser.add_argument('--host', default='0.0.0.0')
+        parser.add_argument('--port', type=int, default=8080)
+        parser.add_argument('--workers', type=int, default=4)
+        parser.add_argument('--reload', action='store_true')
+        args = parser.parse_args()
+
+        uvicorn.run(
+            "server:app",
+            host=args.host,
+            port=args.port,
+            workers=args.workers,
+            reload=args.reload
+        )
+
+    if __name__ == '__main__':
+        main()
+  requirements.txt: |
+    fastapi==0.108.0
+    uvicorn[standard]==0.25.0
+    pydantic==2.5.3
+  Dockerfile: |
+    FROM python:3.12-slim-bookworm AS base
+    ENV PYTHONDONTWRITEBYTECODE=1
+    ENV PYTHONUNBUFFERED=1
+
+    # Build arguments
+    ARG WORKERS=4
+    ARG PORT=8080
+
+    FROM base AS dependencies
+    WORKDIR /app
+    COPY requirements.txt .
+    RUN pip install --no-cache-dir -r requirements.txt
+
+    FROM base AS production
+    WORKDIR /app
+
+    # Runtime environment
+    ENV WORKERS=${WORKERS}
+    ENV PORT=${PORT}
+    ENV HOST=0.0.0.0
+
+    COPY --from=dependencies /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
+    COPY --from=dependencies /usr/local/bin /usr/local/bin
+    COPY src/ ./src/
+
+    RUN useradd --create-home appuser
+    USER appuser
+
+    EXPOSE ${PORT}
+
+    # Entrypoint for common initialization
+    ENTRYPOINT ["python", "-m", "src.server"]
+
+    # Default arguments - easily overridable
+    CMD ["--host", "0.0.0.0", "--port", "8080", "--workers", "4"]
+
+    HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+        CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')" || exit 1
+
+  scripts/run_dev.sh: |
+    #!/bin/bash
+    export PYTHONPATH=.
+    python src/server.py --reload --host 127.0.0.1
+  k8s/deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: fastapi-app
+    spec:
+      template:
+        spec:
+          containers:
+            - name: app
+              command: ["python", "-m", "src.server"]
+              args: ["--host", "0.0.0.0", "--port", "8080"]
+  docker-compose.override.yml: |
+    version: '3.8'
+    services:
+      app:
+        command: ["--reload", "--host", "0.0.0.0"]
+
+# === Assertions ===
+
+must_include_files:
+- Dockerfile
+
+must_include_content_from:
+  # Reviewer needs to verify the app accepts the CLI flags specified in CMD
+  src/server.py:
+    - "parser.add_argument('--host', default='0.0.0.0')"
+    - "parser.add_argument('--port', type=int, default=8080)"
+    - "parser.add_argument('--workers', type=int, default=4)"
+  # Reviewer needs to confirm uvicorn is in deps for ENTRYPOINT module invocation
+  requirements.txt:
+    - "uvicorn[standard]==0.25.0"
+
+must_not_include_files:
+  # Dev script — runs same server locally with --reload, irrelevant to Dockerfile CMD review
+- scripts/run_dev.sh
+  # K8s deployment — mirrors command/args but is a different orchestration layer
+- k8s/deployment.yaml
+  # Docker-compose override — different composition concern, not the Dockerfile itself
+- docker-compose.override.yml
+
+max_fragments: 6
+max_files: 4
+add_garbage_files: false
+skip_garbage_check: true

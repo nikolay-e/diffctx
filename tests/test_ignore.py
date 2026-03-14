@@ -71,7 +71,9 @@ def test_symlinks_and_special_files(temp_project, run_mapper):
             logging.warning(f"Could not create symlink: {e}, skipping symlink part.")
             can_symlink = False
 
-    (temp_project / ".treemapperignore").write_text(".*\n!.gitignore\n")
+    config_dir = temp_project / ".treemapper"
+    config_dir.mkdir(exist_ok=True)
+    (config_dir / "ignore").write_text(".*\n!.gitignore\n")
     assert run_mapper([".", "-o", "directory_tree.yaml"])
     result = load_yaml(temp_project / "directory_tree.yaml")
     all_files = get_all_files_in_tree(result)
@@ -85,7 +87,9 @@ def test_symlinks_and_special_files(temp_project, run_mapper):
 
 def test_empty_and_invalid_ignores(temp_project, run_mapper):
     (temp_project / ".gitignore").write_text("")
-    (temp_project / ".treemapperignore").write_text("\n\n# Just comments\n\n")
+    config_dir = temp_project / ".treemapper"
+    config_dir.mkdir(exist_ok=True)
+    (config_dir / "ignore").write_text("\n\n# Just comments\n\n")
     (temp_project / "empty.ignore").write_text("")
     (temp_project / "invalid.ignore").write_text("[\ninvalid\npattern\n")
     assert run_mapper([".", "-o", "out_empty.yaml"])
@@ -204,7 +208,7 @@ def test_no_default_ignores_flag(temp_project, run_mapper):
     assert "treemapper_ignored" in all_files, "'treemapper_ignored/' should NOT be ignored with --no-default-ignores"
     assert "file.txt" in all_files
     assert ".gitignore" in all_files
-    assert ".treemapperignore" in all_files
+    assert ".treemapper" in all_files
     assert treemapper_ignore.name in all_files
     assert custom_ignore.name in all_files
     assert (
@@ -217,11 +221,12 @@ def test_no_default_ignores_flag(temp_project, run_mapper):
     reason="os.chmod limited on Windows/WSL",
 )
 def test_unreadable_ignore_file(temp_project, run_mapper, set_perms, caplog):
-    ignore_file = temp_project / ".treemapperignore"
+    config_dir = temp_project / ".treemapper"
+    ignore_file = config_dir / "ignore"
     ignore_file.write_text(".git/\n")
     set_perms(ignore_file, 0o000)
 
-    with caplog.at_level(logging.WARNING):
+    with caplog.at_level(logging.WARNING, logger="treemapper"):
         assert run_mapper([".", "-o", "directory_tree.yaml", "--log-level", "warning"])
 
     assert any(
@@ -232,14 +237,15 @@ def test_unreadable_ignore_file(temp_project, run_mapper, set_perms, caplog):
 
 
 def test_bad_encoding_ignore_file(temp_project, run_mapper, caplog):
-    ignore_file = temp_project / ".treemapperignore"
+    config_dir = temp_project / ".treemapper"
+    ignore_file = config_dir / "ignore"
     try:
         # Cyrillic text intentional for CP1251 encoding test
         ignore_file.write_text(".git/\nпапка_игнор/\n", encoding="cp1251")  # noqa: RUF001
     except LookupError:
         pytest.skip("CP1251 codec not found")
 
-    with caplog.at_level(logging.WARNING):
+    with caplog.at_level(logging.WARNING, logger="treemapper"):
         assert run_mapper([".", "-o", "directory_tree.yaml", "--log-level", "warning"])
 
     assert any(
@@ -280,7 +286,9 @@ def test_ignore_precedence_subdir_over_root(temp_project, run_mapper):
 
 def test_ignore_precedence_treemapper_over_git(temp_project, run_mapper):
     (temp_project / ".gitignore").write_text("*.pyc\n")
-    (temp_project / ".treemapperignore").write_text("*.log\n.git/\n")
+    config_dir = temp_project / ".treemapper"
+    config_dir.mkdir(exist_ok=True)
+    (config_dir / "ignore").write_text("*.log\n.git/\n")
     (temp_project / "file.pyc").touch()
     (temp_project / "file.log").touch()
     (temp_project / "file.txt").touch()
@@ -296,7 +304,9 @@ def test_ignore_precedence_treemapper_over_git(temp_project, run_mapper):
 
 def test_ignore_precedence_custom_over_defaults(temp_project, run_mapper):
     (temp_project / ".gitignore").write_text("*.pyc\n")
-    (temp_project / ".treemapperignore").write_text("*.log\n.git/\n")
+    config_dir = temp_project / ".treemapper"
+    config_dir.mkdir(exist_ok=True)
+    (config_dir / "ignore").write_text("*.log\n.git/\n")
     custom_ignore = temp_project / "custom.ignore"
     custom_ignore.write_text("*.tmp\n")
 
@@ -422,12 +432,16 @@ def test_combined_patterns(temp_project, run_mapper):
     assert find_node_by_path(result, ["subdir", "regular.txt"]) is not None
 
 
-def test_hierarchical_treemapperignore(temp_project, run_mapper):
+def test_hierarchical_dir_ignore(temp_project, run_mapper):
     from .utils import find_node_by_path
 
-    (temp_project / ".treemapperignore").write_text("*.tmp\n")
+    config_dir = temp_project / ".treemapper"
+    config_dir.mkdir(exist_ok=True)
+    (config_dir / "ignore").write_text("*.tmp\n")
     (temp_project / "subdir").mkdir()
-    (temp_project / "subdir" / ".treemapperignore").write_text("*.bak\n!important.bak\n")
+    sub_config = temp_project / "subdir" / ".treemapper"
+    sub_config.mkdir()
+    (sub_config / "ignore").write_text("*.bak\n!important.bak\n")
     (temp_project / "root.tmp").touch()
     (temp_project / "root.bak").touch()
     (temp_project / "subdir" / "nested.tmp").touch()
@@ -486,7 +500,9 @@ def test_parent_ignore_integration(tmp_path, run_mapper):
     subdir = parent / "packages" / "app"
     subdir.mkdir(parents=True)
 
-    (parent / ".treemapperignore").write_text("packages/app/ignored_dir/\npackages/app/data/\n")
+    parent_config = parent / ".treemapper"
+    parent_config.mkdir()
+    (parent_config / "ignore").write_text("packages/app/ignored_dir/\npackages/app/data/\n")
     (subdir / "ignored_dir").mkdir()
     (subdir / "ignored_dir" / "secret.txt").write_text("secret")
     (subdir / "data").mkdir()
@@ -511,12 +527,16 @@ def test_parent_ignore_stops_at_git_root(tmp_path, run_mapper):
 
     grandparent = tmp_path / "grandparent"
     grandparent.mkdir()
-    (grandparent / ".treemapperignore").write_text("packages/app/beyond_git_root/\n")
+    grandparent_config = grandparent / ".treemapper"
+    grandparent_config.mkdir()
+    (grandparent_config / "ignore").write_text("packages/app/beyond_git_root/\n")
 
     parent = grandparent / "parent"
     parent.mkdir()
     (parent / ".git").mkdir()
-    (parent / ".treemapperignore").write_text("packages/app/from_parent/\n")
+    parent_config = parent / ".treemapper"
+    parent_config.mkdir()
+    (parent_config / "ignore").write_text("packages/app/from_parent/\n")
 
     child = parent / "packages" / "app"
     child.mkdir(parents=True)
@@ -534,3 +554,103 @@ def test_parent_ignore_stops_at_git_root(tmp_path, run_mapper):
     assert find_node_by_path(result, ["beyond_git_root"]) is not None
     assert find_node_by_path(result, ["beyond_git_root", "visible.txt"]) is not None
     assert find_node_by_path(result, ["keep.txt"]) is not None
+
+
+# --- .treemapper/ config directory tests ---
+
+
+def test_treemapper_dir_ignore(temp_project, run_mapper):
+    from .utils import find_node_by_path
+
+    config_dir = temp_project / ".treemapper"
+    config_dir.mkdir(exist_ok=True)
+    (config_dir / "ignore").write_text("*.log\ndocs/\n")
+    (temp_project / "app.log").touch()
+    (temp_project / "keep.txt").touch()
+
+    output_path = temp_project / "dir_ignore_output.yaml"
+    assert run_mapper([".", "-o", str(output_path)])
+    result = load_yaml(output_path)
+
+    assert find_node_by_path(result, ["app.log"]) is None
+    assert find_node_by_path(result, ["docs"]) is None
+    assert find_node_by_path(result, ["keep.txt"]) is not None
+
+
+def test_treemapper_dir_ignore_hierarchical(temp_project, run_mapper):
+    from .utils import find_node_by_path
+
+    subdir = temp_project / "subdir"
+    subdir.mkdir()
+    sub_config = subdir / ".treemapper"
+    sub_config.mkdir()
+    (sub_config / "ignore").write_text("*.secret\n")
+
+    (temp_project / "root.secret").touch()
+    (subdir / "nested.secret").touch()
+    (subdir / "keep.txt").touch()
+
+    output_path = temp_project / "hier_dir_output.yaml"
+    assert run_mapper([".", "-o", str(output_path)])
+    result = load_yaml(output_path)
+
+    assert find_node_by_path(result, ["root.secret"]) is not None
+    assert find_node_by_path(result, ["subdir", "nested.secret"]) is None
+    assert find_node_by_path(result, ["subdir", "keep.txt"]) is not None
+
+
+def test_treemapper_dir_ignore_parent(tmp_path, run_mapper):
+    from .utils import find_node_by_path
+
+    parent = tmp_path / "parent_project"
+    parent.mkdir()
+    (parent / ".git").mkdir()
+    config_dir = parent / ".treemapper"
+    config_dir.mkdir()
+    (config_dir / "ignore").write_text("packages/app/secret_dir/\n")
+
+    child = parent / "packages" / "app"
+    child.mkdir(parents=True)
+    (child / "secret_dir").mkdir()
+    (child / "secret_dir" / "secret.txt").write_text("secret")
+    (child / "src").mkdir()
+    (child / "src" / "main.py").write_text("print('hello')")
+
+    output_path = tmp_path / "parent_dir_output.yaml"
+    assert run_mapper([str(child), "-o", str(output_path)])
+    result = load_yaml(output_path)
+
+    assert find_node_by_path(result, ["secret_dir"]) is None
+    assert find_node_by_path(result, ["src", "main.py"]) is not None
+
+
+def test_treemapper_dir_whitelist(temp_project, run_mapper):
+    config_dir = temp_project / ".treemapper"
+    config_dir.mkdir(exist_ok=True)
+    (config_dir / "whitelist").write_text("src/**/*.py\n")
+
+    output_path = temp_project / "dir_wl_output.yaml"
+    assert run_mapper([".", "-o", str(output_path)])
+    result = load_yaml(output_path)
+    all_files = get_all_files_in_tree(result)
+
+    assert "main.py" in all_files
+    assert "test.py" in all_files
+    assert "readme.md" not in all_files
+
+
+def test_treemapper_dir_hidden_from_output(temp_project, run_mapper):
+    config_dir = temp_project / ".treemapper"
+    config_dir.mkdir(exist_ok=True)
+    (config_dir / "ignore").write_text("*.log\n")
+    (config_dir / "whitelist").write_text("src/**\n")
+    (temp_project / "keep.txt").touch()
+
+    output_path = temp_project / "hidden_dir_output.yaml"
+    assert run_mapper([".", "-o", str(output_path)])
+    result = load_yaml(output_path)
+    all_files = get_all_files_in_tree(result)
+
+    assert ".treemapper" not in all_files
+    assert "ignore" not in all_files
+    assert "whitelist" not in all_files

@@ -1,0 +1,216 @@
+# Scenario: Backend API service targetPort corrected from 3000 to 8080 and
+#   metrics port 9090 added. Only k8s/apps/backend/service.yaml is changed.
+#
+# Diff shows:
+#   - targetPort: 3000  ->  + targetPort: 8080
+#   + metrics port mapping: port 9090, targetPort 9090
+#   + labels: app: backend-api
+#
+# Reviewer questions:
+#   Q1: "Does the deployment actually expose containerPort 8080 and 9090?"
+#       -> Needs k8s/apps/backend/deployment.yaml: container exposes
+#          containerPort 8080 (name: http) and 9090 (name: metrics).
+#          The service targetPort must match these. Without the deployment,
+#          the reviewer cannot verify the port fix is correct.
+#
+#   Q2: "Is the metrics port mapping needed for ServiceMonitor scraping?"
+#       -> Pure config review: adding port 9090 to the service makes it
+#          discoverable by ServiceMonitors. But whether that's needed is
+#          an architecture decision, not a correctness question.
+#
+# Not needed for comprehension:
+#   - k8s/monitoring/service-monitor.yaml: ServiceMonitor selecting
+#     app: backend-api and scraping port "metrics". Direct structural edge:
+#     it targets this exact service with the exact port name being added.
+#     HARDEST TRAP: the metrics port is being added precisely so this
+#     ServiceMonitor can scrape it. But the ServiceMonitor config doesn't
+#     help verify whether the targetPort 8080 fix is correct — that needs
+#     the deployment's containerPort definition.
+#
+#   - k8s/apps/frontend/service.yaml: Another Service resource in same
+#     namespace with identical structure (ports, selector pattern). Shares
+#     Service kind and port vocabulary. But different app entirely — its
+#     targetPort: 3000 is correct for frontend, not relevant to backend fix.
+initial:
+  k8s/apps/backend/deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: backend-api
+      namespace: production
+      labels:
+        app: backend-api
+    spec:
+      replicas: 3
+      selector:
+        matchLabels:
+          app: backend-api
+      template:
+        metadata:
+          labels:
+            app: backend-api
+        spec:
+          containers:
+          - name: api
+            image: backend-api:v1.0.0
+            ports:
+            - containerPort: 8080
+              name: http
+            - containerPort: 9090
+              name: metrics
+            resources:
+              requests:
+                memory: "256Mi"
+                cpu: "250m"
+  k8s/apps/backend/service.yaml: |
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: backend-api
+      namespace: production
+    spec:
+      selector:
+        app: backend-api
+      ports:
+      - name: http
+        port: 80
+        targetPort: 3000
+        protocol: TCP
+  k8s/monitoring/service-monitor.yaml: |
+    apiVersion: monitoring.coreos.com/v1
+    kind: ServiceMonitor
+    metadata:
+      name: backend-api-metrics
+      namespace: monitoring
+    spec:
+      selector:
+        matchLabels:
+          app: backend-api
+      endpoints:
+      - port: metrics
+        interval: 15s
+        path: /metrics
+  k8s/apps/frontend/service.yaml: |
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: frontend
+      namespace: production
+    spec:
+      selector:
+        app: frontend
+      ports:
+      - name: http
+        port: 80
+        targetPort: 3000
+      - name: https
+        port: 443
+        targetPort: 3000
+changed:
+  k8s/apps/backend/deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: backend-api
+      namespace: production
+      labels:
+        app: backend-api
+    spec:
+      replicas: 3
+      selector:
+        matchLabels:
+          app: backend-api
+      template:
+        metadata:
+          labels:
+            app: backend-api
+        spec:
+          containers:
+          - name: api
+            image: backend-api:v1.0.0
+            ports:
+            - containerPort: 8080
+              name: http
+            - containerPort: 9090
+              name: metrics
+            resources:
+              requests:
+                memory: "256Mi"
+                cpu: "250m"
+  k8s/apps/backend/service.yaml: |
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: backend-api
+      namespace: production
+      labels:
+        app: backend-api
+    spec:
+      selector:
+        app: backend-api
+      ports:
+      - name: http
+        port: 80
+        targetPort: 8080
+        protocol: TCP
+      - name: metrics
+        port: 9090
+        targetPort: 9090
+        protocol: TCP
+  k8s/monitoring/service-monitor.yaml: |
+    apiVersion: monitoring.coreos.com/v1
+    kind: ServiceMonitor
+    metadata:
+      name: backend-api-metrics
+      namespace: monitoring
+    spec:
+      selector:
+        matchLabels:
+          app: backend-api
+      endpoints:
+      - port: metrics
+        interval: 15s
+        path: /metrics
+  k8s/apps/frontend/service.yaml: |
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: frontend
+      namespace: production
+    spec:
+      selector:
+        app: frontend
+      ports:
+      - name: http
+        port: 80
+        targetPort: 3000
+      - name: https
+        port: 443
+        targetPort: 3000
+must_include_files:
+  - k8s/apps/backend/service.yaml
+  # Q1: Deployment containerPorts must match service targetPorts.
+  - k8s/apps/backend/deployment.yaml
+must_include_content_from:
+  k8s/apps/backend/service.yaml:
+    - 'targetPort: 8080'
+    - 'targetPort: 9090'
+  k8s/apps/backend/deployment.yaml:
+    - 'containerPort: 8080'
+    - 'containerPort: 9090'
+must_not_include:
+  # --- service-monitor.yaml: targets same service, monitoring concern ---
+  - backend-api-metrics
+  - ServiceMonitor
+  - "interval: 15s"
+  - "/metrics"
+  # --- frontend service: same kind, different app ---
+  - 'name: frontend'
+  - "port: 443"
+must_not_include_files:
+  - k8s/monitoring/service-monitor.yaml
+  - k8s/apps/frontend/service.yaml
+add_garbage_files: false
+skip_garbage_check: true
+max_fragments: 8
+max_files: 5

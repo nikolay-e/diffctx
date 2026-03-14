@@ -1,0 +1,175 @@
+# Scenario: analytics.py has a function deleted (track_legacy_event) while the
+# remaining functions (track_event, flush_events) are left intact. The
+# deleted function was imported in legacy_adapter.py which is unchanged.
+#
+# Diff: analytics.py loses track_legacy_event (deletion hunk). The other
+# functions and the file itself remain.
+#
+# Reviewer questions:
+#   Q1: "Does anything still import the deleted function?"
+#       -> legacy_adapter.py (UNCHANGED) has `from analytics import track_legacy_event`.
+#          This import is now broken. Reviewer needs to see the caller to
+#          understand the blast radius of the deletion.
+#   Q2: "What did track_legacy_event do that track_event doesn't?"
+#       -> The diff shows the deleted code. legacy_adapter.py shows how it
+#          was called with the old (category, action) signature.
+#
+# Not needed:
+#   - dashboard.py: renders analytics charts from aggregated data. Does not
+#     import from analytics.py directly — reads from a database instead.
+#   - export_csv.py: exports event logs to CSV. Uses its own query logic,
+#     no import edge to analytics.py.
+
+initial:
+  analytics.py: |
+    EVENT_BUFFER = []
+
+    def track_event(name, properties=None):
+        event = {"name": name, "properties": properties or {}}
+        EVENT_BUFFER.append(event)
+        return event
+
+    def track_legacy_event(category, action):
+        event = {"category": category, "action": action, "version": "v1"}
+        EVENT_BUFFER.append(event)
+        return event
+
+    def flush_events():
+        batch = list(EVENT_BUFFER)
+        EVENT_BUFFER.clear()
+        return batch
+  legacy_adapter.py: |
+    from analytics import track_legacy_event
+
+    class LegacyEventAdapter:
+        def __init__(self, default_category="app"):
+            self.default_category = default_category
+
+        def emit(self, action):
+            return track_legacy_event(self.default_category, action)
+
+        def emit_with_category(self, category, action):
+            return track_legacy_event(category, action)
+  dashboard.py: |
+    class AnalyticsDashboard:
+        def __init__(self, db_connection):
+            self.db = db_connection
+
+        def get_daily_counts(self, date_range):
+            query = "SELECT date, count FROM events WHERE date BETWEEN %s AND %s"
+            return self.db.execute(query, date_range)
+
+        def get_top_events(self, limit=10):
+            query = "SELECT name, count FROM events ORDER BY count DESC LIMIT %s"
+            return self.db.execute(query, (limit,))
+
+        def render_summary(self):
+            counts = self.get_daily_counts(("2024-01-01", "2024-12-31"))
+            return {"total": sum(c["count"] for c in counts)}
+  export_csv.py: |
+    import csv
+    from io import StringIO
+
+    class EventExporter:
+        def __init__(self, db_connection):
+            self.db = db_connection
+
+        def export_range(self, start_date, end_date):
+            rows = self.db.execute(
+                "SELECT * FROM events WHERE date BETWEEN %s AND %s",
+                (start_date, end_date),
+            )
+            return self._rows_to_csv(rows)
+
+        def _rows_to_csv(self, rows):
+            output = StringIO()
+            writer = csv.DictWriter(output, fieldnames=["name", "date", "count"])
+            writer.writeheader()
+            for row in rows:
+                writer.writerow(row)
+            return output.getvalue()
+changed:
+  analytics.py: |
+    EVENT_BUFFER = []
+
+    def track_event(name, properties=None):
+        event = {"name": name, "properties": properties or {}}
+        EVENT_BUFFER.append(event)
+        return event
+
+    def flush_events():
+        batch = list(EVENT_BUFFER)
+        EVENT_BUFFER.clear()
+        return batch
+  legacy_adapter.py: |
+    from analytics import track_legacy_event
+
+    class LegacyEventAdapter:
+        def __init__(self, default_category="app"):
+            self.default_category = default_category
+
+        def emit(self, action):
+            return track_legacy_event(self.default_category, action)
+
+        def emit_with_category(self, category, action):
+            return track_legacy_event(category, action)
+  dashboard.py: |
+    class AnalyticsDashboard:
+        def __init__(self, db_connection):
+            self.db = db_connection
+
+        def get_daily_counts(self, date_range):
+            query = "SELECT date, count FROM events WHERE date BETWEEN %s AND %s"
+            return self.db.execute(query, date_range)
+
+        def get_top_events(self, limit=10):
+            query = "SELECT name, count FROM events ORDER BY count DESC LIMIT %s"
+            return self.db.execute(query, (limit,))
+
+        def render_summary(self):
+            counts = self.get_daily_counts(("2024-01-01", "2024-12-31"))
+            return {"total": sum(c["count"] for c in counts)}
+  export_csv.py: |
+    import csv
+    from io import StringIO
+
+    class EventExporter:
+        def __init__(self, db_connection):
+            self.db = db_connection
+
+        def export_range(self, start_date, end_date):
+            rows = self.db.execute(
+                "SELECT * FROM events WHERE date BETWEEN %s AND %s",
+                (start_date, end_date),
+            )
+            return self._rows_to_csv(rows)
+
+        def _rows_to_csv(self, rows):
+            output = StringIO()
+            writer = csv.DictWriter(output, fieldnames=["name", "date", "count"])
+            writer.writeheader()
+            for row in rows:
+                writer.writerow(row)
+            return output.getvalue()
+must_include_files:
+  # Q1: legacy_adapter.py imports the deleted function — broken import
+  - legacy_adapter.py
+must_include_content_from:
+  legacy_adapter.py:
+    - "from analytics import track_legacy_event"
+must_not_include:
+  # dashboard.py: reads from DB, no import edge to analytics.py
+  - AnalyticsDashboard
+  - get_daily_counts
+  - render_summary
+  # export_csv.py: CSV export from DB, no analytics.py dependency
+  - EventExporter
+  - export_range
+  - _rows_to_csv
+must_not_include_files:
+  - dashboard.py
+  - export_csv.py
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

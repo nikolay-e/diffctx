@@ -1,0 +1,46 @@
+initial:
+  app/handler.py: |
+    def handle_request(data: dict) -> dict:
+        return {"status": "ok", "data": data}
+  app/config.py: |
+    DATABASE_URL = "postgres://localhost/db"
+    CACHE_TTL = 300
+  unrelated/logging_setup.py: |
+    GARBAGE_INT067_LOG_MARKER_A = "log_garbage_a"
+    def configure_logging():
+        return "GARBAGE_INT067_LOG_MARKER_B"
+  unrelated/monitoring.py: |
+    GARBAGE_INT067_MON_MARKER_A = "mon_garbage_a"
+    class Monitor:
+        GARBAGE_INT067_MON_MARKER_B = "mon_garbage_b"
+changed:
+  app/handler.py: |
+    from app.config import DATABASE_URL
+
+    def handle_request(data: dict) -> dict:
+        return {"status": "ok", "data": data, "db": DATABASE_URL}
+  app/config.py: |
+    DATABASE_URL = "postgres://localhost/db"
+    CACHE_TTL = 300
+  unrelated/logging_setup.py: |
+    GARBAGE_INT067_LOG_MARKER_A = "log_garbage_a"
+    def configure_logging():
+        return "GARBAGE_INT067_LOG_MARKER_B"
+  unrelated/monitoring.py: |
+    GARBAGE_INT067_MON_MARKER_A = "mon_garbage_a"
+    class Monitor:
+        GARBAGE_INT067_MON_MARKER_B = "mon_garbage_b"
+must_include_files:
+- app/handler.py
+must_include_content:
+- from app.config import DATABASE_URL
+must_not_include:
+- GARBAGE_INT067_LOG_MARKER_A
+- GARBAGE_INT067_LOG_MARKER_B
+- GARBAGE_INT067_MON_MARKER_A
+- GARBAGE_INT067_MON_MARKER_B
+must_not_include_files:
+- unrelated/logging_setup.py
+- unrelated/monitoring.py
+add_garbage_files: false
+skip_garbage_check: true

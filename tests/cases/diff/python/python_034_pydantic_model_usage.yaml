@@ -1,0 +1,290 @@
+# Scenario: Pydantic schemas gain new fields, validators, and a new UserUpdateSchema
+# Changed: schemas.py adds fields to AddressSchema/UserSchema, strengthens password validation
+# Reviewer questions: Does root_validator import get used? Is use_enum_values correct for UserRole?
+# Trap 1: auth/token_service.py — manages auth tokens for users, shares "user" vocabulary but independent
+# Trap 2: middleware/rate_limiter.py — rate limits API requests, shares "API" domain but no dep on schemas
+initial:
+  schemas.py: |
+    from pydantic import BaseModel, EmailStr, Field, validator
+    from typing import Optional, List
+    from datetime import datetime
+    from enum import Enum
+
+    class UserRole(str, Enum):
+        ADMIN = "admin"
+        MODERATOR = "moderator"
+        USER = "user"
+        GUEST = "guest"
+
+    class AddressSchema(BaseModel):
+        street: str = Field(..., min_length=1)
+        city: str = Field(..., min_length=1)
+        state: str = Field(..., min_length=2)
+        postal_code: str
+        country: str = "USA"
+
+        class Config:
+            orm_mode = True
+
+    class UserSchema(BaseModel):
+        name: str = Field(..., min_length=1, max_length=100)
+        email: EmailStr
+        age: int = Field(..., ge=0, le=150)
+        role: UserRole = UserRole.USER
+        address: Optional[AddressSchema] = None
+        is_active: bool = True
+
+        class Config:
+            orm_mode = True
+
+        @validator("name")
+        def validate_name(cls, v):
+            if not v.strip():
+                raise ValueError("Name cannot be empty")
+            return v.strip()
+
+    class UserCreateSchema(BaseModel):
+        name: str = Field(..., min_length=1)
+        email: EmailStr
+        age: int = Field(..., ge=18)
+        password: str = Field(..., min_length=8)
+
+        @validator("password")
+        def validate_password_strength(cls, v):
+            if not any(c.isupper() for c in v):
+                raise ValueError("Password must contain uppercase")
+            return v
+  api.py: |
+    from schemas import UserSchema, UserCreateSchema
+
+    class UserEndpoint:
+        def __init__(self, repository):
+            self.repository = repository
+
+        def get_user(self, user_id: int):
+            return self.repository.find_by_id(user_id)
+
+    def validate():
+        pass
+  auth/token_service.py: |
+    import hashlib
+    from typing import Optional, Dict
+    from dataclasses import dataclass
+    from datetime import datetime, timedelta
+
+    @dataclass
+    class TokenData:
+        user_id: int
+        token: str
+        expires_at: datetime
+
+    class TokenService:
+        def __init__(self, secret_key: str, ttl_hours: int = 24):
+            self._secret = secret_key
+            self._ttl_hours = ttl_hours
+            self._tokens: Dict[str, TokenData] = {}
+
+        def generate_token(self, user_id: int) -> TokenData:
+            raw = f"{user_id}{self._secret}{datetime.now().isoformat()}"
+            token = hashlib.sha256(raw.encode()).hexdigest()
+            data = TokenData(
+                user_id=user_id, token=token,
+                expires_at=datetime.now() + timedelta(hours=self._ttl_hours),
+            )
+            self._tokens[token] = data
+            return data
+
+        def validate_token(self, token: str) -> Optional[int]:
+            data = self._tokens.get(token)
+            if data and datetime.now() < data.expires_at:
+                return data.user_id
+            return None
+  middleware/rate_limiter.py: |
+    import time
+    from typing import Dict, Optional
+    from dataclasses import dataclass
+
+    @dataclass
+    class RateLimitConfig:
+        requests_per_minute: int = 60
+        burst_size: int = 10
+
+    class ApiRateLimiter:
+        def __init__(self, config: RateLimitConfig):
+            self._config = config
+            self._requests: Dict[str, list[float]] = {}
+
+        def is_allowed(self, client_id: str) -> bool:
+            now = time.time()
+            window_start = now - 60
+            if client_id not in self._requests:
+                self._requests[client_id] = []
+            self._requests[client_id] = [
+                t for t in self._requests[client_id] if t > window_start
+            ]
+            if len(self._requests[client_id]) >= self._config.requests_per_minute:
+                return False
+            self._requests[client_id].append(now)
+            return True
+changed:
+  schemas.py: |
+    from pydantic import BaseModel, EmailStr, Field, validator, root_validator
+    from typing import Optional, List
+    from datetime import datetime
+    from enum import Enum
+
+    class UserRole(str, Enum):
+        ADMIN = "admin"
+        MODERATOR = "moderator"
+        USER = "user"
+        GUEST = "guest"
+
+    class AddressSchema(BaseModel):
+        street: str = Field(..., min_length=1)
+        city: str = Field(..., min_length=1)
+        state: str = Field(..., min_length=2)
+        postal_code: str
+        country: str = "USA"
+        is_primary: bool = False
+
+        class Config:
+            orm_mode = True
+
+        def full_address(self) -> str:
+            return f"{self.street}, {self.city}, {self.state} {self.postal_code}"
+
+    class UserSchema(BaseModel):
+        name: str = Field(..., min_length=1, max_length=100)
+        email: EmailStr
+        age: int = Field(..., ge=0, le=150)
+        role: UserRole = UserRole.USER
+        address: Optional[AddressSchema] = None
+        is_active: bool = True
+        is_verified: bool = False
+        created_at: datetime = Field(default_factory=datetime.utcnow)
+
+        class Config:
+            orm_mode = True
+            use_enum_values = True
+
+        @validator("name")
+        def validate_name(cls, v):
+            if not v.strip():
+                raise ValueError("Name cannot be empty")
+            return v.strip()
+
+        def is_admin(self) -> bool:
+            return self.role == UserRole.ADMIN
+
+    class UserCreateSchema(BaseModel):
+        name: str = Field(..., min_length=1)
+        email: EmailStr
+        age: int = Field(..., ge=18)
+        password: str = Field(..., min_length=8)
+        role: UserRole = UserRole.USER
+
+        @validator("password")
+        def validate_password_strength(cls, v):
+            if not any(c.isupper() for c in v):
+                raise ValueError("Password must contain uppercase")
+            if not any(c.isdigit() for c in v):
+                raise ValueError("Password must contain digit")
+            return v
+
+    class UserUpdateSchema(BaseModel):
+        name: Optional[str] = None
+        age: Optional[int] = Field(None, ge=0)
+        is_active: Optional[bool] = None
+  api.py: |
+    from schemas import UserSchema, UserCreateSchema
+
+    class UserEndpoint:
+        def __init__(self, repository):
+            self.repository = repository
+
+        def get_user(self, user_id: int):
+            return self.repository.find_by_id(user_id)
+
+    def validate():
+        pass
+  auth/token_service.py: |
+    import hashlib
+    from typing import Optional, Dict
+    from dataclasses import dataclass
+    from datetime import datetime, timedelta
+
+    @dataclass
+    class TokenData:
+        user_id: int
+        token: str
+        expires_at: datetime
+
+    class TokenService:
+        def __init__(self, secret_key: str, ttl_hours: int = 24):
+            self._secret = secret_key
+            self._ttl_hours = ttl_hours
+            self._tokens: Dict[str, TokenData] = {}
+
+        def generate_token(self, user_id: int) -> TokenData:
+            raw = f"{user_id}{self._secret}{datetime.now().isoformat()}"
+            token = hashlib.sha256(raw.encode()).hexdigest()
+            data = TokenData(
+                user_id=user_id, token=token,
+                expires_at=datetime.now() + timedelta(hours=self._ttl_hours),
+            )
+            self._tokens[token] = data
+            return data
+
+        def validate_token(self, token: str) -> Optional[int]:
+            data = self._tokens.get(token)
+            if data and datetime.now() < data.expires_at:
+                return data.user_id
+            return None
+  middleware/rate_limiter.py: |
+    import time
+    from typing import Dict, Optional
+    from dataclasses import dataclass
+
+    @dataclass
+    class RateLimitConfig:
+        requests_per_minute: int = 60
+        burst_size: int = 10
+
+    class ApiRateLimiter:
+        def __init__(self, config: RateLimitConfig):
+            self._config = config
+            self._requests: Dict[str, list[float]] = {}
+
+        def is_allowed(self, client_id: str) -> bool:
+            now = time.time()
+            window_start = now - 60
+            if client_id not in self._requests:
+                self._requests[client_id] = []
+            self._requests[client_id] = [
+                t for t in self._requests[client_id] if t > window_start
+            ]
+            if len(self._requests[client_id]) >= self._config.requests_per_minute:
+                return False
+            self._requests[client_id].append(now)
+            return True
+must_include_files:
+- schemas.py
+- api.py
+must_include_content_from:
+  schemas.py:
+  - 'from pydantic import BaseModel, EmailStr, Field, validator, root_validator'
+  - 'def full_address(self) -> str:'
+must_not_include:
+- TokenService
+- TokenData
+- generate_token
+- validate_token
+- ApiRateLimiter
+- RateLimitConfig
+must_not_include_files:
+- auth/token_service.py
+- middleware/rate_limiter.py
+add_garbage_files: false
+skip_garbage_check: true
+max_fragments: 10
+max_files: 5

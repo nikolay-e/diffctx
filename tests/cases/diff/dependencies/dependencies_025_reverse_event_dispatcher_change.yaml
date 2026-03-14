@@ -1,0 +1,188 @@
+initial:
+  events/dispatcher.py: |
+    class EventDispatcher:
+        def __init__(self):
+            self.handlers = {}
+
+        def register(self, event_type: str, handler):
+            if event_type not in self.handlers:
+                self.handlers[event_type] = []
+            self.handlers[event_type].append(handler)
+
+        def emit(self, event_type: str, data: dict) -> None:
+            for handler in self.handlers.get(event_type, []):
+                handler(data)
+  handlers/user_created_handler.py: |
+    from events.dispatcher import EventDispatcher
+
+    def on_user_created(data: dict) -> None:
+        user_id = data.get("user_id")
+        print(f"User {user_id} created, sending welcome email")
+
+    def setup_handlers(dispatcher: EventDispatcher) -> None:
+        dispatcher.register("user.created", on_user_created)
+  handlers/audit_handler.py: |
+    from events.dispatcher import EventDispatcher
+
+    def on_any_event(data: dict) -> None:
+        print(f"Audit log: {data}")
+
+    def setup_handlers(dispatcher: EventDispatcher) -> None:
+        dispatcher.register("user.created", on_any_event)
+        dispatcher.register("order.placed", on_any_event)
+
+  # --- Tricky: different EventDispatcher class with async support (name collision) ---
+  messaging/dispatcher.py: |
+    import asyncio
+    from typing import Callable, Awaitable
+    GARBAGE_DEP_025_MSG_DISPATCH_A = "messaging_dispatcher"
+    GARBAGE_DEP_025_MSG_ASYNC_B = True
+
+    class EventDispatcher:
+        GARBAGE_DEP_025_MSG_CLASS_C = "different_dispatcher"
+
+        def __init__(self):
+            self.handlers = {}
+            self.async_handlers = {}
+
+        def register(self, event_type: str, handler: Callable) -> None:
+            if event_type not in self.handlers:
+                self.handlers[event_type] = []
+            self.handlers[event_type].append(handler)
+
+        def register_async(self, event_type: str, handler: Callable[..., Awaitable]) -> None:
+            if event_type not in self.async_handlers:
+                self.async_handlers[event_type] = []
+            self.async_handlers[event_type].append(handler)
+
+  # --- Tricky: same events/ directory sibling ---
+  events/bus.py: |
+    GARBAGE_DEP_025_BUS_MOD_G = "event_bus_sibling"
+    GARBAGE_DEP_025_BUS_TYPE_H = "pubsub"
+
+    class EventBus:
+        GARBAGE_DEP_025_BUS_CLASS_I = True
+
+        def __init__(self):
+            self.subscribers = {}
+
+        def publish(self, topic: str, data: dict) -> None:
+            for sub in self.subscribers.get(topic, []):
+                sub(data)
+
+changed:
+  events/dispatcher.py: |
+    import asyncio
+    from typing import Callable, Awaitable
+
+    class EventDispatcher:
+        def __init__(self):
+            self.handlers = {}
+            self.async_handlers = {}
+
+        def register(self, event_type: str, handler: Callable) -> None:
+            if event_type not in self.handlers:
+                self.handlers[event_type] = []
+            self.handlers[event_type].append(handler)
+
+        def register_async(self, event_type: str, handler: Callable[..., Awaitable]) -> None:
+            if event_type not in self.async_handlers:
+                self.async_handlers[event_type] = []
+            self.async_handlers[event_type].append(handler)
+
+        def emit(self, event_type: str, data: dict, metadata: dict = None) -> None:
+            payload = {"data": data, "metadata": metadata or {}}
+            for handler in self.handlers.get(event_type, []):
+                handler(payload)
+
+        async def emit_async(self, event_type: str, data: dict, metadata: dict = None) -> None:
+            payload = {"data": data, "metadata": metadata or {}}
+            tasks = []
+            for handler in self.async_handlers.get(event_type, []):
+                tasks.append(handler(payload))
+            if tasks:
+                await asyncio.gather(*tasks)
+  handlers/user_created_handler.py: |
+    from events.dispatcher import EventDispatcher
+
+    def on_user_created(data: dict) -> None:
+        user_id = data.get("user_id")
+        print(f"User {user_id} created, sending welcome email")
+
+    def setup_handlers(dispatcher: EventDispatcher) -> None:
+        dispatcher.register("user.created", on_user_created)
+  handlers/audit_handler.py: |
+    from events.dispatcher import EventDispatcher
+
+    def on_any_event(data: dict) -> None:
+        print(f"Audit log: {data}")
+
+    def setup_handlers(dispatcher: EventDispatcher) -> None:
+        dispatcher.register("user.created", on_any_event)
+        dispatcher.register("order.placed", on_any_event)
+  messaging/dispatcher.py: |
+    import asyncio
+    from typing import Callable, Awaitable
+    GARBAGE_DEP_025_MSG_DISPATCH_A = "messaging_dispatcher"
+    GARBAGE_DEP_025_MSG_ASYNC_B = True
+
+    class EventDispatcher:
+        GARBAGE_DEP_025_MSG_CLASS_C = "different_dispatcher"
+
+        def __init__(self):
+            self.handlers = {}
+            self.async_handlers = {}
+
+        def register(self, event_type: str, handler: Callable) -> None:
+            if event_type not in self.handlers:
+                self.handlers[event_type] = []
+            self.handlers[event_type].append(handler)
+
+        def register_async(self, event_type: str, handler: Callable[..., Awaitable]) -> None:
+            if event_type not in self.async_handlers:
+                self.async_handlers[event_type] = []
+            self.async_handlers[event_type].append(handler)
+  events/bus.py: |
+    GARBAGE_DEP_025_BUS_MOD_G = "event_bus_sibling"
+    GARBAGE_DEP_025_BUS_TYPE_H = "pubsub"
+
+    class EventBus:
+        GARBAGE_DEP_025_BUS_CLASS_I = True
+
+        def __init__(self):
+            self.subscribers = {}
+
+        def publish(self, topic: str, data: dict) -> None:
+            for sub in self.subscribers.get(topic, []):
+                sub(data)
+
+# === Assertions ===
+
+must_include_files:
+- events/dispatcher.py
+
+must_include_content_from:
+  events/dispatcher.py:
+    - import asyncio
+    - self.async_handlers = {}
+    - 'def register_async(self, event_type: str, handler: Callable[..., Awaitable]) -> None:'
+    - 'class EventDispatcher:'
+
+must_not_include:
+# Tricky: identical EventDispatcher class with same async_handlers/register_async
+- GARBAGE_DEP_025_MSG_DISPATCH_A
+- GARBAGE_DEP_025_MSG_ASYNC_B
+- GARBAGE_DEP_025_MSG_CLASS_C
+# Tricky: same events/ directory sibling with similar pub/sub pattern
+- GARBAGE_DEP_025_BUS_MOD_G
+- GARBAGE_DEP_025_BUS_TYPE_H
+- GARBAGE_DEP_025_BUS_CLASS_I
+
+must_not_include_files:
+- messaging/dispatcher.py
+- events/bus.py
+
+max_fragments: 10
+max_files: 4
+add_garbage_files: false
+skip_garbage_check: true

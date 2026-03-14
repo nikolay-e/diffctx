@@ -1,0 +1,162 @@
+# Test 036: Registry adds _default_handler variable and set_default function
+#           — reviewer needs get_handler which now uses _default_handler fallback
+#
+# Scenario: registry.py adds `_default_handler = None` module variable and
+# set_default() function. get_handler() changes from `.get(name)` to
+# `.get(name, _default_handler)` to use it as fallback.
+#
+# Reviewer questions:
+#   Q1: "Where is _default_handler used as fallback?"
+#       -> get_handler() returns _handlers.get(name, _default_handler).
+#   Q2: "How is _default_handler set?"
+#       -> Via new set_default(handler) function using `global`.
+#
+# Trap files (plausible but unrelated):
+#   - dispatcher.py: event dispatch pattern with similar register/get and
+#     default handler concept but independent module.
+#   - plugin_loader.py: plugin registration with handlers dict and similar
+#     vocabulary but no dependency on registry.py.
+
+initial:
+  registry.py: |
+    _handlers = {}
+    _initialized = False
+
+    def register(name, handler):
+        global _initialized
+        if not _initialized:
+            _initialize()
+        _handlers[name] = handler
+
+    def get_handler(name):
+        return _handlers.get(name)
+
+    def _initialize():
+        global _initialized
+        _handlers.clear()
+        _initialized = True
+
+    def list_handlers():
+        return list(_handlers.keys())
+  dispatcher.py: |
+    _listeners = {}
+    _default_listener = None
+
+    def on(event, listener):
+        if event not in _listeners:
+            _listeners[event] = []
+        _listeners[event].append(listener)
+
+    def emit(event, data=None):
+        handlers = _listeners.get(event, [])
+        if not handlers and _default_listener:
+            return _default_listener(event, data)
+        for handler in handlers:
+            handler(data)
+
+    def set_default_listener(listener):
+        global _default_listener
+        _default_listener = listener
+  plugin_loader.py: |
+    _plugins = {}
+
+    def register_plugin(name, plugin):
+        _plugins[name] = plugin
+
+    def get_plugin(name):
+        return _plugins.get(name)
+
+    def list_plugins():
+        return list(_plugins.keys())
+
+    def unload_plugin(name):
+        return _plugins.pop(name, None)
+
+changed:
+  registry.py: |
+    _handlers = {}
+    _initialized = False
+    _default_handler = None
+
+    def register(name, handler):
+        global _initialized
+        if not _initialized:
+            _initialize()
+        _handlers[name] = handler
+
+    def get_handler(name):
+        return _handlers.get(name, _default_handler)
+
+    def _initialize():
+        global _initialized
+        _handlers.clear()
+        _initialized = True
+
+    def list_handlers():
+        return list(_handlers.keys())
+
+    def set_default(handler):
+        global _default_handler
+        _default_handler = handler
+  dispatcher.py: |
+    _listeners = {}
+    _default_listener = None
+
+    def on(event, listener):
+        if event not in _listeners:
+            _listeners[event] = []
+        _listeners[event].append(listener)
+
+    def emit(event, data=None):
+        handlers = _listeners.get(event, [])
+        if not handlers and _default_listener:
+            return _default_listener(event, data)
+        for handler in handlers:
+            handler(data)
+
+    def set_default_listener(listener):
+        global _default_listener
+        _default_listener = listener
+  plugin_loader.py: |
+    _plugins = {}
+
+    def register_plugin(name, plugin):
+        _plugins[name] = plugin
+
+    def get_plugin(name):
+        return _plugins.get(name)
+
+    def list_plugins():
+        return list(_plugins.keys())
+
+    def unload_plugin(name):
+        return _plugins.pop(name, None)
+
+must_include_files:
+  - registry.py
+
+must_include_content_from:
+  registry.py:
+    - "_default_handler = None"
+    - "return _handlers.get(name, _default_handler)"
+    - "def set_default(handler):"
+
+must_not_include:
+  # --- dispatcher.py: similar default handler pattern but event dispatch ---
+  - "_listeners"
+  - "_default_listener"
+  - "set_default_listener"
+  - "def emit"
+  # --- plugin_loader.py: similar register/get pattern but plugins ---
+  - "register_plugin"
+  - "get_plugin"
+  - "unload_plugin"
+
+must_not_include_files:
+  - dispatcher.py
+  - plugin_loader.py
+
+max_fragments: 4
+max_files: 1
+add_garbage_files: false
+skip_garbage_check: true

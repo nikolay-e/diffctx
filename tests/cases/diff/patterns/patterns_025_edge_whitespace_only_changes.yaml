@@ -1,0 +1,83 @@
+# Scenario: hello() body gets re-indented (whitespace-only change) — tests whitespace handling
+# Changed: test.py — function body indentation changes from 4-space to 8-space
+# Reviewer needs: test.py (changed, the whitespace change is the entire diff)
+# Trap: formatter.py — code formatting utility that manipulates indentation
+# Trap: style_config.py — indentation/style configuration constants
+
+initial:
+  test.py: |
+    def hello():
+        x = 1
+        return x
+  formatter.py: |
+    def adjust_indent(text, spaces=4):
+        lines = text.split('\n')
+        return '\n'.join(' ' * spaces + line.lstrip() for line in lines)
+
+    def normalize_whitespace(text):
+        return ' '.join(text.split())
+
+    class CodeFormatter:
+        def format(self, source):
+            return adjust_indent(source)
+  style_config.py: |
+    INDENT_SIZE = 4
+    TAB_WIDTH = 4
+    MAX_LINE_LENGTH = 120
+
+    class StyleRules:
+        def __init__(self):
+            self.indent = INDENT_SIZE
+            self.max_line = MAX_LINE_LENGTH
+
+        def validate(self, line):
+            return len(line) <= self.max_line
+
+changed:
+  test.py: |
+    def hello():
+            x = 1
+            return x
+  formatter.py: |
+    def adjust_indent(text, spaces=4):
+        lines = text.split('\n')
+        return '\n'.join(' ' * spaces + line.lstrip() for line in lines)
+
+    def normalize_whitespace(text):
+        return ' '.join(text.split())
+
+    class CodeFormatter:
+        def format(self, source):
+            return adjust_indent(source)
+  style_config.py: |
+    INDENT_SIZE = 4
+    TAB_WIDTH = 4
+    MAX_LINE_LENGTH = 120
+
+    class StyleRules:
+        def __init__(self):
+            self.indent = INDENT_SIZE
+            self.max_line = MAX_LINE_LENGTH
+
+        def validate(self, line):
+            return len(line) <= self.max_line
+
+# === Assertions ===
+
+must_include_files:
+- test.py
+
+must_not_include:
+- adjust_indent
+- normalize_whitespace
+- CodeFormatter
+- INDENT_SIZE
+- StyleRules
+- MAX_LINE_LENGTH
+
+must_not_include_files:
+- formatter.py
+- style_config.py
+
+add_garbage_files: false
+skip_garbage_check: true

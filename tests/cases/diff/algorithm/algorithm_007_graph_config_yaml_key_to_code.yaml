@@ -1,0 +1,255 @@
+initial:
+  config/database.yaml: |
+    database:
+      host: localhost
+      port: 5432
+      name: myapp_dev
+      pool_size: 10
+      timeout: 30
+
+    redis:
+      host: localhost
+      port: 6379
+      db: 0
+  config/application.yaml: |
+    app:
+      name: MyApplication
+      debug: true
+      log_level: DEBUG
+  src/database/connection.py: |
+    import os
+    import yaml
+    from typing import Optional
+    from pathlib import Path
+
+    class DatabaseConfig:
+        def __init__(self, config_path: Path):
+            with open(config_path) as f:
+                config = yaml.safe_load(f)
+
+            db_config = config.get("database", {})
+            self.host = os.getenv("DATABASE_HOST", db_config.get("host", "localhost"))
+            self.port = int(os.getenv("DATABASE_PORT", db_config.get("port", 5432)))
+            self.name = db_config.get("name", "app")
+            self.pool_size = db_config.get("pool_size", 5)
+            self.timeout = db_config.get("timeout", 30)
+
+        def get_connection_string(self) -> str:
+            return f"postgresql://{self.host}:{self.port}/{self.name}"
+
+    def create_connection(config: DatabaseConfig):
+        return {"host": config.host, "port": config.port}
+
+  # --- Tricky garbage: structural sibling — another YAML config in same directory ---
+  config/logging.yaml: |
+    GARBAGE_ALGO_007_LOG_CONFIG_G: true
+    GARBAGE_ALGO_007_LOG_FORMAT_H: "%(asctime)s"
+    logging:
+      level: DEBUG
+      format: "%(asctime)s - %(name)s - %(levelname)s"
+      handlers:
+        console:
+          class: StreamHandler
+        file:
+          class: FileHandler
+          filename: app.log
+      pool_size: 5
+
+  # --- Tricky garbage: same-import consumer — also reads YAML and uses yaml.safe_load ---
+  src/config/loader.py: |
+    import yaml
+    from pathlib import Path
+    GARBAGE_ALGO_007_LOADER_MARKER_I = "config_loader"
+    GARBAGE_ALGO_007_PARSE_MARKER_J = True
+
+    class ConfigLoader:
+        def __init__(self, config_path: Path):
+            with open(config_path) as f:
+                self.config = yaml.safe_load(f)
+
+        def get(self, key: str, default=None):
+            return self.config.get(key, default)
+
+  # --- Tricky garbage: name collision — another connection class with same attributes ---
+  src/database/redis_connection.py: |
+    import os
+    import yaml
+    from pathlib import Path
+    GARBAGE_ALGO_007_REDIS_CONN_K = "redis"
+    GARBAGE_ALGO_007_REDIS_POOL_L = 10
+
+    class RedisConfig:
+        def __init__(self, config_path: Path):
+            with open(config_path) as f:
+                config = yaml.safe_load(f)
+            redis_config = config.get("redis", {})
+            self.host = redis_config.get("host", "localhost")
+            self.port = redis_config.get("port", 6379)
+            self.pool_size = redis_config.get("pool_size", 5)
+
+        def get_connection_string(self) -> str:
+            return f"redis://{self.host}:{self.port}"
+
+  # --- Plain garbage ---
+  garbage_cache_config.yaml: |
+    cache:
+      GARBAGE_ALGO_007_CACHE_MARKER_A: true
+      GARBAGE_ALGO_007_TTL_MARKER_B: 3600
+  garbage_queue.py: |
+    GARBAGE_ALGO_007_QUEUE_MARKER_C = "queue"
+    GARBAGE_ALGO_007_WORKER_MARKER_D = True
+
+    class QueueManager:
+        GARBAGE_ALGO_007_JOBS_MARKER_E = []
+        GARBAGE_ALGO_007_PRIORITY_MARKER_F = 1
+
+        def enqueue(self, job: str) -> None:
+            pass
+changed:
+  config/database.yaml: |
+    database:
+      host: db.production.example.com
+      port: 5432
+      name: myapp_production
+      pool_size: 50
+      timeout: 60
+      ssl_mode: require
+
+    redis:
+      host: redis.production.example.com
+      port: 6379
+      db: 0
+  config/application.yaml: |
+    app:
+      name: MyApplication
+      debug: false
+      log_level: INFO
+  src/database/connection.py: |
+    import os
+    import yaml
+    from typing import Optional
+    from pathlib import Path
+
+    class DatabaseConfig:
+        def __init__(self, config_path: Path):
+            with open(config_path) as f:
+                config = yaml.safe_load(f)
+
+            db_config = config.get("database", {})
+            self.host = os.getenv("DATABASE_HOST", db_config.get("host", "localhost"))
+            self.port = int(os.getenv("DATABASE_PORT", db_config.get("port", 5432)))
+            self.name = db_config.get("name", "app")
+            self.pool_size = db_config.get("pool_size", 5)
+            self.timeout = db_config.get("timeout", 30)
+            self.ssl_mode = db_config.get("ssl_mode", "prefer")
+
+        def get_connection_string(self) -> str:
+            ssl_param = f"?sslmode={self.ssl_mode}" if self.ssl_mode else ""
+            return f"postgresql://{self.host}:{self.port}/{self.name}{ssl_param}"
+
+    def create_connection(config: DatabaseConfig):
+        return {"host": config.host, "port": config.port, "ssl": config.ssl_mode}
+  config/logging.yaml: |
+    GARBAGE_ALGO_007_LOG_CONFIG_G: true
+    GARBAGE_ALGO_007_LOG_FORMAT_H: "%(asctime)s"
+    logging:
+      level: DEBUG
+      format: "%(asctime)s - %(name)s - %(levelname)s"
+      handlers:
+        console:
+          class: StreamHandler
+        file:
+          class: FileHandler
+          filename: app.log
+      pool_size: 5
+  src/config/loader.py: |
+    import yaml
+    from pathlib import Path
+    GARBAGE_ALGO_007_LOADER_MARKER_I = "config_loader"
+    GARBAGE_ALGO_007_PARSE_MARKER_J = True
+
+    class ConfigLoader:
+        def __init__(self, config_path: Path):
+            with open(config_path) as f:
+                self.config = yaml.safe_load(f)
+
+        def get(self, key: str, default=None):
+            return self.config.get(key, default)
+  src/database/redis_connection.py: |
+    import os
+    import yaml
+    from pathlib import Path
+    GARBAGE_ALGO_007_REDIS_CONN_K = "redis"
+    GARBAGE_ALGO_007_REDIS_POOL_L = 10
+
+    class RedisConfig:
+        def __init__(self, config_path: Path):
+            with open(config_path) as f:
+                config = yaml.safe_load(f)
+            redis_config = config.get("redis", {})
+            self.host = redis_config.get("host", "localhost")
+            self.port = redis_config.get("port", 6379)
+            self.pool_size = redis_config.get("pool_size", 5)
+
+        def get_connection_string(self) -> str:
+            return f"redis://{self.host}:{self.port}"
+  garbage_cache_config.yaml: |
+    cache:
+      GARBAGE_ALGO_007_CACHE_MARKER_A: true
+      GARBAGE_ALGO_007_TTL_MARKER_B: 3600
+  garbage_queue.py: |
+    GARBAGE_ALGO_007_QUEUE_MARKER_C = "queue"
+    GARBAGE_ALGO_007_WORKER_MARKER_D = True
+
+    class QueueManager:
+        GARBAGE_ALGO_007_JOBS_MARKER_E = []
+        GARBAGE_ALGO_007_PRIORITY_MARKER_F = 1
+
+        def enqueue(self, job: str) -> None:
+            pass
+
+# === Assertions ===
+
+must_include_files:
+- config/application.yaml
+- config/database.yaml
+- src/database/connection.py
+
+must_include_content_from:
+  config/application.yaml:
+    - 'log_level: INFO'
+  config/database.yaml:
+    - 'host: db.production.example.com'
+    - 'ssl_mode: require'
+  src/database/connection.py:
+    - ssl_param = f"?sslmode={self.ssl_mode}"
+
+must_not_include:
+# Plain garbage markers
+- GARBAGE_ALGO_007_CACHE_MARKER_A
+- GARBAGE_ALGO_007_TTL_MARKER_B
+- GARBAGE_ALGO_007_QUEUE_MARKER_C
+- GARBAGE_ALGO_007_WORKER_MARKER_D
+- GARBAGE_ALGO_007_JOBS_MARKER_E
+- GARBAGE_ALGO_007_PRIORITY_MARKER_F
+# Tricky: structural sibling — another YAML config with pool_size key
+- GARBAGE_ALGO_007_LOG_CONFIG_G
+- GARBAGE_ALGO_007_LOG_FORMAT_H
+# Tricky: same-import consumer — also uses yaml.safe_load and Path
+- GARBAGE_ALGO_007_LOADER_MARKER_I
+- GARBAGE_ALGO_007_PARSE_MARKER_J
+# Tricky: name collision — same attributes (host, port, pool_size, get_connection_string)
+- GARBAGE_ALGO_007_REDIS_CONN_K
+- GARBAGE_ALGO_007_REDIS_POOL_L
+
+must_not_include_files:
+- garbage_cache_config.yaml
+- garbage_queue.py
+- config/logging.yaml
+- src/config/loader.py
+- src/database/redis_connection.py
+
+max_fragments: 10
+max_files: 4
+add_garbage_files: false
+skip_garbage_check: true

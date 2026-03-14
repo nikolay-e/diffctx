@@ -1,0 +1,127 @@
+# Scenario: Adding lifecycle rules (create_before_destroy, prevent_destroy,
+#   ignore_changes) to a launch template managed by an autoscaling group.
+# Reviewer questions:
+#   1. Will create_before_destroy conflict with the ASG? (autoscaling.tf)
+#   2. What tags are being ignored via ignore_changes? (locals.tf defines instance_tags)
+# Traps:
+#   - database/rds.tf: RDS also has lifecycle rules but completely different resource
+#   - storage/s3.tf: S3 bucket in same project, no lifecycle overlap
+
+initial:
+  main.tf: |
+    resource "aws_launch_template" "web" {
+      name_prefix   = "web-"
+      image_id      = var.ami_id
+      instance_type = "t3.micro"
+
+      tag_specifications {
+        resource_type = "instance"
+        tags          = local.instance_tags
+      }
+    }
+  autoscaling.tf: |
+    resource "aws_autoscaling_group" "web" {
+      name                = "web-asg"
+      desired_capacity    = 2
+      max_size            = 4
+      min_size            = 1
+      vpc_zone_identifier = var.subnet_ids
+
+      launch_template {
+        id      = aws_launch_template.web.id
+        version = "$Latest"
+      }
+
+      tag {
+        key                 = "Name"
+        value               = "web-instance"
+        propagate_at_launch = true
+      }
+    }
+  locals.tf: |
+    locals {
+      instance_tags = {
+        Name        = "web-server"
+        Environment = var.environment
+        ManagedBy   = "terraform"
+        LastUpdated = timestamp()
+      }
+    }
+  database/rds.tf: |
+    resource "aws_db_instance" "primary" {
+      identifier     = "primary-db"
+      engine         = "postgres"
+      instance_class = "db.t3.medium"
+
+      lifecycle {
+        create_before_destroy = true
+        prevent_destroy       = true
+        ignore_changes        = [password, engine_version]
+      }
+    }
+  storage/s3.tf: |
+    resource "aws_s3_bucket" "logs" {
+      bucket = "app-logs-bucket"
+
+      tags = {
+        Name    = "logs-bucket"
+        Purpose = "logging"
+      }
+    }
+
+    resource "aws_s3_bucket_versioning" "logs" {
+      bucket = aws_s3_bucket.logs.id
+      versioning_configuration {
+        status = "Enabled"
+      }
+    }
+
+changed:
+  main.tf: |
+    resource "aws_launch_template" "web" {
+      name_prefix   = "web-"
+      image_id      = var.ami_id
+      instance_type = "t3.micro"
+
+      tag_specifications {
+        resource_type = "instance"
+        tags          = local.instance_tags
+      }
+
+      lifecycle {
+        create_before_destroy = true
+        prevent_destroy       = true
+        ignore_changes        = [tag_specifications]
+      }
+    }
+
+# autoscaling.tf is unchanged but reviewer needs it to evaluate whether
+# create_before_destroy on the launch template interacts safely with ASG
+# locals.tf is unchanged but shows tag_specifications content being ignored
+must_include_files:
+  - autoscaling.tf
+  - locals.tf
+
+must_include_content_from:
+  autoscaling.tf:
+    - resource "aws_autoscaling_group" "web" {
+    - aws_launch_template.web.id
+  locals.tf:
+    - instance_tags
+    - LastUpdated = timestamp()
+
+must_not_include:
+  # RDS lifecycle - same meta-argument but entirely different resource, no interaction
+  - primary-db
+  - ignore_changes        = [password, engine_version]
+  # S3 bucket - unrelated storage, no lifecycle overlap
+  - app-logs-bucket
+
+must_not_include_files:
+  - database/rds.tf
+  - storage/s3.tf
+
+max_fragments: 5
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

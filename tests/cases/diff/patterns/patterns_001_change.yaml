@@ -1,0 +1,592 @@
+# Scenario: Two new test fixtures added to conftest.py — db_with_data pre-populates
+#   rows via Database.query(), transaction_db wraps tests in BEGIN/ROLLBACK.
+#   Only tests/conftest.py is changed.
+#
+# Diff shows:
+#   + @pytest.fixture def db_with_data(db): db.query("INSERT INTO users VALUES (1, 'test')")
+#   + @pytest.fixture def transaction_db(db): db.query("BEGIN TRANSACTION") / yield / ROLLBACK
+#
+# Reviewer questions:
+#   Q1: "What is the db fixture that both new fixtures depend on?"
+#       -> tests/conftest.py (CHANGED) defines the base db fixture: creates Database
+#          with "test://localhost", calls connect(), yields, then disconnect().
+#          Both db_with_data and transaction_db receive db as a parameter,
+#          so understanding the base fixture is essential for reviewing them.
+#
+#   Q2: "What does Database.query() do — will INSERT and BEGIN TRANSACTION work?"
+#       -> src/database.py (UNCHANGED) defines Database.query(sql) which checks
+#          self.connected and raises RuntimeError if not. Both new fixtures call
+#          db.query() with SQL strings, so the reviewer needs to verify the method
+#          signature and the connected-check behavior.
+#
+#   Q3: "Which existing tests already use the db fixture?"
+#       -> tests/test_queries.py (UNCHANGED) uses db in test_query_returns_list
+#          and test_db_is_connected. These existing consumers show the fixture
+#          contract that db_with_data and transaction_db extend.
+#
+# Not needed for comprehension:
+#   - tests/test_schema.py: Tests for database schema migrations using a
+#     SchemaTestHelper class. Same test directory, same pytest patterns,
+#     uses @pytest.fixture and yield. But tests schema versioning via
+#     run_migration/rollback_migration — not the db fixture from conftest.py.
+#     Including it would add noise about migration logic irrelevant to the
+#     new data-seeding and transaction fixtures.
+#
+#   - src/connection_pool.py: Manages a pool of database connections with
+#     acquire/release methods. Database._pool references a ConnectionPool
+#     internally, creating a structural edge. But the new fixtures only call
+#     db.query() and db.connect/disconnect — pool internals don't help
+#     review whether INSERT or BEGIN TRANSACTION will succeed.
+#
+#   - tests/conftest_helpers.py: Utility functions for test setup — creates
+#     temporary directories, generates random test data, seeds fixture files.
+#     Same test infrastructure domain, lives alongside conftest.py. But no
+#     import or usage from conftest.py — the new fixtures are self-contained.
+#
+#   - src/migration_runner.py: Executes database migrations using Database
+#     objects. Imports Database, calls db.query() with DDL statements.
+#     Direct import edge to Database class. But migration DDL is unrelated
+#     to fixture INSERT/BEGIN TRANSACTION semantics.
+#
+#   - tests/test_connection.py: Tests Database.connect() and disconnect()
+#     lifecycle. Uses the db fixture from conftest.py — direct fixture consumer.
+#     But testing connection lifecycle doesn't help review data-seeding or
+#     transaction-wrapping fixture logic.
+
+initial:
+  src/database.py: |
+    import logging
+    from typing import Any
+
+    logger = logging.getLogger(__name__)
+
+    class ConnectionPool:
+        def __init__(self, max_connections: int = 10):
+            self.max_connections = max_connections
+            self._pool: list = []
+
+        def acquire(self):
+            if self._pool:
+                return self._pool.pop()
+            return self._create_connection()
+
+        def release(self, conn):
+            if len(self._pool) < self.max_connections:
+                self._pool.append(conn)
+
+        def _create_connection(self):
+            logger.info("Creating new database connection")
+            return {"connected": True}
+
+    class Database:
+        def __init__(self, connection_string: str):
+            self.connection_string = connection_string
+            self.connected = False
+            self._pool = ConnectionPool()
+
+        def connect(self):
+            self.connected = True
+            logger.info(f"Connected to {self.connection_string}")
+
+        def disconnect(self):
+            self.connected = False
+            logger.info("Disconnected from database")
+
+        def query(self, sql: str) -> list:
+            if not self.connected:
+                raise RuntimeError("Not connected")
+            return []
+
+  tests/conftest.py: |
+    import pytest
+    from src.database import Database
+
+    @pytest.fixture
+    def db():
+        database = Database("test://localhost")
+        database.connect()
+        yield database
+        database.disconnect()
+
+  tests/test_queries.py: |
+    def test_query_returns_list(db):
+        result = db.query("SELECT * FROM users")
+        assert isinstance(result, list)
+
+    def test_db_is_connected(db):
+        assert db.connected is True
+
+  tests/test_schema.py: |
+    import pytest
+
+    class SchemaTestHelper:
+        def __init__(self, db):
+            self.db = db
+            self.applied_versions: list[int] = []
+
+        def run_migration(self, version: int, sql: str) -> bool:
+            self.db.query(sql)
+            self.applied_versions.append(version)
+            return True
+
+        def rollback_migration(self, version: int) -> bool:
+            if version in self.applied_versions:
+                self.applied_versions.remove(version)
+                return True
+            return False
+
+    @pytest.fixture
+    def schema_helper(db):
+        helper = SchemaTestHelper(db)
+        yield helper
+
+    def test_migration_applies_schema(schema_helper):
+        result = schema_helper.run_migration(1, "CREATE TABLE test (id INT)")
+        assert result is True
+        assert 1 in schema_helper.applied_versions
+
+    def test_migration_rollback(schema_helper):
+        schema_helper.run_migration(1, "CREATE TABLE test (id INT)")
+        result = schema_helper.rollback_migration(1)
+        assert result is True
+        assert 1 not in schema_helper.applied_versions
+
+  src/connection_pool.py: |
+    import logging
+    from threading import Lock
+
+    logger = logging.getLogger(__name__)
+
+    MAX_IDLE_TIME_SECONDS = 300
+    POOL_CLEANUP_INTERVAL = 60
+
+    class PooledConnection:
+        def __init__(self, connection_id: int):
+            self.connection_id = connection_id
+            self.in_use = False
+            self.created_at: float = 0.0
+            self.last_used_at: float = 0.0
+
+        def mark_in_use(self):
+            self.in_use = True
+
+        def mark_idle(self):
+            self.in_use = False
+
+    class ManagedPool:
+        def __init__(self, max_size: int = 20):
+            self.max_size = max_size
+            self._connections: list[PooledConnection] = []
+            self._lock = Lock()
+            self._next_id = 0
+
+        def acquire(self) -> PooledConnection:
+            with self._lock:
+                for conn in self._connections:
+                    if not conn.in_use:
+                        conn.mark_in_use()
+                        return conn
+                if len(self._connections) < self.max_size:
+                    conn = PooledConnection(self._next_id)
+                    self._next_id += 1
+                    conn.mark_in_use()
+                    self._connections.append(conn)
+                    return conn
+            raise RuntimeError("Pool exhausted")
+
+        def release(self, conn: PooledConnection) -> None:
+            conn.mark_idle()
+
+        def active_count(self) -> int:
+            return sum(1 for c in self._connections if c.in_use)
+
+  tests/conftest_helpers.py: |
+    import os
+    import random
+    import string
+    import tempfile
+
+    TEMP_DIR_PREFIX = "test_fixtures_"
+    RANDOM_SEED = 42
+
+    def create_temp_directory(prefix: str = TEMP_DIR_PREFIX) -> str:
+        return tempfile.mkdtemp(prefix=prefix)
+
+    def generate_random_string(length: int = 16) -> str:
+        chars = string.ascii_letters + string.digits
+        return "".join(random.choices(chars, k=length))
+
+    def seed_fixture_file(directory: str, filename: str, content: str) -> str:
+        filepath = os.path.join(directory, filename)
+        with open(filepath, "w") as f:
+            f.write(content)
+        return filepath
+
+    def cleanup_temp_directory(directory: str) -> None:
+        import shutil
+        if os.path.exists(directory):
+            shutil.rmtree(directory)
+
+  src/migration_runner.py: |
+    import logging
+    from src.database import Database
+
+    logger = logging.getLogger(__name__)
+
+    MIGRATION_TABLE = "_migrations"
+    MIGRATION_LOCK_TIMEOUT = 30
+
+    class MigrationRunner:
+        def __init__(self, db: Database):
+            self.db = db
+            self._applied: list[int] = []
+
+        def run(self, version: int, up_sql: str) -> bool:
+            logger.info(f"Running migration v{version}")
+            self.db.query(up_sql)
+            self.db.query(
+                f"INSERT INTO {MIGRATION_TABLE} (version) VALUES ({version})"
+            )
+            self._applied.append(version)
+            return True
+
+        def rollback(self, version: int, down_sql: str) -> bool:
+            logger.info(f"Rolling back migration v{version}")
+            self.db.query(down_sql)
+            self.db.query(
+                f"DELETE FROM {MIGRATION_TABLE} WHERE version = {version}"
+            )
+            if version in self._applied:
+                self._applied.remove(version)
+            return True
+
+        def get_applied_versions(self) -> list[int]:
+            return list(self._applied)
+
+  tests/test_connection.py: |
+    import pytest
+
+    def test_connect_sets_connected_flag(db):
+        assert db.connected is True
+
+    def test_disconnect_clears_connected_flag(db):
+        db.disconnect()
+        assert db.connected is False
+
+    def test_query_raises_when_disconnected(db):
+        db.disconnect()
+        with pytest.raises(RuntimeError, match="Not connected"):
+            db.query("SELECT 1")
+
+    def test_reconnect_after_disconnect(db):
+        db.disconnect()
+        db.connect()
+        assert db.connected is True
+        result = db.query("SELECT 1")
+        assert isinstance(result, list)
+
+changed:
+  src/database.py: |
+    import logging
+    from typing import Any
+
+    logger = logging.getLogger(__name__)
+
+    class ConnectionPool:
+        def __init__(self, max_connections: int = 10):
+            self.max_connections = max_connections
+            self._pool: list = []
+
+        def acquire(self):
+            if self._pool:
+                return self._pool.pop()
+            return self._create_connection()
+
+        def release(self, conn):
+            if len(self._pool) < self.max_connections:
+                self._pool.append(conn)
+
+        def _create_connection(self):
+            logger.info("Creating new database connection")
+            return {"connected": True}
+
+    class Database:
+        def __init__(self, connection_string: str):
+            self.connection_string = connection_string
+            self.connected = False
+            self._pool = ConnectionPool()
+
+        def connect(self):
+            self.connected = True
+            logger.info(f"Connected to {self.connection_string}")
+
+        def disconnect(self):
+            self.connected = False
+            logger.info("Disconnected from database")
+
+        def query(self, sql: str) -> list:
+            if not self.connected:
+                raise RuntimeError("Not connected")
+            return []
+
+  tests/conftest.py: |
+    import pytest
+    from src.database import Database
+
+    @pytest.fixture
+    def db():
+        database = Database("test://localhost")
+        database.connect()
+        yield database
+        database.disconnect()
+
+    @pytest.fixture
+    def db_with_data(db):
+        db.query("INSERT INTO users VALUES (1, 'test')")
+        return db
+
+    @pytest.fixture
+    def transaction_db(db):
+        db.query("BEGIN TRANSACTION")
+        yield db
+        db.query("ROLLBACK")
+
+  tests/test_queries.py: |
+    def test_query_returns_list(db):
+        result = db.query("SELECT * FROM users")
+        assert isinstance(result, list)
+
+    def test_db_is_connected(db):
+        assert db.connected is True
+
+  tests/test_schema.py: |
+    import pytest
+
+    class SchemaTestHelper:
+        def __init__(self, db):
+            self.db = db
+            self.applied_versions: list[int] = []
+
+        def run_migration(self, version: int, sql: str) -> bool:
+            self.db.query(sql)
+            self.applied_versions.append(version)
+            return True
+
+        def rollback_migration(self, version: int) -> bool:
+            if version in self.applied_versions:
+                self.applied_versions.remove(version)
+                return True
+            return False
+
+    @pytest.fixture
+    def schema_helper(db):
+        helper = SchemaTestHelper(db)
+        yield helper
+
+    def test_migration_applies_schema(schema_helper):
+        result = schema_helper.run_migration(1, "CREATE TABLE test (id INT)")
+        assert result is True
+        assert 1 in schema_helper.applied_versions
+
+    def test_migration_rollback(schema_helper):
+        schema_helper.run_migration(1, "CREATE TABLE test (id INT)")
+        result = schema_helper.rollback_migration(1)
+        assert result is True
+        assert 1 not in schema_helper.applied_versions
+
+  src/connection_pool.py: |
+    import logging
+    from threading import Lock
+
+    logger = logging.getLogger(__name__)
+
+    MAX_IDLE_TIME_SECONDS = 300
+    POOL_CLEANUP_INTERVAL = 60
+
+    class PooledConnection:
+        def __init__(self, connection_id: int):
+            self.connection_id = connection_id
+            self.in_use = False
+            self.created_at: float = 0.0
+            self.last_used_at: float = 0.0
+
+        def mark_in_use(self):
+            self.in_use = True
+
+        def mark_idle(self):
+            self.in_use = False
+
+    class ManagedPool:
+        def __init__(self, max_size: int = 20):
+            self.max_size = max_size
+            self._connections: list[PooledConnection] = []
+            self._lock = Lock()
+            self._next_id = 0
+
+        def acquire(self) -> PooledConnection:
+            with self._lock:
+                for conn in self._connections:
+                    if not conn.in_use:
+                        conn.mark_in_use()
+                        return conn
+                if len(self._connections) < self.max_size:
+                    conn = PooledConnection(self._next_id)
+                    self._next_id += 1
+                    conn.mark_in_use()
+                    self._connections.append(conn)
+                    return conn
+            raise RuntimeError("Pool exhausted")
+
+        def release(self, conn: PooledConnection) -> None:
+            conn.mark_idle()
+
+        def active_count(self) -> int:
+            return sum(1 for c in self._connections if c.in_use)
+
+  tests/conftest_helpers.py: |
+    import os
+    import random
+    import string
+    import tempfile
+
+    TEMP_DIR_PREFIX = "test_fixtures_"
+    RANDOM_SEED = 42
+
+    def create_temp_directory(prefix: str = TEMP_DIR_PREFIX) -> str:
+        return tempfile.mkdtemp(prefix=prefix)
+
+    def generate_random_string(length: int = 16) -> str:
+        chars = string.ascii_letters + string.digits
+        return "".join(random.choices(chars, k=length))
+
+    def seed_fixture_file(directory: str, filename: str, content: str) -> str:
+        filepath = os.path.join(directory, filename)
+        with open(filepath, "w") as f:
+            f.write(content)
+        return filepath
+
+    def cleanup_temp_directory(directory: str) -> None:
+        import shutil
+        if os.path.exists(directory):
+            shutil.rmtree(directory)
+
+  src/migration_runner.py: |
+    import logging
+    from src.database import Database
+
+    logger = logging.getLogger(__name__)
+
+    MIGRATION_TABLE = "_migrations"
+    MIGRATION_LOCK_TIMEOUT = 30
+
+    class MigrationRunner:
+        def __init__(self, db: Database):
+            self.db = db
+            self._applied: list[int] = []
+
+        def run(self, version: int, up_sql: str) -> bool:
+            logger.info(f"Running migration v{version}")
+            self.db.query(up_sql)
+            self.db.query(
+                f"INSERT INTO {MIGRATION_TABLE} (version) VALUES ({version})"
+            )
+            self._applied.append(version)
+            return True
+
+        def rollback(self, version: int, down_sql: str) -> bool:
+            logger.info(f"Rolling back migration v{version}")
+            self.db.query(down_sql)
+            self.db.query(
+                f"DELETE FROM {MIGRATION_TABLE} WHERE version = {version}"
+            )
+            if version in self._applied:
+                self._applied.remove(version)
+            return True
+
+        def get_applied_versions(self) -> list[int]:
+            return list(self._applied)
+
+  tests/test_connection.py: |
+    import pytest
+
+    def test_connect_sets_connected_flag(db):
+        assert db.connected is True
+
+    def test_disconnect_clears_connected_flag(db):
+        db.disconnect()
+        assert db.connected is False
+
+    def test_query_raises_when_disconnected(db):
+        db.disconnect()
+        with pytest.raises(RuntimeError, match="Not connected"):
+            db.query("SELECT 1")
+
+    def test_reconnect_after_disconnect(db):
+        db.disconnect()
+        db.connect()
+        assert db.connected is True
+        result = db.query("SELECT 1")
+        assert isinstance(result, list)
+
+must_include_files:
+  - tests/conftest.py
+  # Q1: db fixture definition that db_with_data and transaction_db depend on
+  # Q2: Database.query() method signature and connected-check behavior
+  - src/database.py
+  # Q3: Existing test consumers showing how the db fixture is used
+  - tests/test_queries.py
+
+must_include_content_from:
+  tests/conftest.py:
+    - "def db_with_data(db):"
+    - "def transaction_db(db):"
+    - "from src.database import Database"
+  src/database.py:
+    - "def query(self, sql: str) -> list:"
+    - "raise RuntimeError(\"Not connected\")"
+    - "class Database:"
+
+must_not_include:
+  # --- tests/test_schema.py: Schema migration tests using db fixture ---
+  # Direct fixture consumer (uses db via schema_helper). Same test dir,
+  # same pytest patterns. But migration DDL logic is irrelevant to
+  # reviewing data-seeding and transaction-wrapping fixtures.
+  - SchemaTestHelper
+  - run_migration
+  - rollback_migration
+  # --- src/connection_pool.py: Connection pooling internals ---
+  # Database._pool is a ConnectionPool, creating a structural edge.
+  # But pool acquire/release internals don't help review fixture logic.
+  - PooledConnection
+  - ManagedPool
+  - MAX_IDLE_TIME_SECONDS
+  # --- tests/conftest_helpers.py: Test utility functions ---
+  # Same test infrastructure domain, lives alongside conftest.py.
+  # But no import from conftest.py — fixtures are self-contained.
+  - create_temp_directory
+  - generate_random_string
+  - seed_fixture_file
+  # --- src/migration_runner.py: Database migration execution ---
+  # Imports Database, calls db.query() with DDL — direct import edge.
+  # But migration DDL is unrelated to INSERT/BEGIN TRANSACTION.
+  - MigrationRunner
+  - MIGRATION_TABLE
+  - MIGRATION_LOCK_TIMEOUT
+  # --- tests/test_connection.py: Connection lifecycle tests ---
+  # Uses db fixture from conftest.py — direct fixture consumer.
+  # But testing connect/disconnect doesn't help review new fixtures.
+  - test_connect_sets_connected_flag
+  - test_disconnect_clears_connected_flag
+  - test_query_raises_when_disconnected
+
+must_not_include_files:
+  - tests/test_schema.py
+  - src/connection_pool.py
+  - tests/conftest_helpers.py
+  - src/migration_runner.py
+  - tests/test_connection.py
+
+max_fragments: 8
+max_files: 4
+add_garbage_files: false
+skip_garbage_check: true

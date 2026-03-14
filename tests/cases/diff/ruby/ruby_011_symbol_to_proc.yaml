@@ -1,0 +1,202 @@
+# Test: Report uses Symbol#to_proc (.map(&:name)) to transform User collections
+#
+# Scenario: lib/report.rb is rewritten to require User and use &:name, &:email,
+# &:age, &:active, &:adult?, &:to_s symbol-to-proc patterns. User (UNCHANGED)
+# defines these attributes and methods.
+#
+# Reviewer questions:
+#   Q1: "What does &:adult? call? What's the age threshold?"
+#       -> lib/user.rb (UNCHANGED) defines adult? as @age >= 18.
+#   Q2: "What does &:active return? Is it a boolean method or attribute?"
+#       -> User has attr_reader :active, initialized with default true.
+#
+# Trap files (plausible but unrelated):
+#   - lib/csv_report.rb: CSV export for reports — same "report" domain but
+#     Report doesn't use CSV formatting.
+#   - lib/user_stats.rb: computes aggregate user statistics — similar data
+#     processing but no dependency from Report.
+
+initial:
+  lib/user.rb: |
+    class User
+      attr_reader :name, :email, :age, :active
+
+      def initialize(name:, email:, age:, active: true)
+        @name = name
+        @email = email
+        @age = age
+        @active = active
+      end
+
+      def to_s
+        "#{@name} <#{@email}>"
+      end
+
+      def adult?
+        @age >= 18
+      end
+    end
+  lib/report.rb: |
+    class Report
+      def generate
+        "empty"
+      end
+    end
+  lib/csv_report.rb: |
+    require 'csv'
+
+    class CsvReport
+      def initialize(headers, rows)
+        @headers = headers
+        @rows = rows
+      end
+
+      def generate
+        CSV.generate do |csv|
+          csv << @headers
+          @rows.each { |row| csv << row }
+        end
+      end
+
+      def save(file_path)
+        File.write(file_path, generate)
+      end
+    end
+  lib/user_stats.rb: |
+    class UserStats
+      def initialize(users)
+        @users = users
+      end
+
+      def average_age
+        return 0 if @users.empty?
+        @users.sum { |u| u.age } / @users.size.to_f
+      end
+
+      def active_percentage
+        return 0 if @users.empty?
+        active_count = @users.count { |u| u.active }
+        (active_count.to_f / @users.size * 100).round(1)
+      end
+
+      def age_distribution
+        @users.group_by { |u| (u.age / 10) * 10 }
+              .transform_values(&:size)
+      end
+    end
+changed:
+  lib/user.rb: |
+    class User
+      attr_reader :name, :email, :age, :active
+
+      def initialize(name:, email:, age:, active: true)
+        @name = name
+        @email = email
+        @age = age
+        @active = active
+      end
+
+      def to_s
+        "#{@name} <#{@email}>"
+      end
+
+      def adult?
+        @age >= 18
+      end
+    end
+  lib/report.rb: |
+    require_relative 'user'
+
+    class Report
+      def initialize(users)
+        @users = users
+      end
+
+      def names
+        @users.map(&:name)
+      end
+
+      def emails
+        @users.map(&:email)
+      end
+
+      def total_age
+        @users.map(&:age).sum
+      end
+
+      def active_adults
+        @users.select(&:active).select(&:adult?)
+      end
+
+      def summary
+        @users.map(&:to_s).join(", ")
+      end
+    end
+  lib/csv_report.rb: |
+    require 'csv'
+
+    class CsvReport
+      def initialize(headers, rows)
+        @headers = headers
+        @rows = rows
+      end
+
+      def generate
+        CSV.generate do |csv|
+          csv << @headers
+          @rows.each { |row| csv << row }
+        end
+      end
+
+      def save(file_path)
+        File.write(file_path, generate)
+      end
+    end
+  lib/user_stats.rb: |
+    class UserStats
+      def initialize(users)
+        @users = users
+      end
+
+      def average_age
+        return 0 if @users.empty?
+        @users.sum { |u| u.age } / @users.size.to_f
+      end
+
+      def active_percentage
+        return 0 if @users.empty?
+        active_count = @users.count { |u| u.active }
+        (active_count.to_f / @users.size * 100).round(1)
+      end
+
+      def age_distribution
+        @users.group_by { |u| (u.age / 10) * 10 }
+              .transform_values(&:size)
+      end
+    end
+must_include_files:
+  - lib/report.rb
+  # Q1/Q2: User defines the attributes and methods Report's &: patterns call
+  - lib/user.rb
+must_include_content_from:
+  lib/report.rb:
+    - "@users.map(&:name)"
+    - "@users.select(&:active).select(&:adult?)"
+  lib/user.rb:
+    - "attr_reader :name, :email, :age, :active"
+    - "def adult?"
+must_not_include:
+  # lib/csv_report.rb: CSV formatting — Report doesn't export CSV
+  - CsvReport
+  - CSV.generate
+  # lib/user_stats.rb: aggregate stats — independent from Report
+  - UserStats
+  - average_age
+  - age_distribution
+must_not_include_files:
+  - lib/csv_report.rb
+  - lib/user_stats.rb
+max_fragments: 5
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

@@ -1,0 +1,135 @@
+initial:
+  tests/conftest.py: |
+    import pytest
+
+    @pytest.fixture
+    def db_session():
+        return {"connected": True}
+
+    @pytest.fixture
+    def sample_products():
+        return [
+            {"id": 1, "name": "Widget"},
+            {"id": 2, "name": "Gadget"},
+        ]
+  tests/test_orders.py: |
+    def test_create_order():
+        assert True
+
+  # --- Tricky: same fixture name db_session in a different conftest (name collision) ---
+  tests/integration/conftest.py: |
+    import pytest
+    GARBAGE_DEP034_INTEG_CONFTEST_A = "integration_conftest"
+    GARBAGE_DEP034_INTEG_SETUP_B = True
+
+    @pytest.fixture
+    def db_session():
+        GARBAGE_DEP034_INTEG_DBSESS_C = "integration_db"
+        return {"connected": True, "pool_size": 5}
+
+    @pytest.fixture
+    def sample_products():
+        return [{"id": 99, "name": "IntegrationWidget"}]
+
+  # --- Tricky: uses db_session fixture but in unrelated test ---
+  tests/test_users.py: |
+    GARBAGE_DEP034_USERTEST_D = "user_test_module"
+    GARBAGE_DEP034_USERTEST_INIT_E = True
+
+    def test_create_user(db_session):
+        GARBAGE_DEP034_USERTEST_RUN_F = "running"
+        assert db_session["connected"]
+
+  # --- Tricky: same directory, similar test structure ---
+  tests/test_inventory.py: |
+    GARBAGE_DEP034_INVTEST_G = "inventory_test_module"
+    GARBAGE_DEP034_INVTEST_SETUP_H = True
+
+    def test_check_stock(sample_products):
+        GARBAGE_DEP034_INVTEST_RUN_I = "checking"
+        assert len(sample_products) == 2
+
+changed:
+  tests/conftest.py: |
+    import pytest
+
+    @pytest.fixture
+    def db_session():
+        return {"connected": True}
+
+    @pytest.fixture
+    def sample_products():
+        return [
+            {"id": 1, "name": "Widget"},
+            {"id": 2, "name": "Gadget"},
+        ]
+  tests/test_orders.py: |
+    def test_create_order(db_session):
+        assert db_session["connected"]
+
+    def test_bulk_order(db_session, sample_products):
+        assert len(sample_products) == 2
+  tests/integration/conftest.py: |
+    import pytest
+    GARBAGE_DEP034_INTEG_CONFTEST_A = "integration_conftest"
+    GARBAGE_DEP034_INTEG_SETUP_B = True
+
+    @pytest.fixture
+    def db_session():
+        GARBAGE_DEP034_INTEG_DBSESS_C = "integration_db"
+        return {"connected": True, "pool_size": 5}
+
+    @pytest.fixture
+    def sample_products():
+        return [{"id": 99, "name": "IntegrationWidget"}]
+  tests/test_users.py: |
+    GARBAGE_DEP034_USERTEST_D = "user_test_module"
+    GARBAGE_DEP034_USERTEST_INIT_E = True
+
+    def test_create_user(db_session):
+        GARBAGE_DEP034_USERTEST_RUN_F = "running"
+        assert db_session["connected"]
+  tests/test_inventory.py: |
+    GARBAGE_DEP034_INVTEST_G = "inventory_test_module"
+    GARBAGE_DEP034_INVTEST_SETUP_H = True
+
+    def test_check_stock(sample_products):
+        GARBAGE_DEP034_INVTEST_RUN_I = "checking"
+        assert len(sample_products) == 2
+
+# === Assertions ===
+
+must_include_files:
+- tests/test_orders.py
+- tests/conftest.py
+
+must_include_content_from:
+  tests/test_orders.py:
+    - 'def test_create_order(db_session):'
+    - 'def test_bulk_order(db_session, sample_products):'
+  tests/conftest.py:
+    - 'def db_session():'
+
+must_not_include:
+# Tricky: same fixture names db_session and sample_products (name collision)
+- GARBAGE_DEP034_INTEG_CONFTEST_A
+- GARBAGE_DEP034_INTEG_SETUP_B
+- GARBAGE_DEP034_INTEG_DBSESS_C
+# Tricky: uses db_session fixture but unrelated to diff
+- GARBAGE_DEP034_USERTEST_D
+- GARBAGE_DEP034_USERTEST_INIT_E
+- GARBAGE_DEP034_USERTEST_RUN_F
+# Tricky: uses sample_products fixture, same test directory
+- GARBAGE_DEP034_INVTEST_G
+- GARBAGE_DEP034_INVTEST_SETUP_H
+- GARBAGE_DEP034_INVTEST_RUN_I
+
+must_not_include_files:
+- tests/integration/conftest.py
+- tests/test_users.py
+- tests/test_inventory.py
+
+max_fragments: 5
+max_files: 2
+add_garbage_files: false
+skip_garbage_check: true

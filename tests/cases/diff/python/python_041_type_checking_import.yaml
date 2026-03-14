@@ -1,0 +1,203 @@
+# Scenario: models.py adds bind_service(service: UserService) using
+#   TYPE_CHECKING import to avoid circular dependency. services.py
+#   (also changed) now calls user.bind_service(self) during creation.
+#
+# Diff shows:
+#   models.py:
+#     + def bind_service(self, service: UserService) -> None:
+#     +     self._service = service
+#   services.py:
+#     ~ def create(self, ...): user = User(name, email); user.bind_service(self)
+#
+# Reviewer questions:
+#   Q1: "Is the TYPE_CHECKING guard correct for the circular import?"
+#       -> models.py (both initial and changed): from __future__ import
+#          annotations + if TYPE_CHECKING: from services import UserService.
+#          Reviewer verifies the guard prevents runtime circular import.
+#
+#   Q2: "Does bind_service properly wire the bidirectional relationship?"
+#       -> models.py: bind_service sets self._service = service.
+#          services.py: create() calls user.bind_service(self), passing
+#          the UserService instance. Reviewer verifies the wiring.
+#
+# Not needed for comprehension:
+#   - serializers/json_codec.py: JsonSerializer with serialize/deserialize.
+#     No dependency on models.py or services.py. Independent utility.
+#
+#   - middleware/request_pipeline.py: RequestMiddleware with handler chain.
+#     No relationship to User/UserService circular dependency pattern.
+
+initial:
+  models.py: |
+    from __future__ import annotations
+    from typing import TYPE_CHECKING
+
+    if TYPE_CHECKING:
+        from services import UserService
+
+    class User:
+        def __init__(self, name: str, email: str):
+            self.name = name
+            self.email = email
+            self._service: UserService | None = None
+
+        def display_info(self) -> str:
+            return f"{self.name} <{self.email}>"
+
+        def is_valid(self) -> bool:
+            return "@" in self.email and len(self.name) > 0
+  services.py: |
+    from models import User
+
+    class UserService:
+        def __init__(self, repository):
+            self.repository = repository
+
+        def create(self, name: str, email: str) -> User:
+            return User(name, email)
+
+        def validate_and_save(self, user: User) -> bool:
+            if not user.is_valid():
+                return False
+            self.repository.save(user)
+            return True
+  serializers/json_codec.py: |
+    import json
+    from typing import Any
+
+    class JsonSerializer:
+        def __init__(self, indent: int = 2):
+            self.indent = indent
+
+        def serialize(self, obj: dict) -> str:
+            return json.dumps(obj, indent=self.indent, default=str)
+
+        def deserialize(self, data: str) -> dict:
+            return json.loads(data)
+
+        def serialize_list(self, items: list[dict]) -> str:
+            return json.dumps(items, indent=self.indent, default=str)
+  middleware/request_pipeline.py: |
+    from typing import Callable, Any
+
+    class RequestMiddleware:
+        def __init__(self):
+            self._handlers: list[Callable] = []
+
+        def add_handler(self, handler: Callable) -> None:
+            self._handlers.append(handler)
+
+        def process_request(self, request: dict) -> dict:
+            result = request
+            for handler in self._handlers:
+                result = handler(result)
+            return result
+
+        def process_response(self, response: dict) -> dict:
+            return response
+
+changed:
+  models.py: |
+    from __future__ import annotations
+    from typing import TYPE_CHECKING
+
+    if TYPE_CHECKING:
+        from services import UserService
+
+    class User:
+        def __init__(self, name: str, email: str):
+            self.name = name
+            self.email = email
+            self._service: UserService | None = None
+
+        def display_info(self) -> str:
+            return f"{self.name} <{self.email}>"
+
+        def is_valid(self) -> bool:
+            return "@" in self.email and len(self.name) > 0
+
+        def bind_service(self, service: UserService) -> None:
+            self._service = service
+  services.py: |
+    from models import User
+
+    class UserService:
+        def __init__(self, repository):
+            self.repository = repository
+
+        def create(self, name: str, email: str) -> User:
+            user = User(name, email)
+            user.bind_service(self)
+            return user
+
+        def validate_and_save(self, user: User) -> bool:
+            if not user.is_valid():
+                return False
+            self.repository.save(user)
+            return True
+  serializers/json_codec.py: |
+    import json
+    from typing import Any
+
+    class JsonSerializer:
+        def __init__(self, indent: int = 2):
+            self.indent = indent
+
+        def serialize(self, obj: dict) -> str:
+            return json.dumps(obj, indent=self.indent, default=str)
+
+        def deserialize(self, data: str) -> dict:
+            return json.loads(data)
+
+        def serialize_list(self, items: list[dict]) -> str:
+            return json.dumps(items, indent=self.indent, default=str)
+  middleware/request_pipeline.py: |
+    from typing import Callable, Any
+
+    class RequestMiddleware:
+        def __init__(self):
+            self._handlers: list[Callable] = []
+
+        def add_handler(self, handler: Callable) -> None:
+            self._handlers.append(handler)
+
+        def process_request(self, request: dict) -> dict:
+            result = request
+            for handler in self._handlers:
+                result = handler(result)
+            return result
+
+        def process_response(self, response: dict) -> dict:
+            return response
+
+must_include_files:
+  - models.py
+  - services.py
+
+must_include_content_from:
+  models.py:
+    - 'def bind_service(self, service: UserService) -> None:'
+    - "if TYPE_CHECKING:"
+    - "from services import UserService"
+  services.py:
+    - "user = User(name, email)"
+    - "user.bind_service(self)"
+
+must_not_include:
+  # --- json_codec.py: serialization, no model/service dependency ---
+  - JsonSerializer
+  - serialize_list
+  - deserialize
+  # --- request_pipeline.py: middleware chain, no User/UserService dep ---
+  - RequestMiddleware
+  - process_request
+  - add_handler
+
+must_not_include_files:
+  - serializers/json_codec.py
+  - middleware/request_pipeline.py
+
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

@@ -1,4 +1,0 @@
-decorated_class.py: "from dataclasses import dataclass\nfrom typing import Optional\n\ndef standalone_function_before():\n\nclass UnrelatedClassBefore:\n\n    def unrelated_method_before(self):\n\n@dataclass\n\
-  class MyClass:\n    value: int\n    name: str\n\ndef standalone_function_after():\n\nclass UnrelatedClassAfter:\n\n    def unrelated_method_after(self):\n\n    @staticmethod\n    def static_garbage():\n"
-models_garbage_003.py: "from dataclasses import dataclass\n\n@dataclass\nclass GarbageModel:\n    garbage_field: str = \"GARBAGE_FRAG_model003\"\n\nclass AnotherGarbageClass:\n    CONSTANT = \"GARBAGE_FRAG_anotherclass003\"\
-  \n"

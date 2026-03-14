@@ -1,0 +1,184 @@
+initial:
+  src/worker.py: |
+    import os
+    import time
+    import signal
+    import sys
+
+    WORKER_ID = os.getenv("HOSTNAME", "unknown")
+    QUEUE_URL = os.getenv("QUEUE_URL", "redis://localhost:6379")
+
+    shutdown = False
+
+    def handle_signal(signum, frame):
+        global shutdown
+        print(f"Worker {WORKER_ID}: received signal {signum}")
+        shutdown = True
+
+    def process_task(task_data: str):
+        print(f"Worker {WORKER_ID}: processing {task_data}")
+        time.sleep(2)
+        return True
+
+    def run():
+        signal.signal(signal.SIGTERM, handle_signal)
+        signal.signal(signal.SIGINT, handle_signal)
+        print(f"Worker {WORKER_ID} starting, queue={QUEUE_URL}")
+
+        while not shutdown:
+            process_task("next-task")
+            time.sleep(1)
+
+        print(f"Worker {WORKER_ID} shutting down")
+
+    if __name__ == "__main__":
+        run()
+  src/health.py: |
+    from flask import Flask, jsonify
+
+    health_app = Flask(__name__)
+
+    @health_app.route('/healthz')
+    def healthz():
+        return jsonify(status='healthy')
+
+    @health_app.route('/readyz')
+    def readyz():
+        return jsonify(ready=True)
+  requirements.txt: |
+    flask==2.3.0
+    redis==5.0.0
+  Dockerfile: |
+    FROM python:3.12-slim
+    WORKDIR /app
+    COPY requirements.txt .
+    RUN pip install --no-cache-dir -r requirements.txt
+    COPY src/ ./src/
+    USER nobody
+    CMD ["python", "src/worker.py"]
+  docker-compose.yml: |
+    version: '3.8'
+    services:
+      worker:
+        build: .
+        environment:
+          - QUEUE_URL=redis://redis:6379
+        deploy:
+          replicas: 1
+        depends_on:
+          - redis
+      redis:
+        image: redis:7-alpine
+        volumes:
+          - redis_data:/data
+    volumes:
+      redis_data:
+  scripts/scale_workers.sh: |
+    #!/bin/bash
+    docker-compose up --scale worker=3
+  tests/test_worker.py: |
+    def test_process_task():
+        pass
+  docs/scaling.md: |
+    # Scaling Guide
+  k8s/hpa.yaml: |
+    apiVersion: autoscaling/v2
+  monitoring/grafana-dashboard.json: |
+    {
+    }
+changed:
+  src/worker.py: |
+    import os
+    import time
+    import signal
+    import sys
+
+    WORKER_ID = os.getenv("HOSTNAME", "unknown")
+    QUEUE_URL = os.getenv("QUEUE_URL", "redis://localhost:6379")
+
+    shutdown = False
+
+    def handle_signal(signum, frame):
+        global shutdown
+        print(f"Worker {WORKER_ID}: received signal {signum}")
+        shutdown = True
+
+    def process_task(task_data: str):
+        print(f"Worker {WORKER_ID}: processing {task_data}")
+        time.sleep(2)
+        return True
+
+    def run():
+        signal.signal(signal.SIGTERM, handle_signal)
+        signal.signal(signal.SIGINT, handle_signal)
+        print(f"Worker {WORKER_ID} starting, queue={QUEUE_URL}")
+
+        while not shutdown:
+            process_task("next-task")
+            time.sleep(1)
+
+        print(f"Worker {WORKER_ID} shutting down")
+
+    if __name__ == "__main__":
+        run()
+  src/health.py: |
+    from flask import Flask, jsonify
+
+    health_app = Flask(__name__)
+
+    @health_app.route('/healthz')
+    def healthz():
+        return jsonify(status='healthy')
+
+    @health_app.route('/readyz')
+    def readyz():
+        return jsonify(ready=True)
+  requirements.txt: |
+    flask==2.3.0
+    redis==5.0.0
+  Dockerfile: |
+    FROM python:3.12-slim
+    WORKDIR /app
+    COPY requirements.txt .
+    RUN pip install --no-cache-dir -r requirements.txt
+    COPY src/ ./src/
+    USER nobody
+    CMD ["python", "src/worker.py"]
+  docker-compose.yml: |
+    version: '3.8'
+    services:
+      worker:
+        build: .
+        environment:
+          - QUEUE_URL=redis://redis:6379
+        deploy:
+          replicas: 3
+          resources:
+            limits:
+              cpus: '0.5'
+              memory: 256M
+        depends_on:
+          - redis
+      redis:
+        image: redis:7-alpine
+        volumes:
+          - redis_data:/data
+    volumes:
+      redis_data:
+  scripts/scale_workers.sh: |
+    #!/bin/bash
+    docker-compose up --scale worker=3
+  tests/test_worker.py: |
+    def test_process_task():
+        pass
+  docs/scaling.md: |
+    # Scaling Guide
+  k8s/hpa.yaml: |
+    apiVersion: autoscaling/v2
+  monitoring/grafana-dashboard.json: |
+    {
+    }
+must_include_files:
+- docker-compose.yml
+add_garbage_files: false
+skip_garbage_check: true

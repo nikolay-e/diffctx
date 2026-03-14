@@ -1,0 +1,251 @@
+# Scenario: Service selector corrected from old-api-backend to api-backend and
+#   version: v2 label added for canary routing. Only k8s/apps/service.yaml is changed.
+#
+# Diff shows:
+#   - app: old-api-backend  ->  + app: api-backend
+#   + version: v2 (new selector label)
+#   + labels: app: api-backend (metadata)
+#
+# Reviewer questions:
+#   Q1: "Does the deployment template have labels matching the new selector?"
+#       -> Needs k8s/apps/deployment.yaml: template labels include
+#          app: api-backend and version: v2. The service selector must
+#          be a subset of pod labels. Without this, the reviewer cannot
+#          verify the selector fix is correct.
+#
+#   Q2: "Does adding version:v2 to selector break canary routing?"
+#       -> Needs k8s/apps/deployment.yaml: stable deployment has version: v2.
+#          Adding version: v2 to service selector means canary pods with
+#          version: v3 will NOT be selected — intentional or bug?
+#
+# Not needed for comprehension:
+#   - k8s/istio/virtual-service.yaml: Istio VirtualService routing to
+#     host: api-backend with subsets "stable" and "canary". Direct structural
+#     edge: references the same service being changed. But the VirtualService
+#     routes by Istio subsets (DestinationRule), not by K8s service selectors.
+#     The service selector fix is about which pods the Service selects,
+#     not about Istio traffic splitting.
+#
+#   - k8s/apps/canary-deployment.yaml: Canary deployment with app: api-backend
+#     and version: v3 labels. Direct structural edge: shares app: api-backend
+#     label but differs on version. This is actually relevant to Q2 (the
+#     canary won't match version: v2 selector), but the reviewer can reason
+#     about this from the deployment labels alone. The canary deployment
+#     details don't add comprehension beyond what the version label tells.
+initial:
+  k8s/apps/deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: api-backend
+      namespace: production
+      labels:
+        app: api-backend
+        version: v2
+    spec:
+      replicas: 3
+      selector:
+        matchLabels:
+          app: api-backend
+      template:
+        metadata:
+          labels:
+            app: api-backend
+            version: v2
+            tier: backend
+        spec:
+          containers:
+          - name: api
+            image: api-backend:v2.0.0
+            ports:
+            - containerPort: 8080
+              name: http
+            - containerPort: 9090
+              name: grpc
+            resources:
+              requests:
+                memory: "256Mi"
+                cpu: "250m"
+  k8s/apps/service.yaml: |
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: api-backend
+      namespace: production
+    spec:
+      selector:
+        app: old-api-backend
+      ports:
+      - name: http
+        port: 80
+        targetPort: 8080
+      - name: grpc
+        port: 9090
+        targetPort: 9090
+  k8s/istio/virtual-service.yaml: |
+    apiVersion: networking.istio.io/v1beta1
+    kind: VirtualService
+    metadata:
+      name: api-backend-vs
+      namespace: production
+    spec:
+      hosts:
+      - api-backend
+      http:
+      - route:
+        - destination:
+            host: api-backend
+            subset: stable
+          weight: 90
+        - destination:
+            host: api-backend
+            subset: canary
+          weight: 10
+  k8s/apps/canary-deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: api-backend-canary
+      namespace: production
+    spec:
+      replicas: 1
+      selector:
+        matchLabels:
+          app: api-backend
+          track: canary
+      template:
+        metadata:
+          labels:
+            app: api-backend
+            track: canary
+            version: v3
+        spec:
+          containers:
+          - name: api
+            image: api-backend:v3.0.0-rc1
+            ports:
+            - containerPort: 8080
+changed:
+  k8s/apps/deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: api-backend
+      namespace: production
+      labels:
+        app: api-backend
+        version: v2
+    spec:
+      replicas: 3
+      selector:
+        matchLabels:
+          app: api-backend
+      template:
+        metadata:
+          labels:
+            app: api-backend
+            version: v2
+            tier: backend
+        spec:
+          containers:
+          - name: api
+            image: api-backend:v2.0.0
+            ports:
+            - containerPort: 8080
+              name: http
+            - containerPort: 9090
+              name: grpc
+            resources:
+              requests:
+                memory: "256Mi"
+                cpu: "250m"
+  k8s/apps/service.yaml: |
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: api-backend
+      namespace: production
+      labels:
+        app: api-backend
+    spec:
+      selector:
+        app: api-backend
+        version: v2
+      ports:
+      - name: http
+        port: 80
+        targetPort: 8080
+      - name: grpc
+        port: 9090
+        targetPort: 9090
+  k8s/istio/virtual-service.yaml: |
+    apiVersion: networking.istio.io/v1beta1
+    kind: VirtualService
+    metadata:
+      name: api-backend-vs
+      namespace: production
+    spec:
+      hosts:
+      - api-backend
+      http:
+      - route:
+        - destination:
+            host: api-backend
+            subset: stable
+          weight: 90
+        - destination:
+            host: api-backend
+            subset: canary
+          weight: 10
+  k8s/apps/canary-deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: api-backend-canary
+      namespace: production
+    spec:
+      replicas: 1
+      selector:
+        matchLabels:
+          app: api-backend
+          track: canary
+      template:
+        metadata:
+          labels:
+            app: api-backend
+            track: canary
+            version: v3
+        spec:
+          containers:
+          - name: api
+            image: api-backend:v3.0.0-rc1
+            ports:
+            - containerPort: 8080
+must_include_files:
+  - k8s/apps/service.yaml
+  # Q1+Q2: Deployment labels must match service selector.
+  - k8s/apps/deployment.yaml
+must_include_content_from:
+  k8s/apps/service.yaml:
+    - 'app: api-backend'
+    - 'version: v2'
+  k8s/apps/deployment.yaml:
+    - 'app: api-backend'
+    - 'version: v2'
+must_not_include:
+  # --- virtual-service.yaml: Istio routing, different abstraction layer ---
+  - api-backend-vs
+  - VirtualService
+  - "subset: stable"
+  - "subset: canary"
+  # --- canary-deployment.yaml: shares app label, different version ---
+  - api-backend-canary
+  - v3.0.0-rc1
+  - "track: canary"
+must_not_include_files:
+  - k8s/istio/virtual-service.yaml
+  - k8s/apps/canary-deployment.yaml
+add_garbage_files: false
+skip_garbage_check: true
+max_fragments: 8
+max_files: 5

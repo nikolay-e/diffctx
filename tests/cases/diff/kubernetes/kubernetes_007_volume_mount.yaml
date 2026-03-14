@@ -1,0 +1,290 @@
+# Scenario: Deployment adds three volume mounts — config ConfigMap, secrets
+#   Secret, and tmp emptyDir. Only k8s/deployment.yaml is changed.
+#
+# Diff shows:
+#   - volumeMounts: []  ->  + config (/app/config, readOnly), secrets
+#     (/app/secrets, readOnly), tmp (/tmp)
+#   - volumes: []  ->  + configMap: app-config, secret: app-secrets, emptyDir
+#
+# Reviewer questions:
+#   Q1: "Does the app-config ConfigMap exist with the right data?"
+#       -> Needs k8s/configmap.yaml: ConfigMap named app-config with
+#          server.yaml containing server port/host and logging config.
+#          The deployment mounts this at /app/config. Without this,
+#          the reviewer cannot verify the ConfigMap name and data match.
+#
+#   Q2: "Does app-secrets Secret exist?"
+#       -> No Secret manifest in the test files — potential review finding.
+#          The deployment references secretName: app-secrets but no
+#          corresponding Secret is defined.
+#
+# Not needed for comprehension:
+#   - k8s/storage/nfs-provisioner.yaml: NFS storage provisioner with its
+#     own volumeMounts and volumes. Shares "volume", "volumeMounts" vocabulary
+#     directly. HARDEST TRAP: identical YAML structure (volumeMounts with
+#     name/mountPath, volumes with name). But NFS provisioner is cluster
+#     infrastructure — its volume config doesn't help review whether the
+#     app's ConfigMap and Secret volume names are correct.
+#
+#   - k8s/apps/elasticsearch/data-volume.yaml: PVC with 100Gi storage.
+#     Shares "volume" domain and storage vocabulary (accessModes,
+#     storageClassName). But a PVC for elasticsearch has no relation
+#     to ConfigMap/Secret volume mounts in a different deployment.
+initial:
+  config/server.yaml: |
+    server:
+      port: 8080
+      host: 0.0.0.0
+      read_timeout: 30s
+      write_timeout: 30s
+    database:
+      pool_size: 10
+      idle_timeout: 300s
+    logging:
+      level: info
+      format: json
+      output: stdout
+  k8s/configmap.yaml: |
+    apiVersion: v1
+    kind: ConfigMap
+    metadata:
+      name: app-config
+      namespace: production
+    data:
+      server.yaml: |
+        server:
+          port: 8080
+          host: 0.0.0.0
+          read_timeout: 30s
+          write_timeout: 30s
+        database:
+          pool_size: 10
+          idle_timeout: 300s
+        logging:
+          level: info
+          format: json
+          output: stdout
+  k8s/deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: myapp
+      namespace: production
+      labels:
+        app: myapp
+        version: v1
+    spec:
+      replicas: 3
+      selector:
+        matchLabels:
+          app: myapp
+      template:
+        metadata:
+          labels:
+            app: myapp
+            version: v1
+        spec:
+          containers:
+          - name: app
+            image: myapp:v1.0.0
+            ports:
+            - containerPort: 8080
+            volumeMounts: []
+          volumes: []
+  k8s/service.yaml: |
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: myapp
+      namespace: production
+    spec:
+      selector:
+        app: myapp
+      ports:
+      - port: 80
+        targetPort: 8080
+  k8s/storage/nfs-provisioner.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: nfs-client-provisioner
+      namespace: kube-system
+    spec:
+      replicas: 1
+      selector:
+        matchLabels:
+          app: nfs-client-provisioner
+      template:
+        spec:
+          containers:
+          - name: nfs-provisioner
+            image: registry.k8s.io/sig-storage/nfs-subdir-external-provisioner:v4.0.2
+            volumeMounts:
+            - name: nfs-root
+              mountPath: /persistentvolumes
+          volumes:
+          - name: nfs-root
+            nfs:
+              server: 10.0.0.50
+              path: /exports
+  k8s/apps/elasticsearch/data-volume.yaml: |
+    apiVersion: v1
+    kind: PersistentVolumeClaim
+    metadata:
+      name: elasticsearch-data
+      namespace: logging
+    spec:
+      accessModes:
+      - ReadWriteOnce
+      storageClassName: gp3-encrypted
+      resources:
+        requests:
+          storage: 100Gi
+changed:
+  config/server.yaml: |
+    server:
+      port: 8080
+      host: 0.0.0.0
+      read_timeout: 30s
+      write_timeout: 30s
+    database:
+      pool_size: 10
+      idle_timeout: 300s
+    logging:
+      level: info
+      format: json
+      output: stdout
+  k8s/configmap.yaml: |
+    apiVersion: v1
+    kind: ConfigMap
+    metadata:
+      name: app-config
+      namespace: production
+    data:
+      server.yaml: |
+        server:
+          port: 8080
+          host: 0.0.0.0
+          read_timeout: 30s
+          write_timeout: 30s
+        database:
+          pool_size: 10
+          idle_timeout: 300s
+        logging:
+          level: info
+          format: json
+          output: stdout
+  k8s/deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: myapp
+      namespace: production
+      labels:
+        app: myapp
+        version: v1
+    spec:
+      replicas: 3
+      selector:
+        matchLabels:
+          app: myapp
+      template:
+        metadata:
+          labels:
+            app: myapp
+            version: v1
+        spec:
+          containers:
+          - name: app
+            image: myapp:v1.0.0
+            ports:
+            - containerPort: 8080
+            volumeMounts:
+            - name: config
+              mountPath: /app/config
+              readOnly: true
+            - name: secrets
+              mountPath: /app/secrets
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+          volumes:
+          - name: config
+            configMap:
+              name: app-config
+          - name: secrets
+            secret:
+              secretName: app-secrets
+          - name: tmp
+            emptyDir: {}
+  k8s/service.yaml: |
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: myapp
+      namespace: production
+    spec:
+      selector:
+        app: myapp
+      ports:
+      - port: 80
+        targetPort: 8080
+  k8s/storage/nfs-provisioner.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: nfs-client-provisioner
+      namespace: kube-system
+    spec:
+      replicas: 1
+      selector:
+        matchLabels:
+          app: nfs-client-provisioner
+      template:
+        spec:
+          containers:
+          - name: nfs-provisioner
+            image: registry.k8s.io/sig-storage/nfs-subdir-external-provisioner:v4.0.2
+            volumeMounts:
+            - name: nfs-root
+              mountPath: /persistentvolumes
+          volumes:
+          - name: nfs-root
+            nfs:
+              server: 10.0.0.50
+              path: /exports
+  k8s/apps/elasticsearch/data-volume.yaml: |
+    apiVersion: v1
+    kind: PersistentVolumeClaim
+    metadata:
+      name: elasticsearch-data
+      namespace: logging
+    spec:
+      accessModes:
+      - ReadWriteOnce
+      storageClassName: gp3-encrypted
+      resources:
+        requests:
+          storage: 100Gi
+must_include_files:
+- k8s/deployment.yaml
+must_include_content_from:
+  k8s/deployment.yaml:
+  - 'volumeMounts:'
+  - 'mountPath: /app/config'
+must_not_include:
+  # --- nfs-provisioner.yaml: identical volume YAML structure, different purpose ---
+  - nfs-client-provisioner
+  - nfs-subdir-external-provisioner
+  - "/persistentvolumes"
+  # --- data-volume.yaml: storage vocabulary, different app ---
+  - elasticsearch-data
+  - gp3-encrypted
+  - "storage: 100Gi"
+must_not_include_files:
+  - k8s/storage/nfs-provisioner.yaml
+  - k8s/apps/elasticsearch/data-volume.yaml
+add_garbage_files: false
+skip_garbage_check: true
+max_fragments: 8
+max_files: 5

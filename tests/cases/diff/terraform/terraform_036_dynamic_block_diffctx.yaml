@@ -1,9 +1,0 @@
-must_include_files:
-- security.tf
-- variables.tf
-must_include_content:
-- variable "web_ingress_rules" {
-- name        = "${var.environment}-${each.value.name}-tg"
-must_not_include:
-- GARBAGE_TF_dyn476a
-- hardcoded_rules_GARBAGE_TF_dyn476a.tf

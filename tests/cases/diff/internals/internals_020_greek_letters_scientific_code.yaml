@@ -1,0 +1,19 @@
+initial:
+  greek_science.py: |
+    def placeholder():
+        pass
+changed:
+  greek_science.py: |
+    def calculate_Δ(θ, φ):
+        import math
+        return θ * math.cos(φ)
+
+    def compute_σ(μ, data):
+        return sum((x - μ)**2 for x in data)
+must_include_files:
+- greek_science.py
+must_include_content:
+- 'def calculate_Δ(θ, φ):'
+- 'def compute_σ(μ, data):'
+add_garbage_files: false
+skip_garbage_check: true

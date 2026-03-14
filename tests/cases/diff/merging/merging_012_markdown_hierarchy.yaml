@@ -1,0 +1,40 @@
+initial:
+  hierarchy.md: |
+    # Level 1
+
+    Content under level 1.
+
+    ## Level 2
+
+    Content under level 2.
+
+    ### Level 3
+
+    Content under level 3.
+
+    ## Another Level 2
+
+    More content.
+changed:
+  hierarchy.md: |
+    # Level 1
+
+    Updated content under level 1.
+
+    ## Level 2
+
+    Updated content under level 2.
+
+    ### Level 3
+
+    Content under level 3.
+
+    ## Another Level 2
+
+    More content.
+must_include_files:
+- hierarchy.md
+must_include_content:
+- Updated content under level 2.
+add_garbage_files: false
+skip_garbage_check: true

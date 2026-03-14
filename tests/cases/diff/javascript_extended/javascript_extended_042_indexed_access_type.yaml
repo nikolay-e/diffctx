@@ -1,0 +1,278 @@
+# Scenario: accessor.ts goes from stub to a full module that imports Schema
+#   and uses indexed access types (Schema['users'][number]) to derive User,
+#   Post, and Comment types, then builds accessor functions.
+#
+# Diff shows:
+#   - console.log('initial')
+#   + import { Schema, emptySchema } from './schema';
+#   + type User = Schema['users'][number];
+#   + type Post = Schema['posts'][number];
+#   + type Comment = Schema['comments'][number];
+#   + getFirstUser(), getPostsByAuthor(), getCommentsForPost() functions
+#
+# Reviewer questions:
+#   Q1: "What fields do the derived types have — does Schema['users'][number]
+#        give { id, name, role } or something else?"
+#       -> src/schema.ts: Schema.users is { id: string; name: string; role: string }[].
+#          So Schema['users'][number] yields { id, name, role }. The accessor
+#          functions use .users, .posts, .comments — reviewer must verify these
+#          array members match what the code accesses.
+#
+#   Q2: "Does Schema have a 'posts' field with an authorId — is the filter correct?"
+#       -> src/schema.ts: posts is { id, title, content, authorId }[].
+#          getPostsByAuthor filters p.authorId === authorId, which is valid.
+#
+#   Q3: "Does Schema have a 'comments' field with postId?"
+#       -> src/schema.ts: comments is { id, postId, body }[].
+#          getCommentsForPost filters c.postId === postId, which is valid.
+#
+# Not needed for comprehension:
+#   - src/services/schemaValidator.ts: Validates Schema objects at runtime using
+#     Zod. Imports Schema type from the same module. Direct structural edge:
+#     same import source. But runtime validation doesn't help review whether
+#     indexed access types correctly derive field shapes.
+#
+#   - src/services/schemaSerializer.ts: Serializes Schema to JSON with custom
+#     formatting. Also imports Schema. Same import source edge, but serialization
+#     logic is irrelevant to type-level indexed access operations.
+#
+#   - src/repositories/commentRepository.ts: CRUD operations for comments.
+#     Uses the same { postId, body } fields the accessor accesses. Lexical
+#     overlap with "postId" but no import of Schema or accessor types.
+
+initial:
+  src/schema.ts: |
+    export interface Schema {
+        users: { id: string; name: string; role: string }[];
+        posts: { id: string; title: string; content: string; authorId: string }[];
+        comments: { id: string; postId: string; body: string }[];
+    }
+
+    export const emptySchema: Schema = {
+        users: [],
+        posts: [],
+        comments: [],
+    };
+  src/accessor.ts: |
+    console.log('initial');
+  # --- Not needed: runtime validator, same import source but different concern ---
+  src/services/schemaValidator.ts: |
+    import { Schema } from '../schema';
+    import { z } from 'zod';
+
+    const userSchema = z.object({
+        id: z.string(),
+        name: z.string(),
+        role: z.string(),
+    });
+
+    const schemaValidator = z.object({
+        users: z.array(userSchema),
+        posts: z.array(z.object({ id: z.string(), title: z.string(), content: z.string(), authorId: z.string() })),
+        comments: z.array(z.object({ id: z.string(), postId: z.string(), body: z.string() })),
+    });
+
+    export function validateSchema(data: unknown): data is Schema {
+        return schemaValidator.safeParse(data).success;
+    }
+
+    export function getValidationErrors(data: unknown): string[] {
+        const result = schemaValidator.safeParse(data);
+        if (result.success) return [];
+        return result.error.errors.map(e => e.message);
+    }
+  # --- Not needed: serializer, same import source but irrelevant to type derivation ---
+  src/services/schemaSerializer.ts: |
+    import { Schema } from '../schema';
+
+    export function serializeSchema(schema: Schema): string {
+        return JSON.stringify(schema, null, 2);
+    }
+
+    export function deserializeSchema(json: string): Schema {
+        return JSON.parse(json) as Schema;
+    }
+
+    export function getSchemaStats(schema: Schema): { users: number; posts: number; comments: number } {
+        return {
+            users: schema.users.length,
+            posts: schema.posts.length,
+            comments: schema.comments.length,
+        };
+    }
+  # --- Not needed: comment CRUD, lexical overlap with postId but no Schema import ---
+  src/repositories/commentRepository.ts: |
+    interface CommentRecord {
+        id: string;
+        postId: string;
+        body: string;
+        createdAt: Date;
+    }
+
+    const store: CommentRecord[] = [];
+
+    export function addComment(postId: string, body: string): CommentRecord {
+        const record = { id: Date.now().toString(), postId, body, createdAt: new Date() };
+        store.push(record);
+        return record;
+    }
+
+    export function findCommentsByPost(postId: string): CommentRecord[] {
+        return store.filter(c => c.postId === postId);
+    }
+
+    export function deleteComment(id: string): boolean {
+        const idx = store.findIndex(c => c.id === id);
+        if (idx === -1) return false;
+        store.splice(idx, 1);
+        return true;
+    }
+
+changed:
+  src/schema.ts: |
+    export interface Schema {
+        users: { id: string; name: string; role: string }[];
+        posts: { id: string; title: string; content: string; authorId: string }[];
+        comments: { id: string; postId: string; body: string }[];
+    }
+
+    export const emptySchema: Schema = {
+        users: [],
+        posts: [],
+        comments: [],
+    };
+  src/accessor.ts: |
+    import { Schema, emptySchema } from './schema';
+
+    type User = Schema['users'][number];
+    type Post = Schema['posts'][number];
+    type Comment = Schema['comments'][number];
+
+    function getFirstUser(schema: Schema): User | undefined {
+        return schema.users[0];
+    }
+
+    function getPostsByAuthor(schema: Schema, authorId: string): Post[] {
+        return schema.posts.filter(p => p.authorId === authorId);
+    }
+
+    function getCommentsForPost(schema: Schema, postId: string): Comment[] {
+        return schema.comments.filter(c => c.postId === postId);
+    }
+
+    export { User, Post, Comment, getFirstUser, getPostsByAuthor, getCommentsForPost };
+  src/services/schemaValidator.ts: |
+    import { Schema } from '../schema';
+    import { z } from 'zod';
+
+    const userSchema = z.object({
+        id: z.string(),
+        name: z.string(),
+        role: z.string(),
+    });
+
+    const schemaValidator = z.object({
+        users: z.array(userSchema),
+        posts: z.array(z.object({ id: z.string(), title: z.string(), content: z.string(), authorId: z.string() })),
+        comments: z.array(z.object({ id: z.string(), postId: z.string(), body: z.string() })),
+    });
+
+    export function validateSchema(data: unknown): data is Schema {
+        return schemaValidator.safeParse(data).success;
+    }
+
+    export function getValidationErrors(data: unknown): string[] {
+        const result = schemaValidator.safeParse(data);
+        if (result.success) return [];
+        return result.error.errors.map(e => e.message);
+    }
+  src/services/schemaSerializer.ts: |
+    import { Schema } from '../schema';
+
+    export function serializeSchema(schema: Schema): string {
+        return JSON.stringify(schema, null, 2);
+    }
+
+    export function deserializeSchema(json: string): Schema {
+        return JSON.parse(json) as Schema;
+    }
+
+    export function getSchemaStats(schema: Schema): { users: number; posts: number; comments: number } {
+        return {
+            users: schema.users.length,
+            posts: schema.posts.length,
+            comments: schema.comments.length,
+        };
+    }
+  src/repositories/commentRepository.ts: |
+    interface CommentRecord {
+        id: string;
+        postId: string;
+        body: string;
+        createdAt: Date;
+    }
+
+    const store: CommentRecord[] = [];
+
+    export function addComment(postId: string, body: string): CommentRecord {
+        const record = { id: Date.now().toString(), postId, body, createdAt: new Date() };
+        store.push(record);
+        return record;
+    }
+
+    export function findCommentsByPost(postId: string): CommentRecord[] {
+        return store.filter(c => c.postId === postId);
+    }
+
+    export function deleteComment(id: string): boolean {
+        const idx = store.findIndex(c => c.id === id);
+        if (idx === -1) return false;
+        store.splice(idx, 1);
+        return true;
+    }
+
+must_include_files:
+  - src/accessor.ts
+  # Q1+Q2+Q3: Schema defines the arrays whose indexed access types
+  # the accessor derives. Reviewer must see users, posts, comments
+  # field shapes to verify the type aliases and accessor filters.
+  - src/schema.ts
+
+must_include_content_from:
+  src/accessor.ts:
+    - "type Post = Schema['posts'][number]"
+    - "p => p.authorId === authorId"
+  src/schema.ts:
+    - "interface Schema"
+    - "users:"
+    - "posts:"
+    - "comments:"
+
+must_not_include:
+  # --- schemaValidator.ts: imports Schema, but runtime Zod validation ---
+  # HARDEST TRAP: imports from the same '../schema' module the diff uses.
+  # But Zod validation is a runtime concern that doesn't help review
+  # whether type-level indexed access correctly derives field shapes.
+  - validateSchema
+  - getValidationErrors
+  - schemaValidator
+  - "safeParse"
+  # --- schemaSerializer.ts: also imports Schema, JSON serialization ---
+  - serializeSchema
+  - deserializeSchema
+  - getSchemaStats
+  # --- commentRepository.ts: lexical overlap with "postId" ---
+  - CommentRecord
+  - addComment
+  - findCommentsByPost
+  - deleteComment
+
+must_not_include_files:
+  - src/services/schemaValidator.ts
+  - src/services/schemaSerializer.ts
+  - src/repositories/commentRepository.ts
+
+max_fragments: 8
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

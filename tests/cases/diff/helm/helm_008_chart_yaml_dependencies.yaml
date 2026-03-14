@@ -1,0 +1,131 @@
+initial:
+  chart/Chart.yaml: |
+    apiVersion: v2
+    name: myapp
+    description: Full-stack web application
+    type: application
+    version: 1.0.0
+    appVersion: "1.0.0"
+    dependencies:
+      - name: postgresql
+        version: "12.1.0"
+        repository: https://charts.bitnami.com/bitnami
+  chart/values.yaml: |
+    replicaCount: 2
+    image:
+      repository: myapp
+      tag: "1.0.0"
+    postgresql:
+      enabled: true
+      auth:
+        database: myapp
+  chart/templates/deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: {{ .Release.Name }}-myapp
+    spec:
+      replicas: {{ .Values.replicaCount }}
+      template:
+        spec:
+          containers:
+            - name: myapp
+              image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+              env:
+                - name: DATABASE_HOST
+                  value: {{ .Release.Name }}-postgresql
+  src/db.py: |
+    import psycopg2
+
+    def get_connection():
+        return psycopg2.connect(host="postgresql", database="myapp")
+
+    def execute_query(query, params=None):
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute(query, params)
+        return cursor.fetchall()
+  chart/templates/migration-job.yaml: |
+    apiVersion: batch/v1
+    kind: Job
+    metadata:
+    spec:
+      template:
+        spec:
+          containers:
+          restartPolicy: Never
+  chart/docs/database-guide.md: |
+    # Database Guide
+    ## Schema Migrations
+changed:
+  chart/Chart.yaml: |
+    apiVersion: v2
+    name: myapp
+    description: Full-stack web application
+    type: application
+    version: 1.1.0
+    appVersion: "1.1.0"
+    dependencies:
+      - name: postgresql
+        version: "13.0.0"
+        repository: https://charts.bitnami.com/bitnami
+      - name: redis
+        version: "17.0.0"
+        repository: https://charts.bitnami.com/bitnami
+  chart/values.yaml: |
+    replicaCount: 2
+    image:
+      repository: myapp
+      tag: "1.1.0"
+    postgresql:
+      enabled: true
+      auth:
+        database: myapp
+    redis:
+      enabled: true
+  chart/templates/deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: {{ .Release.Name }}-myapp
+    spec:
+      replicas: {{ .Values.replicaCount }}
+      template:
+        spec:
+          containers:
+            - name: myapp
+              image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+              env:
+                - name: DATABASE_HOST
+                  value: {{ .Release.Name }}-postgresql
+  src/db.py: |
+    import psycopg2
+
+    def get_connection():
+        return psycopg2.connect(host="postgresql", database="myapp")
+
+    def execute_query(query, params=None):
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute(query, params)
+        return cursor.fetchall()
+  chart/templates/migration-job.yaml: |
+    apiVersion: batch/v1
+    kind: Job
+    metadata:
+    spec:
+      template:
+        spec:
+          containers:
+          restartPolicy: Never
+  chart/docs/database-guide.md: |
+    # Database Guide
+    ## Schema Migrations
+must_include_files:
+- chart/Chart.yaml
+- chart/values.yaml
+must_include_content:
+- 'appVersion: "1.1.0"'
+- 'version: "13.0.0"'
+add_garbage_files: false
+skip_garbage_check: true

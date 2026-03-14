@@ -1,0 +1,16 @@
+initial:
+  mixed_unicode.py: |
+    def placeholder():
+        pass
+changed:
+  mixed_unicode.py: |
+    # 这是注释
+    def compute_arabic():
+        arabic_greeting = "مرحبا"
+        return arabic_greeting
+must_include_files:
+- mixed_unicode.py
+must_include_content:
+- 'def compute_arabic():'
+add_garbage_files: false
+skip_garbage_check: true

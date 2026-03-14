@@ -1,0 +1,171 @@
+initial:
+  signals/custom.py: |
+    from django.dispatch import Signal
+
+    order_placed = Signal()
+    order_shipped = Signal()
+    order_delivered = Signal()
+  handlers/order_handlers.py: |
+    from django.dispatch import receiver
+    from signals.custom import order_placed, order_shipped
+
+    @receiver(order_placed)
+    def handle_order_placed(sender, order_id, customer_id, **kwargs):
+        print(f"Order {order_id} placed by customer {customer_id}")
+
+    @receiver(order_shipped)
+    def handle_order_shipped(sender, order_id, tracking_number, **kwargs):
+        print(f"Order {order_id} shipped with tracking {tracking_number}")
+  handlers/notification_handlers.py: |
+    from django.dispatch import receiver
+    from signals.custom import order_placed, order_delivered
+
+    @receiver(order_placed)
+    def notify_customer_order_placed(sender, order_id, customer_id, **kwargs):
+        print(f"Notifying customer {customer_id} about order {order_id}")
+
+    @receiver(order_delivered)
+    def notify_customer_order_delivered(sender, order_id, **kwargs):
+        print(f"Order {order_id} has been delivered")
+
+  # --- Tricky: different Signal definitions with same names (name collision) ---
+  messaging/signals.py: |
+    from django.dispatch import Signal
+    GARBAGE_DEP_028_MSG_SIGNALS_A = "messaging_signals"
+    GARBAGE_DEP_028_MSG_MODULE_B = True
+
+    order_placed = Signal()
+    order_cancelled = Signal()
+    payment_received = Signal()
+    payment_failed = Signal()
+    GARBAGE_DEP_028_MSG_EXTRA_C = "extra_signal_collision"
+
+  # --- Tricky: imports from signals.custom, registers handlers ---
+  handlers/inventory_handlers.py: |
+    from django.dispatch import receiver
+    from signals.custom import order_placed, order_shipped
+    GARBAGE_DEP_028_INV_IMPORT_D = "inventory_consumer"
+    GARBAGE_DEP_028_INV_TRACK_E = "stock_update"
+
+    @receiver(order_placed)
+    def update_stock_on_order(sender, order_id, **kwargs):
+        GARBAGE_DEP_028_INV_BODY_F = True
+        print(f"Updating stock for order {order_id}")
+
+    @receiver(order_shipped)
+    def log_shipment(sender, order_id, tracking_number, **kwargs):
+        print(f"Shipment logged: {order_id} -> {tracking_number}")
+
+  # --- Tricky: same signals/ directory sibling ---
+  signals/payment.py: |
+    from django.dispatch import Signal
+    GARBAGE_DEP_028_PAY_MOD_G = "payment_sibling"
+    GARBAGE_DEP_028_PAY_TYPE_H = "transaction"
+
+    payment_received = Signal()
+    payment_failed = Signal()
+    refund_issued = Signal()
+    GARBAGE_DEP_028_PAY_EXTRA_I = "payment_signal_sibling"
+
+changed:
+  signals/custom.py: |
+    from django.dispatch import Signal
+
+    order_placed = Signal()
+    order_shipped = Signal()
+    order_delivered = Signal()
+    order_cancelled = Signal()
+
+    payment_received = Signal()
+    payment_failed = Signal()
+  handlers/order_handlers.py: |
+    from django.dispatch import receiver
+    from signals.custom import order_placed, order_shipped
+
+    @receiver(order_placed)
+    def handle_order_placed(sender, order_id, customer_id, **kwargs):
+        print(f"Order {order_id} placed by customer {customer_id}")
+
+    @receiver(order_shipped)
+    def handle_order_shipped(sender, order_id, tracking_number, **kwargs):
+        print(f"Order {order_id} shipped with tracking {tracking_number}")
+  handlers/notification_handlers.py: |
+    from django.dispatch import receiver
+    from signals.custom import order_placed, order_delivered
+
+    @receiver(order_placed)
+    def notify_customer_order_placed(sender, order_id, customer_id, **kwargs):
+        print(f"Notifying customer {customer_id} about order {order_id}")
+
+    @receiver(order_delivered)
+    def notify_customer_order_delivered(sender, order_id, **kwargs):
+        print(f"Order {order_id} has been delivered")
+  messaging/signals.py: |
+    from django.dispatch import Signal
+    GARBAGE_DEP_028_MSG_SIGNALS_A = "messaging_signals"
+    GARBAGE_DEP_028_MSG_MODULE_B = True
+
+    order_placed = Signal()
+    order_cancelled = Signal()
+    payment_received = Signal()
+    payment_failed = Signal()
+    GARBAGE_DEP_028_MSG_EXTRA_C = "extra_signal_collision"
+  handlers/inventory_handlers.py: |
+    from django.dispatch import receiver
+    from signals.custom import order_placed, order_shipped
+    GARBAGE_DEP_028_INV_IMPORT_D = "inventory_consumer"
+    GARBAGE_DEP_028_INV_TRACK_E = "stock_update"
+
+    @receiver(order_placed)
+    def update_stock_on_order(sender, order_id, **kwargs):
+        GARBAGE_DEP_028_INV_BODY_F = True
+        print(f"Updating stock for order {order_id}")
+
+    @receiver(order_shipped)
+    def log_shipment(sender, order_id, tracking_number, **kwargs):
+        print(f"Shipment logged: {order_id} -> {tracking_number}")
+  signals/payment.py: |
+    from django.dispatch import Signal
+    GARBAGE_DEP_028_PAY_MOD_G = "payment_sibling"
+    GARBAGE_DEP_028_PAY_TYPE_H = "transaction"
+
+    payment_received = Signal()
+    payment_failed = Signal()
+    refund_issued = Signal()
+    GARBAGE_DEP_028_PAY_EXTRA_I = "payment_signal_sibling"
+
+# === Assertions ===
+
+must_include_files:
+- signals/custom.py
+
+must_include_content_from:
+  signals/custom.py:
+    - order_cancelled = Signal()
+    - payment_failed = Signal()
+    - payment_received = Signal()
+    - from django.dispatch import Signal
+
+must_not_include:
+# Tricky: same signal names (order_placed, order_cancelled, payment_received, payment_failed)
+- GARBAGE_DEP_028_MSG_SIGNALS_A
+- GARBAGE_DEP_028_MSG_MODULE_B
+- GARBAGE_DEP_028_MSG_EXTRA_C
+# Tricky: imports from signals.custom, registers @receiver handlers
+- GARBAGE_DEP_028_INV_IMPORT_D
+- GARBAGE_DEP_028_INV_TRACK_E
+- GARBAGE_DEP_028_INV_BODY_F
+# Tricky: same signals/ directory sibling with payment_received/payment_failed
+- GARBAGE_DEP_028_PAY_MOD_G
+- GARBAGE_DEP_028_PAY_TYPE_H
+- GARBAGE_DEP_028_PAY_EXTRA_I
+
+must_not_include_files:
+- messaging/signals.py
+- handlers/inventory_handlers.py
+- signals/payment.py
+
+max_fragments: 5
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

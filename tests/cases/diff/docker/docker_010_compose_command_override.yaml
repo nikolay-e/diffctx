@@ -1,0 +1,248 @@
+initial:
+  worker.py: |
+    import time
+    import os
+    import argparse
+    import signal
+    import sys
+    from typing import Optional
+
+    CONCURRENCY = int(os.getenv("WORKER_CONCURRENCY", "1"))
+    QUEUE_NAME = os.getenv("QUEUE_NAME", "default")
+
+    shutdown_requested = False
+
+    def signal_handler(signum, frame):
+        global shutdown_requested
+        print(f"Received signal {signum}, initiating graceful shutdown...")
+        shutdown_requested = True
+
+    def process_jobs(concurrency: int, queue: str, verbose: bool = False):
+        signal.signal(signal.SIGTERM, signal_handler)
+        signal.signal(signal.SIGINT, signal_handler)
+
+        print(f"Worker starting with concurrency={concurrency}, queue={queue}")
+
+        while not shutdown_requested:
+            if verbose:
+                print(f"Processing jobs from {queue}...")
+            time.sleep(10)
+
+        print("Worker shutdown complete")
+
+    def parse_args():
+        parser = argparse.ArgumentParser(description="Job worker")
+        parser.add_argument("--concurrency", type=int, default=CONCURRENCY)
+        parser.add_argument("--queue", type=str, default=QUEUE_NAME)
+        parser.add_argument("--verbose", "-v", action="store_true")
+        return parser.parse_args()
+
+    if __name__ == "__main__":
+        args = parse_args()
+        process_jobs(args.concurrency, args.queue, args.verbose)
+  scheduler.py: |
+    import time
+    import schedule
+    from typing import Callable
+
+    def run_job(job_name: str):
+        print(f"Running scheduled job: {job_name}")
+
+    def setup_schedule():
+        schedule.every(1).hour.do(run_job, "hourly_cleanup")
+        schedule.every().day.at("00:00").do(run_job, "daily_report")
+
+    def run_scheduler():
+        setup_schedule()
+        while True:
+            schedule.run_pending()
+            time.sleep(60)
+
+    if __name__ == "__main__":
+        run_scheduler()
+  requirements.txt: |
+    schedule==1.2.0
+    redis==5.0.0
+  Dockerfile: |
+    FROM python:3.12-slim
+    WORKDIR /app
+    COPY requirements.txt .
+    RUN pip install -r requirements.txt
+    COPY *.py ./
+    CMD ["python", "worker.py"]
+  docker-compose.yml: |
+    version: '3.8'
+    services:
+      worker:
+        build: .
+        command: python worker.py
+  scripts/start_worker.sh: |
+    #!/bin/bash
+    docker-compose up worker
+  tests/test_worker.py: |
+    def test_process_jobs():
+        pass
+  docs/workers.md: |
+    # Worker Configuration
+  k8s/job.yaml: |
+    apiVersion: batch/v1
+  celery/config.py: ''
+changed:
+  worker.py: |
+    import time
+    import os
+    import argparse
+    import signal
+    import sys
+    from typing import Optional
+
+    CONCURRENCY = int(os.getenv("WORKER_CONCURRENCY", "1"))
+    QUEUE_NAME = os.getenv("QUEUE_NAME", "default")
+
+    shutdown_requested = False
+
+    def signal_handler(signum, frame):
+        global shutdown_requested
+        print(f"Received signal {signum}, initiating graceful shutdown...")
+        shutdown_requested = True
+
+    def process_jobs(concurrency: int, queue: str, verbose: bool = False):
+        signal.signal(signal.SIGTERM, signal_handler)
+        signal.signal(signal.SIGINT, signal_handler)
+
+        print(f"Worker starting with concurrency={concurrency}, queue={queue}")
+
+        while not shutdown_requested:
+            if verbose:
+                print(f"Processing jobs from {queue}...")
+            time.sleep(10)
+
+        print("Worker shutdown complete")
+
+    def parse_args():
+        parser = argparse.ArgumentParser(description="Job worker")
+        parser.add_argument("--concurrency", type=int, default=CONCURRENCY)
+        parser.add_argument("--queue", type=str, default=QUEUE_NAME)
+        parser.add_argument("--verbose", "-v", action="store_true")
+        return parser.parse_args()
+
+    if __name__ == "__main__":
+        args = parse_args()
+        process_jobs(args.concurrency, args.queue, args.verbose)
+  scheduler.py: |
+    import time
+    import schedule
+    from typing import Callable
+
+    def run_job(job_name: str):
+        print(f"Running scheduled job: {job_name}")
+
+    def setup_schedule():
+        schedule.every(1).hour.do(run_job, "hourly_cleanup")
+        schedule.every().day.at("00:00").do(run_job, "daily_report")
+
+    def run_scheduler():
+        setup_schedule()
+        while True:
+            schedule.run_pending()
+            time.sleep(60)
+
+    if __name__ == "__main__":
+        run_scheduler()
+  requirements.txt: |
+    schedule==1.2.0
+    redis==5.0.0
+  Dockerfile: |
+    FROM python:3.12-slim
+    WORKDIR /app
+    COPY requirements.txt .
+    RUN pip install -r requirements.txt
+    COPY *.py ./
+    CMD ["python", "worker.py"]
+  docker-compose.yml: |
+    version: '3.8'
+
+    services:
+      worker:
+        build:
+          context: .
+          dockerfile: Dockerfile
+        command: ["python", "-u", "worker.py", "--concurrency", "4", "--queue", "high-priority", "--verbose"]
+        environment:
+          - WORKER_CONCURRENCY=4
+          - QUEUE_NAME=high-priority
+          - PYTHONUNBUFFERED=1
+        restart: always
+        stop_grace_period: 30s
+        deploy:
+          mode: replicated
+          replicas: 3
+          resources:
+            limits:
+              cpus: '0.5'
+              memory: 256M
+
+      worker-low:
+        build:
+          context: .
+          dockerfile: Dockerfile
+        command:
+          - python
+          - -u
+          - worker.py
+          - --concurrency
+          - "2"
+          - --queue
+          - low-priority
+        environment:
+          - PYTHONUNBUFFERED=1
+        restart: unless-stopped
+        profiles:
+          - background
+
+      scheduler:
+        build:
+          context: .
+          dockerfile: Dockerfile
+        command: python scheduler.py
+        restart: always
+        deploy:
+          mode: replicated
+          replicas: 1
+
+      shell:
+        build:
+          context: .
+          dockerfile: Dockerfile
+        entrypoint: ["/bin/sh"]
+        command: ["-c", "while true; do sleep 86400; done"]
+        stdin_open: true
+        tty: true
+        profiles:
+          - debug
+
+      one-off:
+        build:
+          context: .
+          dockerfile: Dockerfile
+        command: ["python", "-c", "print('One-off task completed')"]
+        restart: "no"
+        profiles:
+          - tasks
+  scripts/start_worker.sh: |
+    #!/bin/bash
+    docker-compose up worker
+  tests/test_worker.py: |
+    def test_process_jobs():
+        pass
+  docs/workers.md: |
+    # Worker Configuration
+  k8s/job.yaml: |
+    apiVersion: batch/v1
+  celery/config.py: ''
+must_include_files:
+- docker-compose.yml
+must_include_content:
+- 'dockerfile: Dockerfile'
+add_garbage_files: false
+skip_garbage_check: true

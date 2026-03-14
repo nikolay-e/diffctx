@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from . import parsers as _parsers
+from .config.extensions import CODE_EXTENSIONS  # noqa: F401
 from .parsers import (  # noqa: F401
     ConfigStrategy,
     FragmentationEngine,
@@ -17,7 +18,6 @@ from .parsers import (  # noqa: F401
     fragment_file,
 )
 from .parsers.base import (  # noqa: F401
-    CODE_EXTENSIONS,
     GENERIC_MAX_LINES,
     INDENT_EXTENSIONS,
     MIN_FRAGMENT_LINES,

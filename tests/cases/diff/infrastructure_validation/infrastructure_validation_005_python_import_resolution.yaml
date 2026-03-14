@@ -1,0 +1,164 @@
+# Scenario: Rewriting main.py from a simple print to a proper function that
+#   imports and calls helper() from utils. Only main.py is changed.
+#
+# Reviewer questions:
+#   Q1: "What does helper() return? Is the usage in main() correct?"
+#       -> Needs utils.py: helper() returns "helper result" (a string).
+#         The diff does `result = helper()` then `print(result)` —
+#         reviewer must verify the return type is printable.
+#
+#   Q2: "Are there other functions in utils that main.py might need?"
+#       -> Same file: utils.py exports helper, format_output, validate_input,
+#         parse_config. The diff only imports helper — reviewer should
+#         consider if this is sufficient.
+#
+# Not needed for comprehension:
+#   - services.py: Also imports from utils (helper, format_output).
+#     HARDEST TRAP: same import source, overlapping imported names.
+#     run_pipeline() calls helper() just like main() does. But services.py
+#     is another CONSUMER — reviewer needs the DEFINITION of helper(),
+#     not another caller.
+#
+#   - scripts/run_pipeline.sh: Shell script that runs main.py. No
+#     structural connection to the import.
+#
+#   - tests/test_utils.py: Empty test stub for utils module.
+#
+#   - docs/architecture.md: Documentation file.
+#
+#   - config/settings.ini: Empty config file.
+
+initial:
+  utils.py: |
+    from typing import Any, Optional
+
+    def helper() -> str:
+        return "helper result"
+
+    def format_output(data: Any) -> str:
+        return f"Output: {data}"
+
+    def validate_input(value: Optional[str]) -> bool:
+        if value is None:
+            return False
+        return len(value.strip()) > 0
+
+    def parse_config(raw: str) -> dict:
+        lines = raw.strip().split('\n')
+        result = {}
+        for line in lines:
+            if '=' in line:
+                key, val = line.split('=', 1)
+                result[key.strip()] = val.strip()
+        return result
+  services.py: |
+    from utils import helper, format_output
+
+    def run_pipeline() -> str:
+        result = helper()
+        return format_output(result)
+
+    def process_batch(items: list) -> list:
+        return [format_output(item) for item in items]
+  main.py: |
+    print("initial")
+  scripts/run_pipeline.sh: |
+    #!/bin/bash
+    python main.py
+  tests/test_utils.py: |
+    def test_helper():
+        pass
+  docs/architecture.md: |
+    # Architecture
+  config/settings.ini: ''
+
+changed:
+  utils.py: |
+    from typing import Any, Optional
+
+    def helper() -> str:
+        return "helper result"
+
+    def format_output(data: Any) -> str:
+        return f"Output: {data}"
+
+    def validate_input(value: Optional[str]) -> bool:
+        if value is None:
+            return False
+        return len(value.strip()) > 0
+
+    def parse_config(raw: str) -> dict:
+        lines = raw.strip().split('\n')
+        result = {}
+        for line in lines:
+            if '=' in line:
+                key, val = line.split('=', 1)
+                result[key.strip()] = val.strip()
+        return result
+  services.py: |
+    from utils import helper, format_output
+
+    def run_pipeline() -> str:
+        result = helper()
+        return format_output(result)
+
+    def process_batch(items: list) -> list:
+        return [format_output(item) for item in items]
+  main.py: |
+    from utils import helper
+
+    def main():
+        result = helper()
+        print(result)
+
+    if __name__ == "__main__":
+        main()
+  scripts/run_pipeline.sh: |
+    #!/bin/bash
+    python main.py
+  tests/test_utils.py: |
+    def test_helper():
+        pass
+  docs/architecture.md: |
+    # Architecture
+  config/settings.ini: ''
+
+must_include_files:
+  - main.py
+  # Q1+Q2: helper() returns "helper result". Reviewer needs the function
+  # definition and signature to verify the import is correct.
+  - utils.py
+
+must_include_content_from:
+  main.py:
+    - "from utils import helper"
+    - "result = helper()"
+  utils.py:
+    - "def helper() -> str:"
+
+must_not_include:
+  # --- services.py: another consumer of helper() from utils ---
+  # HARDEST TRAP: imports helper from the SAME module. run_pipeline()
+  # calls helper() just like main(). Same import pattern, same function
+  # call. But this is another CALLER — reviewer needs the DEFINITION.
+  - run_pipeline
+  - process_batch
+  - format_output
+  # --- scripts/run_pipeline.sh: shell script ---
+  - run_pipeline.sh
+  # --- tests/test_utils.py: empty test stub ---
+  - test_helper
+  # --- docs/architecture.md: documentation ---
+  - "# Architecture"
+
+must_not_include_files:
+  - services.py
+  - scripts/run_pipeline.sh
+  - tests/test_utils.py
+  - docs/architecture.md
+  - config/settings.ini
+
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

@@ -1,0 +1,205 @@
+# Scenario: EventDispatcher.dispatch now formats payloads and logs; version bumped.
+# Reviewer asks: "How does dispatch behavior change, and why the version bump?"
+# Trap rationale: message_queue.py and audit_logger.py share event/logging
+# vocabulary but are not imported by event_handler.py.
+
+initial:
+  src/event_handler.py: |
+    import logging
+    from typing import Callable, Dict, Any, Optional
+    from datetime import datetime
+
+    logger = logging.getLogger(__name__)
+
+    def format_event_payload(event_type: str, data: Dict[str, Any]) -> Dict[str, Any]:
+        timestamp = datetime.utcnow().isoformat()
+        return {
+            "type": event_type,
+            "data": data,
+            "timestamp": timestamp,
+            "version": "1.0",
+        }
+
+    class EventDispatcher:
+        def __init__(self, max_listeners: int = 100):
+            self.max_listeners = max_listeners
+            self._handlers: Dict[str, list] = {}
+            self._event_count = 0
+
+        def register(self, event_type: str, handler: Callable) -> None:
+            if event_type not in self._handlers:
+                self._handlers[event_type] = []
+            self._handlers[event_type].append(handler)
+
+        def dispatch(self, event_type: str, payload: Dict[str, Any]) -> int:
+            handlers = self._handlers.get(event_type, [])
+            for handler in handlers:
+                handler(payload)
+            self._event_count += len(handlers)
+            return len(handlers)
+
+        def get_stats(self) -> Dict[str, Any]:
+            return {
+                "total_events": self._event_count,
+                "registered_types": list(self._handlers.keys()),
+            }
+  src/message_queue.py: |
+    from collections import deque
+    from typing import Any, Optional
+
+    MAX_QUEUE_SIZE = 10000
+
+    class MessageQueue:
+        def __init__(self, max_size: int = MAX_QUEUE_SIZE):
+            self.max_size = max_size
+            self._queue: deque = deque(maxlen=max_size)
+            self._processed_count = 0
+
+        def enqueue(self, message: Any) -> bool:
+            if len(self._queue) >= self.max_size:
+                return False
+            self._queue.append(message)
+            return True
+
+        def dequeue(self) -> Optional[Any]:
+            if not self._queue:
+                return None
+            self._processed_count += 1
+            return self._queue.popleft()
+
+        def size(self) -> int:
+            return len(self._queue)
+  src/audit_logger.py: |
+    import logging
+    from datetime import datetime
+    from typing import Dict, Any
+
+    AUDIT_LOG_NAME = "audit"
+
+    class AuditLogger:
+        def __init__(self):
+            self._logger = logging.getLogger(AUDIT_LOG_NAME)
+            self._entries: list[Dict[str, Any]] = []
+
+        def log_action(self, actor: str, action: str, resource: str) -> None:
+            entry = {
+                "actor": actor,
+                "action": action,
+                "resource": resource,
+                "timestamp": datetime.utcnow().isoformat(),
+            }
+            self._entries.append(entry)
+            self._logger.info(f"{actor} performed {action} on {resource}")
+
+        def recent_entries(self, count: int = 10) -> list[Dict[str, Any]]:
+            return self._entries[-count:]
+changed:
+  src/event_handler.py: |
+    import logging
+    from typing import Callable, Dict, Any, Optional
+    from datetime import datetime
+
+    logger = logging.getLogger(__name__)
+
+    def format_event_payload(event_type: str, data: Dict[str, Any]) -> Dict[str, Any]:
+        timestamp = datetime.utcnow().isoformat()
+        return {
+            "type": event_type,
+            "data": data,
+            "timestamp": timestamp,
+            "version": "2.0",
+            "source": "event_handler",
+        }
+
+    class EventDispatcher:
+        def __init__(self, max_listeners: int = 100):
+            self.max_listeners = max_listeners
+            self._handlers: Dict[str, list] = {}
+            self._event_count = 0
+
+        def register(self, event_type: str, handler: Callable) -> None:
+            if event_type not in self._handlers:
+                self._handlers[event_type] = []
+            self._handlers[event_type].append(handler)
+
+        def dispatch(self, event_type: str, payload: Dict[str, Any]) -> int:
+            handlers = self._handlers.get(event_type, [])
+            formatted = format_event_payload(event_type, payload)
+            for handler in handlers:
+                handler(formatted)
+            self._event_count += len(handlers)
+            logger.info(f"Dispatched {event_type} to {len(handlers)} handlers")
+            return len(handlers)
+
+        def get_stats(self) -> Dict[str, Any]:
+            return {
+                "total_events": self._event_count,
+                "registered_types": list(self._handlers.keys()),
+            }
+  src/message_queue.py: |
+    from collections import deque
+    from typing import Any, Optional
+
+    MAX_QUEUE_SIZE = 10000
+
+    class MessageQueue:
+        def __init__(self, max_size: int = MAX_QUEUE_SIZE):
+            self.max_size = max_size
+            self._queue: deque = deque(maxlen=max_size)
+            self._processed_count = 0
+
+        def enqueue(self, message: Any) -> bool:
+            if len(self._queue) >= self.max_size:
+                return False
+            self._queue.append(message)
+            return True
+
+        def dequeue(self) -> Optional[Any]:
+            if not self._queue:
+                return None
+            self._processed_count += 1
+            return self._queue.popleft()
+
+        def size(self) -> int:
+            return len(self._queue)
+  src/audit_logger.py: |
+    import logging
+    from datetime import datetime
+    from typing import Dict, Any
+
+    AUDIT_LOG_NAME = "audit"
+
+    class AuditLogger:
+        def __init__(self):
+            self._logger = logging.getLogger(AUDIT_LOG_NAME)
+            self._entries: list[Dict[str, Any]] = []
+
+        def log_action(self, actor: str, action: str, resource: str) -> None:
+            entry = {
+                "actor": actor,
+                "action": action,
+                "resource": resource,
+                "timestamp": datetime.utcnow().isoformat(),
+            }
+            self._entries.append(entry)
+            self._logger.info(f"{actor} performed {action} on {resource}")
+
+        def recent_entries(self, count: int = 10) -> list[Dict[str, Any]]:
+            return self._entries[-count:]
+must_include_files:
+- src/event_handler.py
+must_include_content:
+- '"version": "2.0",'
+- formatted = format_event_payload(event_type, payload)
+must_not_include:
+- MessageQueue
+- AuditLogger
+- MAX_QUEUE_SIZE
+- AUDIT_LOG_NAME
+- message_queue.py
+- audit_logger.py
+must_not_include_files:
+- src/message_queue.py
+- src/audit_logger.py
+add_garbage_files: false
+skip_garbage_check: true

@@ -1,0 +1,279 @@
+# Scenario: app.php starts using DynamicObject, which relies on PHP magic
+# methods __get, __set, and __isset to provide dynamic property access.
+#
+# Diff: app.php changes from a bare "echo" to requiring DynamicObject.php,
+# creating an instance, and setting/getting properties dynamically
+# ($obj->name, $obj->email, isset($obj->email)).
+#
+# Reviewer questions:
+#   Q1: "How does $obj->name = 'John' work? DynamicObject has no `name` property."
+#       -> src/Models/DynamicObject.php (UNCHANGED) defines __set(string, mixed)
+#          which stores values in a private $data array.
+#   Q2: "What does $obj->name return? What if the property was never set?"
+#       -> DynamicObject.php defines __get(string) returning $data[$name] ?? null.
+#          Reviewer sees that missing properties return null silently.
+#   Q3: "How does isset($obj->email) resolve?"
+#       -> DynamicObject.php defines __isset(string) checking isset($data[$name]).
+#
+# Not needed:
+#   - src/Models/StrictObject.php: similar class but throws on unknown properties.
+#     Different behavior pattern, not referenced by app.php.
+#   - src/Serializers/ArraySerializer.php: converts objects to arrays.
+#     Serialization utility, no relation to dynamic property access.
+#   - src/Models/FormData.php: also requires DynamicObject and calls __set.
+#     DIRECT structural edge (same class, same magic methods) but collects
+#     form submissions — different consumer.
+#   - src/Models/ImmutableObject.php: PHP magic methods (__get without __set).
+#     Same mechanism but opposite behavior — read-only vs read-write.
+#   - src/Hydrators/ObjectHydrator.php: sets properties dynamically via
+#     __set on arbitrary objects. Same __set call pattern but independent.
+
+initial:
+  src/app.php: |
+    <?php
+    echo "Hello World";
+  src/Models/DynamicObject.php: |
+    <?php
+    namespace App\Models;
+
+    class DynamicObject {
+        private array $data = [];
+
+        public function __get(string $name): mixed {
+            return $this->data[$name] ?? null;
+        }
+
+        public function __set(string $name, mixed $value): void {
+            $this->data[$name] = $value;
+        }
+
+        public function __isset(string $name): bool {
+            return isset($this->data[$name]);
+        }
+
+        public function __unset(string $name): void {
+            unset($this->data[$name]);
+        }
+
+        public function toArray(): array {
+            return $this->data;
+        }
+
+        public function keys(): array {
+            return array_keys($this->data);
+        }
+    }
+  src/Models/StrictObject.php: |
+    <?php
+    namespace App\Models;
+
+    class StrictObject {
+        private array $allowed;
+        private array $data = [];
+
+        public function __construct(array $allowed) {
+            $this->allowed = $allowed;
+        }
+
+        public function __set(string $name, mixed $value): void {
+            if (!in_array($name, $this->allowed, true)) {
+                throw new \InvalidArgumentException("Property '$name' not allowed");
+            }
+            $this->data[$name] = $value;
+        }
+
+        public function __get(string $name): mixed {
+            if (!in_array($name, $this->allowed, true)) {
+                throw new \InvalidArgumentException("Property '$name' not allowed");
+            }
+            return $this->data[$name] ?? null;
+        }
+
+        public function allowedKeys(): array {
+            return $this->allowed;
+        }
+    }
+  src/Serializers/ArraySerializer.php: |
+    <?php
+    namespace App\Serializers;
+
+    class ArraySerializer {
+        public static function serialize(object $obj): array {
+            return get_object_vars($obj);
+        }
+
+        public static function deserialize(string $class, array $data): object {
+            $obj = new $class();
+            foreach ($data as $key => $value) {
+                $obj->$key = $value;
+            }
+            return $obj;
+        }
+
+        public static function toJson(object $obj): string {
+            return json_encode(self::serialize($obj));
+        }
+    }
+  src/Models/FormData.php: |
+    <?php
+    namespace App\Models;
+
+    require_once __DIR__ . '/DynamicObject.php';
+
+    class FormData {
+        private DynamicObject $fields;
+
+        public function __construct() {
+            $this->fields = new DynamicObject();
+        }
+
+        public function setField(string $name, mixed $value): void {
+            $this->fields->$name = $value;
+        }
+
+        public function getField(string $name): mixed {
+            return $this->fields->$name;
+        }
+
+        public function hasField(string $name): bool {
+            return isset($this->fields->$name);
+        }
+
+        public function allFields(): array {
+            return $this->fields->toArray();
+        }
+    }
+  src/Models/ImmutableObject.php: |
+    <?php
+    namespace App\Models;
+
+    class ImmutableObject {
+        private array $data;
+
+        public function __construct(array $data) {
+            $this->data = $data;
+        }
+
+        public function __get(string $name): mixed {
+            return $this->data[$name] ?? null;
+        }
+
+        public function __set(string $name, mixed $value): void {
+            throw new \RuntimeException("Cannot set property '$name': object is immutable");
+        }
+
+        public function __isset(string $name): bool {
+            return isset($this->data[$name]);
+        }
+    }
+  src/Hydrators/ObjectHydrator.php: |
+    <?php
+    namespace App\Hydrators;
+
+    class ObjectHydrator {
+        public function hydrate(object $target, array $data): object {
+            foreach ($data as $key => $value) {
+                $target->$key = $value;
+            }
+            return $target;
+        }
+
+        public function extract(object $source, array $keys): array {
+            $result = [];
+            foreach ($keys as $key) {
+                $result[$key] = $source->$key ?? null;
+            }
+            return $result;
+        }
+    }
+
+changed:
+  src/app.php: |
+    <?php
+    require_once __DIR__ . '/Models/DynamicObject.php';
+
+    use App\Models\DynamicObject;
+
+    $obj = new DynamicObject();
+    $obj->name = 'John';
+    $obj->email = 'john@example.com';
+
+    echo $obj->name . "\n";
+    if (isset($obj->email)) {
+        echo $obj->email . "\n";
+    }
+  src/Models/DynamicObject.php: |
+    <?php
+    namespace App\Models;
+
+    class DynamicObject {
+        private array $data = [];
+
+        public function __get(string $name): mixed {
+            return $this->data[$name] ?? null;
+        }
+
+        public function __set(string $name, mixed $value): void {
+            $this->data[$name] = $value;
+        }
+
+        public function __isset(string $name): bool {
+            return isset($this->data[$name]);
+        }
+
+        public function __unset(string $name): void {
+            unset($this->data[$name]);
+        }
+
+        public function toArray(): array {
+            return $this->data;
+        }
+
+        public function keys(): array {
+            return array_keys($this->data);
+        }
+    }
+
+must_include_files:
+  # Q1+Q2+Q3: DynamicObject defines __get, __set, __isset magic methods
+  - src/Models/DynamicObject.php
+must_include_content_from:
+  src/Models/DynamicObject.php:
+    - "public function __get(string $name): mixed"
+    - "public function __set(string $name, mixed $value): void"
+    - "public function __isset(string $name): bool"
+  src/app.php:
+    - "new DynamicObject()"
+    - "$obj->name"
+must_not_include:
+  # src/Models/StrictObject.php: similar magic methods but throws exceptions
+  - "class StrictObject"
+  - "Property '$name' not allowed"
+  - allowedKeys
+  # src/Serializers/ArraySerializer.php: object serialization, no relation
+  - "class ArraySerializer"
+  - "get_object_vars"
+  - toJson
+  # src/Models/FormData.php: HARDEST TRAP — requires DynamicObject, calls
+  # __set and __get through $this->fields->$name — same class, same methods
+  - FormData
+  - setField
+  - getField
+  - allFields
+  # src/Models/ImmutableObject.php: __get without __set — opposite behavior
+  - ImmutableObject
+  - "object is immutable"
+  # src/Hydrators/ObjectHydrator.php: sets properties via __set on objects
+  - ObjectHydrator
+  - hydrate
+  - extract
+must_not_include_files:
+  - src/Models/StrictObject.php
+  - src/Serializers/ArraySerializer.php
+  - src/Models/FormData.php
+  - src/Models/ImmutableObject.php
+  - src/Hydrators/ObjectHydrator.php
+max_fragments: 5
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

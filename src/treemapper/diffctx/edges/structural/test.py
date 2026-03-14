@@ -92,6 +92,7 @@ class TestEdgeBuilder(EdgeBuilder):
     weight_direct = EDGE_WEIGHTS["test_direct"].forward
     weight_naming = EDGE_WEIGHTS["test_naming"].forward
     reverse_weight_factor = EDGE_WEIGHTS["test_reverse"].forward / EDGE_WEIGHTS["test_direct"].forward
+    category = "test_edge"
 
     def discover_related_files(
         self,

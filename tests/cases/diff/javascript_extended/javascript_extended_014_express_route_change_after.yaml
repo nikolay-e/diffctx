@@ -1,3 +1,0 @@
-routes.ts: "import { Router } from 'express';\n\nexport const userRouter = Router();\n\nuserRouter.get('/:id', (req, res) => {\n    res.json({ id: req.params.id });\n});\n\nuserRouter.post('/', (req, res)\
-  \ => {\n    res.status(201).json(req.body);\n});\n\nuserRouter.delete('/:id', (req, res) => {\n    res.status(204).send();\n});\n\n// js_garbage_marker_009\n"
-middleware.ts: "import { userRouter } from './routes';\n\nexport function setupRoutes(app: any) {\n    app.use('/users', userRouter);\n}\n"

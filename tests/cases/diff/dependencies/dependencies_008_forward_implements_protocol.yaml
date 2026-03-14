@@ -1,0 +1,271 @@
+initial:
+  interfaces/repository.py: |
+    from typing import Protocol, TypeVar, Optional
+
+    T = TypeVar("T")
+
+    class Repository(Protocol[T]):
+        def find(self, id: int) -> Optional[T]:
+            ...
+
+        def save(self, entity: T) -> None:
+            ...
+
+        def delete(self, id: int) -> bool:
+            ...
+  models/user.py: |
+    from dataclasses import dataclass
+
+    @dataclass
+    class User:
+        id: int
+        name: str
+        email: str
+        active: bool = True
+  impl.py: |
+    def placeholder():
+        pass
+
+  # --- Tricky: also implements Repository protocol for a different entity ---
+  repositories/product_repo.py: |
+    from typing import Optional
+    from interfaces.repository import Repository
+    GARBAGE_DEP_008_PROD_IMPORT_C = "product_repo"
+    GARBAGE_DEP_008_PROD_TYPE_D = "sql"
+
+    class ProductRepository:
+        GARBAGE_DEP_008_PROD_CLASS_E = True
+
+        def __init__(self):
+            self.storage: dict = {}
+
+        def find(self, id: int) -> Optional[dict]:
+            return self.storage.get(id)
+
+        def save(self, entity: dict) -> None:
+            self.storage[entity["id"]] = entity
+
+        def delete(self, id: int) -> bool:
+            GARBAGE_DEP_008_PROD_DEL_F = True
+            if id in self.storage:
+                del self.storage[id]
+                return True
+            return False
+
+  # --- Tricky: has own Repository Protocol and User class (name collision) ---
+  core/interfaces.py: |
+    from typing import Protocol, Optional
+    GARBAGE_DEP_008_CORE_MODULE_G = "core_interfaces"
+    GARBAGE_DEP_008_CORE_VER_H = "2.0"
+
+    class Repository(Protocol):
+        GARBAGE_DEP_008_CORE_PROTO_I = True
+
+        def find(self, id: int) -> Optional[dict]:
+            ...
+
+        def save(self, entity: dict) -> None:
+            ...
+
+        def delete(self, id: int) -> bool:
+            ...
+
+    class User:
+        GARBAGE_DEP_008_CORE_USER_J = True
+
+        def __init__(self, id: int, name: str):
+            self.id = id
+            self.name = name
+
+  # --- Plain garbage ---
+  garbage/weather_station_GARBAGE_DEP_008_WEATHER_A.py: |
+    def dew_point_GARBAGE_DEP_008_WEATHER_A(temp: float, humidity: float) -> float:
+        return temp - ((100 - humidity) / 5.0)
+
+    def wind_chill_GARBAGE_DEP_008_WEATHER_A(temp: float, wind_speed: float) -> float:
+        return 13.12 + 0.6215 * temp - 11.37 * (wind_speed ** 0.16)
+
+    class ForecastModel_GARBAGE_DEP_008_WEATHER_A:
+        def __init__(self, location: str):
+            self.location = location
+            self.readings = []
+
+        def add_reading(self, temp: float, pressure: float) -> None:
+            self.readings.append({"temp": temp, "pressure": pressure})
+  garbage/inventory_GARBAGE_DEP_008_INVENTORY_B.py: |
+    def reorder_point_GARBAGE_DEP_008_INVENTORY_B(daily_usage: float, lead_days: int) -> float:
+        return daily_usage * lead_days * 1.2
+
+    def economic_order_qty_GARBAGE_DEP_008_INVENTORY_B(demand: float, setup_cost: float, holding_cost: float) -> float:
+        return (2 * demand * setup_cost / holding_cost) ** 0.5
+
+    class Warehouse_GARBAGE_DEP_008_INVENTORY_B:
+        def __init__(self, capacity: int):
+            self.capacity = capacity
+            self.items = {}
+
+        def stock_item(self, sku: str, qty: int) -> None:
+            self.items[sku] = self.items.get(sku, 0) + qty
+changed:
+  interfaces/repository.py: |
+    from typing import Protocol, TypeVar, Optional
+
+    T = TypeVar("T")
+
+    class Repository(Protocol[T]):
+        def find(self, id: int) -> Optional[T]:
+            ...
+
+        def save(self, entity: T) -> None:
+            ...
+
+        def delete(self, id: int) -> bool:
+            ...
+  models/user.py: |
+    from dataclasses import dataclass
+
+    @dataclass
+    class User:
+        id: int
+        name: str
+        email: str
+        active: bool = True
+  impl.py: |
+    from typing import Optional
+    from interfaces.repository import Repository
+    from models.user import User
+
+    class UserRepository:
+        def __init__(self):
+            self.storage: dict[int, User] = {}
+
+        def find(self, id: int) -> Optional[User]:
+            return self.storage.get(id)
+
+        def save(self, entity: User) -> None:
+            self.storage[entity.id] = entity
+
+        def delete(self, id: int) -> bool:
+            if id in self.storage:
+                del self.storage[id]
+                return True
+            return False
+  repositories/product_repo.py: |
+    from typing import Optional
+    from interfaces.repository import Repository
+    GARBAGE_DEP_008_PROD_IMPORT_C = "product_repo"
+    GARBAGE_DEP_008_PROD_TYPE_D = "sql"
+
+    class ProductRepository:
+        GARBAGE_DEP_008_PROD_CLASS_E = True
+
+        def __init__(self):
+            self.storage: dict = {}
+
+        def find(self, id: int) -> Optional[dict]:
+            return self.storage.get(id)
+
+        def save(self, entity: dict) -> None:
+            self.storage[entity["id"]] = entity
+
+        def delete(self, id: int) -> bool:
+            GARBAGE_DEP_008_PROD_DEL_F = True
+            if id in self.storage:
+                del self.storage[id]
+                return True
+            return False
+  core/interfaces.py: |
+    from typing import Protocol, Optional
+    GARBAGE_DEP_008_CORE_MODULE_G = "core_interfaces"
+    GARBAGE_DEP_008_CORE_VER_H = "2.0"
+
+    class Repository(Protocol):
+        GARBAGE_DEP_008_CORE_PROTO_I = True
+
+        def find(self, id: int) -> Optional[dict]:
+            ...
+
+        def save(self, entity: dict) -> None:
+            ...
+
+        def delete(self, id: int) -> bool:
+            ...
+
+    class User:
+        GARBAGE_DEP_008_CORE_USER_J = True
+
+        def __init__(self, id: int, name: str):
+            self.id = id
+            self.name = name
+  garbage/weather_station_GARBAGE_DEP_008_WEATHER_A.py: |
+    def dew_point_GARBAGE_DEP_008_WEATHER_A(temp: float, humidity: float) -> float:
+        return temp - ((100 - humidity) / 5.0)
+
+    def wind_chill_GARBAGE_DEP_008_WEATHER_A(temp: float, wind_speed: float) -> float:
+        return 13.12 + 0.6215 * temp - 11.37 * (wind_speed ** 0.16)
+
+    class ForecastModel_GARBAGE_DEP_008_WEATHER_A:
+        def __init__(self, location: str):
+            self.location = location
+            self.readings = []
+
+        def add_reading(self, temp: float, pressure: float) -> None:
+            self.readings.append({"temp": temp, "pressure": pressure})
+  garbage/inventory_GARBAGE_DEP_008_INVENTORY_B.py: |
+    def reorder_point_GARBAGE_DEP_008_INVENTORY_B(daily_usage: float, lead_days: int) -> float:
+        return daily_usage * lead_days * 1.2
+
+    def economic_order_qty_GARBAGE_DEP_008_INVENTORY_B(demand: float, setup_cost: float, holding_cost: float) -> float:
+        return (2 * demand * setup_cost / holding_cost) ** 0.5
+
+    class Warehouse_GARBAGE_DEP_008_INVENTORY_B:
+        def __init__(self, capacity: int):
+            self.capacity = capacity
+            self.items = {}
+
+        def stock_item(self, sku: str, qty: int) -> None:
+            self.items[sku] = self.items.get(sku, 0) + qty
+
+# === Assertions ===
+
+must_include_files:
+- impl.py
+- models/user.py
+
+must_include_content_from:
+  impl.py:
+    - from interfaces.repository import Repository
+    - from models.user import User
+    - 'class UserRepository:'
+    - 'def find(self, id: int) -> Optional[User]:'
+    - 'def save(self, entity: User) -> None:'
+    - 'def delete(self, id: int) -> bool:'
+  models/user.py:
+    - 'class User:'
+    - '@dataclass'
+
+must_not_include:
+# Plain garbage
+- GARBAGE_DEP_008_WEATHER_A
+- GARBAGE_DEP_008_INVENTORY_B
+# Tricky: also implements Repository with same find/save/delete methods
+- GARBAGE_DEP_008_PROD_IMPORT_C
+- GARBAGE_DEP_008_PROD_TYPE_D
+- GARBAGE_DEP_008_PROD_CLASS_E
+- GARBAGE_DEP_008_PROD_DEL_F
+# Tricky: same class names Repository and User
+- GARBAGE_DEP_008_CORE_MODULE_G
+- GARBAGE_DEP_008_CORE_VER_H
+- GARBAGE_DEP_008_CORE_PROTO_I
+- GARBAGE_DEP_008_CORE_USER_J
+
+must_not_include_files:
+- repositories/product_repo.py
+- core/interfaces.py
+- garbage/weather_station_GARBAGE_DEP_008_WEATHER_A.py
+- garbage/inventory_GARBAGE_DEP_008_INVENTORY_B.py
+
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

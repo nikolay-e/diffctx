@@ -6,7 +6,7 @@ from pathlib import Path
 
 from ...config.weights import EDGE_WEIGHTS
 from ...types import Fragment, FragmentId
-from ..base import EdgeBuilder, EdgeDict
+from ..base import EdgeBuilder, EdgeDict, discover_files_by_refs
 
 _PHP_EXTS = {".php", ".phtml", ".php3", ".php4", ".php5", ".php7", ".phps"}
 
@@ -109,6 +109,29 @@ class PHPEdgeBuilder(EdgeBuilder):
     type_weight = EDGE_WEIGHTS["php_type"].forward
     same_namespace_weight = EDGE_WEIGHTS["php_same_namespace"].forward
     reverse_weight_factor = EDGE_WEIGHTS["php_use"].reverse_factor
+
+    def discover_related_files(
+        self,
+        changed_files: list[Path],
+        all_candidate_files: list[Path],
+        repo_root: Path | None = None,
+    ) -> list[Path]:
+        php_changed = [f for f in changed_files if _is_php_file(f)]
+        if not php_changed:
+            return []
+
+        refs: set[str] = set()
+        for f in php_changed:
+            try:
+                content = f.read_text(encoding="utf-8")
+                for req in _extract_requires(content):
+                    refs.add(req.split("/")[-1])
+                for use in _extract_uses(content):
+                    refs.add(use.split("\\")[-1])
+            except (OSError, UnicodeDecodeError):
+                continue
+
+        return discover_files_by_refs(refs, changed_files, all_candidate_files, repo_root)
 
     def build(self, fragments: list[Fragment], repo_root: Path | None = None) -> EdgeDict:
         php_frags = [f for f in fragments if _is_php_file(f.path)]

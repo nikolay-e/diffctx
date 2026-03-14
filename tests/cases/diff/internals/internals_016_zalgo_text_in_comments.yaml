@@ -1,0 +1,15 @@
+initial:
+  zalgo.py: |
+    def placeholder():
+        pass
+changed:
+  zalgo.py: |
+    # H̸̡̪̯ͨ͊̽̅̾̎Ȩ̬̩̾͛ͪ̈́̀́͘ ̈́̈͊ͅC̷̱̲̥͎̾́͆̀O̵̝̟̞͙͆̈̓̔M̴̨̰̱̾̅̑̕Ę̷̡͎̰̐̊̾S̴̨̺̟̈̿̀͝
+    def process_data(items):
+        return items
+must_include_files:
+- zalgo.py
+must_include_content:
+- 'def process_data(items):'
+add_garbage_files: false
+skip_garbage_check: true

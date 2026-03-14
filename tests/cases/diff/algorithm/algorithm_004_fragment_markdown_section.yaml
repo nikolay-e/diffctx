@@ -1,0 +1,354 @@
+initial:
+  docs/api-reference.md: |
+    # API Reference
+
+    This document describes the REST API endpoints for our service.
+
+    ## Authentication
+
+    All API requests require authentication using Bearer tokens.
+
+    ```bash
+    curl -H "Authorization: Bearer YOUR_TOKEN" https://api.example.com/v1/users
+    ```
+
+    ### Token Generation
+
+    Tokens can be generated through the `/auth/token` endpoint.
+
+    | Parameter | Type | Required | Description |
+    |-----------|------|----------|-------------|
+    | username | string | Yes | User's login name |
+    | password | string | Yes | User's password |
+
+    ## Users Endpoint
+
+    ### GET /users
+
+    Retrieve a list of all users.
+
+    **Response:**
+    ```json
+    {
+      "users": [
+        {"id": 1, "name": "Alice"},
+        {"id": 2, "name": "Bob"}
+      ]
+    }
+    ```
+
+    ### POST /users
+
+    Create a new user account.
+
+    **Request Body:**
+    ```json
+    {
+      "name": "Charlie",
+      "email": "charlie@example.com"
+    }
+    ```
+
+    ## Error Handling
+
+    All errors return a JSON object with an error message.
+  docs/getting-started.md: |
+    # Getting Started
+
+    Welcome to our platform! This guide will help you set up your environment.
+
+    ## Prerequisites
+
+    - Python 3.9 or higher
+    - pip package manager
+    - Virtual environment (recommended)
+
+    ## Installation
+
+    ```bash
+    pip install our-package
+    ```
+
+  # --- Tricky garbage: structural sibling — another API doc in same directory ---
+  docs/webhooks-reference.md: |
+    # Webhooks Reference
+
+    GARBAGE_ALGO_004_WEBHOOK_DOC_G
+    GARBAGE_ALGO_004_EVENTS_LIST_H
+
+    ## Authentication
+
+    Webhook payloads include an `X-Signature` header for verification.
+
+    ```bash
+    curl -H "Authorization: Bearer YOUR_TOKEN" https://api.example.com/v1/webhooks
+    ```
+
+    ### Token Generation
+
+    Tokens for webhook endpoints use the same `/auth/token` flow.
+
+    | Parameter | Type | Required | Description |
+    |-----------|------|----------|-------------|
+    | username | string | Yes | Service account name |
+    | scope | string | Yes | Webhook scope |
+
+  # --- Tricky garbage: name collision — mentions same sections and curl patterns ---
+  docs/admin-api-reference.md: |
+    # Admin API Reference
+
+    GARBAGE_ALGO_004_ADMIN_API_I
+    GARBAGE_ALGO_004_ADMIN_AUTH_J
+
+    ## Authentication
+
+    Admin API requests require authentication using API keys.
+
+    ```bash
+    curl -H "X-API-Key: YOUR_API_KEY" https://api.example.com/admin/users
+    ```
+
+    ## Users Endpoint
+
+    ### GET /admin/users
+
+    Retrieve admin user list.
+
+  # --- Tricky garbage: same-directory markdown with anchor links ---
+  docs/migration-guide.md: |
+    # Migration Guide
+
+    GARBAGE_ALGO_004_MIGRATE_DOC_K
+    GARBAGE_ALGO_004_BREAKING_CHANGES_L
+
+    See [API Reference](api-reference.md) for updated endpoint details.
+    See [Authentication](api-reference.md#authentication) for new auth methods.
+
+    ## Breaking Changes
+
+    - Bearer token format changed
+    - New scope parameter required
+
+  # --- Plain garbage ---
+  garbage_changelog.md: |
+    # Changelog
+
+    GARBAGE_ALGO_004_CHANGELOG_MARKER_A
+
+    ## Version 1.0.0
+
+    GARBAGE_ALGO_004_RELEASE_MARKER_B
+
+    - Initial release
+  garbage_contributing.md: |
+    # Contributing
+
+    GARBAGE_ALGO_004_CONTRIB_MARKER_C
+
+    ## Guidelines
+
+    GARBAGE_ALGO_004_RULES_MARKER_D
+    GARBAGE_ALGO_004_PROCESS_MARKER_E
+    GARBAGE_ALGO_004_REVIEW_MARKER_F
+
+    Please follow our contribution guidelines.
+changed:
+  docs/api-reference.md: |
+    # API Reference
+
+    This document describes the REST API endpoints for our service.
+
+    ## Authentication
+
+    All API requests require authentication using Bearer tokens or API keys.
+
+    ```bash
+    curl -H "Authorization: Bearer YOUR_TOKEN" https://api.example.com/v1/users
+    # Or use API key
+    curl -H "X-API-Key: YOUR_API_KEY" https://api.example.com/v1/users
+    ```
+
+    ### Token Generation
+
+    Tokens can be generated through the `/auth/token` endpoint.
+
+    | Parameter | Type | Required | Description |
+    |-----------|------|----------|-------------|
+    | username | string | Yes | User's login name |
+    | password | string | Yes | User's password |
+    | scope | string | No | Permission scope |
+
+    ### API Key Management
+
+    API keys provide an alternative authentication method for server-to-server communication.
+
+    ```bash
+    curl -X POST https://api.example.com/v1/auth/api-keys \
+      -H "Authorization: Bearer YOUR_TOKEN" \
+      -d '{"name": "my-server-key", "expires_in": 86400}'
+    ```
+
+    ## Users Endpoint
+
+    ### GET /users
+
+    Retrieve a list of all users.
+
+    **Response:**
+    ```json
+    {
+      "users": [
+        {"id": 1, "name": "Alice"},
+        {"id": 2, "name": "Bob"}
+      ]
+    }
+    ```
+
+    ### POST /users
+
+    Create a new user account.
+
+    **Request Body:**
+    ```json
+    {
+      "name": "Charlie",
+      "email": "charlie@example.com"
+    }
+    ```
+
+    ## Error Handling
+
+    All errors return a JSON object with an error message.
+  docs/getting-started.md: |
+    # Getting Started
+
+    Welcome to our platform! This guide will help you set up your environment.
+
+    ## Prerequisites
+
+    - Python 3.9 or higher
+    - pip package manager
+    - Virtual environment (recommended)
+
+    ## Installation
+
+    ```bash
+    pip install our-package
+    ```
+  docs/webhooks-reference.md: |
+    # Webhooks Reference
+
+    GARBAGE_ALGO_004_WEBHOOK_DOC_G
+    GARBAGE_ALGO_004_EVENTS_LIST_H
+
+    ## Authentication
+
+    Webhook payloads include an `X-Signature` header for verification.
+
+    ```bash
+    curl -H "Authorization: Bearer YOUR_TOKEN" https://api.example.com/v1/webhooks
+    ```
+
+    ### Token Generation
+
+    Tokens for webhook endpoints use the same `/auth/token` flow.
+
+    | Parameter | Type | Required | Description |
+    |-----------|------|----------|-------------|
+    | username | string | Yes | Service account name |
+    | scope | string | Yes | Webhook scope |
+  docs/admin-api-reference.md: |
+    # Admin API Reference
+
+    GARBAGE_ALGO_004_ADMIN_API_I
+    GARBAGE_ALGO_004_ADMIN_AUTH_J
+
+    ## Authentication
+
+    Admin API requests require authentication using API keys.
+
+    ```bash
+    curl -H "X-API-Key: YOUR_API_KEY" https://api.example.com/admin/users
+    ```
+
+    ## Users Endpoint
+
+    ### GET /admin/users
+
+    Retrieve admin user list.
+  docs/migration-guide.md: |
+    # Migration Guide
+
+    GARBAGE_ALGO_004_MIGRATE_DOC_K
+    GARBAGE_ALGO_004_BREAKING_CHANGES_L
+
+    See [API Reference](api-reference.md) for updated endpoint details.
+    See [Authentication](api-reference.md#authentication) for new auth methods.
+
+    ## Breaking Changes
+
+    - Bearer token format changed
+    - New scope parameter required
+  garbage_changelog.md: |
+    # Changelog
+
+    GARBAGE_ALGO_004_CHANGELOG_MARKER_A
+
+    ## Version 1.0.0
+
+    GARBAGE_ALGO_004_RELEASE_MARKER_B
+
+    - Initial release
+  garbage_contributing.md: |
+    # Contributing
+
+    GARBAGE_ALGO_004_CONTRIB_MARKER_C
+
+    ## Guidelines
+
+    GARBAGE_ALGO_004_RULES_MARKER_D
+    GARBAGE_ALGO_004_PROCESS_MARKER_E
+    GARBAGE_ALGO_004_REVIEW_MARKER_F
+
+    Please follow our contribution guidelines.
+
+# === Assertions ===
+
+must_include_files:
+- docs/api-reference.md
+
+must_include_content_from:
+  docs/api-reference.md:
+    - 'curl -H "X-API-Key: YOUR_API_KEY" https://api.example.com/v1/users'
+    - API keys provide an alternative authentication method for server-to-server communication
+    - '| scope | string | No | Permission scope |'
+
+must_not_include:
+# Plain garbage markers
+- GARBAGE_ALGO_004_CHANGELOG_MARKER_A
+- GARBAGE_ALGO_004_RELEASE_MARKER_B
+- GARBAGE_ALGO_004_CONTRIB_MARKER_C
+- GARBAGE_ALGO_004_RULES_MARKER_D
+- GARBAGE_ALGO_004_PROCESS_MARKER_E
+- GARBAGE_ALGO_004_REVIEW_MARKER_F
+# Tricky: structural sibling — another API doc with same Authentication section pattern
+- GARBAGE_ALGO_004_WEBHOOK_DOC_G
+- GARBAGE_ALGO_004_EVENTS_LIST_H
+# Tricky: name collision — admin API with same section headings and curl patterns
+- GARBAGE_ALGO_004_ADMIN_API_I
+- GARBAGE_ALGO_004_ADMIN_AUTH_J
+# Tricky: same-directory sibling that cross-references api-reference.md
+- GARBAGE_ALGO_004_MIGRATE_DOC_K
+- GARBAGE_ALGO_004_BREAKING_CHANGES_L
+
+must_not_include_files:
+- garbage_changelog.md
+- garbage_contributing.md
+- docs/webhooks-reference.md
+- docs/admin-api-reference.md
+- docs/migration-guide.md
+
+max_fragments: 4
+max_files: 1
+add_garbage_files: false
+skip_garbage_check: true

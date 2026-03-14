@@ -1,2 +1,0 @@
-types.ts: "export interface ButtonProps {\n    label: string;\n    onClick: () => void;\n    disabled?: boolean;\n    variant?: 'primary' | 'secondary';\n}\n\n// js_garbage_marker_006\n"
-Button.tsx: "import { ButtonProps } from './types';\n\nexport function Button({ label, onClick }: ButtonProps) {\n    return <button onClick={onClick}>{label}</button>;\n}\n"

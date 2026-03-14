@@ -1,0 +1,36 @@
+initial:
+  utils/__init__.py: |
+    from .strings import slugify
+    from .numbers import round_up
+  utils/strings.py: |
+    def slugify(text):
+        return text.lower().replace(" ", "-")
+  utils/numbers.py: |
+    def round_up(n):
+        return int(n) + 1
+  utils/dates.py: |
+    def format_date(d):
+        return d.strftime("%Y-%m-%d")
+changed:
+  utils/__init__.py: |
+    from .strings import slugify
+    from .numbers import round_up
+  utils/strings.py: |
+    import re
+
+    def slugify(text):
+        text = text.lower()
+        text = re.sub(r'[^a-z0-9]+', '-', text)
+        return text.strip('-')
+  utils/numbers.py: |
+    def round_up(n):
+        return int(n) + 1
+  utils/dates.py: |
+    def format_date(d):
+        return d.strftime("%Y-%m-%d")
+must_include_files:
+- utils/strings.py
+must_include_content:
+- text = text.lower()
+add_garbage_files: false
+skip_garbage_check: true

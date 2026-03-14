@@ -1,0 +1,373 @@
+# Scenario: Deployment image tag bumped from v1.2.3 to v2.0.0 for api-server.
+#   Only k8s/base/deployment.yaml is changed.
+#
+# Diff shows:
+#   - image: registry.example.com/api-server:v1.2.3
+#   + image: registry.example.com/api-server:v2.0.0
+#
+# Reviewer questions:
+#   Q1: "This is a major version bump (v1→v2). Do the exposed ports and
+#        container config still match what the Service expects?"
+#       -> Needs k8s/base/service.yaml: it maps port 80→8080 (http) and
+#         9090→9090 (grpc). The deployment still declares containerPort
+#         8080 and 9090. The reviewer must see BOTH to verify the port
+#         contract is intact. If v2.0.0 changed ports, the Service would
+#         break — confirming they still match is the core review task.
+#
+#   Q2: "What resources and env vars is this container configured with?"
+#       -> Answerable from the diff: same resource limits, same env vars,
+#         same replica count. Only the image tag changed.
+#
+# Not needed for comprehension:
+#   - k8s/base/hpa.yaml: HorizontalPodAutoscaler targeting the SAME
+#     deployment by name. Direct structural reference (scaleTargetRef →
+#     api-server). But autoscaling thresholds and min/max replicas don't
+#     help the reviewer verify that the image bump is safe. The question
+#     is "do ports and config still match", not "how does it autoscale."
+#
+#   - k8s/base/ingress.yaml: Ingress routing to the SAME service
+#     (api-server). Structural edge through serviceName. But URL path
+#     routing rules and TLS config don't help review an image tag change.
+#     Even if v2.0.0 changed API paths, the Ingress wouldn't show that —
+#     it only shows what paths are routed, not what the app serves.
+#
+#   - k8s/base/pdb.yaml: PodDisruptionBudget selecting the SAME pods
+#     (app: api-server). Structural edge through matchLabels. But
+#     disruption budget settings are availability concerns, not relevant
+#     to whether the new image version is compatible.
+#
+#   - k8s/monitoring/grafana-dashboard.yaml: Dashboard with metrics
+#     from api-server. Shares the app name but lives in a different
+#     namespace, no structural dependency on the Deployment.
+#
+#   - k8s/jobs/db-migration.yaml: Migration job in same namespace,
+#     uses same db-credentials secret. Shares namespace + secret name
+#     but has no dependency on the Deployment resource.
+#
+#   - Dockerfile: Builds the image. EXPOSE 8080 9090 matches the
+#     container ports. But the Dockerfile describes how the image is
+#     BUILT, not how it's DEPLOYED. The reviewer question is about
+#     K8s resource compatibility, not build configuration.
+
+initial:
+  k8s/base/deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: api-server
+      namespace: production
+      labels:
+        app: api-server
+        tier: backend
+        environment: production
+    spec:
+      replicas: 3
+      selector:
+        matchLabels:
+          app: api-server
+      template:
+        metadata:
+          labels:
+            app: api-server
+            tier: backend
+        spec:
+          containers:
+          - name: api
+            image: registry.example.com/api-server:v1.2.3
+            ports:
+            - containerPort: 8080
+              name: http
+            - containerPort: 9090
+              name: grpc
+            env:
+            - name: LOG_LEVEL
+              value: "info"
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: url
+            resources:
+              requests:
+                memory: "256Mi"
+                cpu: "250m"
+              limits:
+                memory: "512Mi"
+                cpu: "500m"
+            readinessProbe:
+              httpGet:
+                path: /healthz
+                port: 8080
+              initialDelaySeconds: 5
+              periodSeconds: 10
+            livenessProbe:
+              httpGet:
+                path: /healthz
+                port: 8080
+              initialDelaySeconds: 15
+              periodSeconds: 20
+
+  k8s/base/service.yaml: |
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: api-server
+      namespace: production
+    spec:
+      selector:
+        app: api-server
+      ports:
+      - name: http
+        port: 80
+        targetPort: 8080
+      - name: grpc
+        port: 9090
+        targetPort: 9090
+
+  k8s/base/hpa.yaml: |
+    apiVersion: autoscaling/v2
+    kind: HorizontalPodAutoscaler
+    metadata:
+      name: api-server
+      namespace: production
+    spec:
+      scaleTargetRef:
+        apiVersion: apps/v1
+        kind: Deployment
+        name: api-server
+      minReplicas: 3
+      maxReplicas: 10
+      metrics:
+      - type: Resource
+        resource:
+          name: cpu
+          target:
+            type: Utilization
+            averageUtilization: 70
+      - type: Resource
+        resource:
+          name: memory
+          target:
+            type: Utilization
+            averageUtilization: 80
+
+  k8s/base/ingress.yaml: |
+    apiVersion: networking.k8s.io/v1
+    kind: Ingress
+    metadata:
+      name: api-server
+      namespace: production
+      annotations:
+        nginx.ingress.kubernetes.io/ssl-redirect: "true"
+        nginx.ingress.kubernetes.io/rate-limit: "100"
+    spec:
+      tls:
+      - hosts:
+        - api.example.com
+        secretName: api-tls-cert
+      rules:
+      - host: api.example.com
+        http:
+          paths:
+          - path: /v1
+            pathType: Prefix
+            backend:
+              service:
+                name: api-server
+                port:
+                  number: 80
+          - path: /grpc
+            pathType: Prefix
+            backend:
+              service:
+                name: api-server
+                port:
+                  number: 9090
+
+  k8s/base/pdb.yaml: |
+    apiVersion: policy/v1
+    kind: PodDisruptionBudget
+    metadata:
+      name: api-server
+      namespace: production
+    spec:
+      minAvailable: 2
+      selector:
+        matchLabels:
+          app: api-server
+
+  k8s/monitoring/grafana-dashboard.yaml: |
+    apiVersion: v1
+    kind: ConfigMap
+    metadata:
+      name: api-server-dashboard
+      namespace: monitoring
+      labels:
+        grafana_dashboard: "true"
+    data:
+      api-server.json: |
+        {
+          "title": "API Server Overview",
+          "panels": [
+            {"type": "graph", "title": "Request Rate", "targets": [{"expr": "rate(http_requests_total{app=\"api-server\"}[5m])"}]},
+            {"type": "graph", "title": "Error Rate", "targets": [{"expr": "rate(http_errors_total{app=\"api-server\"}[5m])"}]},
+            {"type": "stat", "title": "Active Pods", "targets": [{"expr": "kube_deployment_status_replicas{deployment=\"api-server\"}"}]}
+          ]
+        }
+
+  k8s/jobs/db-migration.yaml: |
+    apiVersion: batch/v1
+    kind: Job
+    metadata:
+      name: db-migrate-v42
+      namespace: production
+    spec:
+      backoffLimit: 3
+      template:
+        spec:
+          containers:
+          - name: migrate
+            image: registry.example.com/db-migrations:v42
+            command: ["python", "manage.py", "migrate"]
+            env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: url
+          restartPolicy: Never
+
+  Dockerfile: |
+    FROM python:3.11-slim
+    WORKDIR /app
+    COPY requirements.txt .
+    RUN pip install --no-cache-dir -r requirements.txt
+    COPY . .
+    EXPOSE 8080 9090
+    CMD ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0"]
+
+changed:
+  k8s/base/deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: api-server
+      namespace: production
+      labels:
+        app: api-server
+        tier: backend
+        environment: production
+    spec:
+      replicas: 3
+      selector:
+        matchLabels:
+          app: api-server
+      template:
+        metadata:
+          labels:
+            app: api-server
+            tier: backend
+        spec:
+          containers:
+          - name: api
+            image: registry.example.com/api-server:v2.0.0
+            ports:
+            - containerPort: 8080
+              name: http
+            - containerPort: 9090
+              name: grpc
+            env:
+            - name: LOG_LEVEL
+              value: "info"
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: url
+            resources:
+              requests:
+                memory: "256Mi"
+                cpu: "250m"
+              limits:
+                memory: "512Mi"
+                cpu: "500m"
+            readinessProbe:
+              httpGet:
+                path: /healthz
+                port: 8080
+              initialDelaySeconds: 5
+              periodSeconds: 10
+            livenessProbe:
+              httpGet:
+                path: /healthz
+                port: 8080
+              initialDelaySeconds: 15
+              periodSeconds: 20
+
+must_include_files:
+  - k8s/base/deployment.yaml
+  # Q1: Major version bump. The reviewer must verify that the Service
+  # port mapping (80→8080, 9090→9090) still matches the container's
+  # declared ports. Without service.yaml, the reviewer cannot confirm
+  # the port contract is intact after the image change.
+  - k8s/base/service.yaml
+
+must_include_content_from:
+  k8s/base/deployment.yaml:
+    - "image: registry.example.com/api-server:v2.0.0"
+    - "containerPort: 8080"
+    - "containerPort: 9090"
+  k8s/base/service.yaml:
+    - "targetPort: 8080"
+    - "targetPort: 9090"
+    - "app: api-server"
+
+must_not_include:
+  # --- hpa.yaml: scaleTargetRef → Deployment api-server ---
+  # Direct structural reference to the SAME deployment being changed.
+  # Hardest trap. But autoscaling thresholds (cpu 70%, memory 80%) and
+  # replica bounds don't help verify the image bump is safe.
+  - scaleTargetRef
+  - minReplicas
+  - maxReplicas
+  - averageUtilization
+  # --- ingress.yaml: routes to Service api-server ---
+  # Structural edge through service name. But URL routing paths
+  # (/v1, /grpc) don't help review whether the new image tag is
+  # compatible with the existing port configuration.
+  - api.example.com
+  - ssl-redirect
+  - rate-limit
+  - api-tls-cert
+  # --- pdb.yaml: selects pods with app: api-server ---
+  # Structural edge through matchLabels on same pods.
+  # Disruption budget is an availability concern, not a compatibility one.
+  - PodDisruptionBudget
+  - minAvailable
+  # --- grafana dashboard: monitors api-server by name ---
+  - api-server-dashboard
+  - grafana_dashboard
+  - http_requests_total
+  - kube_deployment_status_replicas
+  # --- db-migration: same namespace + same secret, but different workload ---
+  - db-migrate-v42
+  - db-migrations
+  - manage.py
+  # --- Dockerfile: builds the image, EXPOSE matches ports ---
+  # Shows how the image is built, not how it's deployed.
+  - "FROM python:3.11-slim"
+  - EXPOSE 8080 9090
+  - uvicorn
+
+must_not_include_files:
+  - k8s/base/hpa.yaml
+  - k8s/base/ingress.yaml
+  - k8s/base/pdb.yaml
+  - k8s/monitoring/grafana-dashboard.yaml
+  - k8s/jobs/db-migration.yaml
+  - Dockerfile
+
+max_fragments: 8
+max_files: 5
+add_garbage_files: false
+skip_garbage_check: true

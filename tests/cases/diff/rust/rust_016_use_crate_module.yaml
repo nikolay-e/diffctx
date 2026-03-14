@@ -1,0 +1,266 @@
+# Scenario: Expanding string utility functions and updating format output
+# Changed: src/utils.rs — format_string changed to [[]], added trim_string, capitalize, reverse, truncate, pad_left, pad_right, format_trimmed
+# Reviewer questions: Does main.rs use format_string correctly? Is truncate safe for multi-byte strings?
+# Trap files:
+#   - src/slug.rs: URL slug generator — "string manipulation" domain but no import of utils
+#   - src/csv_writer.rs: CSV formatting — "format strings" vocabulary overlap but independent
+initial:
+  src/utils.rs: |
+    pub fn format_string(s: &str) -> String {
+        format!("[{}]", s)
+    }
+
+    pub fn to_uppercase(s: &str) -> String {
+        s.to_uppercase()
+    }
+
+    pub fn to_lowercase(s: &str) -> String {
+        s.to_lowercase()
+    }
+
+    pub struct StringFormatter {
+        prefix: String,
+        suffix: String,
+    }
+
+    impl StringFormatter {
+        pub fn new(prefix: &str, suffix: &str) -> Self {
+            Self {
+                prefix: prefix.to_string(),
+                suffix: suffix.to_string(),
+            }
+        }
+
+        pub fn format(&self, s: &str) -> String {
+            format!("{}{}{}", self.prefix, s, self.suffix)
+        }
+    }
+
+    impl Default for StringFormatter {
+        fn default() -> Self {
+            Self::new("[", "]")
+        }
+    }
+  src/main.rs: |
+    mod utils;
+
+    use crate::utils::format_string;
+
+    fn main() {
+        let result = format_string("hello");
+        println!("{}", result);
+    }
+  src/lib.rs: |
+    pub mod utils;
+    pub mod slug;
+    pub mod csv_writer;
+  src/slug.rs: |
+    pub fn slugify(input: &str) -> String {
+        input
+            .to_lowercase()
+            .chars()
+            .map(|c| if c.is_alphanumeric() { c } else { '-' })
+            .collect::<String>()
+            .split('-')
+            .filter(|s| !s.is_empty())
+            .collect::<Vec<_>>()
+            .join("-")
+    }
+
+    pub fn deslugify(slug: &str) -> String {
+        slug.split('-')
+            .map(|word| {
+                let mut chars = word.chars();
+                match chars.next() {
+                    None => String::new(),
+                    Some(f) => f.to_uppercase().chain(chars).collect(),
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+  src/csv_writer.rs: |
+    pub struct CsvWriter {
+        delimiter: char,
+        quote_char: char,
+    }
+
+    impl CsvWriter {
+        pub fn new(delimiter: char) -> Self {
+            Self { delimiter, quote_char: '"' }
+        }
+
+        pub fn format_row(&self, fields: &[&str]) -> String {
+            fields
+                .iter()
+                .map(|f| {
+                    if f.contains(self.delimiter) || f.contains(self.quote_char) {
+                        format!("{}{}{}", self.quote_char, f, self.quote_char)
+                    } else {
+                        f.to_string()
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(&self.delimiter.to_string())
+        }
+    }
+changed:
+  src/utils.rs: |
+    pub fn format_string(s: &str) -> String {
+        format!("[[{}]]", s)
+    }
+
+    pub fn trim_string(s: &str) -> &str {
+        s.trim()
+    }
+
+    pub fn to_uppercase(s: &str) -> String {
+        s.to_uppercase()
+    }
+
+    pub fn to_lowercase(s: &str) -> String {
+        s.to_lowercase()
+    }
+
+    pub fn capitalize(s: &str) -> String {
+        let mut chars = s.chars();
+        match chars.next() {
+            None => String::new(),
+            Some(first) => first.to_uppercase().chain(chars).collect(),
+        }
+    }
+
+    pub fn reverse(s: &str) -> String {
+        s.chars().rev().collect()
+    }
+
+    pub fn truncate(s: &str, max_len: usize) -> &str {
+        if s.len() <= max_len {
+            s
+        } else {
+            &s[..max_len]
+        }
+    }
+
+    pub fn pad_left(s: &str, width: usize, pad_char: char) -> String {
+        if s.len() >= width {
+            s.to_string()
+        } else {
+            format!("{}{}", pad_char.to_string().repeat(width - s.len()), s)
+        }
+    }
+
+    pub fn pad_right(s: &str, width: usize, pad_char: char) -> String {
+        if s.len() >= width {
+            s.to_string()
+        } else {
+            format!("{}{}", s, pad_char.to_string().repeat(width - s.len()))
+        }
+    }
+
+    pub struct StringFormatter {
+        prefix: String,
+        suffix: String,
+    }
+
+    impl StringFormatter {
+        pub fn new(prefix: &str, suffix: &str) -> Self {
+            Self {
+                prefix: prefix.to_string(),
+                suffix: suffix.to_string(),
+            }
+        }
+
+        pub fn format(&self, s: &str) -> String {
+            format!("{}{}{}", self.prefix, s, self.suffix)
+        }
+
+        pub fn format_trimmed(&self, s: &str) -> String {
+            self.format(s.trim())
+        }
+    }
+
+    impl Default for StringFormatter {
+        fn default() -> Self {
+            Self::new("[[", "]]")
+        }
+    }
+  src/main.rs: |
+    mod utils;
+
+    use crate::utils::format_string;
+
+    fn main() {
+        let result = format_string("hello");
+        println!("{}", result);
+    }
+  src/lib.rs: |
+    pub mod utils;
+    pub mod slug;
+    pub mod csv_writer;
+  src/slug.rs: |
+    pub fn slugify(input: &str) -> String {
+        input
+            .to_lowercase()
+            .chars()
+            .map(|c| if c.is_alphanumeric() { c } else { '-' })
+            .collect::<String>()
+            .split('-')
+            .filter(|s| !s.is_empty())
+            .collect::<Vec<_>>()
+            .join("-")
+    }
+
+    pub fn deslugify(slug: &str) -> String {
+        slug.split('-')
+            .map(|word| {
+                let mut chars = word.chars();
+                match chars.next() {
+                    None => String::new(),
+                    Some(f) => f.to_uppercase().chain(chars).collect(),
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+  src/csv_writer.rs: |
+    pub struct CsvWriter {
+        delimiter: char,
+        quote_char: char,
+    }
+
+    impl CsvWriter {
+        pub fn new(delimiter: char) -> Self {
+            Self { delimiter, quote_char: '"' }
+        }
+
+        pub fn format_row(&self, fields: &[&str]) -> String {
+            fields
+                .iter()
+                .map(|f| {
+                    if f.contains(self.delimiter) || f.contains(self.quote_char) {
+                        format!("{}{}{}", self.quote_char, f, self.quote_char)
+                    } else {
+                        f.to_string()
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(&self.delimiter.to_string())
+        }
+    }
+must_include_files:
+- src/utils.rs
+must_include_content:
+- 'pub fn trim_string(s: &str) -> &str {'
+- 'pub fn capitalize(s: &str) -> String {'
+must_not_include:
+- slugify
+- CsvWriter
+- slug.rs
+- csv_writer.rs
+must_not_include_files:
+- src/slug.rs
+- src/csv_writer.rs
+max_files: 4
+add_garbage_files: false
+skip_garbage_check: true

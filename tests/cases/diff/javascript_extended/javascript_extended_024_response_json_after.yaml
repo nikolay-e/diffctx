@@ -1,4 +1,0 @@
-service.ts: "export interface ApiResponse<T> {\n    data: T;\n    success: boolean;\n    timestamp: number;\n}\n\nexport function createResponse<T>(data: T): ApiResponse<T> {\n    return { data, success:\
-  \ true, timestamp: Date.now() };\n}\n\n// node_garbage_marker_004\n"
-handler.ts: "import { Request, Response } from 'express';\nimport { createResponse } from './service';\n\nexport function getDataHandler(req: Request, res: Response) {\n    const data = { message: 'Hello'\
-  \ };\n    res.json(createResponse(data));\n}\n"

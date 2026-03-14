@@ -1,0 +1,172 @@
+# Reviewer sees: UserForm.tsx dispatches addUser action from userSlice.
+# Q1: "What payload shape does addUser expect?"
+#     -> userSlice.ts: PayloadAction<User> where User = { id, name }.
+#        Reviewer verifies dispatched { id, name } matches the type.
+# Q2: "What does the addUser reducer do?"
+#     -> userSlice.ts: state.users.push(action.payload). Immer-style
+#        mutation. Reviewer understands the state change.
+#
+# Not needed:
+#   - productSlice.ts: Redux slice for products. Same toolkit
+#     pattern but different domain.
+#   - UserForm.test.tsx: test file placeholder. No comprehension
+#     value for understanding the dispatch flow.
+
+initial:
+  src/store/userSlice.ts: |
+    import { createSlice, PayloadAction } from '@reduxjs/toolkit';
+
+    interface User {
+        id: string;
+        name: string;
+    }
+
+    interface UserState {
+        users: User[];
+        loading: boolean;
+    }
+
+    const initialState: UserState = { users: [], loading: false };
+
+    export const userSlice = createSlice({
+        name: 'users',
+        initialState,
+        reducers: {
+            addUser: (state, action: PayloadAction<User>) => {
+                state.users.push(action.payload);
+            },
+            removeUser: (state, action: PayloadAction<string>) => {
+                state.users = state.users.filter(u => u.id !== action.payload);
+            },
+        },
+    });
+
+    export const { addUser, removeUser } = userSlice.actions;
+  src/components/UserForm.tsx: |
+    export function UserForm() {
+        return <div>Placeholder</div>;
+    }
+  src/store/productSlice.ts: |
+    import { createSlice, PayloadAction } from '@reduxjs/toolkit';
+
+    interface Product {
+        id: string;
+        name: string;
+        price: number;
+    }
+
+    const initialState = { products: [] as Product[] };
+
+    export const productSlice = createSlice({
+        name: 'products',
+        initialState,
+        reducers: {
+            addProduct: (state, action: PayloadAction<Product>) => {
+                state.products.push(action.payload);
+            },
+        },
+    });
+
+    export const { addProduct } = productSlice.actions;
+  src/components/UserForm.test.tsx: |
+    import { render, screen, fireEvent } from '@testing-library/react';
+    import { Provider } from 'react-redux';
+
+    describe('UserForm', () => {
+        it('placeholder test', () => {
+            expect(true).toBe(true);
+        });
+    });
+changed:
+  src/store/userSlice.ts: |
+    import { createSlice, PayloadAction } from '@reduxjs/toolkit';
+
+    interface User {
+        id: string;
+        name: string;
+    }
+
+    interface UserState {
+        users: User[];
+        loading: boolean;
+    }
+
+    const initialState: UserState = { users: [], loading: false };
+
+    export const userSlice = createSlice({
+        name: 'users',
+        initialState,
+        reducers: {
+            addUser: (state, action: PayloadAction<User>) => {
+                state.users.push(action.payload);
+            },
+            removeUser: (state, action: PayloadAction<string>) => {
+                state.users = state.users.filter(u => u.id !== action.payload);
+            },
+        },
+    });
+
+    export const { addUser, removeUser } = userSlice.actions;
+  src/components/UserForm.tsx: |
+    import { useDispatch } from 'react-redux';
+    import { addUser } from '../store/userSlice';
+
+    export function UserForm() {
+        const dispatch = useDispatch();
+
+        const handleAdd = () => {
+            dispatch(addUser({ id: Date.now().toString(), name: 'New User' }));
+        };
+
+        return <button onClick={handleAdd}>Add User</button>;
+    }
+  src/store/productSlice.ts: |
+    import { createSlice, PayloadAction } from '@reduxjs/toolkit';
+
+    interface Product {
+        id: string;
+        name: string;
+        price: number;
+    }
+
+    const initialState = { products: [] as Product[] };
+
+    export const productSlice = createSlice({
+        name: 'products',
+        initialState,
+        reducers: {
+            addProduct: (state, action: PayloadAction<Product>) => {
+                state.products.push(action.payload);
+            },
+        },
+    });
+
+    export const { addProduct } = productSlice.actions;
+  src/components/UserForm.test.tsx: |
+    import { render, screen, fireEvent } from '@testing-library/react';
+    import { Provider } from 'react-redux';
+
+    describe('UserForm', () => {
+        it('placeholder test', () => {
+            expect(true).toBe(true);
+        });
+    });
+must_include_files:
+  # Unchanged file — the slice that defines addUser. Reviewer needs
+  # to see the payload type and reducer logic.
+  - src/store/userSlice.ts
+must_include_content_from:
+  src/store/userSlice.ts:
+    - "PayloadAction<User>"
+    - "state.users.push"
+must_not_include:
+  # productSlice.ts: different Redux domain (products)
+  - productSlice
+  - addProduct
+  # UserForm.test.tsx: test placeholder, no comprehension value
+  - placeholder test
+  - fireEvent
+max_fragments: 5
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

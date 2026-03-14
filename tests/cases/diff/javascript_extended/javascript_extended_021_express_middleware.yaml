@@ -1,0 +1,187 @@
+# Reviewer sees: app.ts changes from a simple status endpoint to a full Express
+# app that imports authMiddleware globally and mounts healthRouter.
+#
+# Reviewer questions:
+#   Q1: "What does authMiddleware do — what authentication logic runs on every request?"
+#       -> src/middleware/auth.ts: checks req.headers.authorization, returns 401
+#          if missing. The reviewer needs the middleware import to understand
+#          what app.use(authMiddleware) means for security.
+#   Q2: "What route does healthRouter serve?"
+#       -> src/routes/health.ts: defines GET /health. Since authMiddleware is
+#          global, /health also requires auth — potentially an issue.
+#
+# Not needed:
+#   - src/middleware/rate-limiter.ts: request rate limiting. Another middleware,
+#     but not referenced in the diff.
+#   - src/config/server.ts: port/host configuration. Infrastructure concern,
+#     unrelated to middleware wiring.
+
+initial:
+  src/app.ts: |
+    import express from 'express';
+
+    const app = express();
+    app.get('/status', (req, res) => {
+        res.json({ status: 'ok' });
+    });
+
+    export default app;
+  src/middleware/auth.ts: |
+    import { Request, Response, NextFunction } from 'express';
+
+    export function authMiddleware(req: Request, res: Response, next: NextFunction) {
+        const token = req.headers.authorization;
+        if (!token) {
+            return res.status(401).json({ error: 'Unauthorized' });
+        }
+        if (!token.startsWith('Bearer ')) {
+            return res.status(401).json({ error: 'Invalid token format' });
+        }
+        next();
+    }
+  src/routes/health.ts: |
+    import { Router } from 'express';
+
+    export const healthRouter = Router();
+
+    healthRouter.get('/health', (req, res) => {
+        res.json({ status: 'healthy', uptime: process.uptime() });
+    });
+  # --- Not needed: separate middleware, not referenced in diff ---
+  src/middleware/rate-limiter.ts: |
+    import { Request, Response, NextFunction } from 'express';
+
+    const requestCounts = new Map<string, { count: number; resetAt: number }>();
+
+    export function rateLimiter(windowMs: number, maxRequests: number) {
+        return (req: Request, res: Response, next: NextFunction) => {
+            const ip = req.ip ?? 'unknown';
+            const entry = requestCounts.get(ip);
+            const now = Date.now();
+            if (!entry || entry.resetAt < now) {
+                requestCounts.set(ip, { count: 1, resetAt: now + windowMs });
+                return next();
+            }
+            if (entry.count >= maxRequests) {
+                return res.status(429).json({ error: 'Too many requests' });
+            }
+            entry.count++;
+            next();
+        };
+    }
+  # --- Not needed: server config, infrastructure concern ---
+  src/config/server.ts: |
+    export interface ServerConfig {
+        port: number;
+        host: string;
+        corsOrigin: string;
+    }
+
+    export function loadServerConfig(): ServerConfig {
+        return {
+            port: parseInt(process.env.PORT ?? '3000', 10),
+            host: process.env.HOST ?? '0.0.0.0',
+            corsOrigin: process.env.CORS_ORIGIN ?? '*',
+        };
+    }
+
+changed:
+  src/app.ts: |
+    import express from 'express';
+    import { authMiddleware } from './middleware/auth';
+    import { healthRouter } from './routes/health';
+
+    const app = express();
+    app.use(express.json());
+    app.use(authMiddleware);
+    app.use(healthRouter);
+
+    app.get('/protected', (req, res) => {
+        res.json({ message: 'Protected content' });
+    });
+
+    export default app;
+  # Unchanged
+  src/middleware/auth.ts: |
+    import { Request, Response, NextFunction } from 'express';
+
+    export function authMiddleware(req: Request, res: Response, next: NextFunction) {
+        const token = req.headers.authorization;
+        if (!token) {
+            return res.status(401).json({ error: 'Unauthorized' });
+        }
+        if (!token.startsWith('Bearer ')) {
+            return res.status(401).json({ error: 'Invalid token format' });
+        }
+        next();
+    }
+  src/routes/health.ts: |
+    import { Router } from 'express';
+
+    export const healthRouter = Router();
+
+    healthRouter.get('/health', (req, res) => {
+        res.json({ status: 'healthy', uptime: process.uptime() });
+    });
+  src/middleware/rate-limiter.ts: |
+    import { Request, Response, NextFunction } from 'express';
+
+    const requestCounts = new Map<string, { count: number; resetAt: number }>();
+
+    export function rateLimiter(windowMs: number, maxRequests: number) {
+        return (req: Request, res: Response, next: NextFunction) => {
+            const ip = req.ip ?? 'unknown';
+            const entry = requestCounts.get(ip);
+            const now = Date.now();
+            if (!entry || entry.resetAt < now) {
+                requestCounts.set(ip, { count: 1, resetAt: now + windowMs });
+                return next();
+            }
+            if (entry.count >= maxRequests) {
+                return res.status(429).json({ error: 'Too many requests' });
+            }
+            entry.count++;
+            next();
+        };
+    }
+  src/config/server.ts: |
+    export interface ServerConfig {
+        port: number;
+        host: string;
+        corsOrigin: string;
+    }
+
+    export function loadServerConfig(): ServerConfig {
+        return {
+            port: parseInt(process.env.PORT ?? '3000', 10),
+            host: process.env.HOST ?? '0.0.0.0',
+            corsOrigin: process.env.CORS_ORIGIN ?? '*',
+        };
+    }
+
+must_include_files:
+  # Q1: The middleware definition — reviewer needs to see what auth logic
+  # runs globally after app.use(authMiddleware).
+  - src/middleware/auth.ts
+  # Q2: A route affected by the global middleware.
+  - src/routes/health.ts
+must_include_content_from:
+  src/middleware/auth.ts:
+    - "authMiddleware"
+  src/routes/health.ts:
+    - "healthRouter"
+must_not_include:
+  # rate-limiter.ts: different middleware, not mounted in this diff
+  - rateLimiter
+  - requestCounts
+  # server.ts: port/host config, infrastructure concern
+  - ServerConfig
+  - loadServerConfig
+  - CORS_ORIGIN
+must_not_include_files:
+  - src/middleware/rate-limiter.ts
+  - src/config/server.ts
+max_fragments: 12
+max_files: 4
+add_garbage_files: false
+skip_garbage_check: true

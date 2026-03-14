@@ -1,5 +1,0 @@
-interfaces.ts: "export interface IService {\n    start(): void;\n    stop(): void;\n    getStatus(): string;\n}\n\nexport interface ILogger {\n    log(message: string): void;\n    error(message: string):\
-  \ void;\n}\n\n// ts_garbage_marker_001\n"
-service.ts: "import { IService, ILogger } from './interfaces';\n\nexport class MyService implements IService {\n    private running = false;\n    private logger: ILogger;\n\n    constructor(logger: ILogger)\
-  \ {\n        this.logger = logger;\n    }\n\n    start(): void {\n        this.running = true;\n        this.logger.log('Service started');\n    }\n\n    stop(): void {\n        this.running = false;\n\
-  \        this.logger.log('Service stopped');\n    }\n\n    getStatus(): string {\n        return this.running ? 'running' : 'stopped';\n    }\n}\n"

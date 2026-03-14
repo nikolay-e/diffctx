@@ -1,0 +1,716 @@
+# Scenario: Order entity gains JPA indexes, @NamedQueries, new fields
+#   (totalAmount, taxAmount, shippingAmount, status, addresses, version),
+#   lifecycle callbacks (@PreUpdate), recalculateTotal(), getGrandTotal().
+#   Only Order.java is changed.
+#
+# Diff shows:
+#   + @Table indexes, @NamedQueries for findByCustomerAndStatus, findRecentOrders
+#   + totalAmount, taxAmount, shippingAmount, status (OrderStatus enum),
+#     shippingAddress, billingAddress (Address), notes, version, updatedAt,
+#     shippedAt, deliveredAt
+#   + recalculateTotal() uses OrderItem::getSubtotal
+#   + getGrandTotal() sums total + tax + shipping
+#   + @PreUpdate onUpdate() callback
+#   + equals/hashCode on orderNumber
+#
+# Reviewer questions:
+#   Q1: "What is OrderStatus — what values does it have?"
+#       -> Needs OrderStatus.java: enum with PENDING, CONFIRMED, PROCESSING,
+#         SHIPPED, DELIVERED, CANCELLED, REFUNDED. The diff sets status =
+#         OrderStatus.PENDING in @PrePersist. Reviewer must verify PENDING exists.
+#
+#   Q2: "What is Address — does it have the right structure for shipping/billing?"
+#       -> Needs Address.java: JPA entity with street, city, state, postalCode,
+#         country. The diff references Address via @ManyToOne.
+#
+#   Q3: "Does OrderItem have getSubtotal() used in recalculateTotal()?"
+#       -> Needs OrderItem.java: has getSubtotal() method. recalculateTotal()
+#         calls OrderItem::getSubtotal via stream().
+#
+# Not needed for comprehension:
+#   - OrderRepository.java: Spring Data JPA repository extending
+#     JpaRepository<Order, Long>. Has methods findByCustomerAndStatus(),
+#     findRecentOrders() that correspond to the @NamedQueries. HARD TRAP:
+#     direct structural overlap with the named queries. But repository
+#     method signatures don't help verify the query HQL syntax.
+#
+#   - OrderService.java: @Service that creates orders, calls
+#     recalculateTotal(), sets status transitions. Direct consumer of
+#     the new fields and methods. But doesn't help verify Order's logic.
+#
+#   - OrderIntegrationTest.java: Tests Order creation with the new fields.
+#     Direct structural edge. Tests don't help review implementation.
+
+initial:
+  src/main/java/com/ordersystem/model/Order.java: |
+    package com.ordersystem.model;
+
+    import javax.persistence.*;
+    import java.math.BigDecimal;
+    import java.time.LocalDateTime;
+    import java.util.ArrayList;
+    import java.util.List;
+
+    @Entity
+    @Table(name = "orders")
+    public class Order {
+        @Id
+        @GeneratedValue(strategy = GenerationType.IDENTITY)
+        private Long id;
+
+        @Column(name = "order_number", unique = true, nullable = false)
+        private String orderNumber;
+
+        @ManyToOne(fetch = FetchType.LAZY)
+        @JoinColumn(name = "customer_id", nullable = false)
+        private Customer customer;
+
+        @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
+        private List<OrderItem> items = new ArrayList<>();
+
+        @Column(name = "created_at")
+        private LocalDateTime createdAt;
+
+        @PrePersist
+        protected void onCreate() {
+            createdAt = LocalDateTime.now();
+        }
+
+        public Long getId() { return id; }
+        public void setId(Long id) { this.id = id; }
+        public String getOrderNumber() { return orderNumber; }
+        public void setOrderNumber(String orderNumber) { this.orderNumber = orderNumber; }
+        public Customer getCustomer() { return customer; }
+        public void setCustomer(Customer customer) { this.customer = customer; }
+        public List<OrderItem> getItems() { return items; }
+        public LocalDateTime getCreatedAt() { return createdAt; }
+
+        public void addItem(OrderItem item) {
+            items.add(item);
+            item.setOrder(this);
+        }
+
+        public void removeItem(OrderItem item) {
+            items.remove(item);
+            item.setOrder(null);
+        }
+    }
+
+  src/main/java/com/ordersystem/model/Customer.java: |
+    package com.ordersystem.model;
+
+    import javax.persistence.*;
+    import java.util.ArrayList;
+    import java.util.List;
+
+    @Entity
+    @Table(name = "customers")
+    public class Customer {
+        @Id
+        @GeneratedValue(strategy = GenerationType.IDENTITY)
+        private Long id;
+
+        @Column(nullable = false)
+        private String name;
+
+        @Column(unique = true, nullable = false)
+        private String email;
+
+        @OneToMany(mappedBy = "customer", cascade = CascadeType.ALL)
+        private List<Order> orders = new ArrayList<>();
+
+        public Long getId() { return id; }
+        public void setId(Long id) { this.id = id; }
+        public String getName() { return name; }
+        public void setName(String name) { this.name = name; }
+        public String getEmail() { return email; }
+        public void setEmail(String email) { this.email = email; }
+        public List<Order> getOrders() { return orders; }
+    }
+
+  src/main/java/com/ordersystem/model/OrderItem.java: |
+    package com.ordersystem.model;
+
+    import javax.persistence.*;
+    import java.math.BigDecimal;
+
+    @Entity
+    @Table(name = "order_items")
+    public class OrderItem {
+        @Id
+        @GeneratedValue(strategy = GenerationType.IDENTITY)
+        private Long id;
+
+        @ManyToOne(fetch = FetchType.LAZY)
+        @JoinColumn(name = "order_id")
+        private Order order;
+
+        @ManyToOne(fetch = FetchType.LAZY)
+        @JoinColumn(name = "product_id")
+        private Product product;
+
+        private Integer quantity;
+
+        @Column(name = "unit_price")
+        private BigDecimal unitPrice;
+
+        public Long getId() { return id; }
+        public void setId(Long id) { this.id = id; }
+        public Order getOrder() { return order; }
+        public void setOrder(Order order) { this.order = order; }
+        public Product getProduct() { return product; }
+        public void setProduct(Product product) { this.product = product; }
+        public Integer getQuantity() { return quantity; }
+        public void setQuantity(Integer quantity) { this.quantity = quantity; }
+        public BigDecimal getUnitPrice() { return unitPrice; }
+        public void setUnitPrice(BigDecimal unitPrice) { this.unitPrice = unitPrice; }
+
+        public BigDecimal getSubtotal() {
+            return unitPrice.multiply(BigDecimal.valueOf(quantity));
+        }
+    }
+
+  src/main/java/com/ordersystem/model/Product.java: |
+    package com.ordersystem.model;
+
+    import javax.persistence.*;
+    import java.math.BigDecimal;
+
+    @Entity
+    @Table(name = "products")
+    public class Product {
+        @Id
+        @GeneratedValue(strategy = GenerationType.IDENTITY)
+        private Long id;
+
+        @Column(nullable = false)
+        private String name;
+
+        private BigDecimal price;
+
+        @Column(name = "stock_quantity")
+        private Integer stockQuantity;
+
+        public Long getId() { return id; }
+        public void setId(Long id) { this.id = id; }
+        public String getName() { return name; }
+        public void setName(String name) { this.name = name; }
+        public BigDecimal getPrice() { return price; }
+        public void setPrice(BigDecimal price) { this.price = price; }
+        public Integer getStockQuantity() { return stockQuantity; }
+        public void setStockQuantity(Integer stockQuantity) { this.stockQuantity = stockQuantity; }
+    }
+
+  src/main/java/com/ordersystem/repository/OrderRepository.java: |
+    package com.ordersystem.repository;
+
+    import com.ordersystem.model.Order;
+    import com.ordersystem.model.OrderStatus;
+    import org.springframework.data.jpa.repository.JpaRepository;
+    import org.springframework.data.jpa.repository.Query;
+    import org.springframework.stereotype.Repository;
+    import java.time.LocalDateTime;
+    import java.util.List;
+    import java.util.Optional;
+
+    @Repository
+    public interface OrderRepository extends JpaRepository<Order, Long> {
+        Optional<Order> findByOrderNumber(String orderNumber);
+
+        List<Order> findByCustomerIdAndStatus(Long customerId, OrderStatus status);
+
+        @Query("SELECT o FROM Order o WHERE o.createdAt > :since ORDER BY o.createdAt DESC")
+        List<Order> findRecentOrders(LocalDateTime since);
+
+        @Query("SELECT o FROM Order o WHERE o.status = :status AND o.shippedAt IS NULL")
+        List<Order> findUnshippedByStatus(OrderStatus status);
+
+        long countByStatus(OrderStatus status);
+    }
+
+  src/main/java/com/ordersystem/service/OrderService.java: |
+    package com.ordersystem.service;
+
+    import com.ordersystem.model.Order;
+    import com.ordersystem.model.OrderItem;
+    import com.ordersystem.model.OrderStatus;
+    import com.ordersystem.repository.OrderRepository;
+    import org.springframework.stereotype.Service;
+    import org.springframework.transaction.annotation.Transactional;
+    import java.math.BigDecimal;
+    import java.time.LocalDateTime;
+
+    @Service
+    public class OrderService {
+        private final OrderRepository orderRepository;
+
+        public OrderService(OrderRepository orderRepository) {
+            this.orderRepository = orderRepository;
+        }
+
+        @Transactional
+        public Order createOrder(Order order) {
+            order.recalculateTotal();
+            return orderRepository.save(order);
+        }
+
+        @Transactional
+        public Order addItemToOrder(Long orderId, OrderItem item) {
+            Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new RuntimeException("Order not found"));
+            order.addItem(item);
+            order.recalculateTotal();
+            return orderRepository.save(order);
+        }
+
+        @Transactional
+        public Order updateStatus(Long orderId, OrderStatus newStatus) {
+            Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new RuntimeException("Order not found"));
+            order.setStatus(newStatus);
+            if (newStatus == OrderStatus.SHIPPED) {
+                order.setShippedAt(LocalDateTime.now());
+            } else if (newStatus == OrderStatus.DELIVERED) {
+                order.setDeliveredAt(LocalDateTime.now());
+            }
+            return orderRepository.save(order);
+        }
+    }
+
+changed:
+  src/main/java/com/ordersystem/model/Order.java: |
+    package com.ordersystem.model;
+
+    import javax.persistence.*;
+    import java.math.BigDecimal;
+    import java.time.LocalDateTime;
+    import java.util.ArrayList;
+    import java.util.List;
+    import java.util.Objects;
+
+    @Entity
+    @Table(name = "orders", indexes = {
+        @Index(name = "idx_order_number", columnList = "order_number"),
+        @Index(name = "idx_order_customer", columnList = "customer_id"),
+        @Index(name = "idx_order_status", columnList = "status")
+    })
+    @NamedQueries({
+        @NamedQuery(name = "Order.findByCustomerAndStatus",
+            query = "SELECT o FROM Order o WHERE o.customer.id = :customerId AND o.status = :status"),
+        @NamedQuery(name = "Order.findRecentOrders",
+            query = "SELECT o FROM Order o WHERE o.createdAt > :since ORDER BY o.createdAt DESC")
+    })
+    public class Order {
+        @Id
+        @GeneratedValue(strategy = GenerationType.IDENTITY)
+        private Long id;
+
+        @Column(name = "order_number", unique = true, nullable = false, length = 20)
+        private String orderNumber;
+
+        @ManyToOne(fetch = FetchType.LAZY)
+        @JoinColumn(name = "customer_id", nullable = false)
+        private Customer customer;
+
+        @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
+        @OrderBy("id ASC")
+        private List<OrderItem> items = new ArrayList<>();
+
+        @Column(name = "total_amount", precision = 12, scale = 2)
+        private BigDecimal totalAmount;
+
+        @Column(name = "tax_amount", precision = 10, scale = 2)
+        private BigDecimal taxAmount;
+
+        @Column(name = "shipping_amount", precision = 10, scale = 2)
+        private BigDecimal shippingAmount;
+
+        @Enumerated(EnumType.STRING)
+        @Column(nullable = false, length = 20)
+        private OrderStatus status;
+
+        @ManyToOne(fetch = FetchType.LAZY)
+        @JoinColumn(name = "shipping_address_id")
+        private Address shippingAddress;
+
+        @ManyToOne(fetch = FetchType.LAZY)
+        @JoinColumn(name = "billing_address_id")
+        private Address billingAddress;
+
+        @Column(name = "notes", length = 500)
+        private String notes;
+
+        @Version
+        private Long version;
+
+        @Column(name = "created_at", nullable = false, updatable = false)
+        private LocalDateTime createdAt;
+
+        @Column(name = "updated_at")
+        private LocalDateTime updatedAt;
+
+        @Column(name = "shipped_at")
+        private LocalDateTime shippedAt;
+
+        @Column(name = "delivered_at")
+        private LocalDateTime deliveredAt;
+
+        @PrePersist
+        protected void onCreate() {
+            createdAt = LocalDateTime.now();
+            status = OrderStatus.PENDING;
+        }
+
+        @PreUpdate
+        protected void onUpdate() {
+            updatedAt = LocalDateTime.now();
+        }
+
+        public Long getId() { return id; }
+        public void setId(Long id) { this.id = id; }
+        public String getOrderNumber() { return orderNumber; }
+        public void setOrderNumber(String orderNumber) { this.orderNumber = orderNumber; }
+        public Customer getCustomer() { return customer; }
+        public void setCustomer(Customer customer) { this.customer = customer; }
+        public List<OrderItem> getItems() { return items; }
+        public BigDecimal getTotalAmount() { return totalAmount; }
+        public void setTotalAmount(BigDecimal totalAmount) { this.totalAmount = totalAmount; }
+        public BigDecimal getTaxAmount() { return taxAmount; }
+        public void setTaxAmount(BigDecimal taxAmount) { this.taxAmount = taxAmount; }
+        public BigDecimal getShippingAmount() { return shippingAmount; }
+        public void setShippingAmount(BigDecimal shippingAmount) { this.shippingAmount = shippingAmount; }
+        public OrderStatus getStatus() { return status; }
+        public void setStatus(OrderStatus status) { this.status = status; }
+        public Address getShippingAddress() { return shippingAddress; }
+        public void setShippingAddress(Address shippingAddress) { this.shippingAddress = shippingAddress; }
+        public Address getBillingAddress() { return billingAddress; }
+        public void setBillingAddress(Address billingAddress) { this.billingAddress = billingAddress; }
+        public String getNotes() { return notes; }
+        public void setNotes(String notes) { this.notes = notes; }
+        public LocalDateTime getCreatedAt() { return createdAt; }
+        public LocalDateTime getUpdatedAt() { return updatedAt; }
+        public LocalDateTime getShippedAt() { return shippedAt; }
+        public void setShippedAt(LocalDateTime shippedAt) { this.shippedAt = shippedAt; }
+        public LocalDateTime getDeliveredAt() { return deliveredAt; }
+        public void setDeliveredAt(LocalDateTime deliveredAt) { this.deliveredAt = deliveredAt; }
+
+        public void addItem(OrderItem item) {
+            items.add(item);
+            item.setOrder(this);
+            recalculateTotal();
+        }
+
+        public void removeItem(OrderItem item) {
+            items.remove(item);
+            item.setOrder(null);
+            recalculateTotal();
+        }
+
+        public void recalculateTotal() {
+            this.totalAmount = items.stream()
+                .map(OrderItem::getSubtotal)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        }
+
+        public BigDecimal getGrandTotal() {
+            BigDecimal total = totalAmount != null ? totalAmount : BigDecimal.ZERO;
+            BigDecimal tax = taxAmount != null ? taxAmount : BigDecimal.ZERO;
+            BigDecimal shipping = shippingAmount != null ? shippingAmount : BigDecimal.ZERO;
+            return total.add(tax).add(shipping);
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (!(o instanceof Order order)) return false;
+            return Objects.equals(orderNumber, order.orderNumber);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(orderNumber);
+        }
+    }
+
+  src/main/java/com/ordersystem/model/Customer.java: |
+    package com.ordersystem.model;
+
+    import javax.persistence.*;
+    import java.util.ArrayList;
+    import java.util.List;
+
+    @Entity
+    @Table(name = "customers")
+    public class Customer {
+        @Id
+        @GeneratedValue(strategy = GenerationType.IDENTITY)
+        private Long id;
+
+        @Column(nullable = false)
+        private String name;
+
+        @Column(unique = true, nullable = false)
+        private String email;
+
+        @OneToMany(mappedBy = "customer", cascade = CascadeType.ALL)
+        private List<Order> orders = new ArrayList<>();
+
+        public Long getId() { return id; }
+        public void setId(Long id) { this.id = id; }
+        public String getName() { return name; }
+        public void setName(String name) { this.name = name; }
+        public String getEmail() { return email; }
+        public void setEmail(String email) { this.email = email; }
+        public List<Order> getOrders() { return orders; }
+    }
+
+  src/main/java/com/ordersystem/model/OrderItem.java: |
+    package com.ordersystem.model;
+
+    import javax.persistence.*;
+    import java.math.BigDecimal;
+
+    @Entity
+    @Table(name = "order_items")
+    public class OrderItem {
+        @Id
+        @GeneratedValue(strategy = GenerationType.IDENTITY)
+        private Long id;
+
+        @ManyToOne(fetch = FetchType.LAZY)
+        @JoinColumn(name = "order_id")
+        private Order order;
+
+        @ManyToOne(fetch = FetchType.LAZY)
+        @JoinColumn(name = "product_id")
+        private Product product;
+
+        private Integer quantity;
+
+        @Column(name = "unit_price")
+        private BigDecimal unitPrice;
+
+        public Long getId() { return id; }
+        public void setId(Long id) { this.id = id; }
+        public Order getOrder() { return order; }
+        public void setOrder(Order order) { this.order = order; }
+        public Product getProduct() { return product; }
+        public void setProduct(Product product) { this.product = product; }
+        public Integer getQuantity() { return quantity; }
+        public void setQuantity(Integer quantity) { this.quantity = quantity; }
+        public BigDecimal getUnitPrice() { return unitPrice; }
+        public void setUnitPrice(BigDecimal unitPrice) { this.unitPrice = unitPrice; }
+
+        public BigDecimal getSubtotal() {
+            return unitPrice.multiply(BigDecimal.valueOf(quantity));
+        }
+    }
+
+  src/main/java/com/ordersystem/model/Product.java: |
+    package com.ordersystem.model;
+
+    import javax.persistence.*;
+    import java.math.BigDecimal;
+
+    @Entity
+    @Table(name = "products")
+    public class Product {
+        @Id
+        @GeneratedValue(strategy = GenerationType.IDENTITY)
+        private Long id;
+
+        @Column(nullable = false)
+        private String name;
+
+        private BigDecimal price;
+
+        @Column(name = "stock_quantity")
+        private Integer stockQuantity;
+
+        public Long getId() { return id; }
+        public void setId(Long id) { this.id = id; }
+        public String getName() { return name; }
+        public void setName(String name) { this.name = name; }
+        public BigDecimal getPrice() { return price; }
+        public void setPrice(BigDecimal price) { this.price = price; }
+        public Integer getStockQuantity() { return stockQuantity; }
+        public void setStockQuantity(Integer stockQuantity) { this.stockQuantity = stockQuantity; }
+    }
+
+  src/main/java/com/ordersystem/model/OrderStatus.java: |
+    package com.ordersystem.model;
+
+    public enum OrderStatus {
+        PENDING,
+        CONFIRMED,
+        PROCESSING,
+        SHIPPED,
+        DELIVERED,
+        CANCELLED,
+        REFUNDED
+    }
+
+  src/main/java/com/ordersystem/model/Address.java: |
+    package com.ordersystem.model;
+
+    import javax.persistence.*;
+
+    @Entity
+    @Table(name = "addresses")
+    public class Address {
+        @Id
+        @GeneratedValue(strategy = GenerationType.IDENTITY)
+        private Long id;
+
+        @Column(nullable = false)
+        private String street;
+
+        @Column(nullable = false)
+        private String city;
+
+        @Column(nullable = false)
+        private String state;
+
+        @Column(name = "postal_code", nullable = false)
+        private String postalCode;
+
+        @Column(nullable = false)
+        private String country;
+
+        public Long getId() { return id; }
+        public void setId(Long id) { this.id = id; }
+        public String getStreet() { return street; }
+        public void setStreet(String street) { this.street = street; }
+        public String getCity() { return city; }
+        public void setCity(String city) { this.city = city; }
+        public String getState() { return state; }
+        public void setState(String state) { this.state = state; }
+        public String getPostalCode() { return postalCode; }
+        public void setPostalCode(String postalCode) { this.postalCode = postalCode; }
+        public String getCountry() { return country; }
+        public void setCountry(String country) { this.country = country; }
+    }
+
+  src/main/java/com/ordersystem/repository/OrderRepository.java: |
+    package com.ordersystem.repository;
+
+    import com.ordersystem.model.Order;
+    import com.ordersystem.model.OrderStatus;
+    import org.springframework.data.jpa.repository.JpaRepository;
+    import org.springframework.data.jpa.repository.Query;
+    import org.springframework.stereotype.Repository;
+    import java.time.LocalDateTime;
+    import java.util.List;
+    import java.util.Optional;
+
+    @Repository
+    public interface OrderRepository extends JpaRepository<Order, Long> {
+        Optional<Order> findByOrderNumber(String orderNumber);
+
+        List<Order> findByCustomerIdAndStatus(Long customerId, OrderStatus status);
+
+        @Query("SELECT o FROM Order o WHERE o.createdAt > :since ORDER BY o.createdAt DESC")
+        List<Order> findRecentOrders(LocalDateTime since);
+
+        @Query("SELECT o FROM Order o WHERE o.status = :status AND o.shippedAt IS NULL")
+        List<Order> findUnshippedByStatus(OrderStatus status);
+
+        long countByStatus(OrderStatus status);
+    }
+
+  src/main/java/com/ordersystem/service/OrderService.java: |
+    package com.ordersystem.service;
+
+    import com.ordersystem.model.Order;
+    import com.ordersystem.model.OrderItem;
+    import com.ordersystem.model.OrderStatus;
+    import com.ordersystem.repository.OrderRepository;
+    import org.springframework.stereotype.Service;
+    import org.springframework.transaction.annotation.Transactional;
+    import java.math.BigDecimal;
+    import java.time.LocalDateTime;
+
+    @Service
+    public class OrderService {
+        private final OrderRepository orderRepository;
+
+        public OrderService(OrderRepository orderRepository) {
+            this.orderRepository = orderRepository;
+        }
+
+        @Transactional
+        public Order createOrder(Order order) {
+            order.recalculateTotal();
+            return orderRepository.save(order);
+        }
+
+        @Transactional
+        public Order addItemToOrder(Long orderId, OrderItem item) {
+            Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new RuntimeException("Order not found"));
+            order.addItem(item);
+            order.recalculateTotal();
+            return orderRepository.save(order);
+        }
+
+        @Transactional
+        public Order updateStatus(Long orderId, OrderStatus newStatus) {
+            Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new RuntimeException("Order not found"));
+            order.setStatus(newStatus);
+            if (newStatus == OrderStatus.SHIPPED) {
+                order.setShippedAt(LocalDateTime.now());
+            } else if (newStatus == OrderStatus.DELIVERED) {
+                order.setDeliveredAt(LocalDateTime.now());
+            }
+            return orderRepository.save(order);
+        }
+    }
+
+must_include_files:
+  - src/main/java/com/ordersystem/model/Order.java
+  # Q1: Reviewer needs OrderStatus to verify PENDING exists
+  - src/main/java/com/ordersystem/model/OrderStatus.java
+  # Q2: Reviewer needs Address to verify @ManyToOne target
+  - src/main/java/com/ordersystem/model/Address.java
+
+must_include_content_from:
+  src/main/java/com/ordersystem/model/Order.java:
+    - '@Table(name = "orders", indexes = {'
+    - "private OrderStatus status"
+    - "private Address shippingAddress"
+    - "public void recalculateTotal()"
+    - "public BigDecimal getGrandTotal()"
+  src/main/java/com/ordersystem/model/OrderStatus.java:
+    - "PENDING"
+    - "SHIPPED"
+  src/main/java/com/ordersystem/model/Address.java:
+    - "public class Address"
+    - "private String postalCode"
+
+must_not_include:
+  # --- OrderRepository.java: JPA repository with overlapping query names ---
+  # HARDEST TRAP: findByCustomerIdAndStatus and findRecentOrders mirror
+  # the @NamedQueries added in the diff. Direct structural overlap.
+  # But repository method signatures don't verify the HQL is correct.
+  - OrderRepository
+  - JpaRepository
+  - findByOrderNumber
+  - findUnshippedByStatus
+  - countByStatus
+  # --- OrderService.java: calls recalculateTotal(), setStatus(), setShippedAt() ---
+  # Direct consumer of the new methods. Spring @Service with @Transactional.
+  # But HOW the service orchestrates Order doesn't help review Order's logic.
+  - OrderService
+  - createOrder
+  - addItemToOrder
+  - updateStatus
+
+must_not_include_files:
+  - src/main/java/com/ordersystem/repository/OrderRepository.java
+  - src/main/java/com/ordersystem/service/OrderService.java
+
+max_fragments: 10
+max_files: 5
+add_garbage_files: false
+skip_garbage_check: true

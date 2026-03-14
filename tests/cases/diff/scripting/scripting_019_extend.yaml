@@ -1,0 +1,225 @@
+# Scenario: model.rb adds `extend ClassMethods` to gain class-level finder methods.
+# class_methods.rb defines a module with `find` and `all` methods.
+#
+# Diff: model.rb changes from an empty class to one that extends ClassMethods,
+# adds an initializer, and demonstrates calling Model.find(1).
+#
+# Reviewer questions:
+#   Q1: "What methods does Model gain from extending ClassMethods?"
+#       -> class_methods.rb (UNCHANGED) defines `find` and `all` — reviewer sees
+#          exactly which class-level methods become available.
+#   Q2: "Does find(id) correctly delegate to new(id: id) given the new initializer?"
+#       -> class_methods.rb shows `new(id: id)` which matches the keyword arg
+#          in Model's new `initialize(id:)`.
+#
+# Not needed:
+#   - query_builder.rb: builds SQL-like queries with a fluent API. Same domain
+#     (data access) but never imported by model.rb — no require edge.
+#   - serializer.rb: converts objects to JSON. Related to models but operates
+#     independently — doesn't reference ClassMethods or Model.
+#   - record.rb: also extends ClassMethods and calls find(). DIRECT structural
+#     edge (same module, same method) but is a different model class.
+#   - lib/instance_methods.rb: module for instance-level methods (save, destroy).
+#     Related pattern (include for instances vs extend for class) but independent.
+#   - active_model.rb: base class with class-level find/all methods defined
+#     directly. Same API (find, all) but doesn't use ClassMethods module.
+
+initial:
+  class_methods.rb: |
+    module ClassMethods
+      def find(id)
+        new(id: id)
+      end
+
+      def all
+        []
+      end
+
+      def count
+        all.size
+      end
+    end
+  model.rb: |
+    class Model
+      attr_reader :id
+
+      def initialize(id:)
+        @id = id
+      end
+    end
+  query_builder.rb: |
+    class QueryBuilder
+      def initialize(table)
+        @table = table
+        @conditions = []
+        @order = nil
+      end
+
+      def where(condition)
+        @conditions << condition
+        self
+      end
+
+      def order_by(column, direction = :asc)
+        @order = "#{column} #{direction}"
+        self
+      end
+
+      def to_sql
+        sql = "SELECT * FROM #{@table}"
+        sql += " WHERE #{@conditions.join(' AND ')}" unless @conditions.empty?
+        sql += " ORDER BY #{@order}" if @order
+        sql
+      end
+    end
+  serializer.rb: |
+    module Serializer
+      def self.to_json(object)
+        fields = object.instance_variables.map do |var|
+          key = var.to_s.delete('@')
+          value = object.instance_variable_get(var)
+          "\"#{key}\": \"#{value}\""
+        end
+        "{ #{fields.join(', ')} }"
+      end
+
+      def self.from_json(json_str, klass)
+        pairs = json_str.scan(/"(\w+)":\s*"([^"]*)"/)
+        obj = klass.allocate
+        pairs.each { |k, v| obj.instance_variable_set("@#{k}", v) }
+        obj
+      end
+    end
+  record.rb: |
+    require_relative 'class_methods'
+
+    class Record
+      extend ClassMethods
+
+      attr_reader :id, :type
+
+      def initialize(id:, type: 'generic')
+        @id = id
+        @type = type
+      end
+
+      def save
+        puts "Saving record #{id}"
+      end
+    end
+
+    r = Record.find(42)
+    puts r.id
+  lib/instance_methods.rb: |
+    module InstanceMethods
+      def save
+        raise NotImplementedError, "#{self.class}#save not implemented"
+      end
+
+      def destroy
+        raise NotImplementedError, "#{self.class}#destroy not implemented"
+      end
+
+      def persisted?
+        !@id.nil?
+      end
+
+      def new_record?
+        !persisted?
+      end
+    end
+  active_model.rb: |
+    class ActiveModel
+      attr_reader :id
+
+      def self.find(id)
+        new(id)
+      end
+
+      def self.all
+        @records ||= []
+      end
+
+      def self.create(attrs = {})
+        instance = new(nil)
+        attrs.each { |k, v| instance.instance_variable_set("@#{k}", v) }
+        instance
+      end
+
+      def initialize(id)
+        @id = id
+      end
+    end
+
+changed:
+  class_methods.rb: |
+    module ClassMethods
+      def find(id)
+        new(id: id)
+      end
+
+      def all
+        []
+      end
+
+      def count
+        all.size
+      end
+    end
+  model.rb: |
+    require_relative 'class_methods'
+
+    class Model
+      extend ClassMethods
+
+      attr_reader :id
+
+      def initialize(id:)
+        @id = id
+      end
+    end
+
+    model = Model.find(1)
+
+must_include_files:
+  # Q1: class_methods.rb defines the methods gained via extend
+  - class_methods.rb
+must_include_content_from:
+  class_methods.rb:
+    - "def find(id)"
+    - "def all"
+  model.rb:
+    - "extend ClassMethods"
+    - "Model.find"
+must_not_include:
+  # query_builder.rb: SQL builder, no require edge to ClassMethods or Model
+  - QueryBuilder
+  - to_sql
+  - order_by
+  # serializer.rb: JSON serialization, independent of Model's class methods
+  - Serializer
+  - to_json
+  - from_json
+  # record.rb: HARDEST TRAP — also extends ClassMethods, calls find()
+  # Same module, same method, same pattern, but different class
+  - "class Record"
+  - "type: 'generic'"
+  - "Saving record"
+  # lib/instance_methods.rb: instance-level module, related pattern
+  - InstanceMethods
+  - persisted?
+  - new_record?
+  # active_model.rb: has find/all methods directly — same API, no module
+  - ActiveModel
+  - "create"
+  - "@records"
+must_not_include_files:
+  - query_builder.rb
+  - serializer.rb
+  - record.rb
+  - lib/instance_methods.rb
+  - active_model.rb
+max_fragments: 8
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

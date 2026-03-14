@@ -1,0 +1,192 @@
+# Scenario: service.ts is rewritten to import Logger decorator from decorators.ts
+#   and apply @Logger to a method. Only service.ts is changed.
+#
+# Diff shows:
+#   - console.log('initial');
+#   + import { Logger } from './decorators';
+#   + export class ApiService { @Logger fetchData(url: string): Promise<any> { ... } }
+#
+# Reviewer questions:
+#   Q1: "What does @Logger do — does it wrap fetchData correctly?"
+#       -> decorators.ts (UNCHANGED) defines Logger as a method decorator that
+#          wraps the original function, logging args before calling it.
+#          Reviewer must see the decorator body to verify it preserves `this`
+#          and return value.
+#
+#   Q2: "Does Logger handle async methods — fetchData returns a Promise?"
+#       -> Same file: Logger calls original.apply(this, args) and returns
+#          the result. For Promises, the log fires before the await completes.
+#          Reviewer needs the body to assess async behavior.
+#
+# Not needed for comprehension:
+#   - memoize-decorator.ts: Another method decorator that caches return values.
+#     SAME PATTERN as Logger (method decorator with descriptor.value wrapping).
+#     HARDEST TRAP: structurally identical decorator shape, same file location.
+#     But not imported by service.ts.
+#
+#   - api-client.ts: HTTP client class with fetchData-like methods.
+#     KEYWORD OVERLAP: has methods named getData/postData similar to fetchData.
+#     But not related to decorators at all.
+
+initial:
+  decorators.ts: |
+    export function Logger(target: any, key: string, descriptor: PropertyDescriptor) {
+        const original = descriptor.value;
+        descriptor.value = function(...args: any[]) {
+            console.log(`Calling ${key} with args:`, args);
+            return original.apply(this, args);
+        };
+        return descriptor;
+    }
+
+    export function Readonly(target: any, key: string) {
+        Object.defineProperty(target, key, { writable: false });
+    }
+  service.ts: |
+    console.log('initial');
+  memoize-decorator.ts: |
+    const cache = new WeakMap<object, Map<string, any>>();
+
+    export function Memoize(target: any, key: string, descriptor: PropertyDescriptor) {
+        const original = descriptor.value;
+        descriptor.value = function(...args: any[]) {
+            if (!cache.has(this)) cache.set(this, new Map());
+            const instanceCache = cache.get(this)!;
+            const cacheKey = `${key}:${JSON.stringify(args)}`;
+            if (instanceCache.has(cacheKey)) return instanceCache.get(cacheKey);
+            const result = original.apply(this, args);
+            instanceCache.set(cacheKey, result);
+            return result;
+        };
+        return descriptor;
+    }
+
+    export function ClearCache(target: any, key: string, descriptor: PropertyDescriptor) {
+        const original = descriptor.value;
+        descriptor.value = function(...args: any[]) {
+            cache.delete(this);
+            return original.apply(this, args);
+        };
+        return descriptor;
+    }
+  api-client.ts: |
+    export class ApiClient {
+        constructor(private baseUrl: string) {}
+
+        async getData<T>(endpoint: string): Promise<T> {
+            const response = await fetch(`${this.baseUrl}${endpoint}`);
+            return response.json();
+        }
+
+        async postData<T>(endpoint: string, body: unknown): Promise<T> {
+            const response = await fetch(`${this.baseUrl}${endpoint}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+            });
+            return response.json();
+        }
+    }
+
+changed:
+  decorators.ts: |
+    export function Logger(target: any, key: string, descriptor: PropertyDescriptor) {
+        const original = descriptor.value;
+        descriptor.value = function(...args: any[]) {
+            console.log(`Calling ${key} with args:`, args);
+            return original.apply(this, args);
+        };
+        return descriptor;
+    }
+
+    export function Readonly(target: any, key: string) {
+        Object.defineProperty(target, key, { writable: false });
+    }
+  service.ts: |
+    import { Logger } from './decorators';
+
+    export class ApiService {
+        @Logger
+        fetchData(url: string): Promise<any> {
+            return fetch(url).then(res => res.json());
+        }
+    }
+  memoize-decorator.ts: |
+    const cache = new WeakMap<object, Map<string, any>>();
+
+    export function Memoize(target: any, key: string, descriptor: PropertyDescriptor) {
+        const original = descriptor.value;
+        descriptor.value = function(...args: any[]) {
+            if (!cache.has(this)) cache.set(this, new Map());
+            const instanceCache = cache.get(this)!;
+            const cacheKey = `${key}:${JSON.stringify(args)}`;
+            if (instanceCache.has(cacheKey)) return instanceCache.get(cacheKey);
+            const result = original.apply(this, args);
+            instanceCache.set(cacheKey, result);
+            return result;
+        };
+        return descriptor;
+    }
+
+    export function ClearCache(target: any, key: string, descriptor: PropertyDescriptor) {
+        const original = descriptor.value;
+        descriptor.value = function(...args: any[]) {
+            cache.delete(this);
+            return original.apply(this, args);
+        };
+        return descriptor;
+    }
+  api-client.ts: |
+    export class ApiClient {
+        constructor(private baseUrl: string) {}
+
+        async getData<T>(endpoint: string): Promise<T> {
+            const response = await fetch(`${this.baseUrl}${endpoint}`);
+            return response.json();
+        }
+
+        async postData<T>(endpoint: string, body: unknown): Promise<T> {
+            const response = await fetch(`${this.baseUrl}${endpoint}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+            });
+            return response.json();
+        }
+    }
+
+must_include_files:
+  - service.ts
+  # Q1+Q2: Logger decorator wraps fetchData — reviewer needs to see how
+  - decorators.ts
+
+must_include_content_from:
+  service.ts:
+    - "import { Logger } from './decorators'"
+    - "@Logger"
+    - "fetchData(url: string)"
+  decorators.ts:
+    - "export function Logger(target: any, key: string, descriptor: PropertyDescriptor)"
+    - "original.apply(this, args)"
+
+must_not_include:
+  # --- memoize-decorator.ts: IDENTICAL decorator pattern ---
+  # HARDEST TRAP. Same descriptor.value wrapping, same apply pattern,
+  # same decorator file location. But Memoize is not used by service.ts.
+  - Memoize
+  - ClearCache
+  - WeakMap
+  # --- api-client.ts: HTTP client with similar fetch methods ---
+  # getData/postData are similar to fetchData but not decorator-related.
+  - ApiClient
+  - getData
+  - postData
+
+must_not_include_files:
+  - memoize-decorator.ts
+  - api-client.ts
+
+max_fragments: 5
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

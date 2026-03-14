@@ -1,0 +1,146 @@
+# Scenario: func0 at head of 10-function call chain gets return value — tests score normalization
+# Changed: test.py — func0() returns 1, connected via chain func0->func1->...->func9
+# Reviewer needs: test.py (changed, entire chain is in one file)
+# Trap: metrics.py — also has a func0/func1 naming pattern, similar numeric chain
+# Trap: aggregator.py — call chain structure similar to funcN chain, processes numbers
+
+initial:
+  test.py: |
+    def func0():
+        pass
+
+    def func1():
+        func0()
+
+    def func2():
+        func1()
+
+    def func3():
+        func2()
+
+    def func4():
+        func3()
+
+    def func5():
+        func4()
+
+    def func6():
+        func5()
+
+    def func7():
+        func6()
+
+    def func8():
+        func7()
+
+    def func9():
+        func8()
+  metrics.py: |
+    def func0():
+        return 3.14159
+
+    def func1():
+        return func0() * 2
+
+    class MetricsCollector:
+        def normalize_score(self, score):
+            return score / 100.0
+
+        def collect(self):
+            return func0() + func1()
+  aggregator.py: |
+    def aggregate_step0():
+        return 0
+
+    def aggregate_step1():
+        return aggregate_step0() + 1
+
+    def aggregate_step2():
+        return aggregate_step1() + 2
+
+    class ChainAggregator:
+        def run_chain(self):
+            return aggregate_step2()
+
+changed:
+  test.py: |
+    def func0():
+        return 1
+
+    def func1():
+        func0()
+
+    def func2():
+        func1()
+
+    def func3():
+        func2()
+
+    def func4():
+        func3()
+
+    def func5():
+        func4()
+
+    def func6():
+        func5()
+
+    def func7():
+        func6()
+
+    def func8():
+        func7()
+
+    def func9():
+        func8()
+  metrics.py: |
+    def func0():
+        return 3.14159
+
+    def func1():
+        return func0() * 2
+
+    class MetricsCollector:
+        def normalize_score(self, score):
+            return score / 100.0
+
+        def collect(self):
+            return func0() + func1()
+  aggregator.py: |
+    def aggregate_step0():
+        return 0
+
+    def aggregate_step1():
+        return aggregate_step0() + 1
+
+    def aggregate_step2():
+        return aggregate_step1() + 2
+
+    class ChainAggregator:
+        def run_chain(self):
+            return aggregate_step2()
+
+# === Assertions ===
+
+must_include_files:
+- test.py
+
+must_include_content_from:
+  test.py:
+    - 'def func0():'
+    - return 1
+
+must_not_include:
+- MetricsCollector
+- normalize_score
+- ChainAggregator
+- aggregate_step0
+
+must_not_include_files:
+- metrics.py
+- aggregator.py
+
+max_fragments: 4
+max_files: 2
+add_garbage_files: false
+skip_garbage_check: true

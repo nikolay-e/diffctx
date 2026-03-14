@@ -1,0 +1,193 @@
+# Reviewer sees: tests/login.spec.ts changes from stub to a full Playwright
+# test that imports getLoginUrl and getCredentials from the page object,
+# fills in form fields, clicks submit, and asserts navigation to /dashboard.
+#
+# Reviewer questions:
+#   Q1: "What URL does getLoginUrl() return — where does the test navigate?"
+#       -> tests/pages/login.ts: getLoginUrl() returns '/login'. The reviewer
+#          needs this to confirm page.goto targets the right path.
+#   Q2: "What credentials does getCredentials() return — are they test fixtures?"
+#       -> tests/pages/login.ts: returns { username: 'test', password: 'test123' }.
+#          These are test fixtures (pragma: allowlist secret). Reviewer confirms
+#          the test is using hardcoded test data, not real credentials.
+#   Q3: "Is there a related test or page object for the dashboard page the test asserts against?"
+#       -> tests/pages/dashboard.ts: defines getDashboardUrl() returning '/dashboard'.
+#          Confirms the assertion toHaveURL('/dashboard') matches the actual route.
+#
+# Not needed:
+#   - tests/pages/settings.ts: settings page object. Same directory sibling
+#     but different page, not referenced by the login test.
+#   - tests/helpers/test-data.ts: generic test data generators. The login test
+#     uses its own getCredentials(), not this utility.
+
+initial:
+  tests/login.spec.ts: |
+    import { test } from '@playwright/test';
+
+    test('placeholder login test', async ({ page }) => {
+        await page.goto('/');
+    });
+  tests/pages/login.ts: |
+    export function getLoginUrl(): string {
+        return '/login';
+    }
+
+    export function getCredentials() {
+        return { username: 'test', password: 'test123' };  // pragma: allowlist secret
+    }
+
+    export function getLoginFormSelectors() {
+        return {
+            usernameField: '[name=username]',
+            passwordField: '[name=password]',
+            submitButton: 'button[type=submit]',
+        };
+    }
+  tests/pages/dashboard.ts: |
+    export function getDashboardUrl(): string {
+        return '/dashboard';
+    }
+
+    export function getDashboardSelectors() {
+        return {
+            welcomeMessage: '[data-testid=welcome]',
+            logoutButton: '[data-testid=logout]',
+            navMenu: '[data-testid=nav-menu]',
+        };
+    }
+  # --- Not needed: settings page object, not referenced ---
+  tests/pages/settings.ts: |
+    export function getSettingsUrl(): string {
+        return '/settings';
+    }
+
+    export function getSettingsSelectors() {
+        return {
+            themeToggle: '[data-testid=theme-toggle]',
+            languageSelect: '[data-testid=language-select]',
+            saveButton: '[data-testid=save-settings]',
+        };
+    }
+
+    export function getDefaultSettings() {
+        return { theme: 'light', language: 'en', notifications: true };
+    }
+  # --- Not needed: test data generators, login uses its own fixture ---
+  tests/helpers/test-data.ts: |
+    export function randomEmail(): string {
+        return `test-${Date.now()}@example.com`;
+    }
+
+    export function randomUsername(): string {
+        return `user_${Math.random().toString(36).slice(2, 8)}`;
+    }
+
+    export function generateTestUser() {
+        return {
+            username: randomUsername(),
+            email: randomEmail(),
+            displayName: 'Test User',
+        };
+    }
+
+changed:
+  tests/login.spec.ts: |
+    import { test, expect } from '@playwright/test';
+    import { getLoginUrl, getCredentials } from './pages/login';
+
+    test('user can log in', async ({ page }) => {
+        await page.goto(getLoginUrl());
+        const { username, password } = getCredentials();
+        await page.fill('[name=username]', username);
+        await page.fill('[name=password]', password);
+        await page.click('button[type=submit]');
+        await expect(page).toHaveURL('/dashboard');
+    });
+  # Unchanged
+  tests/pages/login.ts: |
+    export function getLoginUrl(): string {
+        return '/login';
+    }
+
+    export function getCredentials() {
+        return { username: 'test', password: 'test123' };  // pragma: allowlist secret
+    }
+
+    export function getLoginFormSelectors() {
+        return {
+            usernameField: '[name=username]',
+            passwordField: '[name=password]',
+            submitButton: 'button[type=submit]',
+        };
+    }
+  tests/pages/dashboard.ts: |
+    export function getDashboardUrl(): string {
+        return '/dashboard';
+    }
+
+    export function getDashboardSelectors() {
+        return {
+            welcomeMessage: '[data-testid=welcome]',
+            logoutButton: '[data-testid=logout]',
+            navMenu: '[data-testid=nav-menu]',
+        };
+    }
+  tests/pages/settings.ts: |
+    export function getSettingsUrl(): string {
+        return '/settings';
+    }
+
+    export function getSettingsSelectors() {
+        return {
+            themeToggle: '[data-testid=theme-toggle]',
+            languageSelect: '[data-testid=language-select]',
+            saveButton: '[data-testid=save-settings]',
+        };
+    }
+
+    export function getDefaultSettings() {
+        return { theme: 'light', language: 'en', notifications: true };
+    }
+  tests/helpers/test-data.ts: |
+    export function randomEmail(): string {
+        return `test-${Date.now()}@example.com`;
+    }
+
+    export function randomUsername(): string {
+        return `user_${Math.random().toString(36).slice(2, 8)}`;
+    }
+
+    export function generateTestUser() {
+        return {
+            username: randomUsername(),
+            email: randomEmail(),
+            displayName: 'Test User',
+        };
+    }
+
+must_include_files:
+  # Q1+Q2: Login page object with URL and credentials.
+  # Reviewer needs to verify getLoginUrl() returns the right path
+  # and getCredentials() provides test-safe fixture data.
+  - tests/pages/login.ts
+must_include_content_from:
+  tests/pages/login.ts:
+    - "getLoginUrl"
+    - "'/login'"
+    - "getCredentials"
+must_not_include:
+  # settings.ts: different page object, not referenced
+  - getSettingsUrl
+  - getSettingsSelectors
+  - getDefaultSettings
+  # test-data.ts: generic generators, login uses its own fixture
+  - randomEmail
+  - randomUsername
+  - generateTestUser
+must_not_include_files:
+  - tests/pages/settings.ts
+  - tests/helpers/test-data.ts
+max_fragments: 7
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

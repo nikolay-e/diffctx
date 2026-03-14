@@ -1,0 +1,284 @@
+initial:
+  paper/main.md: |
+    # Abstract
+
+    This paper presents a novel approach to machine learning optimization.
+    We build upon the work of [@smith2020] and [@jones2019] to propose
+    an improved gradient descent algorithm.
+
+    # Introduction
+
+    Machine learning has revolutionized many fields. The foundational work
+    by [@smith2020] established the baseline for modern optimization techniques.
+    Building on this, [@jones2019] introduced adaptive learning rates.
+
+    # Methods
+
+    ## Algorithm Design
+
+    According to [@smith2020], the approach works well for convex functions.
+    We extend this by incorporating ideas from [@jones2019]:
+
+    1. Initialize weights randomly
+    2. Compute gradient using mini-batch
+    3. Apply adaptive learning rate from [@jones2019]
+    4. Update weights using momentum from [@smith2020]
+
+    ## Implementation Details
+
+    Our implementation follows the guidelines from [@smith2020] for numerical
+    stability and the efficiency recommendations from [@jones2019].
+
+    # Results
+
+    As shown by [@smith2020], results are positive for baseline comparisons.
+    When combined with [@jones2019], we achieve 15% improvement.
+
+    # Conclusion
+
+    We demonstrated that combining [@smith2020] and [@jones2019] yields
+    superior performance on standard benchmarks.
+  paper/references.bib: |
+    @article{smith2020,
+      author = {Smith, John},
+      title = {Optimization in Deep Learning},
+      journal = {Journal of ML},
+      year = {2020}
+    }
+
+    @article{jones2019,
+      author = {Jones, Sarah},
+      title = {Adaptive Learning Rates},
+      journal = {NeurIPS},
+      year = {2019}
+    }
+
+  # --- Tricky garbage: name collision — another paper citing same references ---
+  paper/appendix.md: |
+    # Appendix
+
+    GARBAGE_ALGO_006_APPENDIX_SEC_G
+    GARBAGE_ALGO_006_SUPP_MATERIAL_H
+
+    ## Additional Experiments
+
+    Following the methodology from [@smith2020], we ran supplementary tests.
+    The adaptive rates from [@jones2019] were applied with different hyperparameters.
+
+    ## Extended Results Table
+
+    | Method | Accuracy | Based on |
+    |--------|----------|----------|
+    | Baseline | 85% | [@smith2020] |
+    | Adaptive | 91% | [@jones2019] |
+
+  # --- Tricky garbage: structural sibling — related paper file with similar structure ---
+  paper/related_work.md: |
+    # Related Work
+
+    GARBAGE_ALGO_006_RELATED_WORK_I
+    GARBAGE_ALGO_006_SURVEY_MARKER_J
+
+    ## Optimization Techniques
+
+    Several authors have contributed to gradient descent optimization.
+    The work by [@smith2020] on convex optimization is foundational.
+    [@jones2019] extended this with adaptive learning rate schedules.
+
+    ## Algorithm Design Patterns
+
+    Modern algorithm design follows patterns established in the literature.
+
+  # --- Tricky garbage: same citations in a different document ---
+  paper/presentation_notes.md: |
+    # Presentation Notes
+
+    GARBAGE_ALGO_006_SLIDES_MARKER_K
+    GARBAGE_ALGO_006_TALK_OUTLINE_L
+
+    Slide 3: Cite [@smith2020] for motivation
+    Slide 5: Show [@jones2019] adaptive rates chart
+    Slide 8: Combined approach results
+
+  # --- Plain garbage ---
+  garbage_notes.md: |
+    # Draft Notes
+
+    GARBAGE_ALGO_006_DRAFT_MARKER_A
+
+    ## Ideas
+
+    GARBAGE_ALGO_006_IDEAS_MARKER_B
+
+    Some random thoughts...
+  garbage_outline.md: |
+    # Paper Outline
+
+    GARBAGE_ALGO_006_OUTLINE_MARKER_C
+    GARBAGE_ALGO_006_STRUCTURE_MARKER_D
+    GARBAGE_ALGO_006_PLAN_MARKER_E
+    GARBAGE_ALGO_006_TODO_MARKER_F
+
+    1. Introduction
+    2. Methods
+    3. Results
+changed:
+  paper/main.md: |
+    # Abstract
+
+    This paper presents a novel approach to machine learning optimization.
+    We build upon the work of [@smith2020] and [@jones2019] to propose
+    an improved gradient descent algorithm with enhanced convergence guarantees.
+
+    # Introduction
+
+    Machine learning has revolutionized many fields. The foundational work
+    by [@smith2020] established the baseline for modern optimization techniques.
+    Building on this, [@jones2019] introduced adaptive learning rates.
+
+    # Methods
+
+    ## Algorithm Design
+
+    According to [@smith2020], the approach works well for convex functions.
+    We extend this by incorporating ideas from [@jones2019] and adding
+    a novel regularization term:
+
+    1. Initialize weights randomly
+    2. Compute gradient using mini-batch
+    3. Apply adaptive learning rate from [@jones2019]
+    4. Add L2 regularization with decay schedule
+    5. Update weights using momentum from [@smith2020]
+
+    ## Implementation Details
+
+    Our implementation follows the guidelines from [@smith2020] for numerical
+    stability and the efficiency recommendations from [@jones2019].
+
+    # Results
+
+    As shown by [@smith2020], results are positive for baseline comparisons.
+    When combined with [@jones2019], we achieve 15% improvement.
+
+    # Conclusion
+
+    We demonstrated that combining [@smith2020] and [@jones2019] yields
+    superior performance on standard benchmarks.
+  paper/references.bib: |
+    @article{smith2020,
+      author = {Smith, John},
+      title = {Optimization in Deep Learning},
+      journal = {Journal of ML},
+      year = {2020}
+    }
+
+    @article{jones2019,
+      author = {Jones, Sarah},
+      title = {Adaptive Learning Rates},
+      journal = {NeurIPS},
+      year = {2019}
+    }
+  paper/appendix.md: |
+    # Appendix
+
+    GARBAGE_ALGO_006_APPENDIX_SEC_G
+    GARBAGE_ALGO_006_SUPP_MATERIAL_H
+
+    ## Additional Experiments
+
+    Following the methodology from [@smith2020], we ran supplementary tests.
+    The adaptive rates from [@jones2019] were applied with different hyperparameters.
+
+    ## Extended Results Table
+
+    | Method | Accuracy | Based on |
+    |--------|----------|----------|
+    | Baseline | 85% | [@smith2020] |
+    | Adaptive | 91% | [@jones2019] |
+  paper/related_work.md: |
+    # Related Work
+
+    GARBAGE_ALGO_006_RELATED_WORK_I
+    GARBAGE_ALGO_006_SURVEY_MARKER_J
+
+    ## Optimization Techniques
+
+    Several authors have contributed to gradient descent optimization.
+    The work by [@smith2020] on convex optimization is foundational.
+    [@jones2019] extended this with adaptive learning rate schedules.
+
+    ## Algorithm Design Patterns
+
+    Modern algorithm design follows patterns established in the literature.
+  paper/presentation_notes.md: |
+    # Presentation Notes
+
+    GARBAGE_ALGO_006_SLIDES_MARKER_K
+    GARBAGE_ALGO_006_TALK_OUTLINE_L
+
+    Slide 3: Cite [@smith2020] for motivation
+    Slide 5: Show [@jones2019] adaptive rates chart
+    Slide 8: Combined approach results
+  garbage_notes.md: |
+    # Draft Notes
+
+    GARBAGE_ALGO_006_DRAFT_MARKER_A
+
+    ## Ideas
+
+    GARBAGE_ALGO_006_IDEAS_MARKER_B
+
+    Some random thoughts...
+  garbage_outline.md: |
+    # Paper Outline
+
+    GARBAGE_ALGO_006_OUTLINE_MARKER_C
+    GARBAGE_ALGO_006_STRUCTURE_MARKER_D
+    GARBAGE_ALGO_006_PLAN_MARKER_E
+    GARBAGE_ALGO_006_TODO_MARKER_F
+
+    1. Introduction
+    2. Methods
+    3. Results
+
+# === Assertions ===
+
+must_include_files:
+- paper/main.md
+
+must_include_content_from:
+  paper/main.md:
+    - an improved gradient descent algorithm with enhanced convergence guarantees.
+    - We extend this by incorporating ideas from [@jones2019] and adding
+    - a novel regularization term
+    - Add L2 regularization with decay schedule
+
+must_not_include:
+# Plain garbage markers
+- GARBAGE_ALGO_006_DRAFT_MARKER_A
+- GARBAGE_ALGO_006_IDEAS_MARKER_B
+- GARBAGE_ALGO_006_OUTLINE_MARKER_C
+- GARBAGE_ALGO_006_STRUCTURE_MARKER_D
+- GARBAGE_ALGO_006_PLAN_MARKER_E
+- GARBAGE_ALGO_006_TODO_MARKER_F
+# Tricky: name collision — appendix citing same [@smith2020] and [@jones2019]
+- GARBAGE_ALGO_006_APPENDIX_SEC_G
+- GARBAGE_ALGO_006_SUPP_MATERIAL_H
+# Tricky: structural sibling — related_work.md with same citations and section patterns
+- GARBAGE_ALGO_006_RELATED_WORK_I
+- GARBAGE_ALGO_006_SURVEY_MARKER_J
+# Tricky: same citations in presentation notes
+- GARBAGE_ALGO_006_SLIDES_MARKER_K
+- GARBAGE_ALGO_006_TALK_OUTLINE_L
+
+must_not_include_files:
+- garbage_notes.md
+- garbage_outline.md
+- paper/appendix.md
+- paper/related_work.md
+- paper/presentation_notes.md
+
+max_fragments: 4
+max_files: 1
+add_garbage_files: false
+skip_garbage_check: true

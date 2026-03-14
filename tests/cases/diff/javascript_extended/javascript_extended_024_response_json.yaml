@@ -1,0 +1,161 @@
+# Reviewer sees: src/handlers/data-handler.ts changes from stub to a handler
+# that imports createResponse from the service layer and wraps data in it
+# before sending via res.json().
+#
+# Reviewer questions:
+#   Q1: "What does createResponse() return — what's the actual JSON shape clients receive?"
+#       -> src/services/response-service.ts: defines ApiResponse<T> { data, success, timestamp }
+#          and createResponse() that wraps data with success: true and a timestamp.
+#          The reviewer needs this to understand the response envelope clients get
+#          from GET /data.
+#   Q2: "Is ApiResponse used consistently — are other handlers using the same wrapper?"
+#       -> src/handlers/status-handler.ts: imports createResponse and uses the same
+#          pattern. This confirms createResponse is an established convention, not
+#          a one-off.
+#
+# Not needed:
+#   - src/services/logging-service.ts: request logging. Different service-layer
+#     concern, no import relationship with response-service or the handler.
+#   - src/middleware/error-handler.ts: global error handling middleware. Catches
+#     unhandled errors, but the handler's happy path doesn't interact with it.
+
+initial:
+  src/handlers/data-handler.ts: |
+    import { Request, Response } from 'express';
+
+    export function getDataHandler(req: Request, res: Response) {
+        res.json({ message: 'placeholder' });
+    }
+  src/services/response-service.ts: |
+    export interface ApiResponse<T> {
+        data: T;
+        success: boolean;
+        timestamp: number;
+    }
+
+    export function createResponse<T>(data: T): ApiResponse<T> {
+        return { data, success: true, timestamp: Date.now() };
+    }
+  src/handlers/status-handler.ts: |
+    import { Request, Response } from 'express';
+    import { createResponse } from '../services/response-service';
+
+    export function getStatusHandler(req: Request, res: Response) {
+        const status = { healthy: true, version: '1.0.0' };
+        res.json(createResponse(status));
+    }
+  # --- Not needed: request logging, no response-service import ---
+  src/services/logging-service.ts: |
+    interface LogEntry {
+        method: string;
+        path: string;
+        statusCode: number;
+        durationMs: number;
+        timestamp: Date;
+    }
+
+    const logs: LogEntry[] = [];
+
+    export function logRequest(method: string, path: string, statusCode: number, durationMs: number): void {
+        logs.push({ method, path, statusCode, durationMs, timestamp: new Date() });
+    }
+
+    export function getRecentLogs(limit: number = 100): LogEntry[] {
+        return logs.slice(-limit);
+    }
+  # --- Not needed: error handler, different middleware concern ---
+  src/middleware/error-handler.ts: |
+    import { Request, Response, NextFunction } from 'express';
+
+    export function globalErrorHandler(err: Error, req: Request, res: Response, next: NextFunction): void {
+        console.error('Unhandled error:', err.message);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+
+    export function notFoundHandler(req: Request, res: Response): void {
+        res.status(404).json({ error: 'Not found', path: req.path });
+    }
+
+changed:
+  src/handlers/data-handler.ts: |
+    import { Request, Response } from 'express';
+    import { createResponse } from '../services/response-service';
+
+    export function getDataHandler(req: Request, res: Response) {
+        const data = { message: 'Hello', items: [1, 2, 3] };
+        res.json(createResponse(data));
+    }
+  # Unchanged
+  src/services/response-service.ts: |
+    export interface ApiResponse<T> {
+        data: T;
+        success: boolean;
+        timestamp: number;
+    }
+
+    export function createResponse<T>(data: T): ApiResponse<T> {
+        return { data, success: true, timestamp: Date.now() };
+    }
+  src/handlers/status-handler.ts: |
+    import { Request, Response } from 'express';
+    import { createResponse } from '../services/response-service';
+
+    export function getStatusHandler(req: Request, res: Response) {
+        const status = { healthy: true, version: '1.0.0' };
+        res.json(createResponse(status));
+    }
+  src/services/logging-service.ts: |
+    interface LogEntry {
+        method: string;
+        path: string;
+        statusCode: number;
+        durationMs: number;
+        timestamp: Date;
+    }
+
+    const logs: LogEntry[] = [];
+
+    export function logRequest(method: string, path: string, statusCode: number, durationMs: number): void {
+        logs.push({ method, path, statusCode, durationMs, timestamp: new Date() });
+    }
+
+    export function getRecentLogs(limit: number = 100): LogEntry[] {
+        return logs.slice(-limit);
+    }
+  src/middleware/error-handler.ts: |
+    import { Request, Response, NextFunction } from 'express';
+
+    export function globalErrorHandler(err: Error, req: Request, res: Response, next: NextFunction): void {
+        console.error('Unhandled error:', err.message);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+
+    export function notFoundHandler(req: Request, res: Response): void {
+        res.status(404).json({ error: 'Not found', path: req.path });
+    }
+
+must_include_files:
+  # Q1: Response envelope definition. Reviewer needs to see what
+  # createResponse wraps around data (success flag + timestamp).
+  - src/services/response-service.ts
+must_include_content_from:
+  src/services/response-service.ts:
+    - "ApiResponse"
+    - "createResponse"
+    - "success: true"
+must_not_include:
+  # logging-service.ts: request logging, no response-service import
+  - LogEntry
+  - logRequest
+  - getRecentLogs
+  # error-handler.ts: error middleware, different concern
+  - globalErrorHandler
+  - notFoundHandler
+  - "Internal server error"
+must_not_include_files:
+  - src/services/logging-service.ts
+  - src/middleware/error-handler.ts
+max_fragments: 5
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

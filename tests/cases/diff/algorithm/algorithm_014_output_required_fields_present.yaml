@@ -1,0 +1,266 @@
+initial:
+  src/models/product.py: |
+    from dataclasses import dataclass
+    from typing import Optional, List
+    from decimal import Decimal
+    from datetime import datetime
+
+    @dataclass
+    class Product:
+        id: int
+        name: str
+        price: Decimal
+        description: Optional[str] = None
+        stock: int = 0
+        created_at: datetime = None
+
+        def __post_init__(self):
+            if self.created_at is None:
+                self.created_at = datetime.now()
+
+        def is_available(self) -> bool:
+            return self.stock > 0
+
+        def apply_discount(self, percent: Decimal) -> Decimal:
+            discount = self.price * (percent / 100)
+            return self.price - discount
+
+        def update_stock(self, quantity: int) -> None:
+            self.stock += quantity
+            if self.stock < 0:
+                self.stock = 0
+
+  # --- Tricky garbage: name collision — another Product-like class with apply_discount, update_stock ---
+  src/models/subscription.py: |
+    from dataclasses import dataclass, field
+    from typing import Optional, List
+    from decimal import Decimal
+    from enum import Enum
+    GARBAGE_ALGO_014_SUBSCRIPTION_G = "subscription"
+    GARBAGE_ALGO_014_SUB_VER_H = "3.1"
+
+    class SubscriptionStatus(Enum):
+        ACTIVE = "active"
+        INACTIVE = "inactive"
+        DISCONTINUED = "discontinued"
+
+    @dataclass
+    class Subscription:
+        id: int
+        name: str
+        price: Decimal
+        status: SubscriptionStatus = SubscriptionStatus.ACTIVE
+        tags: List[str] = field(default_factory=list)
+
+        def is_available(self) -> bool:
+            return self.status == SubscriptionStatus.ACTIVE
+
+        def apply_discount(self, percent: Decimal) -> Decimal:
+            GARBAGE_ALGO_014_SUB_DISC_I = True
+            return self.price * (1 - percent / 100)
+
+        def add_tag(self, tag: str) -> None:
+            if tag not in self.tags:
+                self.tags.append(tag)
+
+  # --- Tricky garbage: same-import consumer — uses dataclass, Decimal, Enum like diff ---
+  src/models/pricing_rule.py: |
+    from dataclasses import dataclass
+    from decimal import Decimal
+    from enum import Enum
+    GARBAGE_ALGO_014_PRICING_J = "pricing_rule"
+    GARBAGE_ALGO_014_PRICING_VER_K = "1.0"
+
+    class PricingTier(Enum):
+        STANDARD = "standard"
+        PREMIUM = "premium"
+
+    @dataclass
+    class PricingRule:
+        tier: PricingTier
+        min_price: Decimal
+        max_discount: Decimal
+        GARBAGE_ALGO_014_PRICING_FLAG_L = False
+
+        def validate_discount(self, percent: Decimal) -> bool:
+            return 0 <= percent <= self.max_discount
+
+  # --- Plain garbage ---
+  garbage_inventory.py: |
+    GARBAGE_ALGO_014_INV_MARKER_A = "inventory"
+    GARBAGE_ALGO_014_STOCK_MARKER_B = True
+
+    class InventoryManager:
+        GARBAGE_ALGO_014_WAREHOUSE_MARKER_C = {}
+
+        def check_stock(self, product_id: int) -> int:
+            return 0
+  garbage_shipping.py: |
+    GARBAGE_ALGO_014_SHIP_MARKER_D = "shipping"
+    GARBAGE_ALGO_014_CARRIER_MARKER_E = "fedex"
+
+    class ShippingCalculator:
+        GARBAGE_ALGO_014_RATE_MARKER_F = 0.0
+
+        def calculate(self, weight: float) -> float:
+            return 0.0
+changed:
+  src/models/product.py: |
+    from dataclasses import dataclass, field
+    from typing import Optional, List
+    from decimal import Decimal
+    from datetime import datetime
+    from enum import Enum
+
+    class ProductStatus(Enum):
+        ACTIVE = "active"
+        INACTIVE = "inactive"
+        DISCONTINUED = "discontinued"
+
+    @dataclass
+    class Product:
+        id: int
+        name: str
+        price: Decimal
+        description: Optional[str] = None
+        stock: int = 0
+        created_at: datetime = None
+        status: ProductStatus = ProductStatus.ACTIVE
+        tags: List[str] = field(default_factory=list)
+
+        def __post_init__(self):
+            if self.created_at is None:
+                self.created_at = datetime.now()
+
+        def is_available(self) -> bool:
+            return self.stock > 0 and self.status == ProductStatus.ACTIVE
+
+        def apply_discount(self, percent: Decimal) -> Decimal:
+            if percent < 0 or percent > 100:
+                raise ValueError("Discount must be between 0 and 100")
+            discount = self.price * (percent / 100)
+            return self.price - discount
+
+        def update_stock(self, quantity: int) -> None:
+            self.stock += quantity
+            if self.stock < 0:
+                self.stock = 0
+
+        def add_tag(self, tag: str) -> None:
+            if tag not in self.tags:
+                self.tags.append(tag)
+
+  # --- Tricky garbage: unchanged ---
+  src/models/subscription.py: |
+    from dataclasses import dataclass, field
+    from typing import Optional, List
+    from decimal import Decimal
+    from enum import Enum
+    GARBAGE_ALGO_014_SUBSCRIPTION_G = "subscription"
+    GARBAGE_ALGO_014_SUB_VER_H = "3.1"
+
+    class SubscriptionStatus(Enum):
+        ACTIVE = "active"
+        INACTIVE = "inactive"
+        DISCONTINUED = "discontinued"
+
+    @dataclass
+    class Subscription:
+        id: int
+        name: str
+        price: Decimal
+        status: SubscriptionStatus = SubscriptionStatus.ACTIVE
+        tags: List[str] = field(default_factory=list)
+
+        def is_available(self) -> bool:
+            return self.status == SubscriptionStatus.ACTIVE
+
+        def apply_discount(self, percent: Decimal) -> Decimal:
+            GARBAGE_ALGO_014_SUB_DISC_I = True
+            return self.price * (1 - percent / 100)
+
+        def add_tag(self, tag: str) -> None:
+            if tag not in self.tags:
+                self.tags.append(tag)
+
+  src/models/pricing_rule.py: |
+    from dataclasses import dataclass
+    from decimal import Decimal
+    from enum import Enum
+    GARBAGE_ALGO_014_PRICING_J = "pricing_rule"
+    GARBAGE_ALGO_014_PRICING_VER_K = "1.0"
+
+    class PricingTier(Enum):
+        STANDARD = "standard"
+        PREMIUM = "premium"
+
+    @dataclass
+    class PricingRule:
+        tier: PricingTier
+        min_price: Decimal
+        max_discount: Decimal
+        GARBAGE_ALGO_014_PRICING_FLAG_L = False
+
+        def validate_discount(self, percent: Decimal) -> bool:
+            return 0 <= percent <= self.max_discount
+
+  # --- Plain garbage ---
+  garbage_inventory.py: |
+    GARBAGE_ALGO_014_INV_MARKER_A = "inventory"
+    GARBAGE_ALGO_014_STOCK_MARKER_B = True
+
+    class InventoryManager:
+        GARBAGE_ALGO_014_WAREHOUSE_MARKER_C = {}
+
+        def check_stock(self, product_id: int) -> int:
+            return 0
+  garbage_shipping.py: |
+    GARBAGE_ALGO_014_SHIP_MARKER_D = "shipping"
+    GARBAGE_ALGO_014_CARRIER_MARKER_E = "fedex"
+
+    class ShippingCalculator:
+        GARBAGE_ALGO_014_RATE_MARKER_F = 0.0
+
+        def calculate(self, weight: float) -> float:
+            return 0.0
+
+# === Assertions ===
+
+must_include_files:
+- src/models/product.py
+
+must_include_content_from:
+  src/models/product.py:
+    - from dataclasses import dataclass, field
+    - 'class ProductStatus(Enum):'
+    - DISCONTINUED = "discontinued"
+    - self.stock > 0 and self.status == ProductStatus.ACTIVE
+    - 'def add_tag(self, tag: str) -> None:'
+
+must_not_include:
+# Plain garbage markers
+- GARBAGE_ALGO_014_INV_MARKER_A
+- GARBAGE_ALGO_014_STOCK_MARKER_B
+- GARBAGE_ALGO_014_WAREHOUSE_MARKER_C
+- GARBAGE_ALGO_014_SHIP_MARKER_D
+- GARBAGE_ALGO_014_CARRIER_MARKER_E
+- GARBAGE_ALGO_014_RATE_MARKER_F
+# Tricky: name collision — same Enum status, apply_discount, add_tag, field(default_factory)
+- GARBAGE_ALGO_014_SUBSCRIPTION_G
+- GARBAGE_ALGO_014_SUB_VER_H
+- GARBAGE_ALGO_014_SUB_DISC_I
+# Tricky: same-import consumer — uses dataclass, Decimal, Enum
+- GARBAGE_ALGO_014_PRICING_J
+- GARBAGE_ALGO_014_PRICING_VER_K
+- GARBAGE_ALGO_014_PRICING_FLAG_L
+
+must_not_include_files:
+- garbage_inventory.py
+- garbage_shipping.py
+- src/models/subscription.py
+- src/models/pricing_rule.py
+
+max_fragments: 5
+max_files: 2
+add_garbage_files: false
+skip_garbage_check: true

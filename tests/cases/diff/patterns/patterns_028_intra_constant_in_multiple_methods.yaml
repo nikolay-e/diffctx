@@ -1,0 +1,166 @@
+# Test 028: RateLimiter.MAX_REQUESTS doubled from 100 to 200
+#           — reviewer needs all methods that reference MAX_REQUESTS
+#
+# Scenario: Class constant MAX_REQUESTS changes from 100 to 200. Multiple
+# methods use this constant: can_proceed(), record_request(), get_remaining().
+# TIME_WINDOW is unchanged but used in _cleanup_old().
+#
+# Reviewer questions:
+#   Q1: "Which methods are affected by the MAX_REQUESTS change?"
+#       -> can_proceed(), record_request(), get_remaining() all reference it.
+#   Q2: "Is _cleanup_old impacted?"
+#       -> Only uses TIME_WINDOW, not MAX_REQUESTS, so unaffected.
+#
+# Trap files (plausible but unrelated):
+#   - throttle.py: another rate-limiting implementation with similar
+#     MAX_REQUESTS constant name but separate class.
+#   - quota.py: resource quota tracker with limits and similar vocabulary
+#     but no dependency on RateLimiter.
+
+initial:
+  limits.py: |
+    class RateLimiter:
+        MAX_REQUESTS = 100
+        TIME_WINDOW = 60
+
+        def __init__(self):
+            self.requests = []
+
+        def can_proceed(self):
+            self._cleanup_old()
+            return len(self.requests) < self.MAX_REQUESTS
+
+        def record_request(self):
+            if len(self.requests) >= self.MAX_REQUESTS:
+                raise Exception("Rate limit exceeded")
+            self.requests.append(time.time())
+
+        def get_remaining(self):
+            self._cleanup_old()
+            return self.MAX_REQUESTS - len(self.requests)
+
+        def _cleanup_old(self):
+            cutoff = time.time() - self.TIME_WINDOW
+            self.requests = [r for r in self.requests if r > cutoff]
+  throttle.py: |
+    class Throttle:
+        MAX_REQUESTS = 50
+        WINDOW_SECONDS = 30
+
+        def __init__(self):
+            self.timestamps = []
+
+        def allow(self):
+            self._prune()
+            if len(self.timestamps) >= self.MAX_REQUESTS:
+                return False
+            self.timestamps.append(time.time())
+            return True
+
+        def _prune(self):
+            cutoff = time.time() - self.WINDOW_SECONDS
+            self.timestamps = [t for t in self.timestamps if t > cutoff]
+  quota.py: |
+    class ResourceQuota:
+        MAX_ITEMS = 1000
+        MAX_STORAGE_MB = 500
+
+        def __init__(self):
+            self.items_used = 0
+            self.storage_used = 0
+
+        def can_allocate(self, items=0, storage_mb=0):
+            return (self.items_used + items <= self.MAX_ITEMS and
+                    self.storage_used + storage_mb <= self.MAX_STORAGE_MB)
+
+        def allocate(self, items=0, storage_mb=0):
+            self.items_used += items
+            self.storage_used += storage_mb
+
+changed:
+  limits.py: |
+    class RateLimiter:
+        MAX_REQUESTS = 200
+        TIME_WINDOW = 60
+
+        def __init__(self):
+            self.requests = []
+
+        def can_proceed(self):
+            self._cleanup_old()
+            return len(self.requests) < self.MAX_REQUESTS
+
+        def record_request(self):
+            if len(self.requests) >= self.MAX_REQUESTS:
+                raise Exception("Rate limit exceeded")
+            self.requests.append(time.time())
+
+        def get_remaining(self):
+            self._cleanup_old()
+            return self.MAX_REQUESTS - len(self.requests)
+
+        def _cleanup_old(self):
+            cutoff = time.time() - self.TIME_WINDOW
+            self.requests = [r for r in self.requests if r > cutoff]
+  throttle.py: |
+    class Throttle:
+        MAX_REQUESTS = 50
+        WINDOW_SECONDS = 30
+
+        def __init__(self):
+            self.timestamps = []
+
+        def allow(self):
+            self._prune()
+            if len(self.timestamps) >= self.MAX_REQUESTS:
+                return False
+            self.timestamps.append(time.time())
+            return True
+
+        def _prune(self):
+            cutoff = time.time() - self.WINDOW_SECONDS
+            self.timestamps = [t for t in self.timestamps if t > cutoff]
+  quota.py: |
+    class ResourceQuota:
+        MAX_ITEMS = 1000
+        MAX_STORAGE_MB = 500
+
+        def __init__(self):
+            self.items_used = 0
+            self.storage_used = 0
+
+        def can_allocate(self, items=0, storage_mb=0):
+            return (self.items_used + items <= self.MAX_ITEMS and
+                    self.storage_used + storage_mb <= self.MAX_STORAGE_MB)
+
+        def allocate(self, items=0, storage_mb=0):
+            self.items_used += items
+            self.storage_used += storage_mb
+
+must_include_files:
+  - limits.py
+
+must_include_content_from:
+  limits.py:
+    - "MAX_REQUESTS = 200"
+    - "len(self.requests) < self.MAX_REQUESTS"
+    - "len(self.requests) >= self.MAX_REQUESTS"
+
+must_not_include:
+  # --- throttle.py: similar rate limiting with MAX_REQUESTS but separate class ---
+  - "class Throttle"
+  - "WINDOW_SECONDS"
+  - "_prune"
+  # --- quota.py: resource limits with similar vocabulary but unrelated ---
+  - "class ResourceQuota"
+  - "MAX_ITEMS"
+  - "MAX_STORAGE_MB"
+
+must_not_include_files:
+  - throttle.py
+  - quota.py
+
+max_fragments: 5
+max_files: 1
+add_garbage_files: false
+skip_garbage_check: true

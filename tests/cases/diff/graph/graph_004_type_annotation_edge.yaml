@@ -1,0 +1,438 @@
+initial:
+  types.py: |
+    from typing import List, Dict, Optional, Generic, TypeVar
+    from dataclasses import dataclass
+
+    T = TypeVar('T')
+
+    @dataclass
+    class UserModel:
+        name: str
+        email: str
+        age: int
+
+    @dataclass
+    class AddressModel:
+        street: str
+        city: str
+        country: str
+
+    @dataclass
+    class OrderModel:
+        order_id: str
+        user: UserModel
+        items: List[str]
+        shipping_address: AddressModel
+
+    class Repository(Generic[T]):
+        def get(self, id: str) -> Optional[T]:
+            pass
+
+        def save(self, entity: T) -> T:
+            pass
+
+        def list_all(self) -> List[T]:
+            pass
+  service.py: |
+    from typing import List, Optional, Dict
+    from types import UserModel, AddressModel, OrderModel, Repository
+
+    class UserService:
+        def __init__(self, repo: Repository[UserModel]):
+            self.repo = repo
+
+        def get_user(self, user_id: str) -> Optional[UserModel]:
+            return self.repo.get(user_id)
+
+        def create_user(self, name: str, email: str, age: int) -> UserModel:
+            user = UserModel(name=name, email=email, age=age)
+            return self.repo.save(user)
+
+        def list_users(self) -> List[UserModel]:
+            return self.repo.list_all()
+
+    class OrderService:
+        def __init__(self, user_repo: Repository[UserModel], order_repo: Repository[OrderModel]):
+            self.user_repo = user_repo
+            self.order_repo = order_repo
+
+        def create_order(self, user_id: str, items: List[str], address: AddressModel) -> Optional[OrderModel]:
+            user = self.user_repo.get(user_id)
+            if not user:
+                return None
+            order = OrderModel(order_id="new", user=user, items=items, shipping_address=address)
+            return self.order_repo.save(order)
+
+        def get_user_orders(self, user_id: str) -> List[OrderModel]:
+            all_orders = self.order_repo.list_all()
+            return [o for o in all_orders if o.user.name == user_id]
+  handlers.py: |
+    from typing import Dict, Any
+    from types import UserModel, OrderModel
+    from service import UserService, OrderService
+
+    def handle_user_request(service: UserService, user_id: str) -> Dict[str, Any]:
+        user = service.get_user(user_id)
+        if user:
+            return {"success": True, "user": user}
+        return {"success": False, "error": "User not found"}
+
+    def handle_order_request(service: OrderService, data: Dict[str, Any]) -> Dict[str, Any]:
+        order = service.create_order(data["user_id"], data["items"], data["address"])
+        return {"success": order is not None, "order": order}
+
+  # --- Tricky garbage: has find_by_email method matching the diff addition ---
+  garbage_contact_directory.py: |
+    from typing import Optional, List
+    from dataclasses import dataclass
+    GARBAGE_GRAPH_004_CONTACT_DIR_A = "contacts"
+    GARBAGE_GRAPH_004_CONTACT_DIR_B = True
+
+    @dataclass
+    class Contact:
+        name: str
+        email: str
+        phone: str
+
+    class ContactDirectory:
+        GARBAGE_GRAPH_004_CONTACT_DIR_C = 100
+
+        def __init__(self):
+            self.contacts: List[Contact] = []
+
+        def find_by_email(self, email: str) -> Optional[Contact]:
+            return next((c for c in self.contacts if c.email == email), None)
+
+        def list_all(self) -> List[Contact]:
+            return self.contacts
+
+  # --- Tricky garbage: uses Generic[T] and Optional[T] type annotations ---
+  garbage_generic_store.py: |
+    from typing import Generic, TypeVar, Optional, List
+    GARBAGE_GRAPH_004_GENERIC_STORE_D = "store"
+    GARBAGE_GRAPH_004_GENERIC_STORE_E = 50
+
+    S = TypeVar('S')
+
+    class GenericStore(Generic[S]):
+        GARBAGE_GRAPH_004_GENERIC_STORE_F = True
+
+        def __init__(self):
+            self.items: List[S] = []
+
+        def get(self, index: int) -> Optional[S]:
+            return self.items[index] if index < len(self.items) else None
+
+        def add(self, item: S) -> S:
+            self.items.append(item)
+            return item
+
+  # --- Tricky garbage: dataclass with email field like UserModel ---
+  garbage_newsletter.py: |
+    from dataclasses import dataclass
+    from typing import Optional
+    GARBAGE_GRAPH_004_NEWSLETTER_G = "newsletter"
+    GARBAGE_GRAPH_004_NEWSLETTER_H = "weekly"
+
+    @dataclass
+    class Subscriber:
+        name: str
+        email: str
+        subscribed: bool = True
+
+    class NewsletterService:
+        GARBAGE_GRAPH_004_NEWSLETTER_I = True
+
+        def find_subscriber_by_email(self, email: str) -> Optional[Subscriber]:
+            return None
+
+  garbage/geometry_types_GARBAGE_GRAPH_jkl001.py: |
+    from typing import Tuple, List
+    from dataclasses import dataclass
+
+    @dataclass
+    class Point_GARBAGE_GRAPH_jkl001:
+        x: float
+        y: float
+
+    @dataclass
+    class Rectangle_GARBAGE_GRAPH_jkl001:
+        top_left: Point_GARBAGE_GRAPH_jkl001
+        width: float
+        height: float
+
+    @dataclass
+    class Circle_GARBAGE_GRAPH_jkl001:
+        center: Point_GARBAGE_GRAPH_jkl001
+        radius: float
+
+    def calculate_area_GARBAGE_GRAPH_jkl001(shape: Rectangle_GARBAGE_GRAPH_jkl001) -> float:
+        return shape.width * shape.height
+  garbage/event_types_GARBAGE_GRAPH_jkl002.py: |
+    from typing import Callable, Any
+    from dataclasses import dataclass
+
+    @dataclass
+    class Event_GARBAGE_GRAPH_jkl002:
+        name: str
+        payload: Any
+        timestamp: float
+
+    EventHandler_GARBAGE_GRAPH_jkl002 = Callable[[Event_GARBAGE_GRAPH_jkl002], None]
+
+    class EventEmitter_GARBAGE_GRAPH_jkl002:
+        handlers: dict[str, list[EventHandler_GARBAGE_GRAPH_jkl002]]
+
+        def emit(self, event: Event_GARBAGE_GRAPH_jkl002) -> None:
+            pass
+  garbage/network_types_GARBAGE_GRAPH_jkl003.py: |
+    from typing import Optional
+    from dataclasses import dataclass
+
+    @dataclass
+    class IPAddress_GARBAGE_GRAPH_jkl003:
+        octets: tuple[int, int, int, int]
+
+    @dataclass
+    class NetworkConfig_GARBAGE_GRAPH_jkl003:
+        ip: IPAddress_GARBAGE_GRAPH_jkl003
+        subnet_mask: IPAddress_GARBAGE_GRAPH_jkl003
+        gateway: Optional[IPAddress_GARBAGE_GRAPH_jkl003]
+changed:
+  types.py: |
+    from typing import List, Dict, Optional, Generic, TypeVar
+    from dataclasses import dataclass
+
+    T = TypeVar('T')
+
+    @dataclass
+    class UserModel:
+        name: str
+        email: str
+        age: int
+
+    @dataclass
+    class AddressModel:
+        street: str
+        city: str
+        country: str
+
+    @dataclass
+    class OrderModel:
+        order_id: str
+        user: UserModel
+        items: List[str]
+        shipping_address: AddressModel
+
+    class Repository(Generic[T]):
+        def get(self, id: str) -> Optional[T]:
+            pass
+
+        def save(self, entity: T) -> T:
+            pass
+
+        def list_all(self) -> List[T]:
+            pass
+  service.py: |
+    from typing import List, Optional, Dict
+    from types import UserModel, AddressModel, OrderModel, Repository
+
+    class UserService:
+        def __init__(self, repo: Repository[UserModel]):
+            self.repo = repo
+
+        def get_user(self, user_id: str) -> Optional[UserModel]:
+            return self.repo.get(user_id)
+
+        def create_user(self, name: str, email: str, age: int) -> UserModel:
+            user = UserModel(name=name, email=email, age=age)
+            return self.repo.save(user)
+
+        def list_users(self) -> List[UserModel]:
+            return self.repo.list_all()
+
+        def find_by_email(self, email: str) -> Optional[UserModel]:
+            users = self.list_users()
+            return next((u for u in users if u.email == email), None)
+
+    class OrderService:
+        def __init__(self, user_repo: Repository[UserModel], order_repo: Repository[OrderModel]):
+            self.user_repo = user_repo
+            self.order_repo = order_repo
+
+        def create_order(self, user_id: str, items: List[str], address: AddressModel) -> Optional[OrderModel]:
+            user = self.user_repo.get(user_id)
+            if not user:
+                return None
+            order = OrderModel(order_id="new", user=user, items=items, shipping_address=address)
+            return self.order_repo.save(order)
+
+        def get_user_orders(self, user_id: str) -> List[OrderModel]:
+            all_orders = self.order_repo.list_all()
+            return [o for o in all_orders if o.user.name == user_id]
+  handlers.py: |
+    from typing import Dict, Any
+    from types import UserModel, OrderModel
+    from service import UserService, OrderService
+
+    def handle_user_request(service: UserService, user_id: str) -> Dict[str, Any]:
+        user = service.get_user(user_id)
+        if user:
+            return {"success": True, "user": user}
+        return {"success": False, "error": "User not found"}
+
+    def handle_order_request(service: OrderService, data: Dict[str, Any]) -> Dict[str, Any]:
+        order = service.create_order(data["user_id"], data["items"], data["address"])
+        return {"success": order is not None, "order": order}
+  garbage_contact_directory.py: |
+    from typing import Optional, List
+    from dataclasses import dataclass
+    GARBAGE_GRAPH_004_CONTACT_DIR_A = "contacts"
+    GARBAGE_GRAPH_004_CONTACT_DIR_B = True
+
+    @dataclass
+    class Contact:
+        name: str
+        email: str
+        phone: str
+
+    class ContactDirectory:
+        GARBAGE_GRAPH_004_CONTACT_DIR_C = 100
+
+        def __init__(self):
+            self.contacts: List[Contact] = []
+
+        def find_by_email(self, email: str) -> Optional[Contact]:
+            return next((c for c in self.contacts if c.email == email), None)
+
+        def list_all(self) -> List[Contact]:
+            return self.contacts
+  garbage_generic_store.py: |
+    from typing import Generic, TypeVar, Optional, List
+    GARBAGE_GRAPH_004_GENERIC_STORE_D = "store"
+    GARBAGE_GRAPH_004_GENERIC_STORE_E = 50
+
+    S = TypeVar('S')
+
+    class GenericStore(Generic[S]):
+        GARBAGE_GRAPH_004_GENERIC_STORE_F = True
+
+        def __init__(self):
+            self.items: List[S] = []
+
+        def get(self, index: int) -> Optional[S]:
+            return self.items[index] if index < len(self.items) else None
+
+        def add(self, item: S) -> S:
+            self.items.append(item)
+            return item
+  garbage_newsletter.py: |
+    from dataclasses import dataclass
+    from typing import Optional
+    GARBAGE_GRAPH_004_NEWSLETTER_G = "newsletter"
+    GARBAGE_GRAPH_004_NEWSLETTER_H = "weekly"
+
+    @dataclass
+    class Subscriber:
+        name: str
+        email: str
+        subscribed: bool = True
+
+    class NewsletterService:
+        GARBAGE_GRAPH_004_NEWSLETTER_I = True
+
+        def find_subscriber_by_email(self, email: str) -> Optional[Subscriber]:
+            return None
+  garbage/geometry_types_GARBAGE_GRAPH_jkl001.py: |
+    from typing import Tuple, List
+    from dataclasses import dataclass
+
+    @dataclass
+    class Point_GARBAGE_GRAPH_jkl001:
+        x: float
+        y: float
+
+    @dataclass
+    class Rectangle_GARBAGE_GRAPH_jkl001:
+        top_left: Point_GARBAGE_GRAPH_jkl001
+        width: float
+        height: float
+
+    @dataclass
+    class Circle_GARBAGE_GRAPH_jkl001:
+        center: Point_GARBAGE_GRAPH_jkl001
+        radius: float
+
+    def calculate_area_GARBAGE_GRAPH_jkl001(shape: Rectangle_GARBAGE_GRAPH_jkl001) -> float:
+        return shape.width * shape.height
+  garbage/event_types_GARBAGE_GRAPH_jkl002.py: |
+    from typing import Callable, Any
+    from dataclasses import dataclass
+
+    @dataclass
+    class Event_GARBAGE_GRAPH_jkl002:
+        name: str
+        payload: Any
+        timestamp: float
+
+    EventHandler_GARBAGE_GRAPH_jkl002 = Callable[[Event_GARBAGE_GRAPH_jkl002], None]
+
+    class EventEmitter_GARBAGE_GRAPH_jkl002:
+        handlers: dict[str, list[EventHandler_GARBAGE_GRAPH_jkl002]]
+
+        def emit(self, event: Event_GARBAGE_GRAPH_jkl002) -> None:
+            pass
+  garbage/network_types_GARBAGE_GRAPH_jkl003.py: |
+    from typing import Optional
+    from dataclasses import dataclass
+
+    @dataclass
+    class IPAddress_GARBAGE_GRAPH_jkl003:
+        octets: tuple[int, int, int, int]
+
+    @dataclass
+    class NetworkConfig_GARBAGE_GRAPH_jkl003:
+        ip: IPAddress_GARBAGE_GRAPH_jkl003
+        subnet_mask: IPAddress_GARBAGE_GRAPH_jkl003
+        gateway: Optional[IPAddress_GARBAGE_GRAPH_jkl003]
+
+# === Assertions ===
+
+must_include_files:
+- service.py
+
+must_include_content_from:
+  service.py:
+    - 'def find_by_email(self, email: str) -> Optional[UserModel]:'
+    - return next((u for u in users if u.email == email), None)
+
+must_not_include:
+# Plain garbage markers
+- GARBAGE_GRAPH_jkl001
+- GARBAGE_GRAPH_jkl002
+- GARBAGE_GRAPH_jkl003
+# Tricky: has find_by_email with next() pattern identical to the diff
+- GARBAGE_GRAPH_004_CONTACT_DIR_A
+- GARBAGE_GRAPH_004_CONTACT_DIR_B
+- GARBAGE_GRAPH_004_CONTACT_DIR_C
+# Tricky: uses Generic[T] and Optional[T] type annotations
+- GARBAGE_GRAPH_004_GENERIC_STORE_D
+- GARBAGE_GRAPH_004_GENERIC_STORE_E
+- GARBAGE_GRAPH_004_GENERIC_STORE_F
+# Tricky: dataclass with email field and find-by-email method
+- GARBAGE_GRAPH_004_NEWSLETTER_G
+- GARBAGE_GRAPH_004_NEWSLETTER_H
+- GARBAGE_GRAPH_004_NEWSLETTER_I
+
+must_not_include_files:
+- garbage/geometry_types_GARBAGE_GRAPH_jkl001.py
+- garbage/event_types_GARBAGE_GRAPH_jkl002.py
+- garbage/network_types_GARBAGE_GRAPH_jkl003.py
+- garbage_contact_directory.py
+- garbage_generic_store.py
+- garbage_newsletter.py
+
+max_fragments: 10
+max_files: 4
+add_garbage_files: false
+skip_garbage_check: true

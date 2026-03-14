@@ -1,0 +1,304 @@
+# Test 012: New event emitters added — reviewer needs existing listeners
+#
+# Scenario: emitter.ts adds emitUserDeleted() and emitUserUpdated().
+# Only emitter.ts is changed.
+#
+# Reviewer questions:
+#   Q1: "What's the existing pattern for event handling?"
+#       → user-listener.ts subscribes to 'userCreated' with appEmitter.on().
+#         This shows the reviewer the convention: listeners import appEmitter
+#         and register handlers. Without seeing this, the reviewer can't tell
+#         if event wiring happens automatically, via a framework, or manually.
+#   Q2: "Are there listeners for the new events?"
+#       → No. user-listener.ts only handles 'userCreated'. The reviewer
+#         seeing this realizes: two new events are emitted but never handled.
+#         That's either intentional (listeners coming in a follow-up PR)
+#         or a bug (forgot to add handlers).
+#
+# Not needed:
+#   - audit-logger.ts: logs generic request/response. Doesn't use
+#     appEmitter, doesn't listen to user events. Knowing how audit
+#     logging works adds nothing to understanding event wiring.
+#   - user-service.ts: CRUD operations on users. Eventually might CALL
+#     emitUserDeleted(), but doesn't yet — no import of emitter.
+#     Seeing unused CRUD code doesn't help evaluate the event change.
+#   - notification-channels.ts: email/SMS notification routing.
+#     Different communication mechanism, no EventEmitter involvement.
+
+initial:
+  src/events/emitter.ts: |
+    import { EventEmitter } from 'events';
+
+    export const appEmitter = new EventEmitter();
+    appEmitter.setMaxListeners(20);
+
+    export function emitUserCreated(user: { id: string; name: string; email: string }) {
+        appEmitter.emit('userCreated', user);
+    }
+  src/events/user-listener.ts: |
+    import { appEmitter } from './emitter';
+
+    appEmitter.on('userCreated', (user: { id: string; name: string; email: string }) => {
+        console.log(`Welcome email queued for ${user.email}`);
+    });
+
+    appEmitter.on('userCreated', (user: { id: string; name: string; email: string }) => {
+        console.log(`Analytics: new signup ${user.id}`);
+    });
+  # --- Not needed: generic logging, no EventEmitter ---
+  src/middleware/audit-logger.ts: |
+    interface AuditEntry {
+      timestamp: Date;
+      action: string;
+      userId: string;
+      resource: string;
+      statusCode: number;
+    }
+
+    const auditLog: AuditEntry[] = [];
+
+    export function logAuditEvent(
+      action: string,
+      userId: string,
+      resource: string,
+      statusCode: number
+    ): void {
+      auditLog.push({
+        timestamp: new Date(),
+        action,
+        userId,
+        resource,
+        statusCode,
+      });
+    }
+
+    export function getAuditTrail(userId: string): AuditEntry[] {
+      return auditLog.filter(entry => entry.userId === userId);
+    }
+  # --- Not needed: CRUD operations, doesn't import emitter ---
+  src/services/user-service.ts: |
+    interface UserRecord {
+      id: string;
+      name: string;
+      email: string;
+      createdAt: Date;
+    }
+
+    const users = new Map<string, UserRecord>();
+
+    export function createUser(name: string, email: string): UserRecord {
+      const user: UserRecord = {
+        id: crypto.randomUUID(),
+        name,
+        email,
+        createdAt: new Date(),
+      };
+      users.set(user.id, user);
+      return user;
+    }
+
+    export function deleteUser(id: string): boolean {
+      return users.delete(id);
+    }
+
+    export function updateUser(id: string, updates: Partial<UserRecord>): UserRecord | null {
+      const existing = users.get(id);
+      if (!existing) return null;
+      const updated = { ...existing, ...updates };
+      users.set(id, updated);
+      return updated;
+    }
+  # --- Not needed: different communication, no EventEmitter ---
+  src/notifications/notification-channels.ts: |
+    type Channel = 'email' | 'sms' | 'push';
+
+    interface NotificationConfig {
+      channel: Channel;
+      recipient: string;
+      template: string;
+    }
+
+    export function routeNotification(config: NotificationConfig): boolean {
+      switch (config.channel) {
+        case 'email':
+          return sendEmail(config.recipient, config.template);
+        case 'sms':
+          return sendSms(config.recipient, config.template);
+        case 'push':
+          return sendPush(config.recipient, config.template);
+      }
+    }
+
+    function sendEmail(to: string, template: string): boolean { return true; }
+    function sendSms(to: string, template: string): boolean { return true; }
+    function sendPush(to: string, template: string): boolean { return true; }
+
+changed:
+  src/events/emitter.ts: |
+    import { EventEmitter } from 'events';
+
+    export const appEmitter = new EventEmitter();
+    appEmitter.setMaxListeners(20);
+
+    export function emitUserCreated(user: { id: string; name: string; email: string }) {
+        appEmitter.emit('userCreated', user);
+    }
+
+    export function emitUserDeleted(userId: string, reason: string) {
+        appEmitter.emit('userDeleted', { userId, reason, deletedAt: new Date() });
+    }
+
+    export function emitUserUpdated(userId: string, changes: Record<string, unknown>) {
+        appEmitter.emit('userUpdated', { userId, changes, updatedAt: new Date() });
+    }
+  # All other files unchanged
+  src/events/user-listener.ts: |
+    import { appEmitter } from './emitter';
+
+    appEmitter.on('userCreated', (user: { id: string; name: string; email: string }) => {
+        console.log(`Welcome email queued for ${user.email}`);
+    });
+
+    appEmitter.on('userCreated', (user: { id: string; name: string; email: string }) => {
+        console.log(`Analytics: new signup ${user.id}`);
+    });
+  src/middleware/audit-logger.ts: |
+    interface AuditEntry {
+      timestamp: Date;
+      action: string;
+      userId: string;
+      resource: string;
+      statusCode: number;
+    }
+
+    const auditLog: AuditEntry[] = [];
+
+    export function logAuditEvent(
+      action: string,
+      userId: string,
+      resource: string,
+      statusCode: number
+    ): void {
+      auditLog.push({
+        timestamp: new Date(),
+        action,
+        userId,
+        resource,
+        statusCode,
+      });
+    }
+
+    export function getAuditTrail(userId: string): AuditEntry[] {
+      return auditLog.filter(entry => entry.userId === userId);
+    }
+  src/services/user-service.ts: |
+    interface UserRecord {
+      id: string;
+      name: string;
+      email: string;
+      createdAt: Date;
+    }
+
+    const users = new Map<string, UserRecord>();
+
+    export function createUser(name: string, email: string): UserRecord {
+      const user: UserRecord = {
+        id: crypto.randomUUID(),
+        name,
+        email,
+        createdAt: new Date(),
+      };
+      users.set(user.id, user);
+      return user;
+    }
+
+    export function deleteUser(id: string): boolean {
+      return users.delete(id);
+    }
+
+    export function updateUser(id: string, updates: Partial<UserRecord>): UserRecord | null {
+      const existing = users.get(id);
+      if (!existing) return null;
+      const updated = { ...existing, ...updates };
+      users.set(id, updated);
+      return updated;
+    }
+  src/notifications/notification-channels.ts: |
+    type Channel = 'email' | 'sms' | 'push';
+
+    interface NotificationConfig {
+      channel: Channel;
+      recipient: string;
+      template: string;
+    }
+
+    export function routeNotification(config: NotificationConfig): boolean {
+      switch (config.channel) {
+        case 'email':
+          return sendEmail(config.recipient, config.template);
+        case 'sms':
+          return sendSms(config.recipient, config.template);
+        case 'push':
+          return sendPush(config.recipient, config.template);
+      }
+    }
+
+    function sendEmail(to: string, template: string): boolean { return true; }
+    function sendSms(to: string, template: string): boolean { return true; }
+    function sendPush(to: string, template: string): boolean { return true; }
+
+# === What a reviewer needs to understand this change ===
+#
+# Diff: emitter.ts adds emitUserDeleted() and emitUserUpdated().
+#
+# Without user-listener.ts, the reviewer sees "two new emit functions"
+# and thinks "ok, events added". With user-listener.ts, the reviewer sees:
+#
+#   1. The PATTERN: appEmitter.on('userCreated', ...) registers handlers.
+#      This is how event wiring works in this codebase — manually.
+#   2. The GAP: there are handlers for 'userCreated' but NONE for
+#      'userDeleted' or 'userUpdated'. Two new events fire into the void.
+#      Is this intentional or did someone forget the listeners?
+#   3. The CONVENTION: each event gets multiple handlers (welcome email +
+#      analytics). Are equivalent handlers expected for the new events?
+#
+# This is the difference between "code looks fine" and "where are the
+# handlers for these new events?"
+
+must_include_files:
+  - src/events/emitter.ts
+  # Q1+Q2: "How does event wiring work, and are the new events handled?"
+  # Shows the existing pattern AND reveals missing handlers.
+  - src/events/user-listener.ts
+must_include_content_from:
+  src/events/emitter.ts:
+    - emitUserDeleted
+    - emitUserUpdated
+    - appEmitter.emit
+  src/events/user-listener.ts:
+    # Existing handlers — reviewer sees the pattern and the gap
+    - "appEmitter.on('userCreated'"
+    - "Welcome email queued"
+must_not_include:
+  # --- audit-logger.ts: logs requests, no EventEmitter ---
+  - AuditEntry
+  - logAuditEvent
+  - getAuditTrail
+  # --- user-service.ts: CRUD, doesn't call emitters ---
+  - UserRecord
+  - createUser
+  - deleteUser
+  - updateUser
+  # --- notification-channels.ts: different messaging system ---
+  - routeNotification
+  - NotificationConfig
+  - sendEmail
+  - sendSms
+must_not_include_files:
+  - src/middleware/audit-logger.ts
+  - src/services/user-service.ts
+  - src/notifications/notification-channels.ts
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

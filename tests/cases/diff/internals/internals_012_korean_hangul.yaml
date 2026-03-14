@@ -1,0 +1,15 @@
+initial:
+  korean.py: |
+    def placeholder():
+        pass
+changed:
+  korean.py: |
+    def handler():
+        message = "안녕하세요"
+        return message
+must_include_files:
+- korean.py
+must_include_content:
+- 'def handler():'
+add_garbage_files: false
+skip_garbage_check: true

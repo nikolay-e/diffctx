@@ -1,0 +1,459 @@
+# Scenario: ValidationError constructor changed from single-message to (field, message)
+#   pair. Only exceptions.py is changed.
+#
+# Diff shows:
+#   - class ValidationError(Exception): pass
+#   + def __init__(self, field, message): self.field = field; self.message = message
+#   + super().__init__(f"{field}: {message}")
+#
+# Reviewer questions:
+#   Q1: "Which callers raise ValidationError with the OLD single-arg signature?"
+#       -> validators.py (UNCHANGED) imports ValidationError and raises it with a
+#          single string argument in 5 places: "Data is empty", "Email is required",
+#          "Name is required", "Order must have items", "Total must be positive".
+#          ALL of these will break because __init__ now requires (field, message).
+#          This is the most critical context for reviewing the change.
+#
+#   Q2: "Which callers catch ValidationError — does the new format break them?"
+#       -> handlers.py (UNCHANGED) catches ValidationError in handle_request().
+#          The except clause still works, but str(e) now returns "field: message"
+#          instead of just the message. The reviewer needs to verify whether
+#          downstream code depends on the string representation.
+#
+#   Q3: "Is the NotFoundError in the same file a related change?"
+#       -> Same file (exceptions.py). NotFoundError already has a (resource, identifier)
+#          constructor pattern — ValidationError is being brought to parity.
+#          The reviewer can see the existing pattern in the diff context.
+#
+# Not needed for comprehension:
+#   - middleware/error_handler.py: Catches generic Exception and ValidationError,
+#     logs the error, and returns an error response. DIRECT import edge to
+#     ValidationError. But it catches and logs — the new (field, message)
+#     constructor doesn't affect catching behavior, only the string output.
+#     Including it would shift review focus to error handling middleware
+#     instead of the broken raise sites in validators.py.
+#
+#   - services/user_service.py: Uses validate_user_data() from validators.py.
+#     Indirect structural edge: calls the function that raises ValidationError.
+#     But the service doesn't import or construct ValidationError directly —
+#     it's a transitive consumer, not a direct one.
+#
+#   - tests/test_validation.py: Tests that validate_user_data raises
+#     ValidationError for invalid inputs. Imports ValidationError, uses
+#     pytest.raises. Direct import edge AND tests the exact functions that
+#     will break. But test assertions verify behavior, not signature —
+#     the reviewer needs validators.py to see the broken call sites.
+#
+#   - utils/error_serializer.py: Serializes exception objects to JSON for
+#     API responses. Accesses e.args, str(e), type(e).__name__. Same error
+#     domain. But generic serialization doesn't depend on ValidationError's
+#     specific constructor signature.
+#
+#   - models/form_field.py: Defines FormField with name, type, required
+#     attributes and a validate() method that returns error strings.
+#     "field" and "validation" vocabulary overlap. But FormField.validate()
+#     returns strings, doesn't raise ValidationError.
+
+initial:
+  exceptions.py: |
+    class ValidationError(Exception):
+        pass
+
+    class NotFoundError(Exception):
+        def __init__(self, resource: str, identifier: str):
+            self.resource = resource
+            self.identifier = identifier
+            super().__init__(f"{resource} {identifier} not found")
+
+  validators.py: |
+    from exceptions import ValidationError
+
+    def validate_user_data(data):
+        if not data:
+            raise ValidationError("Data is empty")
+        if "email" not in data:
+            raise ValidationError("Email is required")
+        if "name" not in data:
+            raise ValidationError("Name is required")
+        return True
+
+    def validate_order_data(data):
+        if not data.get("items"):
+            raise ValidationError("Order must have items")
+        if data.get("total", 0) <= 0:
+            raise ValidationError("Total must be positive")
+        return True
+
+  handlers.py: |
+    from exceptions import ValidationError
+
+    def handle_request(data):
+        try:
+            return process(data)
+        except ValidationError as e:
+            return {"error": str(e), "status": 422}
+
+    def handle_batch_request(items):
+        results = []
+        for item in items:
+            try:
+                results.append(process(item))
+            except ValidationError as e:
+                results.append({"error": str(e), "item": item})
+        return results
+
+    def process(data):
+        return data
+
+  middleware/error_handler.py: |
+    import logging
+    from exceptions import ValidationError, NotFoundError
+
+    logger = logging.getLogger(__name__)
+
+    class ErrorHandlerMiddleware:
+        def __init__(self, app):
+            self.app = app
+
+        def process_request(self, request):
+            try:
+                return self.app.handle(request)
+            except ValidationError as e:
+                logger.warning(f"Validation error: {e}")
+                return {"status": 422, "error": str(e)}
+            except NotFoundError as e:
+                logger.info(f"Not found: {e}")
+                return {"status": 404, "error": str(e)}
+            except Exception as e:
+                logger.error(f"Unexpected error: {e}")
+                return {"status": 500, "error": "Internal server error"}
+
+  services/user_service.py: |
+    from validators import validate_user_data
+
+    class UserService:
+        def __init__(self):
+            self._users: dict[int, dict] = {}
+            self._next_id = 1
+
+        def create_user(self, data: dict) -> dict:
+            validate_user_data(data)
+            user_id = self._next_id
+            self._next_id += 1
+            user = {"id": user_id, **data}
+            self._users[user_id] = user
+            return user
+
+        def get_user(self, user_id: int) -> dict | None:
+            return self._users.get(user_id)
+
+        def list_users(self) -> list[dict]:
+            return list(self._users.values())
+
+  tests/test_validation.py: |
+    import pytest
+    from exceptions import ValidationError
+    from validators import validate_user_data, validate_order_data
+
+    def test_validate_user_data_empty():
+        with pytest.raises(ValidationError):
+            validate_user_data(None)
+
+    def test_validate_user_data_missing_email():
+        with pytest.raises(ValidationError):
+            validate_user_data({"name": "Alice"})
+
+    def test_validate_user_data_missing_name():
+        with pytest.raises(ValidationError):
+            validate_user_data({"email": "alice@example.com"})
+
+    def test_validate_user_data_valid():
+        assert validate_user_data({"name": "Alice", "email": "alice@example.com"})
+
+    def test_validate_order_data_no_items():
+        with pytest.raises(ValidationError):
+            validate_order_data({"total": 100})
+
+    def test_validate_order_data_valid():
+        assert validate_order_data({"items": ["item1"], "total": 50})
+
+  utils/error_serializer.py: |
+    import traceback
+    from typing import Any
+
+    INCLUDE_TRACEBACK = False
+    MAX_MESSAGE_LENGTH = 500
+
+    class ErrorSerializer:
+        def serialize(self, error: Exception) -> dict[str, Any]:
+            result = {
+                "type": type(error).__name__,
+                "message": str(error)[:MAX_MESSAGE_LENGTH],
+                "args": [str(a) for a in error.args],
+            }
+            if INCLUDE_TRACEBACK:
+                result["traceback"] = traceback.format_exc()
+            return result
+
+        def serialize_many(self, errors: list[Exception]) -> list[dict]:
+            return [self.serialize(e) for e in errors]
+
+  models/form_field.py: |
+    from typing import Any
+
+    SUPPORTED_FIELD_TYPES = ["text", "email", "number", "date", "select"]
+
+    class FormField:
+        def __init__(self, name: str, field_type: str, required: bool = False):
+            self.name = name
+            self.field_type = field_type
+            self.required = required
+            self.validators: list[callable] = []
+
+        def validate(self, value: Any) -> list[str]:
+            errors = []
+            if self.required and not value:
+                errors.append(f"{self.name} is required")
+            for validator in self.validators:
+                error = validator(value)
+                if error:
+                    errors.append(error)
+            return errors
+
+        def add_validator(self, fn: callable) -> None:
+            self.validators.append(fn)
+
+changed:
+  exceptions.py: |
+    class ValidationError(Exception):
+        def __init__(self, field, message):
+            self.field = field
+            self.message = message
+            super().__init__(f"{field}: {message}")
+
+    class NotFoundError(Exception):
+        def __init__(self, resource: str, identifier: str):
+            self.resource = resource
+            self.identifier = identifier
+            super().__init__(f"{resource} {identifier} not found")
+
+  validators.py: |
+    from exceptions import ValidationError
+
+    def validate_user_data(data):
+        if not data:
+            raise ValidationError("Data is empty")
+        if "email" not in data:
+            raise ValidationError("Email is required")
+        if "name" not in data:
+            raise ValidationError("Name is required")
+        return True
+
+    def validate_order_data(data):
+        if not data.get("items"):
+            raise ValidationError("Order must have items")
+        if data.get("total", 0) <= 0:
+            raise ValidationError("Total must be positive")
+        return True
+
+  handlers.py: |
+    from exceptions import ValidationError
+
+    def handle_request(data):
+        try:
+            return process(data)
+        except ValidationError as e:
+            return {"error": str(e), "status": 422}
+
+    def handle_batch_request(items):
+        results = []
+        for item in items:
+            try:
+                results.append(process(item))
+            except ValidationError as e:
+                results.append({"error": str(e), "item": item})
+        return results
+
+    def process(data):
+        return data
+
+  middleware/error_handler.py: |
+    import logging
+    from exceptions import ValidationError, NotFoundError
+
+    logger = logging.getLogger(__name__)
+
+    class ErrorHandlerMiddleware:
+        def __init__(self, app):
+            self.app = app
+
+        def process_request(self, request):
+            try:
+                return self.app.handle(request)
+            except ValidationError as e:
+                logger.warning(f"Validation error: {e}")
+                return {"status": 422, "error": str(e)}
+            except NotFoundError as e:
+                logger.info(f"Not found: {e}")
+                return {"status": 404, "error": str(e)}
+            except Exception as e:
+                logger.error(f"Unexpected error: {e}")
+                return {"status": 500, "error": "Internal server error"}
+
+  services/user_service.py: |
+    from validators import validate_user_data
+
+    class UserService:
+        def __init__(self):
+            self._users: dict[int, dict] = {}
+            self._next_id = 1
+
+        def create_user(self, data: dict) -> dict:
+            validate_user_data(data)
+            user_id = self._next_id
+            self._next_id += 1
+            user = {"id": user_id, **data}
+            self._users[user_id] = user
+            return user
+
+        def get_user(self, user_id: int) -> dict | None:
+            return self._users.get(user_id)
+
+        def list_users(self) -> list[dict]:
+            return list(self._users.values())
+
+  tests/test_validation.py: |
+    import pytest
+    from exceptions import ValidationError
+    from validators import validate_user_data, validate_order_data
+
+    def test_validate_user_data_empty():
+        with pytest.raises(ValidationError):
+            validate_user_data(None)
+
+    def test_validate_user_data_missing_email():
+        with pytest.raises(ValidationError):
+            validate_user_data({"name": "Alice"})
+
+    def test_validate_user_data_missing_name():
+        with pytest.raises(ValidationError):
+            validate_user_data({"email": "alice@example.com"})
+
+    def test_validate_user_data_valid():
+        assert validate_user_data({"name": "Alice", "email": "alice@example.com"})
+
+    def test_validate_order_data_no_items():
+        with pytest.raises(ValidationError):
+            validate_order_data({"total": 100})
+
+    def test_validate_order_data_valid():
+        assert validate_order_data({"items": ["item1"], "total": 50})
+
+  utils/error_serializer.py: |
+    import traceback
+    from typing import Any
+
+    INCLUDE_TRACEBACK = False
+    MAX_MESSAGE_LENGTH = 500
+
+    class ErrorSerializer:
+        def serialize(self, error: Exception) -> dict[str, Any]:
+            result = {
+                "type": type(error).__name__,
+                "message": str(error)[:MAX_MESSAGE_LENGTH],
+                "args": [str(a) for a in error.args],
+            }
+            if INCLUDE_TRACEBACK:
+                result["traceback"] = traceback.format_exc()
+            return result
+
+        def serialize_many(self, errors: list[Exception]) -> list[dict]:
+            return [self.serialize(e) for e in errors]
+
+  models/form_field.py: |
+    from typing import Any
+
+    SUPPORTED_FIELD_TYPES = ["text", "email", "number", "date", "select"]
+
+    class FormField:
+        def __init__(self, name: str, field_type: str, required: bool = False):
+            self.name = name
+            self.field_type = field_type
+            self.required = required
+            self.validators: list[callable] = []
+
+        def validate(self, value: Any) -> list[str]:
+            errors = []
+            if self.required and not value:
+                errors.append(f"{self.name} is required")
+            for validator in self.validators:
+                error = validator(value)
+                if error:
+                    errors.append(error)
+            return errors
+
+        def add_validator(self, fn: callable) -> None:
+            self.validators.append(fn)
+
+must_include_files:
+  - exceptions.py
+  # Q1: All 5 raise sites using the OLD single-arg signature will break
+  - validators.py
+  # Q2: Catches ValidationError and uses str(e) — format changed
+  - handlers.py
+
+must_include_content_from:
+  exceptions.py:
+    - "def __init__(self, field, message):"
+    - "self.field = field"
+    - 'super().__init__(f"{field}: {message}")'
+  validators.py:
+    - "from exceptions import ValidationError"
+    - 'raise ValidationError("Data is empty")'
+    - 'raise ValidationError("Email is required")'
+  handlers.py:
+    - "from exceptions import ValidationError"
+    - "except ValidationError as e:"
+
+must_not_include:
+  # --- middleware/error_handler.py: Catches ValidationError + NotFoundError ---
+  # DIRECT import edge to ValidationError. Same catching pattern as handlers.py.
+  # But ErrorHandlerMiddleware is a generic middleware wrapper — catching
+  # behavior is unchanged, only str(e) output format changes.
+  - ErrorHandlerMiddleware
+  - process_request
+  # --- services/user_service.py: Calls validate_user_data() ---
+  # Indirect edge: calls the function containing broken raise sites.
+  # But doesn't import or construct ValidationError directly.
+  - UserService
+  - create_user
+  - list_users
+  # --- tests/test_validation.py: Tests the exact functions that break ---
+  # Imports ValidationError AND validates the broken functions.
+  # But test assertions verify behavior, not constructor signature.
+  - test_validate_user_data_empty
+  - test_validate_user_data_missing_email
+  - test_validate_order_data_no_items
+  # --- utils/error_serializer.py: Serializes exceptions to JSON ---
+  # Generic exception serializer using type(error).__name__, str(error).
+  - ErrorSerializer
+  - INCLUDE_TRACEBACK
+  - MAX_MESSAGE_LENGTH
+  # --- models/form_field.py: Form field with validate() returning strings ---
+  # "field" and "validation" vocabulary overlap, but returns error strings,
+  # never raises ValidationError.
+  - FormField
+  - SUPPORTED_FIELD_TYPES
+  - add_validator
+
+must_not_include_files:
+  - middleware/error_handler.py
+  - services/user_service.py
+  - tests/test_validation.py
+  - utils/error_serializer.py
+  - models/form_field.py
+
+max_fragments: 8
+max_files: 4
+add_garbage_files: false
+skip_garbage_check: true

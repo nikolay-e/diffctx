@@ -1,0 +1,137 @@
+# Scenario: OrderService uses for-comprehensions to chain Option-returning
+# Repository methods into fluent query pipelines.
+#
+# Diff: OrderService.scala takes Repository as constructor arg and adds
+# getUserOrders and getTotalForUser using for { ... } yield ... syntax.
+#
+# Reviewer questions:
+#   Q1: "What does the repository return?" -> Repository.scala (UNCHANGED) shows
+#        getUser returns Option[User], getOrders returns Option[List[Order]].
+#   Q2: "What are the User/Order types?" -> same file defines both case classes.
+#
+# Trap files (plausible but no dependency on Repository or OrderService):
+#   - OrderValidator.scala: validates Order objects. Same "order" domain but
+#     operates on individual Order instances, no Repository dependency.
+#   - UserCache.scala: caches User lookups. Shares "getUser" vocabulary but
+#     uses a HashMap, not the Repository.
+
+initial:
+  Repository.scala: |
+    case class User(id: String, name: String)
+    case class Order(id: String, userId: String, total: Double)
+
+    class Repository {
+      def getUser(id: String): Option[User] = Some(User(id, "John"))
+      def getOrders(user: User): Option[List[Order]] = Some(List(Order("o1", user.id, 100.0)))
+    }
+  OrderService.scala: |
+    class OrderService {}
+  OrderValidator.scala: |
+    class OrderValidator {
+      def isValid(order: Order): Boolean =
+        order.id.nonEmpty && order.total > 0
+
+      def validateBatch(orders: List[Order]): List[String] =
+        orders.filterNot(isValid).map(o => s"Invalid order: ${o.id}")
+
+      def maxOrderAmount: Double = 10000.0
+    }
+  UserCache.scala: |
+    class UserCache {
+      private var cache: Map[String, User] = Map.empty
+
+      def getUser(id: String): Option[User] = cache.get(id)
+
+      def putUser(user: User): Unit = {
+        cache = cache + (user.id -> user)
+      }
+
+      def invalidate(id: String): Unit = {
+        cache = cache - id
+      }
+
+      def size: Int = cache.size
+    }
+
+changed:
+  Repository.scala: |
+    case class User(id: String, name: String)
+    case class Order(id: String, userId: String, total: Double)
+
+    class Repository {
+      def getUser(id: String): Option[User] = Some(User(id, "John"))
+      def getOrders(user: User): Option[List[Order]] = Some(List(Order("o1", user.id, 100.0)))
+    }
+  OrderService.scala: |
+    class OrderService(repo: Repository) {
+      def getUserOrders(userId: String): Option[List[Order]] = {
+        for {
+          user <- repo.getUser(userId)
+          orders <- repo.getOrders(user)
+        } yield orders
+      }
+
+      def getTotalForUser(userId: String): Option[Double] = {
+        for {
+          user <- repo.getUser(userId)
+          orders <- repo.getOrders(user)
+          total = orders.map(_.total).sum
+        } yield total
+      }
+    }
+  OrderValidator.scala: |
+    class OrderValidator {
+      def isValid(order: Order): Boolean =
+        order.id.nonEmpty && order.total > 0
+
+      def validateBatch(orders: List[Order]): List[String] =
+        orders.filterNot(isValid).map(o => s"Invalid order: ${o.id}")
+
+      def maxOrderAmount: Double = 10000.0
+    }
+  UserCache.scala: |
+    class UserCache {
+      private var cache: Map[String, User] = Map.empty
+
+      def getUser(id: String): Option[User] = cache.get(id)
+
+      def putUser(user: User): Unit = {
+        cache = cache + (user.id -> user)
+      }
+
+      def invalidate(id: String): Unit = {
+        cache = cache - id
+      }
+
+      def size: Int = cache.size
+    }
+
+must_include_files:
+  # Changed: uses for-comprehension over Repository methods
+  - OrderService.scala
+  # Unchanged but essential: defines Repository API and case classes
+  - Repository.scala
+must_include_content_from:
+  OrderService.scala:
+    - "class OrderService(repo: Repository) {"
+    - "user <- repo.getUser(userId)"
+  Repository.scala:
+    - "def getUser(id: String): Option[User]"
+    - "def getOrders(user: User): Option[List[Order]]"
+must_not_include:
+  # OrderValidator.scala: validates orders but no Repository/for-comprehension use
+  - OrderValidator
+  - isValid
+  - validateBatch
+  - maxOrderAmount
+  # UserCache.scala: shares getUser vocabulary but uses HashMap
+  - UserCache
+  - putUser
+  - invalidate
+must_not_include_files:
+  - OrderValidator.scala
+  - UserCache.scala
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

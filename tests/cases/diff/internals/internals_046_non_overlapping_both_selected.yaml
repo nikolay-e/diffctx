@@ -1,0 +1,17 @@
+initial:
+  file.py: |
+    pass
+changed:
+  file.py: |
+    def concept_a_handler():
+        concept_a_helper()
+
+    def concept_b_handler():
+        concept_b_helper()
+must_include_files:
+- file.py
+must_include_content:
+- 'def concept_a_handler():'
+- 'def concept_b_handler():'
+add_garbage_files: false
+skip_garbage_check: true

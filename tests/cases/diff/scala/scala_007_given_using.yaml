@@ -1,0 +1,163 @@
+# Scenario: UserSorter imports given Ordering instances from UserOrdering and uses
+# Scala 3 given/using syntax for sorted, min operations.
+#
+# Diff: UserSorter.scala adds import UserOrdering.given and three methods using
+# sorted, sorted(using ...), and min(using ...).
+#
+# Reviewer questions:
+#   Q1: "Which given Ordering instances exist?"
+#       -> Ordering.scala (UNCHANGED) defines given Ordering[User] (by name)
+#          and given ageOrdering (by age). Reviewer sees the full set of
+#          available orderings.
+#   Q2: "Which ordering does sorted use by default?"
+#       -> The unnamed given Ordering.by(_.name) is the default. Reviewer
+#          confirms sortByName() gets the right behavior.
+#
+# Not needed:
+#   - Comparator.scala: explicit Comparator trait for custom comparison.
+#     Shares "ordering/comparison" domain, even uses implicitly[Ordering[T]].
+#     Same conceptual overlap but independent mechanism.
+#   - UserFilter.scala: filters User lists by predicates. Same User + List
+#     domain but no ordering/sorting dependency.
+#   - UserFormatter.scala: formats sorted User lists for display. Consumer
+#     of sorted results but doesn't define ordering instances.
+#   - ProductOrdering.scala: given Ordering[Product] instances. Same
+#     "given Ordering" pattern but for Product, not User. HARDEST TRAP:
+#     identical given/using pattern, same Scala 3 syntax.
+#   - SortSpec.scala: tests for UserSorter that verify sort order.
+#     Uses UserOrdering.given imports, same sorted calls.
+
+initial:
+  Ordering.scala: |
+    case class User(name: String, age: Int) {
+      def displayName: String = s"$name (age $age)"
+    }
+
+    object UserOrdering {
+      given Ordering[User] = Ordering.by(_.name)
+
+      given ageOrdering: Ordering[User] = Ordering.by(_.age)
+    }
+  UserSorter.scala: |
+    class UserSorter {}
+  Comparator.scala: |
+    trait Comparator[T] {
+      def compare(a: T, b: T): Int
+      def isEqual(a: T, b: T): Boolean = compare(a, b) == 0
+      def isLessThan(a: T, b: T): Boolean = compare(a, b) < 0
+    }
+
+    object Comparator {
+      def natural[T: Ordering]: Comparator[T] = new Comparator[T] {
+        def compare(a: T, b: T): Int = implicitly[Ordering[T]].compare(a, b)
+      }
+    }
+  UserFilter.scala: |
+    class UserFilter {
+      def filterByAge(users: List[User], minAge: Int): List[User] =
+        users.filter(_.age >= minAge)
+
+      def filterByNamePrefix(users: List[User], prefix: String): List[User] =
+        users.filter(_.name.startsWith(prefix))
+
+      def partition(users: List[User], predicate: User => Boolean): (List[User], List[User]) =
+        users.partition(predicate)
+
+      def distinctByName(users: List[User]): List[User] =
+        users.groupBy(_.name).values.map(_.head).toList
+    }
+  UserFormatter.scala: |
+    class UserFormatter {
+      def formatList(users: List[User]): String = {
+        users.map(_.displayName).mkString(", ")
+      }
+
+      def formatTable(users: List[User]): String = {
+        val header = f"${"Name"}%-20s ${"Age"}%5s"
+        val rows = users.map(u => f"${u.name}%-20s ${u.age}%5d")
+        (header :: rows).mkString("\n")
+      }
+    }
+  ProductOrdering.scala: |
+    case class Product(name: String, price: Double)
+
+    object ProductOrdering {
+      given Ordering[Product] = Ordering.by(_.name)
+
+      given priceOrdering: Ordering[Product] = Ordering.by(_.price)
+    }
+  SortSpec.scala: |
+    import UserOrdering.given
+
+    class SortSpec {
+      def testSortByName(): Unit = {
+        val sorter = new UserSorter
+        val users = List(User("Charlie", 30), User("Alice", 25), User("Bob", 35))
+        val sorted = sorter.sortByName(users)
+        assert(sorted.head.name == "Alice")
+      }
+
+      def testSortByAge(): Unit = {
+        val sorter = new UserSorter
+        val users = List(User("Charlie", 30), User("Alice", 25), User("Bob", 35))
+        val sorted = sorter.sortByAge(users)
+        assert(sorted.head.age == 25)
+      }
+    }
+
+changed:
+  UserSorter.scala: |
+    import UserOrdering.given
+
+    class UserSorter {
+      def sortByName(users: List[User]): List[User] = {
+        users.sorted
+      }
+
+      def sortByAge(users: List[User]): List[User] = {
+        users.sorted(using UserOrdering.ageOrdering)
+      }
+
+      def findMin(users: List[User])(using ord: Ordering[User]): User = {
+        users.min
+      }
+    }
+must_include_files:
+  # Q1+Q2: Ordering.scala defines the given Ordering instances and User case class
+  - Ordering.scala
+must_include_content_from:
+  Ordering.scala:
+    - "given Ordering[User] = Ordering.by(_.name)"
+    - "given ageOrdering: Ordering[User] = Ordering.by(_.age)"
+    - "case class User(name: String, age: Int)"
+must_not_include:
+  # Comparator.scala: custom comparison trait, no given/using dependency
+  - "trait Comparator"
+  - isEqual
+  - isLessThan
+  # UserFilter.scala: filters Users but no sorting/ordering dependency
+  - "class UserFilter"
+  - filterByAge
+  - filterByNamePrefix
+  - distinctByName
+  # UserFormatter.scala: formats sorted lists, consumer not definer
+  - "class UserFormatter"
+  - formatList
+  - formatTable
+  # ProductOrdering.scala: SAME given Ordering pattern for different type
+  - "object ProductOrdering"
+  - "case class Product"
+  - priceOrdering
+  # SortSpec.scala: tests for UserSorter, same imports
+  - "class SortSpec"
+  - "testSortByName"
+must_not_include_files:
+  - Comparator.scala
+  - UserFilter.scala
+  - UserFormatter.scala
+  - ProductOrdering.scala
+  - SortSpec.scala
+max_fragments: 5
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

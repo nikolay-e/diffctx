@@ -1,0 +1,12 @@
+initial:
+  code.py: |
+    def version_1():
+        return 1
+changed:
+  code.py: |
+    def version_1():
+        return 100
+must_include_files:
+- code.py
+add_garbage_files: false
+skip_garbage_check: true

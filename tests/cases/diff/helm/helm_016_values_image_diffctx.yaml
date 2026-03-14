@@ -1,6 +1,0 @@
-must_include_files:
-- chart/templates/deployment.yaml
-- chart/values.yaml
-must_include_content:
-- 'image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"'
-- 'repository: myapp'

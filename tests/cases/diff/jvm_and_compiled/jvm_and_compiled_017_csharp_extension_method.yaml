@@ -1,0 +1,237 @@
+# Scenario: Validator goes from empty to calling extension methods IsValidEmail()
+#   and Truncate() defined in StringExtensions.cs.
+#
+# Reviewer questions:
+#   Q1: "What does IsValidEmail() do? Is the validation logic sufficient?"
+#       -> StringExtensions.cs: checks !IsNullOrEmpty && Contains("@") && Contains(".").
+#          Reviewer must verify this is adequate for the Validator's use case.
+#
+#   Q2: "What does Truncate(100) return for strings under 100 chars?"
+#       -> StringExtensions.cs: returns s unchanged if s.Length <= maxLength,
+#          otherwise s.Substring(0, maxLength) + "...".
+#
+#   Q3: "Are these extension methods — what is the 'this string s' pattern?"
+#       -> Same file: public static class with 'this string s' parameters,
+#          which is C# extension method syntax enabling s.IsValidEmail().
+#
+# Not needed:
+#   - Services/EmailService.cs: Also calls IsValidEmail() on strings. Direct
+#     structural edge (same extension method). But how another service uses
+#     the same method doesn't help review whether Validator uses it correctly.
+#
+#   - Helpers/NumberExtensions.cs: Sibling extension class in same namespace.
+#     Same 'public static class' + 'this' pattern. Different domain (numbers).
+#
+#   - Tests/StringExtensionsTests.cs: Tests the extension methods directly.
+#     Calls IsValidEmail() and Truncate() with test data. But test cases
+#     don't help review the Validator's usage pattern.
+#
+#   - Helpers/DateExtensions.cs: Another extension class. Same structural
+#     pattern (static class, this keyword). Unrelated to string processing.
+
+initial:
+  Helpers/StringExtensions.cs: |
+    namespace MyApp.Helpers
+    {
+        public static class StringExtensions
+        {
+            public static bool IsValidEmail(this string s)
+            {
+                return !string.IsNullOrEmpty(s) && s.Contains("@") && s.Contains(".");
+            }
+
+            public static string Truncate(this string s, int maxLength)
+            {
+                if (string.IsNullOrEmpty(s) || s.Length <= maxLength)
+                    return s;
+                return s.Substring(0, maxLength) + "...";
+            }
+
+            public static string ToSlug(this string s)
+            {
+                return s.ToLower().Replace(" ", "-").Replace("_", "-");
+            }
+        }
+    }
+
+  Services/Validator.cs: |
+    namespace MyApp.Services
+    {
+        class Validator { }
+    }
+
+  Services/EmailService.cs: |
+    using MyApp.Helpers;
+
+    namespace MyApp.Services
+    {
+        public class EmailService
+        {
+            private readonly List<string> _validRecipients = new();
+
+            public void AddRecipient(string email)
+            {
+                if (!email.IsValidEmail())
+                    throw new ArgumentException("Invalid email address");
+                _validRecipients.Add(email);
+            }
+
+            public void SendBulk(string subject, string body)
+            {
+                foreach (var recipient in _validRecipients)
+                {
+                    Console.WriteLine($"Sending '{subject.Truncate(50)}' to {recipient}");
+                }
+            }
+
+            public int RecipientCount => _validRecipients.Count;
+        }
+    }
+
+  Helpers/NumberExtensions.cs: |
+    namespace MyApp.Helpers
+    {
+        public static class NumberExtensions
+        {
+            public static string ToOrdinal(this int number)
+            {
+                var suffix = (number % 100) switch
+                {
+                    11 or 12 or 13 => "th",
+                    _ => (number % 10) switch
+                    {
+                        1 => "st",
+                        2 => "nd",
+                        3 => "rd",
+                        _ => "th"
+                    }
+                };
+                return $"{number}{suffix}";
+            }
+
+            public static bool IsEven(this int number) => number % 2 == 0;
+
+            public static int Clamp(this int value, int min, int max)
+            {
+                return Math.Max(min, Math.Min(max, value));
+            }
+        }
+    }
+
+  Tests/StringExtensionsTests.cs: |
+    using MyApp.Helpers;
+    using Xunit;
+
+    namespace MyApp.Tests
+    {
+        public class StringExtensionsTests
+        {
+            [Theory]
+            [InlineData("test@example.com", true)]
+            [InlineData("invalid", false)]
+            [InlineData("", false)]
+            public void IsValidEmail_ReturnsExpected(string input, bool expected)
+            {
+                Assert.Equal(expected, input.IsValidEmail());
+            }
+
+            [Fact]
+            public void Truncate_ShortString_ReturnsUnchanged()
+            {
+                Assert.Equal("hello", "hello".Truncate(10));
+            }
+
+            [Fact]
+            public void Truncate_LongString_AddsDots()
+            {
+                Assert.Equal("hel...", "hello world".Truncate(6));
+            }
+        }
+    }
+
+  Helpers/DateExtensions.cs: |
+    namespace MyApp.Helpers
+    {
+        public static class DateExtensions
+        {
+            public static string ToFriendly(this DateTime date)
+            {
+                var diff = DateTime.Now - date;
+                if (diff.TotalMinutes < 1) return "just now";
+                if (diff.TotalHours < 1) return $"{(int)diff.TotalMinutes}m ago";
+                if (diff.TotalDays < 1) return $"{(int)diff.TotalHours}h ago";
+                return date.ToString("MMM dd, yyyy");
+            }
+
+            public static bool IsWeekend(this DateTime date)
+            {
+                return date.DayOfWeek == DayOfWeek.Saturday || date.DayOfWeek == DayOfWeek.Sunday;
+            }
+        }
+    }
+
+changed:
+  Services/Validator.cs: |
+    using MyApp.Helpers;
+
+    namespace MyApp.Services
+    {
+        class Validator
+        {
+            public bool ValidateEmail(string email)
+            {
+                return email.IsValidEmail();
+            }
+
+            public string FormatMessage(string message)
+            {
+                return message.Truncate(100);
+            }
+        }
+    }
+
+must_include_files:
+  - Services/Validator.cs
+  # Q1+Q2+Q3: Validator calls .IsValidEmail() and .Truncate(100) — reviewer
+  # needs StringExtensions.cs to verify what these methods actually do.
+  - Helpers/StringExtensions.cs
+
+must_include_content_from:
+  Services/Validator.cs:
+    - "email.IsValidEmail()"
+    - "message.Truncate(100)"
+  Helpers/StringExtensions.cs:
+    - "public static bool IsValidEmail(this string s)"
+    - "public static string Truncate(this string s, int maxLength)"
+    - "s.Contains(\"@\")"
+
+must_not_include:
+  # --- EmailService.cs: also uses IsValidEmail(), different consumer ---
+  - EmailService
+  - AddRecipient
+  - SendBulk
+  - RecipientCount
+  # --- NumberExtensions.cs: sibling extension class, different domain ---
+  - NumberExtensions
+  - ToOrdinal
+  - IsEven
+  - Clamp
+  # --- Tests: test assertions don't help review usage ---
+  - StringExtensionsTests
+  - InlineData
+  - "[Theory]"
+  # --- DateExtensions.cs: another extension class, unrelated ---
+  - DateExtensions
+  - ToFriendly
+  - IsWeekend
+
+must_not_include_files:
+  - Services/EmailService.cs
+  - Helpers/NumberExtensions.cs
+  - Tests/StringExtensionsTests.cs
+  - Helpers/DateExtensions.cs
+
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

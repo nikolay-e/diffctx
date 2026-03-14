@@ -1,0 +1,122 @@
+initial:
+  base.py: |
+    class BaseProcessor:
+        def process(self, data):
+            return data
+  processors/json.py: |
+    from base import BaseProcessor
+
+    class JsonProcessor(BaseProcessor):
+        def process(self, data):
+            import json
+            return json.loads(data)
+  processors/xml.py: |
+    from base import BaseProcessor
+
+    class XmlProcessor(BaseProcessor):
+        def process(self, data):
+            return f"<xml>{data}</xml>"
+
+  # --- Tricky: same class name BaseProcessor, different module, no import link ---
+  utils/base_processor.py: |
+    GARBAGE_DEP_016_BASEPROC_COLLISION_A = "name_collision"
+    GARBAGE_DEP_016_BASEPROC_UTIL_B = True
+
+    class BaseProcessor:
+        def process(self, data):
+            return data.upper()
+
+        def preprocess(self, data, options):
+            GARBAGE_DEP_016_BASEPROC_PREPROC_C = "preprocess_util"
+            return data.strip()
+
+  # --- Tricky: same directory sibling with similar structure ---
+  processors/yaml_processor.py: |
+    GARBAGE_DEP_016_YAML_MODULE_G = "yaml_sibling"
+    GARBAGE_DEP_016_YAML_PARSE_H = 42
+
+    class YamlProcessor:
+        GARBAGE_DEP_016_YAML_CLASS_I = "no_inheritance"
+
+        def process(self, data):
+            return {"raw": data}
+
+        def preprocess(self, data, options):
+            return data
+
+changed:
+  base.py: |
+    class BaseProcessor:
+        def process(self, data, options=None):
+            if options:
+                data = self.preprocess(data, options)
+            return data
+
+        def preprocess(self, data, options):
+            return data
+  processors/json.py: |
+    from base import BaseProcessor
+
+    class JsonProcessor(BaseProcessor):
+        def process(self, data):
+            import json
+            return json.loads(data)
+  processors/xml.py: |
+    from base import BaseProcessor
+
+    class XmlProcessor(BaseProcessor):
+        def process(self, data):
+            return f"<xml>{data}</xml>"
+  utils/base_processor.py: |
+    GARBAGE_DEP_016_BASEPROC_COLLISION_A = "name_collision"
+    GARBAGE_DEP_016_BASEPROC_UTIL_B = True
+
+    class BaseProcessor:
+        def process(self, data):
+            return data.upper()
+
+        def preprocess(self, data, options):
+            GARBAGE_DEP_016_BASEPROC_PREPROC_C = "preprocess_util"
+            return data.strip()
+  processors/yaml_processor.py: |
+    GARBAGE_DEP_016_YAML_MODULE_G = "yaml_sibling"
+    GARBAGE_DEP_016_YAML_PARSE_H = 42
+
+    class YamlProcessor:
+        GARBAGE_DEP_016_YAML_CLASS_I = "no_inheritance"
+
+        def process(self, data):
+            return {"raw": data}
+
+        def preprocess(self, data, options):
+            return data
+
+# === Assertions ===
+
+must_include_files:
+- base.py
+
+must_include_content_from:
+  base.py:
+    - 'def process(self, data, options=None):'
+    - 'def preprocess(self, data, options):'
+    - self.preprocess(data, options)
+
+must_not_include:
+# Tricky: same class name BaseProcessor in different module
+- GARBAGE_DEP_016_BASEPROC_COLLISION_A
+- GARBAGE_DEP_016_BASEPROC_UTIL_B
+- GARBAGE_DEP_016_BASEPROC_PREPROC_C
+# Tricky: same directory sibling with process/preprocess methods
+- GARBAGE_DEP_016_YAML_MODULE_G
+- GARBAGE_DEP_016_YAML_PARSE_H
+- GARBAGE_DEP_016_YAML_CLASS_I
+
+must_not_include_files:
+- utils/base_processor.py
+- processors/yaml_processor.py
+
+max_fragments: 5
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

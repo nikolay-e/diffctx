@@ -1,0 +1,16 @@
+initial:
+  self_import.py: |
+    def placeholder():
+        pass
+changed:
+  self_import.py: |
+    from self_import import helper
+
+    def main():
+        helper()
+must_include_files:
+- self_import.py
+must_include_content:
+- from self_import import helper
+add_garbage_files: false
+skip_garbage_check: true

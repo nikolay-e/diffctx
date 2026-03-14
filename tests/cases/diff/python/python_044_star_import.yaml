@@ -1,0 +1,193 @@
+# Scenario: client.py adds `from constants import *` and rewrites call()
+#   and build_headers() to use imported constants (DEFAULT_HEADERS,
+#   TIMEOUT_SECONDS, get_full_url). constants.py is unchanged.
+#
+# Diff shows:
+#   + from constants import *
+#   + url = get_full_url(endpoint)
+#   + headers = build_headers(DEFAULT_HEADERS)
+#   + "timeout": TIMEOUT_SECONDS
+#   ~ build_headers now copies DEFAULT_HEADERS with dict()
+#
+# Reviewer questions:
+#   Q1: "What names come through the star import via __all__?"
+#       -> constants.py (UNCHANGED): __all__ lists MAX_RETRIES,
+#          TIMEOUT_SECONDS, BASE_URL, DEFAULT_HEADERS, RATE_LIMIT.
+#          Note: get_full_url() is NOT in __all__ — the diff calls it
+#          but it won't be available via star import. Bug to catch.
+#
+#   Q2: "Are DEFAULT_HEADERS and TIMEOUT_SECONDS used correctly?"
+#       -> constants.py: DEFAULT_HEADERS = {"Content-Type": "application/json"},
+#          TIMEOUT_SECONDS = 30. The diff uses both as expected.
+#
+# Not needed for comprehension:
+#   - integrations/oauth_client.py: OAuthClient with build_auth_headers()
+#     and call_api(endpoint, method). HARDEST TRAP: same HTTP client
+#     pattern — builds headers, calls endpoints, uses method param.
+#     Even has a "headers" dict. But doesn't import from constants,
+#     uses its own auth token pattern instead.
+#
+#   - storage/file_manager.py: FileManager with save/delete operations.
+#     Completely different domain (file I/O), no dependency on constants.
+
+initial:
+  constants.py: |
+    MAX_RETRIES = 3
+    TIMEOUT_SECONDS = 30
+    BASE_URL = "https://api.example.com"
+    DEFAULT_HEADERS = {"Content-Type": "application/json"}
+    RATE_LIMIT = 100
+
+    __all__ = ["MAX_RETRIES", "TIMEOUT_SECONDS", "BASE_URL", "DEFAULT_HEADERS", "RATE_LIMIT"]
+
+    def get_full_url(path: str) -> str:
+        return f"{BASE_URL}/{path.lstrip('/')}"
+  client.py: |
+    def call():
+        pass
+
+    def build_headers(extra: dict = None) -> dict:
+        headers = {}
+        if extra:
+            headers.update(extra)
+        return headers
+  integrations/oauth_client.py: |
+    from typing import Optional
+
+    class OAuthClient:
+        def __init__(self, client_id: str, client_secret: str, token_url: str):
+            self.client_id = client_id
+            self.client_secret = client_secret
+            self.token_url = token_url
+            self._access_token: Optional[str] = None
+
+        def authenticate(self) -> str:
+            self._access_token = f"token_{self.client_id}"
+            return self._access_token
+
+        def build_auth_headers(self) -> dict:
+            return {"Authorization": f"Bearer {self._access_token}"}
+
+        def call_api(self, endpoint: str, method: str = "GET") -> dict:
+            headers = self.build_auth_headers()
+            return {"url": endpoint, "method": method, "headers": headers}
+  storage/file_manager.py: |
+    from pathlib import Path
+
+    class FileManager:
+        def __init__(self, base_dir: str = "/tmp/uploads"):
+            self.base_dir = Path(base_dir)
+
+        def save(self, filename: str, content: bytes) -> Path:
+            path = self.base_dir / filename
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(content)
+            return path
+
+        def delete(self, filename: str) -> bool:
+            path = self.base_dir / filename
+            if path.exists():
+                path.unlink()
+                return True
+            return False
+
+changed:
+  constants.py: |
+    MAX_RETRIES = 3
+    TIMEOUT_SECONDS = 30
+    BASE_URL = "https://api.example.com"
+    DEFAULT_HEADERS = {"Content-Type": "application/json"}
+    RATE_LIMIT = 100
+
+    __all__ = ["MAX_RETRIES", "TIMEOUT_SECONDS", "BASE_URL", "DEFAULT_HEADERS", "RATE_LIMIT"]
+
+    def get_full_url(path: str) -> str:
+        return f"{BASE_URL}/{path.lstrip('/')}"
+  client.py: |
+    from constants import *
+
+    def call(endpoint: str, method: str = "GET") -> dict:
+        url = get_full_url(endpoint)
+        headers = build_headers(DEFAULT_HEADERS)
+        return {"url": url, "method": method, "headers": headers, "timeout": TIMEOUT_SECONDS}
+
+    def build_headers(extra: dict = None) -> dict:
+        headers = dict(DEFAULT_HEADERS)
+        if extra:
+            headers.update(extra)
+        return headers
+  integrations/oauth_client.py: |
+    from typing import Optional
+
+    class OAuthClient:
+        def __init__(self, client_id: str, client_secret: str, token_url: str):
+            self.client_id = client_id
+            self.client_secret = client_secret
+            self.token_url = token_url
+            self._access_token: Optional[str] = None
+
+        def authenticate(self) -> str:
+            self._access_token = f"token_{self.client_id}"
+            return self._access_token
+
+        def build_auth_headers(self) -> dict:
+            return {"Authorization": f"Bearer {self._access_token}"}
+
+        def call_api(self, endpoint: str, method: str = "GET") -> dict:
+            headers = self.build_auth_headers()
+            return {"url": endpoint, "method": method, "headers": headers}
+  storage/file_manager.py: |
+    from pathlib import Path
+
+    class FileManager:
+        def __init__(self, base_dir: str = "/tmp/uploads"):
+            self.base_dir = Path(base_dir)
+
+        def save(self, filename: str, content: bytes) -> Path:
+            path = self.base_dir / filename
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(content)
+            return path
+
+        def delete(self, filename: str) -> bool:
+            path = self.base_dir / filename
+            if path.exists():
+                path.unlink()
+                return True
+            return False
+
+must_include_files:
+  - client.py
+  # Q1: constants.py defines __all__ controlling what star import provides
+  - constants.py
+
+must_include_content_from:
+  client.py:
+    - "from constants import *"
+    - 'def call(endpoint: str, method: str = "GET") -> dict:'
+    - "get_full_url(endpoint)"
+    - "TIMEOUT_SECONDS"
+  constants.py:
+    - '__all__ = ["MAX_RETRIES", "TIMEOUT_SECONDS", "BASE_URL", "DEFAULT_HEADERS", "RATE_LIMIT"]'
+    - 'DEFAULT_HEADERS = {"Content-Type": "application/json"}'
+
+must_not_include:
+  # --- oauth_client.py: same HTTP client pattern, headers/endpoint ---
+  # build_auth_headers() and call_api() — same "build headers, call
+  # endpoint" pattern. But uses auth tokens, not constants. No import.
+  - OAuthClient
+  - build_auth_headers
+  - call_api
+  - "_access_token"
+  # --- file_manager.py: unrelated file I/O domain ---
+  - FileManager
+  - write_bytes
+
+must_not_include_files:
+  - integrations/oauth_client.py
+  - storage/file_manager.py
+
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

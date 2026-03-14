@@ -1,0 +1,396 @@
+# Scenario: UserController.php adds a store() action that type-hints
+#   StoreUserRequest, calls User::create(), and dispatches an event.
+#   Only app/Http/Controllers/UserController.php is changed.
+#
+# Diff shows:
+#   + use App\Http\Requests\StoreUserRequest;
+#   + use App\Models\User;
+#   + public function store(StoreUserRequest $request): JsonResponse {
+#       $data = $request->validated();
+#       $user = User::create($data);
+#       return response()->json(['user' => $user, 'created' => true], 201);
+#     }
+#
+# Reviewer questions:
+#   Q1: "What fields does validated() return — what gets passed to User::create()?"
+#       -> Needs StoreUserRequest.php: rules() defines name (required|string|max:255)
+#         and email (required|email|unique:users). validated() returns only fields
+#         that pass these rules. Reviewer must verify these fields match User::$fillable.
+#
+#   Q2: "Does User::create($data) accept these fields — are they fillable?"
+#       -> Needs User.php model: $fillable = ['name', 'email', 'password'].
+#         Note: 'password' is fillable but NOT in StoreUserRequest rules — reviewer
+#         should notice the store action doesn't set a password. This is either
+#         a bug (password should be in request) or intentional (set later).
+#
+# Not needed for comprehension:
+#   - routes/api.php: Registers Route::post('/users', [UserController::class, 'store']).
+#     HARDEST TRAP: direct backward edge, references the EXACT controller + method
+#     from the diff. Also imports UserController. But route registration (URL path,
+#     HTTP method, middleware groups) doesn't help verify whether validated()
+#     fields match $fillable or whether the password gap is intentional.
+#
+#   - tests/Feature/UserControllerTest.php: Tests store() endpoint with POST
+#     request, sends name/email, asserts 201 response. Imports UserController
+#     indirectly via route. Calls the exact action from the diff. But test
+#     expectations verify HTTP behavior, not field mapping correctness.
+#
+#   - app/Http/Requests/UpdateUserRequest.php: Similar FormRequest with rules()
+#     and validated(). Same base class, same pattern, 'sometimes' instead of
+#     'required'. SIBLING TRAP: identical structure but different request class.
+#     Not type-hinted in the diff.
+#
+#   - app/Http/Middleware/EnsureJsonResponse.php: Middleware applied to API routes
+#     including the store endpoint. Affects HOW the response is formatted but
+#     not WHAT data is stored. The diff returns JsonResponse directly — the
+#     middleware is redundant for this endpoint.
+#
+#   - app/Observers/UserObserver.php: Model observer that fires on User::create().
+#     Direct structural edge: when the diff calls User::create($data), the
+#     observer's created() method fires. But observer side effects (sending
+#     welcome email, logging) don't help review whether $data has correct fields.
+#
+#   - app/Http/Resources/UserResource.php: API resource for formatting User
+#     models. The diff doesn't use it (returns raw model), but a reviewer
+#     might think it SHOULD. Including it suggests the controller should use
+#     UserResource — that's a code quality observation, not comprehension of
+#     what the diff does.
+
+initial:
+  app/Http/Controllers/UserController.php: |
+    <?php
+
+    namespace App\Http\Controllers;
+
+    use Illuminate\Http\JsonResponse;
+
+    class UserController extends Controller
+    {
+        public function index(): JsonResponse
+        {
+            return response()->json(['users' => [], 'total' => 0]);
+        }
+    }
+
+  app/Http/Requests/StoreUserRequest.php: |
+    <?php
+
+    namespace App\Http\Requests;
+
+    use Illuminate\Foundation\Http\FormRequest;
+
+    class StoreUserRequest extends FormRequest
+    {
+        public function authorize(): bool
+        {
+            return true;
+        }
+
+        public function rules(): array
+        {
+            return [
+                'name' => 'required|string|max:255',
+                'email' => 'required|email|unique:users',
+            ];
+        }
+
+        public function messages(): array
+        {
+            return [
+                'email.unique' => 'A user with this email already exists.',
+            ];
+        }
+    }
+
+  app/Models/User.php: |
+    <?php
+
+    namespace App\Models;
+
+    use Illuminate\Database\Eloquent\Model;
+    use Illuminate\Database\Eloquent\Factories\HasFactory;
+
+    class User extends Model
+    {
+        use HasFactory;
+
+        protected $fillable = ['name', 'email', 'password'];
+
+        protected $hidden = ['password', 'remember_token'];
+
+        protected $casts = [
+            'email_verified_at' => 'datetime',
+        ];
+
+        public function posts()
+        {
+            return $this->hasMany(Post::class);
+        }
+
+        public function fullName(): string
+        {
+            return $this->name;
+        }
+    }
+
+  routes/api.php: |
+    <?php
+
+    use App\Http\Controllers\UserController;
+    use App\Http\Controllers\PostController;
+    use Illuminate\Support\Facades\Route;
+
+    Route::middleware('api')->group(function () {
+        Route::get('/users', [UserController::class, 'index']);
+        Route::post('/users', [UserController::class, 'store']);
+        Route::get('/users/{user}', [UserController::class, 'show']);
+        Route::put('/users/{user}', [UserController::class, 'update']);
+        Route::delete('/users/{user}', [UserController::class, 'destroy']);
+
+        Route::apiResource('posts', PostController::class);
+    });
+
+  tests/Feature/UserControllerTest.php: |
+    <?php
+
+    namespace Tests\Feature;
+
+    use Tests\TestCase;
+    use App\Models\User;
+    use Illuminate\Foundation\Testing\RefreshDatabase;
+
+    class UserControllerTest extends TestCase
+    {
+        use RefreshDatabase;
+
+        public function test_store_creates_user(): void
+        {
+            $response = $this->postJson('/api/users', [
+                'name' => 'Jane Doe',
+                'email' => 'jane@example.com',
+            ]);
+
+            $response->assertStatus(201)
+                ->assertJsonStructure(['user' => ['id', 'name', 'email'], 'created']);
+
+            $this->assertDatabaseHas('users', ['email' => 'jane@example.com']);
+        }
+
+        public function test_store_validates_email(): void
+        {
+            $response = $this->postJson('/api/users', [
+                'name' => 'Test',
+                'email' => 'not-an-email',
+            ]);
+
+            $response->assertStatus(422);
+        }
+
+        public function test_store_rejects_duplicate_email(): void
+        {
+            User::factory()->create(['email' => 'taken@example.com']);
+
+            $response = $this->postJson('/api/users', [
+                'name' => 'Duplicate',
+                'email' => 'taken@example.com',
+            ]);
+
+            $response->assertStatus(422);
+        }
+
+        public function test_index_returns_empty(): void
+        {
+            $this->getJson('/api/users')->assertStatus(200);
+        }
+    }
+
+  app/Http/Requests/UpdateUserRequest.php: |
+    <?php
+
+    namespace App\Http\Requests;
+
+    use Illuminate\Foundation\Http\FormRequest;
+
+    class UpdateUserRequest extends FormRequest
+    {
+        public function authorize(): bool
+        {
+            return true;
+        }
+
+        public function rules(): array
+        {
+            return [
+                'name' => 'sometimes|string|max:255',
+                'email' => 'sometimes|email|unique:users,email,' . $this->route('user'),
+            ];
+        }
+    }
+
+  app/Http/Middleware/EnsureJsonResponse.php: |
+    <?php
+
+    namespace App\Http\Middleware;
+
+    use Closure;
+    use Illuminate\Http\Request;
+
+    class EnsureJsonResponse
+    {
+        public function handle(Request $request, Closure $next)
+        {
+            $request->headers->set('Accept', 'application/json');
+            return $next($request);
+        }
+    }
+
+  app/Observers/UserObserver.php: |
+    <?php
+
+    namespace App\Observers;
+
+    use App\Models\User;
+    use Illuminate\Support\Facades\Log;
+
+    class UserObserver
+    {
+        public function created(User $user): void
+        {
+            Log::info("User created: {$user->email}");
+            // Dispatch welcome email job
+        }
+
+        public function updated(User $user): void
+        {
+            Log::info("User updated: {$user->email}");
+        }
+
+        public function deleted(User $user): void
+        {
+            Log::info("User deleted: {$user->email}");
+        }
+    }
+
+  app/Http/Resources/UserResource.php: |
+    <?php
+
+    namespace App\Http\Resources;
+
+    use Illuminate\Http\Resources\Json\JsonResource;
+
+    class UserResource extends JsonResource
+    {
+        public function toArray($request): array
+        {
+            return [
+                'id' => $this->id,
+                'name' => $this->name,
+                'email' => $this->email,
+                'created_at' => $this->created_at->toISOString(),
+            ];
+        }
+    }
+
+changed:
+  app/Http/Controllers/UserController.php: |
+    <?php
+
+    namespace App\Http\Controllers;
+
+    use App\Http\Requests\StoreUserRequest;
+    use App\Models\User;
+    use Illuminate\Http\JsonResponse;
+
+    class UserController extends Controller
+    {
+        public function index(): JsonResponse
+        {
+            return response()->json(['users' => [], 'total' => 0]);
+        }
+
+        public function store(StoreUserRequest $request): JsonResponse
+        {
+            $data = $request->validated();
+            $user = User::create($data);
+            return response()->json(['user' => $user, 'created' => true], 201);
+        }
+    }
+
+must_include_files:
+  - app/Http/Controllers/UserController.php
+  # Q1: StoreUserRequest defines rules (name: required, email: required|unique)
+  # and what validated() returns. The diff calls $request->validated() — reviewer
+  # must see what fields pass through.
+  - app/Http/Requests/StoreUserRequest.php
+  # Q2: User model defines $fillable = ['name', 'email', 'password'].
+  # The diff calls User::create($data) — reviewer must verify that validated()
+  # fields (name, email) are in $fillable. The reviewer should also notice
+  # 'password' is fillable but NOT in the request rules — a potential gap.
+  - app/Models/User.php
+
+must_include_content_from:
+  app/Http/Controllers/UserController.php:
+    - "StoreUserRequest $request"
+    - '$request->validated()'
+    - "User::create($data)"
+  app/Http/Requests/StoreUserRequest.php:
+    - "'name' => 'required|string|max:255'"
+    - "'email' => 'required|email|unique:users'"
+  app/Models/User.php:
+    - "protected $fillable = ['name', 'email', 'password']"
+    - "protected $hidden = ['password', 'remember_token']"
+
+must_not_include:
+  # --- routes/api.php: registers Route::post('/users', [UserController::class, 'store']) ---
+  # HARDEST TRAP. Direct backward edge: imports UserController, references
+  # 'store' method by name. Also shows middleware group. But route URL
+  # paths and HTTP verbs don't help verify field mapping correctness.
+  - "Route::post('/users'"
+  - "Route::apiResource"
+  - "PostController"
+  - "Route::delete"
+  # --- tests/Feature/UserControllerTest.php: tests store() with POST ---
+  # Sends name/email, asserts 201, checks database. Calls the exact
+  # action from the diff. But test expectations verify HTTP behavior,
+  # not whether validated() fields match $fillable.
+  - test_store_creates_user
+  - test_store_validates_email
+  - test_store_rejects_duplicate_email
+  - assertDatabaseHas
+  - RefreshDatabase
+  # --- UpdateUserRequest.php: similar FormRequest, 'sometimes' rules ---
+  # Same base class, same pattern. Sibling request in same directory.
+  - UpdateUserRequest
+  - "'sometimes|string"
+  - "route('user')"
+  # --- EnsureJsonResponse.php: middleware on API routes ---
+  # Applied to the route group that includes store. But response
+  # formatting middleware doesn't help review field mapping.
+  - EnsureJsonResponse
+  - "headers->set('Accept'"
+  # --- UserObserver.php: fires on User::create() (called in diff) ---
+  # Direct structural edge: when diff calls User::create($data),
+  # observer's created() fires. But observer side effects (logging,
+  # welcome email) don't help review whether $data has correct fields.
+  - UserObserver
+  - "User created:"
+  - "User updated:"
+  - "User deleted:"
+  # --- UserResource.php: API resource for User model ---
+  # The diff DOESN'T use it (returns raw model). Including it suggests
+  # a refactoring, not comprehension of what the diff does.
+  - UserResource
+  - toISOString
+
+must_not_include_files:
+  - routes/api.php
+  - tests/Feature/UserControllerTest.php
+  - app/Http/Requests/UpdateUserRequest.php
+  - app/Http/Middleware/EnsureJsonResponse.php
+  - app/Observers/UserObserver.php
+  - app/Http/Resources/UserResource.php
+
+max_fragments: 5
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

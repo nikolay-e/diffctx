@@ -1,0 +1,391 @@
+# Scenario: Scattered edits in data_pipeline.py — extract_records gains a
+#   limit param, transform_records injects a _transformed marker.
+#   Only src/data_pipeline.py is changed.
+#
+# Diff shows (two non-adjacent hunks):
+#   Hunk 1 — extract_records:
+#     - def extract_records(source: str) -> List[Dict]:
+#     + def extract_records(source: str, limit: int = 50) -> List[Dict]:
+#     + records now include {"valid": True} field
+#     + range capped at min(limit, 100)
+#
+#   Hunk 2 — transform_records:
+#     + new_record starts with {"_transformed": True} instead of {}
+#     + logger.info at end with count
+#
+# Reviewer questions:
+#   Q1: "extract_records gains a `limit` parameter — who calls it, and
+#        will they break?"
+#       -> Needs src/pipeline_runner.py: it calls extract_records(source)
+#         with one arg. Since limit has a default (50), existing callers
+#         compile, but the reviewer must see the call sites to confirm no
+#         one passes a positional second argument that would collide.
+#
+#   Q2: "extract_records now injects 'valid': True into every record.
+#        Does anything downstream check or depend on this new field?"
+#       -> The DataValidator in the SAME file validates against a schema
+#         dict, so the field would only matter if the schema includes
+#         'valid'. The reviewer can check this within data_pipeline.py.
+#       -> pipeline_runner.py feeds extracted records into transform_records
+#         — reviewer can verify the transform mapping doesn't expect 'valid'.
+#
+#   Q3: "transform_records now injects '_transformed': True. Is this
+#        consumed or asserted anywhere downstream?"
+#       -> Needs pipeline_runner.py: it calls transform_records and passes
+#         results to load_records. Reviewer needs to see this flow to
+#         understand if _transformed could conflict with real data keys.
+#
+# Not needed for comprehension:
+#   - src/quality/data_validator.py: A standalone data quality validator
+#     that validates records against schemas. Has "validator" in the name,
+#     works with Dict records, validates field presence — same concepts
+#     as DataValidator inside data_pipeline.py. But it's a DIFFERENT
+#     validator (quality checks vs pipeline schema checks). No import
+#     relationship. Including it would confuse the reviewer into thinking
+#     there's a second validation layer involved in this pipeline.
+#
+#   - src/loaders/db_loader.py: The load function that pipeline_runner
+#     calls AFTER transform_records. It consumes transformed records.
+#     Structural argument: "doesn't the loader care about _transformed?"
+#     Answer: the loader iterates record.items() and inserts all KV pairs.
+#     But the reviewer question is about what the PIPELINE does with
+#     records, not how the DB loader persists them. The loader is a
+#     downstream consumer beyond the review scope.
+#
+#   - src/scheduling/batch_scheduler.py: Schedules pipeline runs. Calls
+#     pipeline_runner.run() — structural edge to the runner. But knowing
+#     WHEN the pipeline runs (every 15 min) doesn't help understand
+#     WHAT changed in extract/transform logic.
+#
+#   - tests/test_data_pipeline.py: Tests for extract_records and
+#     transform_records. Structural edge + same function signatures.
+#     But test assertions don't help the reviewer understand the
+#     production call flow or whether the signature change breaks callers.
+#
+#   - src/config/pipeline_config.py: Defines PipelineSettings with
+#     batch_size, retry_count — same field names as PipelineConfig in
+#     data_pipeline.py. Lexical overlap, but this is a separate config
+#     loader with no import relationship.
+
+initial:
+  src/data_pipeline.py: |
+    import logging
+    from typing import List, Dict, Optional
+    from dataclasses import dataclass
+
+    logger = logging.getLogger(__name__)
+
+    @dataclass
+    class PipelineConfig:
+        batch_size: int = 100
+        retry_count: int = 3
+        timeout_seconds: float = 30.0
+
+    def extract_records(source: str) -> List[Dict]:
+        logger.info(f"Extracting from {source}")
+        records = []
+        for i in range(10):
+            records.append({"id": i, "source": source})
+        return records
+
+    class DataValidator:
+        def __init__(self, schema: Dict):
+            self.schema = schema
+            self._errors: List[str] = []
+
+        def validate(self, record: Dict) -> bool:
+            for field_name in self.schema:
+                if field_name not in record:
+                    self._errors.append(f"Missing: {field_name}")
+                    return False
+            return True
+
+        def get_errors(self) -> List[str]:
+            return self._errors.copy()
+
+    def transform_records(records: List[Dict], mapping: Dict) -> List[Dict]:
+        transformed = []
+        for record in records:
+            new_record = {}
+            for old_key, new_key in mapping.items():
+                if old_key in record:
+                    new_record[new_key] = record[old_key]
+            transformed.append(new_record)
+        return transformed
+
+  src/pipeline_runner.py: |
+    from src.data_pipeline import extract_records, transform_records, DataValidator
+    from src.loaders.db_loader import load_records
+    import logging
+
+    logger = logging.getLogger(__name__)
+
+    FIELD_MAPPING = {
+        "id": "record_id",
+        "source": "origin",
+    }
+
+    SCHEMA = {
+        "record_id": {"type": "string"},
+        "origin": {"type": "string"},
+    }
+
+    def run(source: str) -> int:
+        raw = extract_records(source)
+        logger.info(f"Extracted {len(raw)} records from {source}")
+
+        validator = DataValidator(SCHEMA)
+        transformed = transform_records(raw, FIELD_MAPPING)
+
+        valid = [r for r in transformed if validator.validate(r)]
+        if validator.get_errors():
+            logger.warning(f"Validation errors: {validator.get_errors()}")
+
+        loaded = load_records(valid)
+        return loaded
+
+    def run_incremental(source: str, since: str) -> int:
+        raw = extract_records(source)
+        filtered = [r for r in raw if r.get("updated_after", "") >= since]
+        transformed = transform_records(filtered, FIELD_MAPPING)
+        return load_records(transformed)
+
+  src/loaders/db_loader.py: |
+    import logging
+    from typing import List, Dict
+
+    logger = logging.getLogger(__name__)
+
+    def load_records(records: List[Dict], table: str = "raw_data") -> int:
+        count = 0
+        for record in records:
+            columns = ", ".join(record.keys())
+            placeholders = ", ".join(["%s"] * len(record))
+            logger.debug(f"INSERT INTO {table} ({columns}) VALUES ({placeholders})")
+            count += 1
+        logger.info(f"Loaded {count} records into {table}")
+        return count
+
+    def upsert_records(records: List[Dict], table: str, key_column: str) -> int:
+        count = 0
+        for record in records:
+            logger.debug(f"UPSERT into {table} on {key_column}")
+            count += 1
+        return count
+
+  src/quality/data_validator.py: |
+    from typing import Dict, Any, List
+
+    SUPPORTED_TYPES = ("string", "integer", "boolean", "float", "array")
+
+    class DataQualityValidator:
+        def __init__(self, rules: Dict[str, Any]):
+            self.rules = rules
+            self._violations: List[str] = []
+
+        def check_record(self, record: Dict) -> bool:
+            for field, rule in self.rules.items():
+                if field not in record:
+                    self._violations.append(f"Missing required field: {field}")
+                    return False
+                if rule.get("type") and not isinstance(record[field], self._type_map(rule["type"])):
+                    self._violations.append(f"Type mismatch for {field}")
+                    return False
+            return True
+
+        def _type_map(self, type_name: str) -> type:
+            return {"string": str, "integer": int, "boolean": bool, "float": float}.get(type_name, object)
+
+        def get_violations(self) -> List[str]:
+            return list(self._violations)
+
+  src/scheduling/batch_scheduler.py: |
+    from datetime import datetime, timedelta
+    from typing import List, Callable
+    import logging
+
+    logger = logging.getLogger(__name__)
+
+    SCHEDULE_INTERVAL = timedelta(minutes=15)
+
+    class BatchScheduler:
+        def __init__(self, interval: timedelta = SCHEDULE_INTERVAL):
+            self.interval = interval
+            self._jobs: List[dict] = []
+
+        def schedule(self, name: str, handler: Callable) -> None:
+            self._jobs.append({
+                "name": name,
+                "handler": handler,
+                "next_run": datetime.utcnow() + self.interval,
+            })
+            logger.info(f"Scheduled job '{name}' every {self.interval}")
+
+        def pending_jobs(self) -> List[str]:
+            now = datetime.utcnow()
+            return [j["name"] for j in self._jobs if j["next_run"] <= now]
+
+        def run_pending(self) -> int:
+            ran = 0
+            for job in self._jobs:
+                if job["next_run"] <= datetime.utcnow():
+                    job["handler"]()
+                    job["next_run"] = datetime.utcnow() + self.interval
+                    ran += 1
+            return ran
+
+  tests/test_data_pipeline.py: |
+    from src.data_pipeline import extract_records, transform_records, DataValidator
+
+    def test_extract_returns_records():
+        records = extract_records("test_source")
+        assert len(records) > 0
+        assert all("id" in r for r in records)
+
+    def test_transform_applies_mapping():
+        records = [{"id": 1, "source": "s3"}]
+        mapping = {"id": "record_id", "source": "origin"}
+        result = transform_records(records, mapping)
+        assert result[0]["record_id"] == 1
+        assert result[0]["origin"] == "s3"
+
+    def test_validator_catches_missing():
+        v = DataValidator({"name": {}, "age": {}})
+        assert not v.validate({"name": "test"})
+        assert len(v.get_errors()) == 1
+
+    def test_validator_passes_complete():
+        v = DataValidator({"name": {}, "age": {}})
+        assert v.validate({"name": "test", "age": 30})
+
+  src/config/pipeline_config.py: |
+    import os
+    from dataclasses import dataclass
+
+    @dataclass
+    class PipelineSettings:
+        batch_size: int = 100
+        retry_count: int = 3
+        timeout_seconds: float = 30.0
+        source_url: str = ""
+
+    def load_pipeline_config() -> PipelineSettings:
+        return PipelineSettings(
+            batch_size=int(os.getenv("BATCH_SIZE", "100")),
+            retry_count=int(os.getenv("RETRY_COUNT", "3")),
+            timeout_seconds=float(os.getenv("TIMEOUT", "30.0")),
+            source_url=os.getenv("SOURCE_URL", ""),
+        )
+
+changed:
+  src/data_pipeline.py: |
+    import logging
+    from typing import List, Dict, Optional
+    from dataclasses import dataclass
+
+    logger = logging.getLogger(__name__)
+
+    @dataclass
+    class PipelineConfig:
+        batch_size: int = 100
+        retry_count: int = 3
+        timeout_seconds: float = 30.0
+
+    def extract_records(source: str, limit: int = 50) -> List[Dict]:
+        logger.info(f"Extracting from {source} with limit={limit}")
+        records = []
+        for i in range(min(limit, 100)):
+            records.append({"id": i, "source": source, "valid": True})
+        return records
+
+    class DataValidator:
+        def __init__(self, schema: Dict):
+            self.schema = schema
+            self._errors: List[str] = []
+
+        def validate(self, record: Dict) -> bool:
+            for field_name in self.schema:
+                if field_name not in record:
+                    self._errors.append(f"Missing: {field_name}")
+                    return False
+            return True
+
+        def get_errors(self) -> List[str]:
+            return self._errors.copy()
+
+    def transform_records(records: List[Dict], mapping: Dict) -> List[Dict]:
+        transformed = []
+        for record in records:
+            new_record = {"_transformed": True}
+            for old_key, new_key in mapping.items():
+                if old_key in record:
+                    new_record[new_key] = record[old_key]
+            transformed.append(new_record)
+        logger.info(f"Transformed {len(transformed)} records")
+        return transformed
+
+must_include_files:
+  - src/data_pipeline.py
+  # Q1+Q3: pipeline_runner.py calls extract_records(source) — one arg.
+  # Reviewer must see this to confirm the new `limit` param (with default)
+  # doesn't break the call. It also shows FIELD_MAPPING, so reviewer can
+  # verify that "_transformed" won't collide with mapped keys.
+  - src/pipeline_runner.py
+
+must_include_content_from:
+  src/data_pipeline.py:
+    - "def extract_records(source: str, limit: int = 50) -> List[Dict]"
+    - 'new_record = {"_transformed": True}'
+    - '"valid": True'
+  src/pipeline_runner.py:
+    - "raw = extract_records(source)"
+    - "transformed = transform_records(raw, FIELD_MAPPING)"
+    - '"id": "record_id"'
+    - '"source": "origin"'
+
+must_not_include:
+  # --- quality/data_validator.py: "validator" concept, Dict records ---
+  # Validates records against schemas — same concept as DataValidator
+  # in data_pipeline.py. But a DIFFERENT validator (quality checks)
+  # with no import relationship. Would confuse reviewer into thinking
+  # there's a second validation layer in this pipeline.
+  - DataQualityValidator
+  - check_record
+  - _type_map
+  - SUPPORTED_TYPES
+  # --- loaders/db_loader.py: consumes transform output ---
+  # Structural argument: loader receives records with "_transformed".
+  # But how the DB persists KV pairs is beyond the review scope.
+  # The reviewer question is about the pipeline logic, not the sink.
+  - load_records
+  - upsert_records
+  - "INSERT INTO"
+  # --- scheduling/batch_scheduler.py: schedules pipeline runs ---
+  # Structural edge: scheduler calls pipeline_runner.run().
+  # But WHEN the pipeline runs doesn't explain WHAT changed.
+  - BatchScheduler
+  - SCHEDULE_INTERVAL
+  - run_pending
+  # --- tests/test_data_pipeline.py: tests the changed functions ---
+  # Imports extract_records and transform_records — same signatures.
+  # But test assertions don't help review whether production callers
+  # break from the signature change.
+  - test_extract_returns_records
+  - test_transform_applies_mapping
+  - test_validator_catches_missing
+  # --- config/pipeline_config.py: batch_size/retry_count overlap ---
+  # Same field names as PipelineConfig in data_pipeline.py. Lexical
+  # trap. But separate config loader with no import relationship.
+  - PipelineSettings
+  - load_pipeline_config
+  - SOURCE_URL
+
+must_not_include_files:
+  - src/quality/data_validator.py
+  - src/loaders/db_loader.py
+  - src/scheduling/batch_scheduler.py
+  - tests/test_data_pipeline.py
+  - src/config/pipeline_config.py
+
+add_garbage_files: false
+skip_garbage_check: true

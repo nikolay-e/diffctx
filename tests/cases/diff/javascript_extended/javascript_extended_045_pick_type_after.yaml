@@ -1,3 +1,0 @@
-user.ts: "export interface User {\n    id: string;\n    name: string;\n    email: string;\n    password: string;\n    createdAt: Date;\n}\n\n// ts_ext_garbage_marker_007\n"
-dto.ts: "import { User } from './user';\n\ntype UserPublic = Pick<User, 'id' | 'name' | 'email'>;\n\nfunction toPublic(user: User): UserPublic {\n    return { id: user.id, name: user.name, email: user.email\
-  \ };\n}\n"

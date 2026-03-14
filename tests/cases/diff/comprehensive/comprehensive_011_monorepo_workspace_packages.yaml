@@ -1,0 +1,142 @@
+# Test 011: New @myorg/api package added — reviewer needs what it depends on
+#
+# Scenario: A new packages/api/ is added with package.json declaring
+# dependency on @myorg/core, and index.ts importing coreFunction and
+# coreHelper. Both new files are in the diff.
+#
+# Reviewer questions:
+#   Q1: "What are coreFunction() and coreHelper()?" -> packages/core/src/index.ts
+#       defines them. The new API handler calls both, so reviewer needs to
+#       see their signatures and return types to verify correct usage.
+#   Q2: "Does @myorg/core actually exist as a workspace package?" ->
+#       packages/core/package.json confirms it exports as @myorg/core.
+#       Combined with root package.json workspaces: ["packages/*"], this
+#       validates the dependency declaration.
+#
+# Not needed:
+#   - packages/web/: an existing web package. Also depends on @myorg/core
+#     but the diff is about adding a new API package. The web package
+#     neither imports from nor is imported by the new API code.
+#   - build-scripts/: workspace-level build tooling. Same repo level
+#     but unrelated to package dependency wiring.
+#   - packages/core/tsconfig.json: compiler config for core, no API impact.
+
+initial:
+  package.json: |
+    {
+        "name": "monorepo",
+        "private": true,
+        "workspaces": ["packages/*"]
+    }
+  packages/core/package.json: |
+    {
+        "name": "@myorg/core",
+        "version": "1.0.0",
+        "main": "dist/index.js"
+    }
+  packages/core/src/index.ts: |
+    export function coreFunction(): string {
+        return "core";
+    }
+
+    export function coreHelper(input: string): string {
+        return input.toUpperCase();
+    }
+  packages/web/package.json: |
+    {
+        "name": "@myorg/web",
+        "version": "1.0.0",
+        "dependencies": {
+            "@myorg/core": "workspace:*"
+        }
+    }
+  packages/web/src/app.ts: |
+    import { coreFunction } from '@myorg/core';
+
+    export function renderApp(): string {
+      const label = coreFunction();
+      return `<div>${label}</div>`;
+    }
+
+    export function renderHeader(title: string): string {
+      return `<header><h1>${title}</h1></header>`;
+    }
+  build-scripts/build-all.ts: |
+    import { execSync } from 'child_process';
+
+    const packages = ['core', 'web'];
+
+    function buildPackage(name: string): void {
+      console.log(`Building ${name}...`);
+      execSync(`npm run build`, { cwd: `packages/${name}` });
+    }
+
+    function buildAll(): void {
+      packages.forEach(buildPackage);
+      console.log('All packages built successfully.');
+    }
+
+    buildAll();
+  packages/core/tsconfig.json: |
+    {
+      "compilerOptions": {
+        "target": "ES2022",
+        "module": "NodeNext",
+        "strict": true,
+        "outDir": "dist",
+        "declaration": true
+      },
+      "include": ["src"]
+    }
+
+changed:
+  packages/api/package.json: |
+    {
+        "name": "@myorg/api",
+        "version": "1.0.0",
+        "dependencies": {
+            "@myorg/core": "workspace:*"
+        }
+    }
+  packages/api/src/index.ts: |
+    import { coreFunction, coreHelper } from '@myorg/core';
+
+    export function apiHandler(input: string) {
+        const base = coreFunction();
+        const processed = coreHelper(input);
+        return `${base}: ${processed}`;
+    }
+
+must_include_files:
+  # Changed files (free)
+  - packages/api/package.json
+  - packages/api/src/index.ts
+  # Q1: What do coreFunction/coreHelper do?
+  - packages/core/src/index.ts
+must_include_content_from:
+  packages/api/src/index.ts:
+    - "import { coreFunction, coreHelper } from '@myorg/core'"
+    - "function apiHandler"
+  packages/core/src/index.ts:
+    # Reviewer verifies the imported functions' signatures
+    - "function coreFunction(): string"
+    - "function coreHelper(input: string): string"
+must_not_include:
+  # --- web package: existing consumer, not relevant to new API ---
+  - renderApp
+  - renderHeader
+  # --- build-scripts: workspace tooling, not package wiring ---
+  - buildPackage
+  - buildAll
+  - execSync
+  # --- core tsconfig: compiler config ---
+  - "declaration"
+must_not_include_files:
+  - packages/web/src/app.ts
+  - packages/web/package.json
+  - build-scripts/build-all.ts
+  - packages/core/tsconfig.json
+max_fragments: 8
+max_files: 4
+add_garbage_files: false
+skip_garbage_check: true

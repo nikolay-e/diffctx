@@ -1,0 +1,97 @@
+# Scenario: Upgrading ECS task definition with CPU/memory and new image version.
+# Reviewer questions:
+#   1. What service runs this task? (service.tf)
+#   2. What does the health endpoint return? (src/server.py has the /health route)
+# Traps:
+#   - worker/task.tf: another ECS task definition (same resource type, different service)
+#   - iam/task_role.tf: task execution role (mentions ECS but not affected by task spec changes)
+
+initial:
+  ecs.tf: |
+    resource "aws_ecs_task_definition" "app" {
+      family = "app"
+      container_definitions = jsonencode([{
+        name  = "app"
+        image = "myapp:latest"
+        portMappings = [{
+          containerPort = 8080
+        }]
+      }])
+    }
+  service.tf: |
+    resource "aws_ecs_service" "app" {
+      name            = "app-service"
+      cluster         = aws_ecs_cluster.main.id
+      task_definition = aws_ecs_task_definition.app.arn
+      desired_count   = 2
+    }
+  src/server.py: |
+    from flask import Flask
+    app = Flask(__name__)
+
+    @app.route("/health")
+    def health():
+        return "OK"
+  worker/task.tf: |
+    resource "aws_ecs_task_definition" "worker" {
+      family = "worker"
+      container_definitions = jsonencode([{
+        name  = "worker"
+        image = "worker:latest"
+        cpu   = 128
+      }])
+    }
+  iam/task_role.tf: |
+    resource "aws_iam_role" "ecs_task_execution" {
+      name = "ecs-task-execution"
+      assume_role_policy = jsonencode({
+        Version = "2012-10-17"
+        Statement = [{
+          Action = "sts:AssumeRole"
+          Effect = "Allow"
+          Principal = { Service = "ecs-tasks.amazonaws.com" }
+        }]
+      })
+    }
+
+changed:
+  ecs.tf: |
+    resource "aws_ecs_task_definition" "app" {
+      family = "app"
+      cpu    = "256"
+      memory = "512"
+      container_definitions = jsonencode([{
+        name  = "app"
+        image = "myapp:v2"
+        portMappings = [{
+          containerPort = 8080
+        }]
+      }])
+    }
+
+must_include_files:
+  - ecs.tf
+  - service.tf
+
+must_include_content_from:
+  ecs.tf:
+    - cpu    = "256"
+    - memory = "512"
+    - image = "myapp:v2"
+  service.tf:
+    - aws_ecs_task_definition.app.arn
+
+must_not_include:
+  # Worker task - same resource type but different service, unrelated to app task changes
+  - worker:latest
+  # Task execution role - IAM for ECS but not affected by task spec changes
+  - ecs-task-execution
+
+must_not_include_files:
+  - worker/task.tf
+  - iam/task_role.tf
+
+max_fragments: 4
+max_files: 2
+add_garbage_files: false
+skip_garbage_check: true

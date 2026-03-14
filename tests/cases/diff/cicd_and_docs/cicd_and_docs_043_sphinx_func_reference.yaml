@@ -1,0 +1,401 @@
+# Test 043: Does the system select context that answers a reviewer's questions?
+#
+# Scenario: process_order() in processor.py changes return type from bool to
+# OrderReceipt and adds InventoryError handling. This is a single-function change.
+#
+# A reviewer seeing this diff will ask:
+#   Q1: "What is OrderReceipt?" → needs the type definition from models.py
+#   Q2: "Who calls process_order() and what do they do with the result?"
+#       → needs the caller in routes.py (which currently expects bool)
+#   Q3: "What is InventoryError and when is it raised?"
+#       → needs the exception definition from inventory.py
+#
+# A reviewer will NOT ask:
+#   - "What does validate_shipping_address do?" (unrelated function, same directory)
+#   - "How does the email notification template work?" (no connection to this change)
+#   - "What's in the test utilities?" (no connection to process_order)
+
+initial:
+  src/orders/processor.py: |
+    from .models import Order, OrderItem
+    from ..inventory import check_stock
+
+    def process_order(order: Order) -> bool:
+        """Process a customer order and update inventory."""
+        for item in order.items:
+            if not check_stock(item.product_id, item.quantity):
+                return False
+        return True
+
+    def cancel_order(order_id: int) -> bool:
+        """Cancel an existing order and restore inventory."""
+        return True
+  src/orders/models.py: |
+    from dataclasses import dataclass, field
+
+    @dataclass
+    class OrderItem:
+        product_id: str
+        quantity: int
+        unit_price: float
+
+    @dataclass
+    class Order:
+        customer_id: str
+        items: list[OrderItem] = field(default_factory=list)
+
+        @property
+        def total(self) -> float:
+            return sum(i.unit_price * i.quantity for i in self.items)
+
+    @dataclass
+    class OrderReceipt:
+        order_id: str
+        charged_amount: float
+        inventory_reserved: bool
+        tracking_number: str | None = None
+  src/orders/validators.py: |
+    import re
+
+    def validate_shipping_address(
+        street: str, city: str, postal_code: str, country: str
+    ) -> bool:
+        """Validate a shipping address for completeness and format."""
+        if not all([street, city, postal_code, country]):
+            return False
+        return len(postal_code) >= 3
+
+    def validate_phone_number(phone: str, country_code: str) -> bool:
+        """Validate phone number format for the given country."""
+        patterns = {
+            "US": r"^\+1\d{10}$",
+            "DE": r"^\+49\d{10,11}$",
+            "UK": r"^\+44\d{10}$",
+        }
+        pattern = patterns.get(country_code, r"^\+\d{7,15}$")
+        return bool(re.match(pattern, phone))
+  src/api/routes.py: |
+    from ..orders.processor import process_order
+    from ..orders.models import Order, OrderItem
+
+    def handle_checkout(request_data: dict) -> dict:
+        """API endpoint handler for checkout."""
+        order = Order(
+            customer_id=request_data["customer_id"],
+            items=[
+                OrderItem(
+                    product_id=item["id"],
+                    quantity=item["qty"],
+                    unit_price=item["price"],
+                )
+                for item in request_data["items"]
+            ],
+        )
+        success = process_order(order)
+        if success:
+            return {"status": "confirmed", "total": order.total}
+        return {"status": "failed", "reason": "insufficient_stock"}
+  src/inventory/__init__.py: |
+    from .service import check_stock, InventoryError
+
+    __all__ = ["check_stock", "InventoryError"]
+  src/inventory/service.py: |
+    class InventoryError(Exception):
+        """Raised when inventory operation fails irrecoverably.
+
+        Attributes:
+            product_id: The product that caused the failure
+            requested: Quantity that was requested
+            available: Quantity actually available
+        """
+        def __init__(self, product_id: str, requested: int, available: int):
+            self.product_id = product_id
+            self.requested = requested
+            self.available = available
+            super().__init__(
+                f"Cannot fulfill {requested} of {product_id}: "
+                f"only {available} available"
+            )
+
+    def check_stock(product_id: str, quantity: int) -> bool:
+        """Check if sufficient stock exists for the given product."""
+        return True
+
+    def reserve_stock(product_id: str, quantity: int) -> str:
+        """Reserve inventory and return reservation ID."""
+        return f"RSV-{product_id}-{quantity}"
+  src/notifications/email.py: |
+    from string import Template
+
+    ORDER_CONFIRMATION_TEMPLATE = Template("""
+    Dear $customer_name,
+
+    Your order $order_id has been confirmed.
+    Total charged: $$${amount}
+
+    Tracking: $tracking_url
+    """)
+
+    def send_order_confirmation(
+        customer_email: str,
+        customer_name: str,
+        order_id: str,
+        amount: float,
+        tracking_url: str,
+    ) -> bool:
+        """Send order confirmation email."""
+        body = ORDER_CONFIRMATION_TEMPLATE.substitute(
+            customer_name=customer_name,
+            order_id=order_id,
+            amount=f"{amount:.2f}",
+            tracking_url=tracking_url,
+        )
+        return True
+  tests/conftest.py: |
+    import pytest
+
+    @pytest.fixture
+    def sample_database_url():
+        return "sqlite:///:memory:"
+
+    @pytest.fixture
+    def mock_smtp_server():
+        """Fixture for mocking SMTP connections in email tests."""
+        return None
+
+changed:
+  src/orders/processor.py: |
+    from .models import Order, OrderItem, OrderReceipt
+    from ..inventory import check_stock, InventoryError
+
+    def process_order(order: Order) -> OrderReceipt:
+        """Process a customer order, reserve inventory, and return receipt.
+
+        Raises:
+            InventoryError: If any item cannot be fulfilled from current stock.
+        """
+        for item in order.items:
+            if not check_stock(item.product_id, item.quantity):
+                raise InventoryError(
+                    product_id=item.product_id,
+                    requested=item.quantity,
+                    available=0,
+                )
+        return OrderReceipt(
+            order_id=f"ORD-{order.customer_id}",
+            charged_amount=order.total,
+            inventory_reserved=True,
+        )
+
+    def cancel_order(order_id: int) -> bool:
+        """Cancel an existing order and restore inventory."""
+        return True
+  # All other files unchanged
+  src/orders/models.py: |
+    from dataclasses import dataclass, field
+
+    @dataclass
+    class OrderItem:
+        product_id: str
+        quantity: int
+        unit_price: float
+
+    @dataclass
+    class Order:
+        customer_id: str
+        items: list[OrderItem] = field(default_factory=list)
+
+        @property
+        def total(self) -> float:
+            return sum(i.unit_price * i.quantity for i in self.items)
+
+    @dataclass
+    class OrderReceipt:
+        order_id: str
+        charged_amount: float
+        inventory_reserved: bool
+        tracking_number: str | None = None
+  src/orders/validators.py: |
+    import re
+
+    def validate_shipping_address(
+        street: str, city: str, postal_code: str, country: str
+    ) -> bool:
+        """Validate a shipping address for completeness and format."""
+        if not all([street, city, postal_code, country]):
+            return False
+        return len(postal_code) >= 3
+
+    def validate_phone_number(phone: str, country_code: str) -> bool:
+        """Validate phone number format for the given country."""
+        patterns = {
+            "US": r"^\+1\d{10}$",
+            "DE": r"^\+49\d{10,11}$",
+            "UK": r"^\+44\d{10}$",
+        }
+        pattern = patterns.get(country_code, r"^\+\d{7,15}$")
+        return bool(re.match(pattern, phone))
+  src/api/routes.py: |
+    from ..orders.processor import process_order
+    from ..orders.models import Order, OrderItem
+
+    def handle_checkout(request_data: dict) -> dict:
+        """API endpoint handler for checkout."""
+        order = Order(
+            customer_id=request_data["customer_id"],
+            items=[
+                OrderItem(
+                    product_id=item["id"],
+                    quantity=item["qty"],
+                    unit_price=item["price"],
+                )
+                for item in request_data["items"]
+            ],
+        )
+        success = process_order(order)
+        if success:
+            return {"status": "confirmed", "total": order.total}
+        return {"status": "failed", "reason": "insufficient_stock"}
+  src/inventory/__init__.py: |
+    from .service import check_stock, InventoryError
+
+    __all__ = ["check_stock", "InventoryError"]
+  src/inventory/service.py: |
+    class InventoryError(Exception):
+        """Raised when inventory operation fails irrecoverably.
+
+        Attributes:
+            product_id: The product that caused the failure
+            requested: Quantity that was requested
+            available: Quantity actually available
+        """
+        def __init__(self, product_id: str, requested: int, available: int):
+            self.product_id = product_id
+            self.requested = requested
+            self.available = available
+            super().__init__(
+                f"Cannot fulfill {requested} of {product_id}: "
+                f"only {available} available"
+            )
+
+    def check_stock(product_id: str, quantity: int) -> bool:
+        """Check if sufficient stock exists for the given product."""
+        return True
+
+    def reserve_stock(product_id: str, quantity: int) -> str:
+        """Reserve inventory and return reservation ID."""
+        return f"RSV-{product_id}-{quantity}"
+  src/notifications/email.py: |
+    from string import Template
+
+    ORDER_CONFIRMATION_TEMPLATE = Template("""
+    Dear $customer_name,
+
+    Your order $order_id has been confirmed.
+    Total charged: $$${amount}
+
+    Tracking: $tracking_url
+    """)
+
+    def send_order_confirmation(
+        customer_email: str,
+        customer_name: str,
+        order_id: str,
+        amount: float,
+        tracking_url: str,
+    ) -> bool:
+        """Send order confirmation email."""
+        body = ORDER_CONFIRMATION_TEMPLATE.substitute(
+            customer_name=customer_name,
+            order_id=order_id,
+            amount=f"{amount:.2f}",
+            tracking_url=tracking_url,
+        )
+        return True
+  tests/conftest.py: |
+    import pytest
+
+    @pytest.fixture
+    def sample_database_url():
+        return "sqlite:///:memory:"
+
+    @pytest.fixture
+    def mock_smtp_server():
+        """Fixture for mocking SMTP connections in email tests."""
+        return None
+
+# === What a reviewer needs to understand this change ===
+#
+# The diff shows process_order() now:
+#   - Returns OrderReceipt instead of bool
+#   - Raises InventoryError instead of returning False
+#
+# To review this competently, you need answers to:
+#
+# Q1: "What is OrderReceipt?" → models.py defines it with 4 fields.
+#     Without this, the reviewer can't verify the return statement is correct.
+#
+# Q2: "Who calls process_order()?" → routes.py calls it and checks `if success:`.
+#     This caller is NOW BROKEN (expects bool, gets OrderReceipt).
+#     Without this, the reviewer misses a real bug.
+#
+# Q3: "What is InventoryError?" → inventory/service.py defines it with 3 attrs.
+#     Without this, the reviewer can't verify the raise statement is correct.
+#
+# You do NOT need:
+#   - validators.py (validates addresses/phones — unrelated to ordering logic)
+#   - email.py (sends confirmations — downstream of this change, no breakage)
+#   - conftest.py (test fixtures for DB/SMTP — no connection to process_order)
+
+must_include_files:
+  # The change itself
+  - src/orders/processor.py
+  # Q1 answer: What is OrderReceipt?
+  - src/orders/models.py
+  # Q2 answer: Who calls process_order and will they break?
+  - src/api/routes.py
+must_include_content_from:
+  src/orders/processor.py:
+    - "def process_order"
+    - "OrderReceipt"
+    - "InventoryError"
+  src/orders/models.py:
+    # The reviewer needs to see the dataclass fields to verify the return
+    - "class OrderReceipt"
+    - "charged_amount"
+    - "inventory_reserved"
+  src/api/routes.py:
+    # The reviewer needs to see this caller uses the return value as bool —
+    # this is a BREAKING CHANGE and the most important context
+    - "success = process_order(order)"
+    - "if success"
+must_not_include:
+  # --- validators.py: same directory, zero relevance ---
+  # Validates shipping addresses and phone numbers.
+  # A reviewer gains nothing from seeing this for a return-type change.
+  - validate_shipping_address
+  - validate_phone_number
+  - postal_code
+  # --- email.py: downstream, but not broken by this change ---
+  # Sends confirmation emails. Would need OrderReceipt data eventually,
+  # but doesn't import or call process_order — no breakage signal.
+  - ORDER_CONFIRMATION_TEMPLATE
+  - send_order_confirmation
+  - tracking_url
+  # --- conftest.py: test infrastructure, no connection ---
+  # Database and SMTP fixtures. Nothing to do with order processing.
+  - sample_database_url
+  - mock_smtp_server
+must_not_include_files:
+  - src/orders/validators.py
+  - src/notifications/email.py
+  - tests/conftest.py
+# Q3 (InventoryError definition) is a SHOULD — system may or may not discover
+# inventory/service.py depending on whether rare-identifier expansion catches
+# "inventoryerror". We assert it as desired but not mandatory, via content check
+# without file requirement. If the system includes it, great — more comprehension.
+# If not, the test still passes on the mandatory reviewer questions.
+max_fragments: 12
+max_files: 5
+add_garbage_files: false
+skip_garbage_check: true

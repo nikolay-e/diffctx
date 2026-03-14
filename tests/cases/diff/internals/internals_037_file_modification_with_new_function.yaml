@@ -1,0 +1,18 @@
+initial:
+  keep.py: |
+    def keep_this():
+        return "staying"
+changed:
+  keep.py: |
+    def keep_this():
+        return "modified"
+
+    def added_func():
+        return "new"
+must_include_files:
+- keep.py
+must_include_content:
+- return "modified"
+- 'def added_func():'
+add_garbage_files: false
+skip_garbage_check: true

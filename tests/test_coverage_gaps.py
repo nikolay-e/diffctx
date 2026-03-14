@@ -46,7 +46,9 @@ def test_map_directory_with_no_default_ignores_param(tmp_path):
     (project / "__pycache__" / "module.pyc").write_text("bytecode")
     (project / "regular.txt").write_text("content")
     (project / ".gitignore").write_text("*.pyc\n")
-    (project / ".treemapperignore").write_text(".git/\n__pycache__/\n")
+    config_dir = project / ".treemapper"
+    config_dir.mkdir()
+    (config_dir / "ignore").write_text(".git/\n__pycache__/\n")
 
     tree_with_defaults = map_directory(project)
     names_with_defaults = get_all_files_in_tree(tree_with_defaults)
@@ -73,7 +75,9 @@ def test_no_default_ignores_still_respects_custom_ignore(tmp_path):
     (project / "keep.txt").write_text("keep this")
     (project / "ignore_me.log").write_text("should be ignored")
     (project / ".gitignore").write_text("*.pyc\n")
-    (project / ".treemapperignore").write_text(".git/\n__pycache__/\n")
+    config_dir2 = project / ".treemapper"
+    config_dir2.mkdir()
+    (config_dir2 / "ignore").write_text(".git/\n__pycache__/\n")
 
     custom_ignore = tmp_path / "custom.ignore"
     custom_ignore.write_text("*.log\n")

@@ -36,18 +36,26 @@ _CLIPBOARD_DETECTORS = {
     "FreeBSD": _detect_linux_clipboard,
 }
 
+_INSTALL_HINTS = {
+    "Darwin": "pbcopy should be available by default on macOS",
+    "Windows": "clip.exe should be available by default on Windows",
+    "Linux": "Install wl-copy (Wayland) or xclip/xsel (X11): sudo apt install wl-clipboard or sudo apt install xclip",
+    "FreeBSD": "Install xclip or xsel: pkg install xclip",
+}
+
 
 def detect_clipboard_command() -> list[str] | None:
     detector = _CLIPBOARD_DETECTORS.get(platform.system())
     return detector() if detector else None
 
 
-def copy_to_clipboard(text: str) -> int:
+def copy_to_clipboard(text: str) -> None:
     cmd = detect_clipboard_command()
     if cmd is None:
-        raise ClipboardError("No clipboard tool found")
+        system = platform.system()
+        hint = _INSTALL_HINTS.get(system, f"No clipboard support for {system}")
+        raise ClipboardError(f"No clipboard tool found. {hint}")
 
-    # Windows clip.exe requires UTF-16LE without BOM for proper Unicode support
     encoding = "utf-16le" if platform.system() == "Windows" else "utf-8"
     encoded = text.encode(encoding)
 
@@ -67,8 +75,6 @@ def copy_to_clipboard(text: str) -> int:
         raise ClipboardError(stderr_msg or f"Command failed with code {e.returncode}") from e
     except OSError as e:
         raise ClipboardError(f"Failed to execute clipboard command: {e}") from e
-
-    return len(encoded)
 
 
 def clipboard_available() -> bool:

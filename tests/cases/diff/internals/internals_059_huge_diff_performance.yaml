@@ -1,0 +1,24 @@
+initial:
+  huge_file.py: |
+    def func_0():
+        return 0
+
+    def func_1():
+        return 1
+
+    def func_2():
+        return 2
+changed:
+  huge_file.py: |
+    def func_0():
+        return 100
+
+    def func_1():
+        return 200
+
+    def func_2():
+        return 300
+must_include_files:
+- huge_file.py
+add_garbage_files: false
+skip_garbage_check: true

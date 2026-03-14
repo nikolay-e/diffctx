@@ -1,0 +1,95 @@
+# Reviewer sees: Stats.tsx now imports and memoizes expensiveComputation.
+# Q: "What does expensiveComputation do — is memoization justified?"
+#    -> compute.ts: reduces array to sum of squares (O(n) reduce).
+#       Reviewer understands the memoization rationale.
+#
+# Not needed:
+#   - statistics.ts: mean/median functions. Same math domain but
+#     not imported by Stats — no connection to this change.
+#   - StatsChart.tsx: chart component. Sibling component not
+#     referenced by the diff.
+
+initial:
+  src/compute.ts: |
+    export function expensiveComputation(items: number[]): number {
+        return items.reduce((sum, n) => sum + n * n, 0);
+    }
+  src/Stats.tsx: |
+    export function Stats() {
+        return <div>Placeholder</div>;
+    }
+  src/statistics.ts: |
+    export function mean(values: number[]): number {
+        return values.reduce((a, b) => a + b, 0) / values.length;
+    }
+
+    export function median(values: number[]): number {
+        const sorted = [...values].sort((a, b) => a - b);
+        const mid = Math.floor(sorted.length / 2);
+        return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+    }
+  src/StatsChart.tsx: |
+    interface StatsChartProps {
+        data: number[];
+        width: number;
+        height: number;
+    }
+
+    export function StatsChart({ data, width, height }: StatsChartProps) {
+        return <canvas width={width} height={height} />;
+    }
+changed:
+  src/compute.ts: |
+    export function expensiveComputation(items: number[]): number {
+        return items.reduce((sum, n) => sum + n * n, 0);
+    }
+  src/Stats.tsx: |
+    import { useMemo } from 'react';
+    import { expensiveComputation } from './compute';
+
+    export function Stats({ items }: { items: number[] }) {
+        const result = useMemo(() => expensiveComputation(items), [items]);
+        return <div>Result: {result}</div>;
+    }
+  src/statistics.ts: |
+    export function mean(values: number[]): number {
+        return values.reduce((a, b) => a + b, 0) / values.length;
+    }
+
+    export function median(values: number[]): number {
+        const sorted = [...values].sort((a, b) => a - b);
+        const mid = Math.floor(sorted.length / 2);
+        return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+    }
+  src/StatsChart.tsx: |
+    interface StatsChartProps {
+        data: number[];
+        width: number;
+        height: number;
+    }
+
+    export function StatsChart({ data, width, height }: StatsChartProps) {
+        return <canvas width={width} height={height} />;
+    }
+must_include_files:
+  # Unchanged file — the import target. Reviewer needs to see the
+  # computation logic to judge whether memoization is worthwhile.
+  - src/compute.ts
+must_include_content_from:
+  src/compute.ts:
+    - "expensiveComputation"
+    - "items.reduce"
+must_not_include:
+  # statistics.ts: mean/median not imported by Stats
+  - mean
+  - median
+  # StatsChart.tsx: sibling component, not part of this change
+  - StatsChartProps
+  - canvas
+must_not_include_files:
+  - src/statistics.ts
+  - src/StatsChart.tsx
+max_fragments: 5
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

@@ -1,0 +1,297 @@
+# Scenario: NetworkResult sealed class gains Loading and Empty subtypes, plus
+#   computed properties isSuccess/isError/isLoading. Error gains cause: Throwable?.
+#   ResultHandler and ApiClient both use NetworkResult.
+#
+# Diff shows:
+#   NetworkResult.kt: + data object Loading, + data object Empty,
+#     + Error gets cause: Throwable?, + isSuccess/isError/isLoading properties
+#   ResultHandler.kt: when() branches updated for Loading/Empty in handle(),
+#     unwrapOrNull uses `else -> null`, unwrapOrThrow throws IllegalStateException
+#
+# Reviewer questions:
+#   Q1: "Are the when() branches in ResultHandler exhaustive for the new subtypes?"
+#       -> NetworkResult.kt defines Success, Error, Loading, Empty. ResultHandler.kt
+#          must handle all four in handle() — reviewer must compare branches.
+#
+#   Q2: "Does unwrapOrThrow correctly handle Loading and Empty?"
+#       -> NetworkResult.kt: Loading and Empty are distinct from Error.
+#          ResultHandler throws IllegalStateException for else branch.
+#          Reviewer must see all subtypes to judge correctness.
+#
+# Not needed for comprehension:
+#   - ApiClient.kt: Uses NetworkResult.Success and NetworkResult.Error in get().
+#     DIRECT TYPE OVERLAP: constructs NetworkResult instances. But ApiClient
+#     doesn't use Loading or Empty — the new subtypes. It wasn't changed.
+#     Including it doesn't help review exhaustiveness of when() branches.
+#
+#   - CachePolicy.kt: Network caching strategy with retry/timeout logic.
+#     Same networking package. But unrelated to sealed class subtypes.
+#
+#   - NetworkLogger.kt: Logs network request/response pairs. Same package,
+#     similar naming. But doesn't use NetworkResult at all.
+
+initial:
+  src/main/kotlin/com/example/network/result/NetworkResult.kt: |
+    package com.example.network.result
+
+    sealed class NetworkResult<out T> {
+        data class Success<T>(val data: T) : NetworkResult<T>()
+        data class Error(val message: String) : NetworkResult<Nothing>()
+    }
+  src/main/kotlin/com/example/network/handler/ResultHandler.kt: |
+    package com.example.network.handler
+
+    import com.example.network.result.NetworkResult
+
+    class ResultHandler {
+        fun <T> handle(result: NetworkResult<T>, onSuccess: (T) -> Unit, onError: (String) -> Unit) {
+            when (result) {
+                is NetworkResult.Success -> onSuccess(result.data)
+                is NetworkResult.Error -> onError(result.message)
+            }
+        }
+
+        fun <T> unwrapOrNull(result: NetworkResult<T>): T? {
+            return when (result) {
+                is NetworkResult.Success -> result.data
+                is NetworkResult.Error -> null
+            }
+        }
+
+        fun <T> unwrapOrThrow(result: NetworkResult<T>): T {
+            return when (result) {
+                is NetworkResult.Success -> result.data
+                is NetworkResult.Error -> throw RuntimeException(result.message)
+            }
+        }
+    }
+  src/main/kotlin/com/example/network/client/ApiClient.kt: |
+    package com.example.network.client
+
+    import com.example.network.result.NetworkResult
+
+    class ApiClient(private val baseUrl: String) {
+        fun <T> get(endpoint: String, parser: (String) -> T): NetworkResult<T> {
+            return try {
+                val response = fetchData("$baseUrl$endpoint")
+                NetworkResult.Success(parser(response))
+            } catch (e: Exception) {
+                NetworkResult.Error(e.message ?: "Unknown error")
+            }
+        }
+
+        private fun fetchData(url: String): String {
+            return "{}"
+        }
+    }
+  src/main/kotlin/com/example/network/cache/CachePolicy.kt: |
+    package com.example.network.cache
+
+    import java.time.Duration
+    import java.time.Instant
+
+    class CachePolicy(
+        private val maxAge: Duration = Duration.ofMinutes(5),
+        private val maxRetries: Int = 3
+    ) {
+        private val cache = mutableMapOf<String, CacheEntry>()
+
+        fun get(key: String): String? {
+            val entry = cache[key] ?: return null
+            if (Duration.between(entry.storedAt, Instant.now()) > maxAge) {
+                cache.remove(key)
+                return null
+            }
+            return entry.value
+        }
+
+        fun put(key: String, value: String) {
+            cache[key] = CacheEntry(value, Instant.now())
+        }
+
+        fun invalidate(key: String) {
+            cache.remove(key)
+        }
+
+        private data class CacheEntry(val value: String, val storedAt: Instant)
+    }
+  src/main/kotlin/com/example/network/logging/NetworkLogger.kt: |
+    package com.example.network.logging
+
+    import java.time.Instant
+
+    class NetworkLogger {
+        private val logs = mutableListOf<LogEntry>()
+
+        fun logRequest(method: String, url: String) {
+            logs.add(LogEntry("REQUEST", "$method $url", Instant.now()))
+        }
+
+        fun logResponse(statusCode: Int, body: String) {
+            logs.add(LogEntry("RESPONSE", "$statusCode: ${body.take(200)}", Instant.now()))
+        }
+
+        fun getRecentLogs(count: Int): List<LogEntry> {
+            return logs.takeLast(count)
+        }
+
+        data class LogEntry(val type: String, val message: String, val timestamp: Instant)
+    }
+
+changed:
+  src/main/kotlin/com/example/network/result/NetworkResult.kt: |
+    package com.example.network.result
+
+    sealed class NetworkResult<out T> {
+        data class Success<T>(val data: T) : NetworkResult<T>()
+        data class Error(val message: String, val cause: Throwable? = null) : NetworkResult<Nothing>()
+        data object Loading : NetworkResult<Nothing>()
+        data object Empty : NetworkResult<Nothing>()
+
+        val isSuccess: Boolean get() = this is Success
+        val isError: Boolean get() = this is Error
+        val isLoading: Boolean get() = this is Loading
+    }
+  src/main/kotlin/com/example/network/handler/ResultHandler.kt: |
+    package com.example.network.handler
+
+    import com.example.network.result.NetworkResult
+
+    class ResultHandler {
+        fun <T> handle(result: NetworkResult<T>, onSuccess: (T) -> Unit, onError: (String) -> Unit) {
+            when (result) {
+                is NetworkResult.Success -> onSuccess(result.data)
+                is NetworkResult.Error -> onError(result.message)
+                is NetworkResult.Loading -> {}
+                is NetworkResult.Empty -> {}
+            }
+        }
+
+        fun <T> unwrapOrNull(result: NetworkResult<T>): T? {
+            return when (result) {
+                is NetworkResult.Success -> result.data
+                else -> null
+            }
+        }
+
+        fun <T> unwrapOrThrow(result: NetworkResult<T>): T {
+            return when (result) {
+                is NetworkResult.Success -> result.data
+                is NetworkResult.Error -> throw RuntimeException(result.message)
+                else -> throw IllegalStateException("Cannot unwrap $result")
+            }
+        }
+    }
+  src/main/kotlin/com/example/network/client/ApiClient.kt: |
+    package com.example.network.client
+
+    import com.example.network.result.NetworkResult
+
+    class ApiClient(private val baseUrl: String) {
+        fun <T> get(endpoint: String, parser: (String) -> T): NetworkResult<T> {
+            return try {
+                val response = fetchData("$baseUrl$endpoint")
+                NetworkResult.Success(parser(response))
+            } catch (e: Exception) {
+                NetworkResult.Error(e.message ?: "Unknown error")
+            }
+        }
+
+        private fun fetchData(url: String): String {
+            return "{}"
+        }
+    }
+  src/main/kotlin/com/example/network/cache/CachePolicy.kt: |
+    package com.example.network.cache
+
+    import java.time.Duration
+    import java.time.Instant
+
+    class CachePolicy(
+        private val maxAge: Duration = Duration.ofMinutes(5),
+        private val maxRetries: Int = 3
+    ) {
+        private val cache = mutableMapOf<String, CacheEntry>()
+
+        fun get(key: String): String? {
+            val entry = cache[key] ?: return null
+            if (Duration.between(entry.storedAt, Instant.now()) > maxAge) {
+                cache.remove(key)
+                return null
+            }
+            return entry.value
+        }
+
+        fun put(key: String, value: String) {
+            cache[key] = CacheEntry(value, Instant.now())
+        }
+
+        fun invalidate(key: String) {
+            cache.remove(key)
+        }
+
+        private data class CacheEntry(val value: String, val storedAt: Instant)
+    }
+  src/main/kotlin/com/example/network/logging/NetworkLogger.kt: |
+    package com.example.network.logging
+
+    import java.time.Instant
+
+    class NetworkLogger {
+        private val logs = mutableListOf<LogEntry>()
+
+        fun logRequest(method: String, url: String) {
+            logs.add(LogEntry("REQUEST", "$method $url", Instant.now()))
+        }
+
+        fun logResponse(statusCode: Int, body: String) {
+            logs.add(LogEntry("RESPONSE", "$statusCode: ${body.take(200)}", Instant.now()))
+        }
+
+        fun getRecentLogs(count: Int): List<LogEntry> {
+            return logs.takeLast(count)
+        }
+
+        data class LogEntry(val type: String, val message: String, val timestamp: Instant)
+    }
+
+must_include_files:
+  - src/main/kotlin/com/example/network/handler/ResultHandler.kt
+  - src/main/kotlin/com/example/network/result/NetworkResult.kt
+
+must_include_content_from:
+  src/main/kotlin/com/example/network/result/NetworkResult.kt:
+    - "data object Loading"
+    - "data object Empty"
+    - "val cause: Throwable?"
+    - "val isSuccess: Boolean"
+  src/main/kotlin/com/example/network/handler/ResultHandler.kt:
+    - "is NetworkResult.Loading -> {}"
+    - "is NetworkResult.Empty -> {}"
+    - "throw IllegalStateException"
+
+must_not_include:
+  # --- ApiClient.kt: constructs NetworkResult but wasn't changed ---
+  # Uses Success/Error only. Doesn't use Loading/Empty. Including it
+  # doesn't help review when() exhaustiveness.
+  - ApiClient
+  - fetchData
+  # --- CachePolicy.kt: network caching, unrelated to sealed class ---
+  - CachePolicy
+  - maxAge
+  - CacheEntry
+  # --- NetworkLogger.kt: request/response logging ---
+  - NetworkLogger
+  - logRequest
+  - logResponse
+  - LogEntry
+
+must_not_include_files:
+  - src/main/kotlin/com/example/network/client/ApiClient.kt
+  - src/main/kotlin/com/example/network/cache/CachePolicy.kt
+  - src/main/kotlin/com/example/network/logging/NetworkLogger.kt
+
+max_fragments: 8
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

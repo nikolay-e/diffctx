@@ -1,0 +1,227 @@
+# Scenario: app.py modifies main() which calls helper_function() imported
+# from lib.py. This tests forward dependency resolution — the changed file
+# imports an unchanged module, and the selector should follow the import
+# edge forward to include the dependency.
+#
+# Diff: app.py changes main() to transform helper_function()'s return value.
+#
+# Reviewer questions:
+#   Q1: "What does helper_function return?"
+#       -> lib.py (UNCHANGED) defines helper_function returning 42.
+#          Reviewer needs this to verify `x + 1` produces 43.
+#   Q2: "Is helper_function a pure function with no side effects?"
+#       -> lib.py shows a simple return statement. Reviewer confirms the
+#          transformation in main() is safe.
+#
+# Not needed:
+#   - file_io.py: reads/writes files. Same utility layer but no import
+#     from app.py and no shared identifiers.
+#   - config_loader.py: loads YAML config. Plausible dependency for an
+#     "app" module, but not imported.
+#   - transform.py: also imports helper_function from lib. DIRECT
+#     structural edge (same import, same function) but is a different
+#     consumer applying its own transformation.
+#   - math_utils.py: provides arithmetic operations. Same "numeric
+#     utility" domain as helper_function's return but independent.
+#   - test_app.py: tests app.main() by calling it. References main
+#     by name but test assertions don't help verify the function.
+#   - constants.py: defines numeric constants. Same "returns a number"
+#     pattern but no import relationship.
+
+initial:
+  lib.py: |
+    def helper_function():
+        return 42
+
+    def lib_util_alpha():
+        return "lib_alpha_result"
+
+    def lib_util_beta():
+        return "lib_beta_result"
+
+    def lib_util_gamma():
+        return "lib_gamma_result"
+  app.py: |
+    from lib import helper_function
+
+    def main():
+        return helper_function()
+
+    def app_secondary():
+        return "app_secondary_result"
+
+    def app_tertiary():
+        return "app_tertiary_result"
+  file_io.py: |
+    import os
+
+    def read_lines(path):
+        with open(path, "r") as fh:
+            return fh.readlines()
+
+    def write_lines(path, lines):
+        with open(path, "w") as fh:
+            fh.writelines(lines)
+
+    def file_exists(path):
+        return os.path.isfile(path)
+
+    def ensure_directory(path):
+        os.makedirs(path, exist_ok=True)
+  config_loader.py: |
+    import json
+
+    class ConfigLoader:
+        def __init__(self, config_path):
+            self.config_path = config_path
+            self._cache = None
+
+        def load(self):
+            if self._cache is None:
+                with open(self.config_path) as fh:
+                    self._cache = json.load(fh)
+            return self._cache
+
+        def get(self, key, default=None):
+            config = self.load()
+            return config.get(key, default)
+
+        def reload(self):
+            self._cache = None
+            return self.load()
+  transform.py: |
+    from lib import helper_function
+
+    def doubled_value():
+        return helper_function() * 2
+
+    def stringified_value():
+        return str(helper_function())
+
+    def negated_value():
+        return -helper_function()
+
+    def value_plus_offset(offset):
+        return helper_function() + offset
+  math_utils.py: |
+    import math
+
+    def add(a, b):
+        return a + b
+
+    def multiply(a, b):
+        return a * b
+
+    def clamp(value, low, high):
+        return max(low, min(high, value))
+
+    def round_to(value, decimals=2):
+        return round(value, decimals)
+
+    def is_positive(value):
+        return value > 0
+  test_app.py: |
+    from app import main, app_secondary
+
+    def test_main_returns_value():
+        result = main()
+        assert result is not None
+
+    def test_main_returns_correct_type():
+        result = main()
+        assert isinstance(result, int)
+
+    def test_secondary():
+        assert app_secondary() == "app_secondary_result"
+
+    def test_main_positive():
+        assert main() > 0
+  constants.py: |
+    DEFAULT_VALUE = 42
+    MAX_RETRIES = 3
+    TIMEOUT_SECONDS = 30
+    BUFFER_SIZE = 4096
+
+    def get_constant(name):
+        return globals().get(name)
+
+    def all_constants():
+        return {k: v for k, v in globals().items()
+                if k.isupper() and not k.startswith('_')}
+
+changed:
+  lib.py: |
+    def helper_function():
+        return 42
+
+    def lib_util_alpha():
+        return "lib_alpha_result"
+
+    def lib_util_beta():
+        return "lib_beta_result"
+
+    def lib_util_gamma():
+        return "lib_gamma_result"
+  app.py: |
+    from lib import helper_function
+
+    def main():
+        x = helper_function()
+        return x + 1
+
+    def app_secondary():
+        return "app_secondary_result"
+
+    def app_tertiary():
+        return "app_tertiary_result"
+
+must_include_files:
+  # Q1+Q2: lib.py defines the imported helper_function
+  - lib.py
+must_include_content_from:
+  app.py:
+    - "from lib import helper_function"
+    - "x = helper_function()"
+  lib.py:
+    - "def helper_function()"
+    - "return 42"
+must_not_include:
+  # file_io.py: file I/O utilities, no import from app.py
+  - read_lines
+  - write_lines
+  - file_exists
+  - ensure_directory
+  # config_loader.py: JSON config loading, not imported
+  - ConfigLoader
+  - reload
+  # transform.py: HARDEST TRAP — imports helper_function from lib
+  # Same import, same function, but different consumer
+  - doubled_value
+  - stringified_value
+  - negated_value
+  - value_plus_offset
+  # math_utils.py: arithmetic operations, independent
+  - multiply
+  - clamp
+  - round_to
+  - is_positive
+  # test_app.py: tests app.main() but doesn't define it
+  - test_main_returns_value
+  - test_main_returns_correct_type
+  - test_main_positive
+  # constants.py: numeric constants, no import relationship
+  - DEFAULT_VALUE
+  - MAX_RETRIES
+  - TIMEOUT_SECONDS
+  - all_constants
+must_not_include_files:
+  - file_io.py
+  - config_loader.py
+  - transform.py
+  - math_utils.py
+  - test_app.py
+  - constants.py
+max_fragments: 5
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

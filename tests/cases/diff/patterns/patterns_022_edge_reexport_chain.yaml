@@ -1,0 +1,270 @@
+# Scenario: coreutils() changes return value; re-exported through chain
+#   core/utils.ts -> lib/index.ts -> index.ts. app.ts consumes via index.
+#
+# Diff shows:
+#   - export function coreutils() { return "core"; }
+#   + export function coreutils() { return "core_v2"; }
+#   + export function newCoreUtil() { return "new_core"; }
+#   + export const CORE_VERSION = "2.0.0";
+#
+# Reviewer questions:
+#   Q1: "How does coreutils flow from core/utils.ts to consumers?"
+#       -> src/lib/index.ts re-exports from '../core/utils', then
+#          src/index.ts re-exports from './lib'. Chain is the path.
+#   Q2: "Who ultimately calls coreutils() and will be affected?"
+#       -> src/app.ts imports from './index' and calls in main().
+#
+# Not needed for comprehension:
+#   - src/core/logger.ts: sibling utility in same core/ directory.
+#     Has createLogger() function. Same parent directory as the changed
+#     file. But different module, not in the re-export chain. No
+#     import relationship with coreutils.
+#
+#   - src/helpers.ts: top-level helper module with capitalize/slugify.
+#     Similar utility function pattern. Same src/ directory level.
+#     But no import relationship with coreutils chain.
+#
+#   - src/core/constants.ts: same core/ directory as utils.ts. Has
+#     APP_NAME and VERSION exports. HARD TRAP: same directory,
+#     similar constant exports to CORE_VERSION in the diff. But
+#     not part of the re-export chain.
+#
+#   - src/lib/format.ts: same lib/ directory as lib/index.ts. Has
+#     formatOutput() function. Same parent as a re-export hop. But
+#     not referenced by the chain.
+#
+#   - src/utils/transform.ts: another utility module with exported
+#     functions. Similar naming to core/utils.ts. But different
+#     directory, not part of the chain.
+
+initial:
+  src/core/utils.ts: |
+    export function coreutils() {
+        return "core";
+    }
+
+    export function internalHelper() {
+        return coreutils() + "_internal";
+    }
+  src/lib/index.ts: |
+    export { coreutils } from '../core/utils';
+
+    export function libInit() {
+        return "lib_initialized";
+    }
+  src/index.ts: |
+    export { coreutils } from './lib';
+
+    export function appInit() {
+        return "app_ready";
+    }
+  src/app.ts: |
+    import { coreutils } from './index';
+
+    export function main() {
+        const result = coreutils();
+        console.log(`Running with: ${result}`);
+        return result;
+    }
+
+    export function startup() {
+        return main();
+    }
+  src/core/logger.ts: |
+    export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
+
+    export function createLogger(prefix: string) {
+        return {
+            info: (msg: string) => console.log(`[${prefix}] INFO: ${msg}`),
+            warn: (msg: string) => console.warn(`[${prefix}] WARN: ${msg}`),
+            error: (msg: string) => console.error(`[${prefix}] ERROR: ${msg}`),
+        };
+    }
+
+    export function getDefaultLogger() {
+        return createLogger('app');
+    }
+  src/helpers.ts: |
+    export function capitalize(text: string): string {
+        return text.charAt(0).toUpperCase() + text.slice(1);
+    }
+
+    export function slugify(text: string): string {
+        return text.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+    }
+
+    export function truncate(text: string, maxLen: number): string {
+        return text.length > maxLen ? text.slice(0, maxLen) + '...' : text;
+    }
+  src/core/constants.ts: |
+    export const APP_NAME = "MyApp";
+    export const VERSION = "1.0.0";
+    export const MAX_RETRIES = 3;
+
+    export function getVersionString(): string {
+        return `${APP_NAME} v${VERSION}`;
+    }
+  src/lib/format.ts: |
+    export function formatOutput(data: unknown): string {
+        return JSON.stringify(data, null, 2);
+    }
+
+    export function formatDate(date: Date): string {
+        return date.toISOString().split('T')[0];
+    }
+
+    export function formatNumber(num: number, decimals: number = 2): string {
+        return num.toFixed(decimals);
+    }
+  src/utils/transform.ts: |
+    export function transformKeys(obj: Record<string, unknown>): Record<string, unknown> {
+        const result: Record<string, unknown> = {};
+        for (const [key, value] of Object.entries(obj)) {
+            result[key.toLowerCase()] = value;
+        }
+        return result;
+    }
+
+    export function flattenArray<T>(arr: T[][]): T[] {
+        return arr.reduce((flat, current) => flat.concat(current), []);
+    }
+
+changed:
+  src/core/utils.ts: |
+    export function coreutils() {
+        return "core_v2";
+    }
+
+    export function newCoreUtil() {
+        return "new_core";
+    }
+
+    export const CORE_VERSION = "2.0.0";
+
+    export function internalHelper() {
+        return coreutils() + "_internal";
+    }
+  src/lib/index.ts: |
+    export { coreutils } from '../core/utils';
+
+    export function libInit() {
+        return "lib_initialized";
+    }
+  src/index.ts: |
+    export { coreutils } from './lib';
+
+    export function appInit() {
+        return "app_ready";
+    }
+  src/app.ts: |
+    import { coreutils } from './index';
+
+    export function main() {
+        const result = coreutils();
+        console.log(`Running with: ${result}`);
+        return result;
+    }
+
+    export function startup() {
+        return main();
+    }
+  src/core/logger.ts: |
+    export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
+
+    export function createLogger(prefix: string) {
+        return {
+            info: (msg: string) => console.log(`[${prefix}] INFO: ${msg}`),
+            warn: (msg: string) => console.warn(`[${prefix}] WARN: ${msg}`),
+            error: (msg: string) => console.error(`[${prefix}] ERROR: ${msg}`),
+        };
+    }
+
+    export function getDefaultLogger() {
+        return createLogger('app');
+    }
+  src/helpers.ts: |
+    export function capitalize(text: string): string {
+        return text.charAt(0).toUpperCase() + text.slice(1);
+    }
+
+    export function slugify(text: string): string {
+        return text.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+    }
+
+    export function truncate(text: string, maxLen: number): string {
+        return text.length > maxLen ? text.slice(0, maxLen) + '...' : text;
+    }
+  src/core/constants.ts: |
+    export const APP_NAME = "MyApp";
+    export const VERSION = "1.0.0";
+    export const MAX_RETRIES = 3;
+
+    export function getVersionString(): string {
+        return `${APP_NAME} v${VERSION}`;
+    }
+  src/lib/format.ts: |
+    export function formatOutput(data: unknown): string {
+        return JSON.stringify(data, null, 2);
+    }
+
+    export function formatDate(date: Date): string {
+        return date.toISOString().split('T')[0];
+    }
+
+    export function formatNumber(num: number, decimals: number = 2): string {
+        return num.toFixed(decimals);
+    }
+  src/utils/transform.ts: |
+    export function transformKeys(obj: Record<string, unknown>): Record<string, unknown> {
+        const result: Record<string, unknown> = {};
+        for (const [key, value] of Object.entries(obj)) {
+            result[key.toLowerCase()] = value;
+        }
+        return result;
+    }
+
+    export function flattenArray<T>(arr: T[][]): T[] {
+        return arr.reduce((flat, current) => flat.concat(current), []);
+    }
+
+must_include_files:
+  # Q1: Reviewer needs to see the first hop in the re-export chain
+  - src/lib/index.ts
+
+must_include_content_from:
+  src/core/utils.ts:
+    - "coreutils"
+    - "core_v2"
+
+must_not_include:
+  # --- logger.ts: sibling in core/, not in the re-export chain ---
+  - "createLogger"
+  - "LogLevel"
+  - "getDefaultLogger"
+  # --- helpers.ts: top-level helpers, no import relationship ---
+  - "capitalize"
+  - "slugify"
+  - "truncate"
+  # --- constants.ts: HARD TRAP — same core/ directory, similar const exports ---
+  - "APP_NAME"
+  - "MAX_RETRIES"
+  - "getVersionString"
+  # --- format.ts: same lib/ directory as re-export hop ---
+  - "formatOutput"
+  - "formatDate"
+  - "formatNumber"
+  # --- transform.ts: similar utility naming to core/utils.ts ---
+  - "transformKeys"
+  - "flattenArray"
+
+must_not_include_files:
+  - src/core/logger.ts
+  - src/helpers.ts
+  - src/core/constants.ts
+  - src/lib/format.ts
+  - src/utils/transform.ts
+
+max_fragments: 8
+max_files: 5
+add_garbage_files: false
+skip_garbage_check: true

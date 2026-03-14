@@ -1,0 +1,292 @@
+initial:
+  src/auth/authenticator.py: |
+    from typing import Optional, Dict
+    import hashlib
+
+    class Authenticator:
+        def __init__(self):
+            self.users: Dict[str, str] = {}
+            self.sessions: Dict[str, str] = {}
+
+        def register(self, username: str, password: str) -> bool:
+            if username in self.users:
+                return False
+            self.users[username] = self._hash_password(password)
+            return True
+
+        def login(self, username: str, password: str) -> Optional[str]:
+            if username not in self.users:
+                return None
+            if self.users[username] != self._hash_password(password):
+                return None
+            session_token = self._generate_token(username)
+            self.sessions[session_token] = username
+            return session_token
+
+        def _hash_password(self, password: str) -> str:
+            return hashlib.sha256(password.encode()).hexdigest()
+
+        def _generate_token(self, username: str) -> str:
+            return hashlib.md5(f"{username}:{id(self)}".encode()).hexdigest()
+  src/cache/redis_cache.py: |
+    from typing import Optional, Any
+    import json
+
+    class RedisCache:
+        def __init__(self, host: str = "localhost", port: int = 6379):
+            self.host = host
+            self.port = port
+            self.data: Dict[str, Any] = {}
+
+        def get(self, key: str) -> Optional[Any]:
+            return self.data.get(key)
+
+        def set(self, key: str, value: Any, ttl: int = 3600) -> None:
+            self.data[key] = value
+
+        def delete(self, key: str) -> bool:
+            if key in self.data:
+                del self.data[key]
+                return True
+            return False
+
+  # --- Tricky garbage: name collision — another auth class with login, register, session tokens ---
+  src/auth/oauth_provider.py: |
+    from typing import Optional, Dict
+    import hashlib
+    import secrets
+    from datetime import datetime, timedelta
+    GARBAGE_ALGO_017_OAUTH_G = "oauth_provider"
+    GARBAGE_ALGO_017_OAUTH_VER_H = "2.0"
+
+    class OAuthProvider:
+        def __init__(self, session_duration: int = 3600):
+            self.users: Dict[str, str] = {}
+            self.sessions: Dict[str, dict] = {}
+            self.session_duration = session_duration
+
+        def register(self, client_id: str, client_secret: str) -> bool:
+            GARBAGE_ALGO_017_OAUTH_REG_I = True
+            self.users[client_id] = hashlib.sha256(client_secret.encode()).hexdigest()
+            return True
+
+        def login(self, client_id: str, client_secret: str) -> Optional[str]:
+            token = secrets.token_hex(32)
+            return token
+
+        def validate_session(self, token: str) -> Optional[str]:
+            return None
+
+  # --- Tricky garbage: same-import consumer — uses hashlib and secrets like the diff ---
+  src/auth/token_manager.py: |
+    import hashlib
+    import secrets
+    from datetime import datetime, timedelta
+    from typing import Optional, Dict
+    GARBAGE_ALGO_017_TOKEN_MGR_J = "token_manager"
+    GARBAGE_ALGO_017_TOKEN_VER_K = "1.0"
+
+    class TokenManager:
+        GARBAGE_ALGO_017_TOKEN_STORE_L = {}
+
+        def __init__(self, session_duration: int = 7200):
+            self.session_duration = session_duration
+            self.tokens: Dict[str, dict] = {}
+
+        def generate_token(self) -> str:
+            return secrets.token_hex(32)
+
+        def validate_token(self, token: str) -> Optional[str]:
+            return self.tokens.get(token, {}).get("username")
+
+  # --- Plain garbage ---
+  garbage_backup.py: |
+    GARBAGE_ALGO_017_BACKUP_MARKER_A = "backup"
+    GARBAGE_ALGO_017_RESTORE_MARKER_B = True
+
+    class BackupManager:
+        GARBAGE_ALGO_017_SNAPSHOT_MARKER_C = []
+
+        def backup(self) -> None:
+            pass
+  garbage_sync.py: |
+    GARBAGE_ALGO_017_SYNC_MARKER_D = "sync"
+    GARBAGE_ALGO_017_REPLICATE_MARKER_E = True
+
+    class DataSynchronizer:
+        GARBAGE_ALGO_017_QUEUE_MARKER_F = []
+
+        def sync(self) -> None:
+            pass
+changed:
+  src/auth/authenticator.py: |
+    from typing import Optional, Dict
+    import hashlib
+    import secrets
+    from datetime import datetime, timedelta
+
+    class Authenticator:
+        def __init__(self, session_duration: int = 3600):
+            self.users: Dict[str, str] = {}
+            self.sessions: Dict[str, dict] = {}
+            self.session_duration = session_duration
+
+        def register(self, username: str, password: str) -> bool:
+            if username in self.users:
+                return False
+            self.users[username] = self._hash_password(password)
+            return True
+
+        def login(self, username: str, password: str) -> Optional[str]:
+            if username not in self.users:
+                return None
+            if self.users[username] != self._hash_password(password):
+                return None
+            session_token = self._generate_token()
+            expires_at = datetime.now() + timedelta(seconds=self.session_duration)
+            self.sessions[session_token] = {"username": username, "expires_at": expires_at}
+            return session_token
+
+        def validate_session(self, token: str) -> Optional[str]:
+            session = self.sessions.get(token)
+            if not session:
+                return None
+            if datetime.now() > session["expires_at"]:
+                del self.sessions[token]
+                return None
+            return session["username"]
+
+        def _hash_password(self, password: str) -> str:
+            return hashlib.sha256(password.encode()).hexdigest()
+
+        def _generate_token(self) -> str:
+            return secrets.token_hex(32)
+  src/cache/redis_cache.py: |
+    from typing import Optional, Any
+    import json
+
+    class RedisCache:
+        def __init__(self, host: str = "localhost", port: int = 6379):
+            self.host = host
+            self.port = port
+            self.data: Dict[str, Any] = {}
+
+        def get(self, key: str) -> Optional[Any]:
+            return self.data.get(key)
+
+        def set(self, key: str, value: Any, ttl: int = 3600) -> None:
+            self.data[key] = value
+
+        def delete(self, key: str) -> bool:
+            if key in self.data:
+                del self.data[key]
+                return True
+            return False
+
+  # --- Tricky garbage: unchanged ---
+  src/auth/oauth_provider.py: |
+    from typing import Optional, Dict
+    import hashlib
+    import secrets
+    from datetime import datetime, timedelta
+    GARBAGE_ALGO_017_OAUTH_G = "oauth_provider"
+    GARBAGE_ALGO_017_OAUTH_VER_H = "2.0"
+
+    class OAuthProvider:
+        def __init__(self, session_duration: int = 3600):
+            self.users: Dict[str, str] = {}
+            self.sessions: Dict[str, dict] = {}
+            self.session_duration = session_duration
+
+        def register(self, client_id: str, client_secret: str) -> bool:
+            GARBAGE_ALGO_017_OAUTH_REG_I = True
+            self.users[client_id] = hashlib.sha256(client_secret.encode()).hexdigest()
+            return True
+
+        def login(self, client_id: str, client_secret: str) -> Optional[str]:
+            token = secrets.token_hex(32)
+            return token
+
+        def validate_session(self, token: str) -> Optional[str]:
+            return None
+
+  src/auth/token_manager.py: |
+    import hashlib
+    import secrets
+    from datetime import datetime, timedelta
+    from typing import Optional, Dict
+    GARBAGE_ALGO_017_TOKEN_MGR_J = "token_manager"
+    GARBAGE_ALGO_017_TOKEN_VER_K = "1.0"
+
+    class TokenManager:
+        GARBAGE_ALGO_017_TOKEN_STORE_L = {}
+
+        def __init__(self, session_duration: int = 7200):
+            self.session_duration = session_duration
+            self.tokens: Dict[str, dict] = {}
+
+        def generate_token(self) -> str:
+            return secrets.token_hex(32)
+
+        def validate_token(self, token: str) -> Optional[str]:
+            return self.tokens.get(token, {}).get("username")
+
+  # --- Plain garbage ---
+  garbage_backup.py: |
+    GARBAGE_ALGO_017_BACKUP_MARKER_A = "backup"
+    GARBAGE_ALGO_017_RESTORE_MARKER_B = True
+
+    class BackupManager:
+        GARBAGE_ALGO_017_SNAPSHOT_MARKER_C = []
+
+        def backup(self) -> None:
+            pass
+  garbage_sync.py: |
+    GARBAGE_ALGO_017_SYNC_MARKER_D = "sync"
+    GARBAGE_ALGO_017_REPLICATE_MARKER_E = True
+
+    class DataSynchronizer:
+        GARBAGE_ALGO_017_QUEUE_MARKER_F = []
+
+        def sync(self) -> None:
+            pass
+
+# === Assertions ===
+
+must_include_files:
+- src/auth/authenticator.py
+
+must_include_content_from:
+  src/auth/authenticator.py:
+    - 'def __init__(self, session_duration: int = 3600):'
+    - 'def validate_session(self, token: str) -> Optional[str]:'
+    - return secrets.token_hex(32)
+    - expires_at = datetime.now() + timedelta(seconds=self.session_duration)
+
+must_not_include:
+# Plain garbage markers
+- GARBAGE_ALGO_017_BACKUP_MARKER_A
+- GARBAGE_ALGO_017_RESTORE_MARKER_B
+- GARBAGE_ALGO_017_SNAPSHOT_MARKER_C
+- GARBAGE_ALGO_017_SYNC_MARKER_D
+- GARBAGE_ALGO_017_REPLICATE_MARKER_E
+- GARBAGE_ALGO_017_QUEUE_MARKER_F
+# Tricky: name collision — same register, login, validate_session, session_duration, secrets
+- GARBAGE_ALGO_017_OAUTH_G
+- GARBAGE_ALGO_017_OAUTH_VER_H
+- GARBAGE_ALGO_017_OAUTH_REG_I
+# Tricky: same-import consumer — uses hashlib, secrets, datetime, timedelta
+- GARBAGE_ALGO_017_TOKEN_MGR_J
+- GARBAGE_ALGO_017_TOKEN_VER_K
+- GARBAGE_ALGO_017_TOKEN_STORE_L
+
+must_not_include_files:
+- garbage_backup.py
+- garbage_sync.py
+- src/auth/oauth_provider.py
+- src/auth/token_manager.py
+
+max_fragments: 6
+max_files: 2
+add_garbage_files: false
+skip_garbage_check: true

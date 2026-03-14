@@ -1,0 +1,184 @@
+initial:
+  main.tf: |
+    resource "aws_iam_role" "lambda" {
+      name               = "lambda-exec-role"
+      assume_role_policy = file("${path.module}/policies/assume-role.json")
+    }
+
+    resource "aws_iam_role_policy" "lambda" {
+      name   = "lambda-policy"
+      role   = aws_iam_role.lambda.id
+      policy = file("${path.module}/policies/lambda-permissions.json")
+    }
+
+  policies/assume-role.json: |
+    {
+      "Version": "2012-10-17",
+      "Statement": [{
+        "Effect": "Allow",
+        "Principal": { "Service": "lambda.amazonaws.com" },
+        "Action": "sts:AssumeRole"
+      }]
+    }
+
+  policies/lambda-permissions.json: |
+    {
+      "Version": "2012-10-17",
+      "Statement": [{
+        "Effect": "Allow",
+        "Action": ["logs:CreateLogGroup", "logs:CreateLogStream"],
+        "Resource": "arn:aws:logs:*:*:*"
+      }]
+    }
+
+  # --- Tricky garbage: same resource type aws_iam_role but for ECS ---
+  garbage_ecs_role.tf: |
+    GARBAGE_TF_072_ECSROLE_MARKER_A = "ecs-task-role"
+    GARBAGE_TF_072_ECSROLE_MARKER_B = "ecs-execution"
+
+    resource "aws_iam_role" "ecs_task" {
+      name               = "ecs-task-role"
+      assume_role_policy = file("${path.module}/policies/ecs-assume.json")
+    }
+
+    resource "aws_iam_role_policy" "ecs_task" {
+      name   = "ecs-task-policy"
+      role   = aws_iam_role.ecs_task.id
+      policy = file("${path.module}/policies/ecs-permissions.json")
+    }
+
+  # --- Plain garbage: no overlap ---
+  garbage_step_functions.tf: |
+    GARBAGE_TF_072_SFN_MARKER_C = "step-functions"
+    GARBAGE_TF_072_SFN_MARKER_D = "state-machine"
+
+    resource "aws_sfn_state_machine" "order_flow" {
+      name     = "order-processing"
+      role_arn = aws_iam_role.sfn.arn
+      definition = jsonencode({
+        StartAt = "ProcessOrder"
+        States = {
+          ProcessOrder = {
+            Type = "Task"
+            End  = true
+          }
+        }
+      })
+    }
+
+changed:
+  main.tf: |
+    resource "aws_iam_role" "lambda" {
+      name               = "lambda-exec-role"
+      assume_role_policy = file("${path.module}/policies/assume-role.json")
+    }
+
+    resource "aws_iam_role_policy" "lambda" {
+      name   = "lambda-policy"
+      role   = aws_iam_role.lambda.id
+      policy = file("${path.module}/policies/lambda-permissions.json")
+    }
+
+    resource "aws_iam_role_policy" "lambda_vpc" {
+      name   = "lambda-vpc-policy"
+      role   = aws_iam_role.lambda.id
+      policy = file("${path.module}/policies/lambda-vpc.json")
+    }
+
+  policies/assume-role.json: |
+    {
+      "Version": "2012-10-17",
+      "Statement": [{
+        "Effect": "Allow",
+        "Principal": { "Service": "lambda.amazonaws.com" },
+        "Action": "sts:AssumeRole"
+      }]
+    }
+
+  policies/lambda-permissions.json: |
+    {
+      "Version": "2012-10-17",
+      "Statement": [{
+        "Effect": "Allow",
+        "Action": ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"],
+        "Resource": "arn:aws:logs:*:*:*"
+      }]
+    }
+
+  policies/lambda-vpc.json: |
+    {
+      "Version": "2012-10-17",
+      "Statement": [{
+        "Effect": "Allow",
+        "Action": [
+          "ec2:CreateNetworkInterface",
+          "ec2:DescribeNetworkInterfaces",
+          "ec2:DeleteNetworkInterface"
+        ],
+        "Resource": "*"
+      }]
+    }
+
+  # --- Tricky garbage: same resource type aws_iam_role but for ECS ---
+  garbage_ecs_role.tf: |
+    GARBAGE_TF_072_ECSROLE_MARKER_A = "ecs-task-role"
+    GARBAGE_TF_072_ECSROLE_MARKER_B = "ecs-execution"
+
+    resource "aws_iam_role" "ecs_task" {
+      name               = "ecs-task-role"
+      assume_role_policy = file("${path.module}/policies/ecs-assume.json")
+    }
+
+    resource "aws_iam_role_policy" "ecs_task" {
+      name   = "ecs-task-policy"
+      role   = aws_iam_role.ecs_task.id
+      policy = file("${path.module}/policies/ecs-permissions.json")
+    }
+
+  # --- Plain garbage: no overlap ---
+  garbage_step_functions.tf: |
+    GARBAGE_TF_072_SFN_MARKER_C = "step-functions"
+    GARBAGE_TF_072_SFN_MARKER_D = "state-machine"
+
+    resource "aws_sfn_state_machine" "order_flow" {
+      name     = "order-processing"
+      role_arn = aws_iam_role.sfn.arn
+      definition = jsonencode({
+        StartAt = "ProcessOrder"
+        States = {
+          ProcessOrder = {
+            Type = "Task"
+            End  = true
+          }
+        }
+      })
+    }
+
+# === Assertions ===
+
+must_include_files:
+- main.tf
+
+must_include_content_from:
+  main.tf:
+    - 'resource "aws_iam_role_policy" "lambda_vpc"'
+    - file("${path.module}/policies/lambda-vpc.json")
+    - 'resource "aws_iam_role" "lambda"'
+
+must_not_include:
+# Tricky garbage markers (sibling aws_iam_role resource)
+- GARBAGE_TF_072_ECSROLE_MARKER_A
+- GARBAGE_TF_072_ECSROLE_MARKER_B
+# Plain garbage markers
+- GARBAGE_TF_072_SFN_MARKER_C
+- GARBAGE_TF_072_SFN_MARKER_D
+
+must_not_include_files:
+- garbage_ecs_role.tf
+- garbage_step_functions.tf
+- policies/assume-role.json
+
+max_fragments: 4
+max_files: 2
+add_garbage_files: false
+skip_garbage_check: true

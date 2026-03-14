@@ -1,0 +1,185 @@
+# Test: New test file uses render/screen from testing-library — reviewer needs component
+#
+# Scenario: Greeting.test.tsx is created with a test that imports and renders
+# the Greeting component. The component itself is unchanged.
+#
+# Reviewer questions:
+#   Q1: "What does the Greeting component actually render? Does the test
+#        assertion match the component's output?"
+#       -> Greeting.tsx: renders <h1>Hello, {name}!</h1>, confirming
+#          the test's screen.getByText('Hello, World!') is correct.
+#   Q2: "What is the GreetingProps interface? Does the test pass valid props?"
+#       -> Greeting.tsx: GreetingProps requires { name: string }.
+#          Test passes name="World", which satisfies the interface.
+#
+# Not needed:
+#   - components/Banner.tsx: Sibling UI component in same directory.
+#     Different component, not imported by the test. Has similar
+#     structure (props interface + functional component).
+#
+#   - components/Banner.test.tsx: Test for Banner using IDENTICAL
+#     testing-library pattern (render, screen, getByText). HARDEST TRAP:
+#     structurally identical test file — same imports, same describe/it
+#     pattern, same assertion style. But tests a different component.
+#
+#   - components/Avatar.tsx: Another presentational component. Unrelated
+#     to Greeting rendering or its test. Same directory sibling.
+
+initial:
+  components/Greeting.tsx: |
+    interface GreetingProps {
+        name: string;
+    }
+
+    export function Greeting({ name }: GreetingProps) {
+        return <h1>Hello, {name}!</h1>;
+    }
+  components/Greeting.test.tsx: |
+    console.log('placeholder');
+  # --- Not needed: sibling component, different rendering ---
+  components/Banner.tsx: |
+    interface BannerProps {
+        message: string;
+        variant: 'info' | 'warning' | 'error';
+    }
+
+    export function Banner({ message, variant }: BannerProps) {
+        return (
+            <div className={`banner banner-${variant}`}>
+                <p>{message}</p>
+            </div>
+        );
+    }
+  # --- Not needed: IDENTICAL test pattern for different component ---
+  components/Banner.test.tsx: |
+    import { render, screen } from '@testing-library/react';
+    import { Banner } from './Banner';
+
+    describe('Banner', () => {
+        it('should display message with info variant', () => {
+            render(<Banner message="System update" variant="info" />);
+            expect(screen.getByText('System update')).toBeInTheDocument();
+        });
+
+        it('should apply variant class', () => {
+            const { container } = render(<Banner message="Warning" variant="warning" />);
+            expect(container.querySelector('.banner-warning')).toBeTruthy();
+        });
+    });
+  # --- Not needed: presentational avatar, unrelated to greeting ---
+  components/Avatar.tsx: |
+    interface AvatarProps {
+        src: string;
+        alt: string;
+        size?: number;
+    }
+
+    export function Avatar({ src, alt, size = 40 }: AvatarProps) {
+        return (
+            <img
+                className="avatar"
+                src={src}
+                alt={alt}
+                width={size}
+                height={size}
+            />
+        );
+    }
+changed:
+  components/Greeting.tsx: |
+    interface GreetingProps {
+        name: string;
+    }
+
+    export function Greeting({ name }: GreetingProps) {
+        return <h1>Hello, {name}!</h1>;
+    }
+  components/Greeting.test.tsx: |
+    import { render, screen } from '@testing-library/react';
+    import { Greeting } from './Greeting';
+
+    describe('Greeting', () => {
+        it('should display name', () => {
+            render(<Greeting name="World" />);
+            expect(screen.getByText('Hello, World!')).toBeInTheDocument();
+        });
+    });
+  components/Banner.tsx: |
+    interface BannerProps {
+        message: string;
+        variant: 'info' | 'warning' | 'error';
+    }
+
+    export function Banner({ message, variant }: BannerProps) {
+        return (
+            <div className={`banner banner-${variant}`}>
+                <p>{message}</p>
+            </div>
+        );
+    }
+  components/Banner.test.tsx: |
+    import { render, screen } from '@testing-library/react';
+    import { Banner } from './Banner';
+
+    describe('Banner', () => {
+        it('should display message with info variant', () => {
+            render(<Banner message="System update" variant="info" />);
+            expect(screen.getByText('System update')).toBeInTheDocument();
+        });
+
+        it('should apply variant class', () => {
+            const { container } = render(<Banner message="Warning" variant="warning" />);
+            expect(container.querySelector('.banner-warning')).toBeTruthy();
+        });
+    });
+  components/Avatar.tsx: |
+    interface AvatarProps {
+        src: string;
+        alt: string;
+        size?: number;
+    }
+
+    export function Avatar({ src, alt, size = 40 }: AvatarProps) {
+        return (
+            <img
+                className="avatar"
+                src={src}
+                alt={alt}
+                width={size}
+                height={size}
+            />
+        );
+    }
+must_include_files:
+  # Unchanged — the component under test. Reviewer needs to verify
+  # that the test assertions match the component's actual output.
+  - components/Greeting.tsx
+
+must_include_content_from:
+  components/Greeting.tsx:
+    - "GreetingProps"
+    - "Hello, {name}!"
+
+must_not_include:
+  # Banner.tsx: different component, not rendered in this test
+  - BannerProps
+  - "banner banner-"
+  # Banner.test.tsx: IDENTICAL testing-library pattern for Banner.
+  # Same render/screen imports, same describe/it structure.
+  # But tests a completely different component.
+  - "Banner message="
+  - "System update"
+  - "banner-warning"
+  # Avatar.tsx: presentational component, no relation to Greeting
+  - AvatarProps
+  - "className=\"avatar\""
+
+must_not_include_files:
+  - components/Banner.tsx
+  - components/Banner.test.tsx
+  - components/Avatar.tsx
+
+max_fragments: 5
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

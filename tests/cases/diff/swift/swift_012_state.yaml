@@ -1,0 +1,288 @@
+# Scenario: ContentView gains @State properties (isLoading, items) and a
+# body that conditionally renders a ProgressView or List based on state.
+#
+# Diff: Sources/Views/ContentView.swift changes from a placeholder to a view
+# with @State private var isLoading and items: [Item], rendering a List of
+# Item values using item.title and item.subtitle.
+#
+# Reviewer questions:
+#   Q1: "What is the Item type — does it have displayable properties?"
+#       -> Sources/Models/Item.swift: struct Item: Identifiable { let id,
+#          let title, let subtitle }. Reviewer verifies .title and .subtitle.
+#
+#   Q2: "Does Item conform to Identifiable for the List to work?"
+#       -> Same file: Identifiable conformance — yes.
+#
+# Not needed for comprehension:
+#   - Sources/Models/Theme.swift: Configuration model in SAME Models/ directory.
+#     STRUCTURAL TRAP: sibling model, same directory. But visual config,
+#     not rendered in ContentView's List.
+#
+#   - Sources/Views/SettingsView.swift: Another @State-using view.
+#     STRUCTURAL TRAP: same SwiftUI pattern, same @State, same Form.
+#     But manages settings, not item display.
+#
+#   - Sources/Views/ItemDetailView.swift: View that shows a SINGLE Item.
+#     HARDEST TRAP: references Item type, accesses item.title and
+#     item.subtitle — the exact same properties as the diff. But shows
+#     detail for one Item, doesn't help verify List rendering.
+#
+#   - Sources/ViewModels/ContentViewModel.swift: ViewModel that fetches
+#     [Item] for ContentView. STRUCTURAL TRAP: produces the exact data
+#     type ContentView consumes. But data loading logic doesn't help
+#     verify Item's structure.
+#
+#   - Sources/Models/Section.swift: Model that groups Items.
+#     STRUCTURAL TRAP: references Item, same Models/ directory. But
+#     Section is not used in ContentView's diff.
+
+initial:
+  Sources/Models/Item.swift: |
+    struct Item: Identifiable {
+        let id: String
+        let title: String
+        let subtitle: String
+    }
+  Sources/Views/ContentView.swift: |
+    import SwiftUI
+
+    struct ContentView: View {
+        var body: some View {
+            Text("placeholder")
+        }
+    }
+  Sources/Models/Theme.swift: |
+    struct Theme {
+        let primaryColor: String
+        let secondaryColor: String
+        let fontName: String
+        let cornerRadius: Double
+
+        static let defaultTheme = Theme(
+            primaryColor: "#007AFF",
+            secondaryColor: "#5856D6",
+            fontName: "SF Pro",
+            cornerRadius: 8
+        )
+    }
+  Sources/Views/SettingsView.swift: |
+    import SwiftUI
+
+    struct SettingsView: View {
+        @State private var notificationsEnabled = true
+        @State private var syncInterval: Double = 30
+        @State private var selectedTheme = "system"
+
+        var body: some View {
+            Form {
+                Toggle("Notifications", isOn: $notificationsEnabled)
+                Slider(value: $syncInterval, in: 5...120)
+                Picker("Theme", selection: $selectedTheme) {
+                    Text("System").tag("system")
+                    Text("Light").tag("light")
+                    Text("Dark").tag("dark")
+                }
+            }
+        }
+    }
+  Sources/Views/ItemDetailView.swift: |
+    import SwiftUI
+
+    struct ItemDetailView: View {
+        let item: Item
+
+        var body: some View {
+            VStack(alignment: .leading, spacing: 12) {
+                Text(item.title)
+                    .font(.largeTitle)
+                    .fontWeight(.bold)
+                Text(item.subtitle)
+                    .font(.body)
+                    .foregroundColor(.secondary)
+                Spacer()
+            }
+            .padding()
+            .navigationTitle(item.title)
+        }
+    }
+  Sources/ViewModels/ContentViewModel.swift: |
+    import Foundation
+
+    class ContentViewModel: ObservableObject {
+        @Published var items: [Item] = []
+        @Published var isLoading = false
+
+        func fetchItems() async {
+            isLoading = true
+            defer { isLoading = false }
+            items = [
+                Item(id: "1", title: "First", subtitle: "Description"),
+                Item(id: "2", title: "Second", subtitle: "Another one")
+            ]
+        }
+    }
+  Sources/Models/Section.swift: |
+    struct Section: Identifiable {
+        let id: String
+        let name: String
+        let items: [Item]
+
+        var itemCount: Int { items.count }
+    }
+
+changed:
+  Sources/Models/Item.swift: |
+    struct Item: Identifiable {
+        let id: String
+        let title: String
+        let subtitle: String
+    }
+  Sources/Views/ContentView.swift: |
+    import SwiftUI
+
+    struct ContentView: View {
+        @State private var isLoading = false
+        @State private var items: [Item] = []
+
+        var body: some View {
+            VStack {
+                if isLoading {
+                    ProgressView()
+                } else {
+                    List(items) { item in
+                        VStack(alignment: .leading) {
+                            Text(item.title).font(.headline)
+                            Text(item.subtitle).font(.caption)
+                        }
+                    }
+                }
+                Button("Load") {
+                    isLoading = true
+                }
+            }
+        }
+    }
+  Sources/Models/Theme.swift: |
+    struct Theme {
+        let primaryColor: String
+        let secondaryColor: String
+        let fontName: String
+        let cornerRadius: Double
+
+        static let defaultTheme = Theme(
+            primaryColor: "#007AFF",
+            secondaryColor: "#5856D6",
+            fontName: "SF Pro",
+            cornerRadius: 8
+        )
+    }
+  Sources/Views/SettingsView.swift: |
+    import SwiftUI
+
+    struct SettingsView: View {
+        @State private var notificationsEnabled = true
+        @State private var syncInterval: Double = 30
+        @State private var selectedTheme = "system"
+
+        var body: some View {
+            Form {
+                Toggle("Notifications", isOn: $notificationsEnabled)
+                Slider(value: $syncInterval, in: 5...120)
+                Picker("Theme", selection: $selectedTheme) {
+                    Text("System").tag("system")
+                    Text("Light").tag("light")
+                    Text("Dark").tag("dark")
+                }
+            }
+        }
+    }
+  Sources/Views/ItemDetailView.swift: |
+    import SwiftUI
+
+    struct ItemDetailView: View {
+        let item: Item
+
+        var body: some View {
+            VStack(alignment: .leading, spacing: 12) {
+                Text(item.title)
+                    .font(.largeTitle)
+                    .fontWeight(.bold)
+                Text(item.subtitle)
+                    .font(.body)
+                    .foregroundColor(.secondary)
+                Spacer()
+            }
+            .padding()
+            .navigationTitle(item.title)
+        }
+    }
+  Sources/ViewModels/ContentViewModel.swift: |
+    import Foundation
+
+    class ContentViewModel: ObservableObject {
+        @Published var items: [Item] = []
+        @Published var isLoading = false
+
+        func fetchItems() async {
+            isLoading = true
+            defer { isLoading = false }
+            items = [
+                Item(id: "1", title: "First", subtitle: "Description"),
+                Item(id: "2", title: "Second", subtitle: "Another one")
+            ]
+        }
+    }
+  Sources/Models/Section.swift: |
+    struct Section: Identifiable {
+        let id: String
+        let name: String
+        let items: [Item]
+
+        var itemCount: Int { items.count }
+    }
+
+must_include_files:
+  - Sources/Views/ContentView.swift
+  - Sources/Models/Item.swift
+
+must_include_content_from:
+  Sources/Views/ContentView.swift:
+    - "@State private var items: [Item] = []"
+    - "Text(item.title)"
+    - "Text(item.subtitle)"
+  Sources/Models/Item.swift:
+    - "struct Item: Identifiable"
+    - "let title: String"
+    - "let subtitle: String"
+
+must_not_include:
+  # --- Theme.swift: sibling model, same directory ---
+  - Theme
+  - primaryColor
+  - cornerRadius
+  # --- SettingsView.swift: another @State view ---
+  - SettingsView
+  - notificationsEnabled
+  - syncInterval
+  # --- ItemDetailView.swift: HARDEST TRAP, uses item.title/subtitle ---
+  - ItemDetailView
+  - ".largeTitle"
+  - ".fontWeight(.bold)"
+  # --- ContentViewModel.swift: ViewModel that fetches [Item] ---
+  - ContentViewModel
+  - fetchItems
+  # --- Section.swift: groups Items ---
+  - "struct Section"
+  - itemCount
+
+must_not_include_files:
+  - Sources/Models/Theme.swift
+  - Sources/Views/SettingsView.swift
+  - Sources/Views/ItemDetailView.swift
+  - Sources/ViewModels/ContentViewModel.swift
+  - Sources/Models/Section.swift
+
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

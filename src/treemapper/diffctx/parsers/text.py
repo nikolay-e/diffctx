@@ -4,7 +4,9 @@ import logging
 from pathlib import Path
 
 from ..types import Fragment, FragmentId, extract_identifiers
-from .base import GENERIC_MAX_LINES, MIN_FRAGMENT_WORDS, check_library_available, create_snippet, find_sentence_boundary
+from .base import GENERIC_MAX_LINES, check_library_available, create_snippet, find_sentence_boundary
+
+logger = logging.getLogger(__name__)
 
 
 def _merge_small_fragments(fragments: list[Fragment], max_lines: int = 100) -> list[Fragment]:
@@ -65,7 +67,11 @@ class PySBDTextStrategy:
     def can_handle(self, path: Path, _content: str) -> bool:
         if not self._available:
             return False
-        return path.suffix.lower() in {".txt", ".text", ".rst", ".adoc", ""}
+        if path.suffix.lower() not in {".txt", ".text", ".rst", ".adoc", ""}:
+            return False
+        from ..languages import FILENAME_TO_LANGUAGE
+
+        return path.name.lower() not in FILENAME_TO_LANGUAGE
 
     def _create_paragraph_fragment(self, path: Path, lines: list[str], para_start: int, end_line: int) -> Fragment | None:
         if end_line < para_start:
@@ -90,9 +96,6 @@ class PySBDTextStrategy:
         fragments: list[Fragment],
     ) -> None:
         if not para_sentences:
-            return
-        combined = " ".join(para_sentences)
-        if len(combined.split()) < MIN_FRAGMENT_WORDS:
             return
         frag = self._create_paragraph_fragment(path, lines, para_start, end_line)
         if frag:
@@ -147,7 +150,11 @@ class ParagraphStrategy:
     priority = 20
 
     def can_handle(self, path: Path, _content: str) -> bool:
-        return path.suffix.lower() in {".txt", ".text", ".rst", ".adoc", ""}
+        if path.suffix.lower() not in {".txt", ".text", ".rst", ".adoc", ""}:
+            return False
+        from ..languages import FILENAME_TO_LANGUAGE
+
+        return path.name.lower() not in FILENAME_TO_LANGUAGE
 
     def fragment(self, path: Path, content: str) -> list[Fragment]:
         lines = content.splitlines()
@@ -177,19 +184,6 @@ class ParagraphStrategy:
     def _make_fragment(self, path: Path, lines: list[str], start: int, end: int) -> Fragment | None:
         snippet = create_snippet(lines, start + 1, end + 1)
         if snippet is None:
-            logging.debug("Skipping empty fragment at %s:%d-%d", path, start + 1, end + 1)
-            return None
-
-        word_count = len(snippet.split())
-        if word_count < MIN_FRAGMENT_WORDS:
-            logging.debug(
-                "Skipping fragment at %s:%d-%d (only %d words, need %d)",
-                path,
-                start + 1,
-                end + 1,
-                word_count,
-                MIN_FRAGMENT_WORDS,
-            )
             return None
 
         return Fragment(

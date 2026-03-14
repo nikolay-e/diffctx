@@ -1,0 +1,100 @@
+# Reviewer sees: callback.test.ts uses vi.fn() to mock a callback and
+# verifies processNumbers calls it for each element.
+# Q1: "What does processNumbers do with the callback?"
+#     -> callback.ts: calls callback(n) for each number via forEach.
+#        Test asserts 3 calls with values 1, 2, 3 — matches the impl.
+# Q2: "What is the Callback type signature?"
+#     -> callback.ts: (value: number) => void. The vi.fn() mock
+#        satisfies this signature implicitly.
+#
+# Not needed:
+#   - array-utils.ts: array manipulation (unique, chunk). Same array
+#     domain but processNumbers handles its own iteration.
+#   - callback.types.ts: extended callback types (async, error, progress).
+#     Not imported by callback.ts or the test.
+
+initial:
+  src/callback.ts: |
+    export type Callback = (value: number) => void;
+
+    export function processNumbers(numbers: number[], callback: Callback) {
+        numbers.forEach(n => callback(n));
+    }
+  src/callback.test.ts: |
+    console.log('placeholder');
+  src/array-utils.ts: |
+    export function unique<T>(items: T[]): T[] {
+        return [...new Set(items)];
+    }
+
+    export function chunk<T>(items: T[], size: number): T[][] {
+        const chunks: T[][] = [];
+        for (let i = 0; i < items.length; i += size) {
+            chunks.push(items.slice(i, i + size));
+        }
+        return chunks;
+    }
+  src/callback.types.ts: |
+    export type AsyncCallback<T> = (value: T) => Promise<void>;
+    export type ErrorCallback = (error: Error) => void;
+    export type ProgressCallback = (current: number, total: number) => void;
+changed:
+  src/callback.ts: |
+    export type Callback = (value: number) => void;
+
+    export function processNumbers(numbers: number[], callback: Callback) {
+        numbers.forEach(n => callback(n));
+    }
+  src/callback.test.ts: |
+    import { describe, it, expect, vi } from 'vitest';
+    import { processNumbers } from './callback';
+
+    describe('processNumbers', () => {
+        it('should call callback for each number', () => {
+            const callback = vi.fn();
+            processNumbers([1, 2, 3], callback);
+            expect(callback).toHaveBeenCalledTimes(3);
+            expect(callback).toHaveBeenCalledWith(1);
+            expect(callback).toHaveBeenCalledWith(2);
+            expect(callback).toHaveBeenCalledWith(3);
+        });
+    });
+  src/array-utils.ts: |
+    export function unique<T>(items: T[]): T[] {
+        return [...new Set(items)];
+    }
+
+    export function chunk<T>(items: T[], size: number): T[][] {
+        const chunks: T[][] = [];
+        for (let i = 0; i < items.length; i += size) {
+            chunks.push(items.slice(i, i + size));
+        }
+        return chunks;
+    }
+  src/callback.types.ts: |
+    export type AsyncCallback<T> = (value: T) => Promise<void>;
+    export type ErrorCallback = (error: Error) => void;
+    export type ProgressCallback = (current: number, total: number) => void;
+must_include_files:
+  # Unchanged file — the module under test. Reviewer needs to see
+  # processNumbers implementation to verify test assertions.
+  - src/callback.ts
+must_include_content_from:
+  src/callback.ts:
+    - "processNumbers"
+    - "forEach"
+must_not_include:
+  # array-utils.ts: array utilities not used by processNumbers
+  - unique
+  - chunk
+  # callback.types.ts: extended types not imported
+  - AsyncCallback
+  - ErrorCallback
+  - ProgressCallback
+must_not_include_files:
+  - src/array-utils.ts
+  - src/callback.types.ts
+max_fragments: 5
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

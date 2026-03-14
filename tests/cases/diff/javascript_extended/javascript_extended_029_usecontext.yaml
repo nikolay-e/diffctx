@@ -1,0 +1,137 @@
+# Reviewer sees: Button.tsx is rewritten to import ThemeContext and use
+# useContext(ThemeContext) to apply theme.primary as background color.
+#
+# Q1: "What shape does the Theme type have — is 'primary' a valid field?"
+#     -> src/theme/ThemeContext.tsx defines Theme with primary and secondary
+#        string fields, and creates ThemeContext with default values.
+#        Reviewer confirms theme.primary exists and is a string (valid for
+#        backgroundColor).
+# Q2: "What is the default theme? Will the button render correctly without
+#      a provider?"
+#     -> ThemeContext default is { primary: '#000', secondary: '#fff' }.
+#        Without a wrapping ThemeProvider, the button gets a black background.
+#
+# Not needed:
+#   - src/theme/dark-palette.ts: defines dark color constants. Button reads
+#     from context, not from palette files directly. Different layer.
+#   - src/components/icon.tsx: renders SVG icons. Same directory as Button
+#     but no import relationship or theme usage.
+
+initial:
+  src/theme/ThemeContext.tsx: |
+    import { createContext } from 'react';
+
+    export interface Theme {
+        primary: string;
+        secondary: string;
+    }
+
+    export const defaultTheme: Theme = { primary: '#000', secondary: '#fff' };
+
+    export const ThemeContext = createContext<Theme>(defaultTheme);
+  src/components/Button.tsx: |
+    console.log('initial');
+  # --- Not needed: palette constants, Button uses context not palette ---
+  src/theme/dark-palette.ts: |
+    export const darkPalette = {
+        background: '#1a1a2e',
+        surface: '#16213e',
+        primary: '#0f3460',
+        accent: '#e94560',
+        text: '#eee',
+    };
+
+    export function getPaletteColor(name: keyof typeof darkPalette): string {
+        return darkPalette[name];
+    }
+  # --- Not needed: sibling component, no theme or import relationship ---
+  src/components/icon.tsx: |
+    interface IconProps {
+        name: string;
+        size?: number;
+        color?: string;
+    }
+
+    export function Icon({ name, size = 24, color = 'currentColor' }: IconProps) {
+        return (
+            <svg width={size} height={size} fill={color}>
+                <use href={`#icon-${name}`} />
+            </svg>
+        );
+    }
+
+    export const iconNames = ['home', 'settings', 'user', 'search', 'menu'] as const;
+
+changed:
+  src/theme/ThemeContext.tsx: |
+    import { createContext } from 'react';
+
+    export interface Theme {
+        primary: string;
+        secondary: string;
+    }
+
+    export const defaultTheme: Theme = { primary: '#000', secondary: '#fff' };
+
+    export const ThemeContext = createContext<Theme>(defaultTheme);
+  src/components/Button.tsx: |
+    import { useContext } from 'react';
+    import { ThemeContext } from '../theme/ThemeContext';
+
+    export function Button({ children }: { children: React.ReactNode }) {
+        const theme = useContext(ThemeContext);
+        return <button style={{ backgroundColor: theme.primary }}>{children}</button>;
+    }
+  src/theme/dark-palette.ts: |
+    export const darkPalette = {
+        background: '#1a1a2e',
+        surface: '#16213e',
+        primary: '#0f3460',
+        accent: '#e94560',
+        text: '#eee',
+    };
+
+    export function getPaletteColor(name: keyof typeof darkPalette): string {
+        return darkPalette[name];
+    }
+  src/components/icon.tsx: |
+    interface IconProps {
+        name: string;
+        size?: number;
+        color?: string;
+    }
+
+    export function Icon({ name, size = 24, color = 'currentColor' }: IconProps) {
+        return (
+            <svg width={size} height={size} fill={color}>
+                <use href={`#icon-${name}`} />
+            </svg>
+        );
+    }
+
+    export const iconNames = ['home', 'settings', 'user', 'search', 'menu'] as const;
+
+must_include_files:
+  # Unchanged — provides Theme interface and ThemeContext the component consumes.
+  # Reviewer needs to verify theme.primary is a valid field and see the
+  # default value to understand behavior without a provider.
+  - src/theme/ThemeContext.tsx
+must_include_content_from:
+  src/theme/ThemeContext.tsx:
+    - "interface Theme"
+    - "primary"
+    - "ThemeContext"
+must_not_include:
+  # dark-palette.ts: color constants, Button reads from context not palette
+  - darkPalette
+  - getPaletteColor
+  # icon.tsx: SVG icon component, no theme or import relationship
+  - IconProps
+  - iconNames
+must_not_include_files:
+  - src/theme/dark-palette.ts
+  - src/components/icon.tsx
+max_fragments: 8
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

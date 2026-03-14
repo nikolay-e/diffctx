@@ -1,0 +1,195 @@
+# Test 020: Go Dockerfile rewritten with explicit WORKDIR management — reviewer needs
+#           go.mod to verify module name and Go version match
+#
+# Scenario: Go Dockerfile rewritten from a single-stage build into a multi-stage with
+# explicit WORKDIR management: /build for compilation, then distroless production image
+# with WORKDIR /home/nonroot. Go module caching via separate COPY go.mod/go.sum step.
+#
+# Reviewer questions:
+#   Q1: "Does go.mod define the module name and Go version matching the Dockerfile?"
+#       -> go.mod has `module myapp` and `go 1.22`. Dockerfile uses
+#       `FROM golang:1.22-alpine`. Reviewer needs this to verify version match.
+#   Q2: "Does src/main.go have the correct package structure for 'go build ./...'?"
+#       -> src/main.go has `package main` and `func main()`. Reviewer verifies
+#       the build command targets the right package.
+#   Q3: "Does the app listen on port 8080 matching EXPOSE?"
+#       -> src/main.go has `port = "8080"` default. Matches EXPOSE 8080.
+#
+# Not needed:
+#   - scripts/release.sh: uses goreleaser, different build toolchain entirely.
+#   - tests/main_test.go: tests health endpoint but is test infrastructure.
+#   - internal/config/config.go: Go package with GetPort(), but parser does
+#     not import it — unrelated to build structure.
+
+initial:
+  src/main.go: |
+    package main
+    import (
+        "fmt"
+        "net/http"
+        "os"
+    )
+    func main() {
+        port := os.Getenv("PORT")
+        if port == "" {
+            port = "8080"
+        }
+        http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+            fmt.Fprintf(w, "OK")
+        })
+        http.ListenAndServe(":"+port, nil)
+    }
+  go.mod: |
+    module myapp
+    go 1.22
+    require github.com/gorilla/mux v1.8.1
+  go.sum: |
+    github.com/gorilla/mux v1.8.1 h1:TuBL49tXwgrFYWhqrNgrUNEY92u81SPhu7sTdzQEiWY=
+    github.com/gorilla/mux v1.8.1/go.mod h1:AKf9I4AEqPTmMytcMc0KkNouC66V3BtZ4qD5fmWSiMQ=
+  Dockerfile: |
+    FROM golang:1.21-alpine
+    COPY . /go/src/app
+    RUN cd /go/src/app && go build -o /app
+    CMD ["/app"]
+  scripts/release.sh: |
+    #!/bin/bash
+    goreleaser release --rm-dist --snapshot
+  tests/main_test.go: |
+    package main
+    import (
+        "net/http"
+        "net/http/httptest"
+        "testing"
+    )
+    func TestHealthEndpoint(t *testing.T) {
+        req := httptest.NewRequest("GET", "/health", nil)
+        w := httptest.NewRecorder()
+        handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
+        handler.ServeHTTP(w, req)
+    }
+  internal/config/config.go: |
+    package config
+    import "os"
+    func GetPort() string {
+        port := os.Getenv("PORT")
+        if port == "" {
+            return "8080"
+        }
+        return port
+    }
+
+changed:
+  src/main.go: |
+    package main
+    import (
+        "fmt"
+        "net/http"
+        "os"
+    )
+    func main() {
+        port := os.Getenv("PORT")
+        if port == "" {
+            port = "8080"
+        }
+        http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+            fmt.Fprintf(w, "OK")
+        })
+        http.ListenAndServe(":"+port, nil)
+    }
+  go.mod: |
+    module myapp
+    go 1.22
+    require github.com/gorilla/mux v1.8.1
+  go.sum: |
+    github.com/gorilla/mux v1.8.1 h1:TuBL49tXwgrFYWhqrNgrUNEY92u81SPhu7sTdzQEiWY=
+    github.com/gorilla/mux v1.8.1/go.mod h1:AKf9I4AEqPTmMytcMc0KkNouC66V3BtZ4qD5fmWSiMQ=
+  Dockerfile: |
+    # Build stage with explicit WORKDIR
+    FROM golang:1.22-alpine AS builder
+    WORKDIR /build
+
+    # Cache dependencies
+    COPY go.mod go.sum ./
+    RUN go mod download && go mod verify
+
+    # Build with optimizations
+    COPY src/ ./src/
+    WORKDIR /build/src
+    RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+        go build -ldflags="-w -s -X main.Version=${VERSION}" \
+        -o /app ./...
+
+    # Production stage with minimal image
+    FROM gcr.io/distroless/static-debian12:nonroot AS production
+    WORKDIR /home/nonroot
+
+    COPY --from=builder --chown=nonroot:nonroot /app ./app
+
+    USER nonroot:nonroot
+    EXPOSE 8080
+
+    ENTRYPOINT ["./app"]
+  scripts/release.sh: |
+    #!/bin/bash
+    goreleaser release --rm-dist --snapshot
+  tests/main_test.go: |
+    package main
+    import (
+        "net/http"
+        "net/http/httptest"
+        "testing"
+    )
+    func TestHealthEndpoint(t *testing.T) {
+        req := httptest.NewRequest("GET", "/health", nil)
+        w := httptest.NewRecorder()
+        handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
+        handler.ServeHTTP(w, req)
+    }
+  internal/config/config.go: |
+    package config
+    import "os"
+    func GetPort() string {
+        port := os.Getenv("PORT")
+        if port == "" {
+            return "8080"
+        }
+        return port
+    }
+
+must_include_files:
+  - Dockerfile
+  # Q1: Does go.mod module name and Go version match the Dockerfile?
+  - go.mod
+
+must_include_content_from:
+  Dockerfile:
+    - FROM golang:1.22-alpine AS builder
+    - WORKDIR /build
+    - COPY go.mod go.sum ./
+    - RUN go mod download && go mod verify
+    - COPY src/ ./src/
+    - WORKDIR /build/src
+    - ENTRYPOINT ["./app"]
+  go.mod:
+    - module myapp
+    - go 1.22
+
+must_not_include:
+  # --- release.sh: goreleaser is a separate build system, not Docker ---
+  - goreleaser release
+  - "--rm-dist"
+  # --- tests: test infrastructure, shares health endpoint concept ---
+  - TestHealthEndpoint
+  - httptest.NewRequest
+  # --- internal/config: Go package, unrelated to Docker WORKDIR structure ---
+  - "func GetPort"
+  - 'package config'
+must_not_include_files:
+  - scripts/release.sh
+  - tests/main_test.go
+  - internal/config/config.go
+
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

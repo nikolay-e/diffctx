@@ -1,0 +1,125 @@
+initial:
+  src/api.py: |
+    from flask import Flask, jsonify
+    import os
+
+    app = Flask(__name__)
+
+    NODE_ENV = os.getenv("NODE_ENV", "production")
+    DEBUG = os.getenv("DEBUG", "false").lower() == "true"
+
+    @app.route('/health')
+    def health():
+        return jsonify(status='ok', env=NODE_ENV)
+
+    @app.route('/api/info')
+    def info():
+        return jsonify(
+            environment=NODE_ENV,
+            debug=DEBUG
+        )
+
+    if __name__ == "__main__":
+        app.run(host="0.0.0.0", port=3000, debug=DEBUG)
+  requirements.txt: |
+    flask==2.3.0
+    gunicorn==21.2.0
+  Dockerfile: |
+    FROM python:3.12-slim
+    WORKDIR /app
+    COPY requirements.txt .
+    RUN pip install --no-cache-dir -r requirements.txt
+    COPY src/ ./src/
+    EXPOSE 3000
+    CMD ["gunicorn", "-b", "0.0.0.0:3000", "src.api:app"]
+  docker-compose.yml: |
+    version: '3.8'
+    services:
+      api:
+        build: .
+        environment:
+          - NODE_ENV=production
+  docker-compose.override.yml: |
+    version: '3.8'
+  scripts/dev.sh: |
+    #!/bin/bash
+    docker-compose up --build
+  tests/test_override.py: |
+    def test_override_merging():
+        pass
+  docs/local-development.md: |
+    # Local Development
+  k8s/dev-overlay.yaml: |
+    apiVersion: apps/v1
+  skaffold.yaml: |
+    apiVersion: skaffold/v4beta1
+changed:
+  src/api.py: |
+    from flask import Flask, jsonify
+    import os
+
+    app = Flask(__name__)
+
+    NODE_ENV = os.getenv("NODE_ENV", "production")
+    DEBUG = os.getenv("DEBUG", "false").lower() == "true"
+
+    @app.route('/health')
+    def health():
+        return jsonify(status='ok', env=NODE_ENV)
+
+    @app.route('/api/info')
+    def info():
+        return jsonify(
+            environment=NODE_ENV,
+            debug=DEBUG
+        )
+
+    if __name__ == "__main__":
+        app.run(host="0.0.0.0", port=3000, debug=DEBUG)
+  requirements.txt: |
+    flask==2.3.0
+    gunicorn==21.2.0
+  Dockerfile: |
+    FROM python:3.12-slim
+    WORKDIR /app
+    COPY requirements.txt .
+    RUN pip install --no-cache-dir -r requirements.txt
+    COPY src/ ./src/
+    EXPOSE 3000
+    CMD ["gunicorn", "-b", "0.0.0.0:3000", "src.api:app"]
+  docker-compose.yml: |
+    version: '3.8'
+    services:
+      api:
+        build: .
+        environment:
+          - NODE_ENV=production
+  docker-compose.override.yml: |
+    version: '3.8'
+    services:
+      api:
+        environment:
+          - NODE_ENV=development
+          - DEBUG=true
+        volumes:
+          - .:/app
+        ports:
+          - "3000:3000"
+  scripts/dev.sh: |
+    #!/bin/bash
+    docker-compose up --build
+  tests/test_override.py: |
+    def test_override_merging():
+        pass
+  docs/local-development.md: |
+    # Local Development
+  k8s/dev-overlay.yaml: |
+    apiVersion: apps/v1
+  skaffold.yaml: |
+    apiVersion: skaffold/v4beta1
+must_include_files:
+- docker-compose.override.yml
+must_include_content:
+- '- NODE_ENV=development'
+add_garbage_files: false
+skip_garbage_check: true

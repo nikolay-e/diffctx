@@ -1,0 +1,240 @@
+# Test 001: UserService rewritten from scratch — reviewer needs types and API client
+#
+# Scenario: src/services/userService.ts is rewritten from a placeholder
+# (console.log) into a full service class that imports User, UserDTO,
+# CreateUserInput, UpdateUserInput from types/user.ts and ApiClient from
+# api/client.ts. It maps DTOs to domain objects.
+#
+# Reviewer questions:
+#   Q1: "What are User vs UserDTO?" -> types/user.ts defines both.
+#       UserDTO has firstName/lastName, User has fullName. The service
+#       maps between them. Reviewer needs the type definitions to verify
+#       mapDtoToUser is correct.
+#   Q2: "What does ApiClient.get/post do?" -> api/client.ts defines
+#       a generic HTTP client. UserService calls client.get<UserDTO>
+#       and client.post<UserDTO, CreateUserInput>. Reviewer needs to
+#       see the generic signatures to verify type parameters are correct.
+#
+# Not needed:
+#   - analytics-sdk: third-party vendor code. Not imported by UserService.
+#   - docs/architecture: prose documentation. Does not help verify code.
+#   - notification-service.ts: another service in the same directory.
+#     Shares the "service" pattern but does not interact with UserService,
+#     User types, or ApiClient.
+#   - auth-middleware.ts: HTTP middleware checking tokens. Same layer
+#     (infrastructure) but not imported or used by UserService.
+
+initial:
+  src/types/user.ts: |
+    export interface UserDTO {
+      id: string;
+      email: string;
+      firstName: string;
+      lastName: string;
+      role: 'admin' | 'user' | 'guest';
+    }
+
+    export interface User {
+      id: string;
+      email: string;
+      fullName: string;
+      role: 'admin' | 'user' | 'guest';
+    }
+
+    export type CreateUserInput = Omit<UserDTO, 'id'>;
+    export type UpdateUserInput = Partial<Omit<UserDTO, 'id'>>;
+  src/api/client.ts: |
+    export interface ApiResponse<T> {
+      data: T;
+      status: number;
+      message?: string;
+    }
+
+    export class ApiClient {
+      private baseUrl: string;
+      private headers: Record<string, string>;
+
+      constructor(baseUrl: string, authToken?: string) {
+        this.baseUrl = baseUrl;
+        this.headers = {
+          'Content-Type': 'application/json',
+          ...(authToken && { Authorization: `Bearer ${authToken}` }),
+        };
+      }
+
+      async get<T>(endpoint: string): Promise<T> {
+        const response = await fetch(`${this.baseUrl}${endpoint}`, {
+          headers: this.headers,
+        });
+        return response.json();
+      }
+
+      async post<T, U>(endpoint: string, body: U): Promise<T> {
+        const response = await fetch(`${this.baseUrl}${endpoint}`, {
+          method: 'POST',
+          headers: this.headers,
+          body: JSON.stringify(body),
+        });
+        return response.json();
+      }
+    }
+  src/services/userService.ts: |
+    console.log('placeholder');
+  src/services/notification-service.ts: |
+    interface Notification {
+      id: string;
+      recipientId: string;
+      subject: string;
+      body: string;
+      sentAt: Date | null;
+    }
+
+    export class NotificationService {
+      private queue: Notification[] = [];
+
+      async send(recipientId: string, subject: string, body: string): Promise<void> {
+        const notification: Notification = {
+          id: crypto.randomUUID(),
+          recipientId,
+          subject,
+          body,
+          sentAt: null,
+        };
+        this.queue.push(notification);
+      }
+
+      async flush(): Promise<number> {
+        const pending = this.queue.filter(n => n.sentAt === null);
+        for (const n of pending) {
+          n.sentAt = new Date();
+        }
+        return pending.length;
+      }
+
+      getPendingCount(): number {
+        return this.queue.filter(n => n.sentAt === null).length;
+      }
+    }
+  src/middleware/auth-middleware.ts: |
+    interface TokenPayload {
+      sub: string;
+      exp: number;
+      iat: number;
+      roles: string[];
+    }
+
+    export function authMiddleware(req: any, res: any, next: any): void {
+      const header = req.headers['authorization'];
+      if (!header?.startsWith('Bearer ')) {
+        res.status(401).json({ error: 'Missing token' });
+        return;
+      }
+      const token = header.slice(7);
+      try {
+        const payload = decodeToken(token);
+        if (payload.exp < Date.now() / 1000) {
+          res.status(401).json({ error: 'Token expired' });
+          return;
+        }
+        req.user = payload;
+        next();
+      } catch {
+        res.status(403).json({ error: 'Invalid token' });
+      }
+    }
+
+    function decodeToken(token: string): TokenPayload {
+      return { sub: 'user-1', exp: Date.now() / 1000 + 3600, iat: Date.now() / 1000, roles: ['user'] };
+    }
+  vendor/analytics-sdk/index.ts: |
+    export function trackEvent(name: string, data: Record<string, unknown>): void {
+      console.log(`[analytics] ${name}`, data);
+    }
+  docs/architecture/overview.md: |
+    # Architecture Overview
+    The application follows a layered service architecture.
+
+changed:
+  src/services/userService.ts: |
+    import { User, UserDTO, CreateUserInput, UpdateUserInput } from '../types/user';
+    import { ApiClient } from '../api/client';
+
+    export class UserService {
+      private client: ApiClient;
+
+      constructor(client: ApiClient) {
+        this.client = client;
+      }
+
+      async getUser(id: string): Promise<User> {
+        const dto = await this.client.get<UserDTO>(`/users/${id}`);
+        return this.mapDtoToUser(dto);
+      }
+
+      async getAllUsers(): Promise<User[]> {
+        const dtos = await this.client.get<UserDTO[]>('/users');
+        return dtos.map((dto) => this.mapDtoToUser(dto));
+      }
+
+      async createUser(input: CreateUserInput): Promise<User> {
+        const dto = await this.client.post<UserDTO, CreateUserInput>('/users', input);
+        return this.mapDtoToUser(dto);
+      }
+
+      private mapDtoToUser(dto: UserDTO): User {
+        return {
+          id: dto.id,
+          email: dto.email,
+          fullName: `${dto.firstName} ${dto.lastName}`,
+          role: dto.role,
+        };
+      }
+    }
+
+must_include_files:
+  - src/services/userService.ts
+  # Q1: Type definitions — reviewer verifies DTO-to-User mapping
+  - src/types/user.ts
+  # Q2: API client — reviewer verifies generic type parameters
+  - src/api/client.ts
+must_include_content_from:
+  src/services/userService.ts:
+    - "import { User, UserDTO, CreateUserInput, UpdateUserInput } from '../types/user'"
+    - "async getUser(id: string): Promise<User>"
+    - "mapDtoToUser(dto: UserDTO): User"
+  src/types/user.ts:
+    # Reviewer checks mapping correctness: DTO has firstName/lastName,
+    # User has fullName — the service concatenates them
+    - "interface UserDTO"
+    - "firstName: string"
+    - "interface User"
+    - "fullName: string"
+  src/api/client.ts:
+    # Reviewer checks generic get<T>/post<T,U> signatures
+    - "async get<T>(endpoint: string)"
+    - "async post<T, U>(endpoint: string"
+must_not_include:
+  # --- notification-service.ts: sibling service, no UserService interaction ---
+  - NotificationService
+  - recipientId
+  - flush
+  - getPendingCount
+  # --- auth-middleware.ts: same layer, but not imported by UserService ---
+  - authMiddleware
+  - TokenPayload
+  - decodeToken
+  - "Token expired"
+  # --- vendor analytics: third-party SDK ---
+  - trackEvent
+  - "[analytics]"
+  # --- docs: prose documentation ---
+  - "layered service architecture"
+must_not_include_files:
+  - src/services/notification-service.ts
+  - src/middleware/auth-middleware.ts
+  - vendor/analytics-sdk/index.ts
+  - docs/architecture/overview.md
+max_fragments: 10
+max_files: 4
+add_garbage_files: false
+skip_garbage_check: true

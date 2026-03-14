@@ -1,0 +1,177 @@
+# Scenario: UserService starts using opaque types from Types object —
+# UserId and OrderId — for type-safe identifiers.
+#
+# Diff: UserService.scala changes from empty class to one that imports
+# Types._ and uses UserId(Long), id.value, and OrderId.
+#
+# Reviewer questions:
+#   Q1: "What is UserId? Can it be constructed from Long? Does .value work?"
+#       -> Types.scala: opaque type UserId = Long with companion providing
+#          apply(Long) and extension .value. Confirms UserService's
+#          UserId(System.currentTimeMillis()) and id.value are valid.
+#   Q2: "Are UserId and OrderId interchangeable? Could they be confused?"
+#       -> Types.scala: both are opaque type = Long but they're distinct
+#          types. The compiler prevents passing OrderId where UserId is
+#          expected, which is the whole point of opaque types.
+#
+# Not needed:
+#   - OrderService.scala: service that ALSO uses Types._ with OrderId.
+#     HARDEST TRAP: same `import Types._`, same .value extension calls.
+#     Sibling consumer of the exact same opaque types. But seeing how
+#     OrderService uses OrderId doesn't help verify UserService's usage.
+#   - InventoryService.scala: another service using Types._ with OrderId.
+#     Amplifies the sibling consumer trap.
+#   - Repository.scala: data access layer with findById(id: Long). Uses
+#     Long (the underlying type) but not the opaque type wrappers.
+#   - TypeAliases.scala: another type alias object with Email, Name as
+#     String-based opaque types. Same "opaque type" pattern, different types.
+#   - UserController.scala: controller that calls UserService methods.
+#     Consumer of the changed class, but doesn't define the types.
+
+initial:
+  Types.scala: |
+    object Types {
+      opaque type UserId = Long
+      opaque type OrderId = Long
+
+      object UserId {
+        def apply(value: Long): UserId = value
+        extension (id: UserId) def value: Long = id
+      }
+
+      object OrderId {
+        def apply(value: Long): OrderId = value
+        extension (id: OrderId) def value: Long = id
+      }
+    }
+  UserService.scala: |
+    class UserService {}
+  OrderService.scala: |
+    import Types._
+
+    class OrderService {
+      def createOrder(userId: UserId, amount: Double): OrderId = {
+        OrderId(System.currentTimeMillis())
+      }
+
+      def getOrderDetails(orderId: OrderId): String = {
+        s"Order ${orderId.value} details"
+      }
+
+      def listOrdersForUser(userId: UserId): List[OrderId] = {
+        List(OrderId(1L), OrderId(2L))
+      }
+    }
+  InventoryService.scala: |
+    import Types._
+
+    class InventoryService {
+      def checkStock(orderId: OrderId): Boolean = {
+        orderId.value > 0
+      }
+
+      def reserveForOrder(orderId: OrderId, quantity: Int): String = {
+        s"Reserved $quantity items for order ${orderId.value}"
+      }
+    }
+  Repository.scala: |
+    trait Repository[T] {
+      def findById(id: Long): Option[T]
+      def findAll(): List[T]
+      def save(entity: T): Unit
+      def delete(id: Long): Unit
+    }
+
+    class InMemoryRepository[T] extends Repository[T] {
+      private var store: Map[Long, T] = Map.empty
+
+      def findById(id: Long): Option[T] = store.get(id)
+      def findAll(): List[T] = store.values.toList
+      def save(entity: T): Unit = {}
+      def delete(id: Long): Unit = { store = store.removed(id) }
+    }
+  TypeAliases.scala: |
+    object TypeAliases {
+      opaque type Email = String
+      opaque type Name = String
+
+      object Email {
+        def apply(value: String): Email = value
+        extension (e: Email) def value: String = e
+      }
+
+      object Name {
+        def apply(value: String): Name = value
+        extension (n: Name) def value: String = n
+      }
+    }
+  UserController.scala: |
+    class UserController(service: UserService) {
+      def handleCreateUser(name: String): String = {
+        val userId = service.createUser(name)
+        s"Created user with id: $userId"
+      }
+
+      def handleGetUser(rawId: Long): String = {
+        import Types._
+        val userId = UserId(rawId)
+        service.getUserById(userId).getOrElse("Not found")
+      }
+    }
+changed:
+  UserService.scala: |
+    import Types._
+
+    class UserService {
+      def getUserById(id: UserId): Option[String] = {
+        Some(s"User with id ${id.value}")
+      }
+
+      def createUser(name: String): UserId = {
+        UserId(System.currentTimeMillis())
+      }
+
+      def getOrderForUser(userId: UserId, orderId: OrderId): String = {
+        s"Order ${orderId.value} for user ${userId.value}"
+      }
+    }
+must_include_files:
+  # Q1+Q2: Types.scala defines the opaque types UserId and OrderId
+  - Types.scala
+must_include_content_from:
+  Types.scala:
+    - "opaque type UserId"
+    - "opaque type OrderId"
+    - "def apply(value: Long): UserId"
+    - "extension (id: UserId) def value: Long"
+must_not_include:
+  # OrderService.scala: sibling consumer with same import Types._ and .value calls
+  - "class OrderService"
+  - "createOrder"
+  - "getOrderDetails"
+  - "listOrdersForUser"
+  # InventoryService.scala: another sibling consumer of Types._
+  - "class InventoryService"
+  - "checkStock"
+  - "reserveForOrder"
+  # Repository.scala: uses Long, not opaque types
+  - "trait Repository"
+  - "InMemoryRepository"
+  - "store.removed"
+  # TypeAliases.scala: same opaque type pattern, different types
+  - "object TypeAliases"
+  - "opaque type Email"
+  - "opaque type Name"
+  # UserController.scala: consumer of UserService
+  - "class UserController"
+  - "handleCreateUser"
+must_not_include_files:
+  - OrderService.scala
+  - InventoryService.scala
+  - Repository.scala
+  - TypeAliases.scala
+  - UserController.scala
+max_fragments: 5
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

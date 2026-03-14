@@ -7,6 +7,8 @@ from pathlib import Path
 from ..types import Fragment
 from .base import YAML_EXTENSIONS, create_fragment_from_lines
 
+logger = logging.getLogger(__name__)
+
 _K8S_DIRS = frozenset(
     {
         "k8s",
@@ -74,7 +76,7 @@ class KubernetesYamlStrategy:
             frag = create_fragment_from_lines(path, lines, start_idx + 1, end_idx + 1, "resource", "config")
             if frag:
                 fragments.append(frag)
-                logging.debug("K8s fragment: %s lines %d-%d", path, start_idx + 1, end_idx + 1)
+                logger.debug("K8s fragment: %s lines %d-%d", path, start_idx + 1, end_idx + 1)
 
         return fragments
 

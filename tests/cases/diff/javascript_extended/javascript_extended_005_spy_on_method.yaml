@@ -1,0 +1,228 @@
+# Reviewer sees: app.test.ts uses jest.spyOn on logger methods to verify
+# processData and handleError call correct logger methods.
+# Q1: "What does processData call on the logger?"
+#     -> src/app.ts: calls logger.log() on entry, logger.warn() when
+#        result is empty. Test spy assertions match these call sites.
+# Q2: "What are the method signatures on the logger object?"
+#     -> src/logger.ts: log(), error(), warn() all take a string.
+#        The spyOn calls target these exact methods.
+#
+# Not needed:
+#   - src/unrelated/metrics.ts: metric counters. Different observability
+#     concern (metrics vs logging). Not imported by app.ts.
+#   - src/unrelated/scheduler.ts: job scheduling. Infrastructure concern,
+#     no relationship to logging or data processing.
+
+initial:
+  src/logger.ts: |
+    export interface LogEntry {
+        level: string;
+        message: string;
+        timestamp: Date;
+    }
+
+    export const logger = {
+        entries: [] as LogEntry[],
+
+        log(message: string): void {
+            this.entries.push({ level: 'info', message, timestamp: new Date() });
+            console.log(`[INFO] ${message}`);
+        },
+
+        error(message: string): void {
+            this.entries.push({ level: 'error', message, timestamp: new Date() });
+            console.error(`[ERROR] ${message}`);
+        },
+
+        warn(message: string): void {
+            this.entries.push({ level: 'warn', message, timestamp: new Date() });
+            console.warn(`[WARN] ${message}`);
+        },
+    };
+  src/app.ts: |
+    import { logger } from './logger';
+
+    export function processData(data: string): string {
+        logger.log(`Processing: ${data}`);
+        const result = data.toUpperCase().trim();
+        if (result.length === 0) {
+            logger.warn('Empty data after processing');
+        }
+        return result;
+    }
+
+    export function handleError(error: Error): void {
+        logger.error(`Unhandled error: ${error.message}`);
+    }
+  src/app.test.ts: |
+    console.log('placeholder');
+  src/unrelated/metrics.ts: |
+    export class MetricsCollector {
+        private counters: Map<string, number> = new Map();
+
+        increment(name: string): void {
+            const current = this.counters.get(name) ?? 0;
+            this.counters.set(name, current + 1);
+        }
+
+        getCount(name: string): number {
+            return this.counters.get(name) ?? 0;
+        }
+    }
+
+    export function reportMetrics(collector: MetricsCollector): void {
+        console.log('reporting metrics snapshot');
+    }
+  src/unrelated/scheduler.ts: |
+    interface SchedulerConfig {
+        interval: number;
+        maxJobs: number;
+    }
+
+    export class JobScheduler {
+        private jobs: Array<() => void> = [];
+
+        schedule(job: () => void): void {
+            this.jobs.push(job);
+        }
+
+        run(): void {
+            this.jobs.forEach(job => job());
+        }
+    }
+
+    export function clearSchedule(scheduler: JobScheduler): void {
+        console.log('clearing scheduled jobs');
+    }
+changed:
+  src/logger.ts: |
+    export interface LogEntry {
+        level: string;
+        message: string;
+        timestamp: Date;
+    }
+
+    export const logger = {
+        entries: [] as LogEntry[],
+
+        log(message: string): void {
+            this.entries.push({ level: 'info', message, timestamp: new Date() });
+            console.log(`[INFO] ${message}`);
+        },
+
+        error(message: string): void {
+            this.entries.push({ level: 'error', message, timestamp: new Date() });
+            console.error(`[ERROR] ${message}`);
+        },
+
+        warn(message: string): void {
+            this.entries.push({ level: 'warn', message, timestamp: new Date() });
+            console.warn(`[WARN] ${message}`);
+        },
+    };
+  src/app.ts: |
+    import { logger } from './logger';
+
+    export function processData(data: string): string {
+        logger.log(`Processing: ${data}`);
+        const result = data.toUpperCase().trim();
+        if (result.length === 0) {
+            logger.warn('Empty data after processing');
+        }
+        return result;
+    }
+
+    export function handleError(error: Error): void {
+        logger.error(`Unhandled error: ${error.message}`);
+    }
+  src/app.test.ts: |
+    import { processData, handleError } from './app';
+    import { logger } from './logger';
+
+    describe('App', () => {
+        afterEach(() => {
+            jest.restoreAllMocks();
+        });
+
+        it('should log when processing data', () => {
+            const spy = jest.spyOn(logger, 'log');
+            processData('hello world');
+            expect(spy).toHaveBeenCalledWith('Processing: hello world');
+        });
+
+        it('should warn on empty result', () => {
+            const spy = jest.spyOn(logger, 'warn');
+            processData('   ');
+            expect(spy).toHaveBeenCalledWith('Empty data after processing');
+        });
+
+        it('should log errors through error handler', () => {
+            const spy = jest.spyOn(logger, 'error');
+            handleError(new Error('test failure'));
+            expect(spy).toHaveBeenCalledWith('Unhandled error: test failure');
+        });
+    });
+  src/unrelated/metrics.ts: |
+    export class MetricsCollector {
+        private counters: Map<string, number> = new Map();
+
+        increment(name: string): void {
+            const current = this.counters.get(name) ?? 0;
+            this.counters.set(name, current + 1);
+        }
+
+        getCount(name: string): number {
+            return this.counters.get(name) ?? 0;
+        }
+    }
+
+    export function reportMetrics(collector: MetricsCollector): void {
+        console.log('reporting metrics snapshot');
+    }
+  src/unrelated/scheduler.ts: |
+    interface SchedulerConfig {
+        interval: number;
+        maxJobs: number;
+    }
+
+    export class JobScheduler {
+        private jobs: Array<() => void> = [];
+
+        schedule(job: () => void): void {
+            this.jobs.push(job);
+        }
+
+        run(): void {
+            this.jobs.forEach(job => job());
+        }
+    }
+
+    export function clearSchedule(scheduler: JobScheduler): void {
+        console.log('clearing scheduled jobs');
+    }
+must_include_files:
+  # Unchanged — the module under test. Reviewer needs to see which
+  # logger methods processData and handleError actually call.
+  - src/app.ts
+  # Unchanged — the logger being spied on. Reviewer needs to see
+  # the method signatures to verify spy targets are correct.
+  - src/logger.ts
+must_include_content_from:
+  src/app.ts:
+    - "logger.log"
+    - "logger.warn"
+    - "logger.error"
+  src/logger.ts:
+    - "log(message: string)"
+    - "warn(message: string)"
+must_not_include:
+  # metrics.ts: metric counters, different observability concern
+  - MetricsCollector
+  - reportMetrics
+  # scheduler.ts: job scheduling, unrelated infrastructure
+  - JobScheduler
+  - clearSchedule
+max_fragments: 6
+max_files: 4
+add_garbage_files: false
+skip_garbage_check: true

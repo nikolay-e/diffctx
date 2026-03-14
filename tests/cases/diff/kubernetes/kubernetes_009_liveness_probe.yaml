@@ -1,0 +1,286 @@
+# Scenario: Deployment gains httpGet liveness probe on /live endpoint with
+#   tuned thresholds. Only k8s/apps/api/deployment.yaml is changed.
+#
+# Diff shows:
+#   + livenessProbe: httpGet path /live, port 8080
+#   + initialDelaySeconds: 30, periodSeconds: 10, timeoutSeconds: 5
+#   + failureThreshold: 3, successThreshold: 1
+#
+# Reviewer questions:
+#   Q1: "Does /live endpoint exist in the application?"
+#       -> Needs src/health.py: @app.get("/live") returns {"alive": True}.
+#          Confirms the endpoint exists. Without this, the reviewer cannot
+#          verify the probe path is valid.
+#
+#   Q2: "Is 30s initialDelay enough for cold start?"
+#       -> Pure config review: depends on application startup time.
+#          FastAPI apps typically start in <5s, so 30s is generous.
+#
+# Not needed for comprehension:
+#   - k8s/apps/api/hpa.yaml: HPA targeting same deployment (api-server)
+#     with CPU-based scaling. Shares same app selector label. Direct
+#     structural edge: targets the same deployment. But HPA scaling
+#     thresholds don't help review liveness probe configuration.
+#
+#   - k8s/monitoring/alerting-rules.yaml: PrometheusRule with PodNotReady
+#     and PodCrashLooping alerts. Shares "health" and "pod status"
+#     vocabulary. HARDEST TRAP: liveness probe failures cause pod restarts,
+#     which triggers PodCrashLooping alerts. The alerting rules are
+#     downstream consequences of probe config. But they don't help
+#     review WHETHER the probe path/thresholds are correct.
+initial:
+  src/health.py: |
+    from fastapi import FastAPI, Response
+    from datetime import datetime
+    import psutil
+
+    app = FastAPI()
+
+    @app.get("/health")
+    def health():
+        return {
+            "status": "healthy",
+            "timestamp": datetime.utcnow().isoformat(),
+            "uptime_seconds": psutil.boot_time()
+        }
+
+    @app.get("/ready")
+    def ready():
+        return {"ready": True}
+
+    @app.get("/live")
+    def live():
+        return {"alive": True}
+  k8s/apps/api/deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: api-server
+      namespace: production
+      labels:
+        app: api-server
+        tier: backend
+    spec:
+      replicas: 3
+      selector:
+        matchLabels:
+          app: api-server
+      template:
+        metadata:
+          labels:
+            app: api-server
+            tier: backend
+        spec:
+          containers:
+          - name: api
+            image: api-server:v1.0.0
+            ports:
+            - containerPort: 8080
+              name: http
+            - containerPort: 9090
+              name: metrics
+            resources:
+              requests:
+                memory: "256Mi"
+                cpu: "250m"
+              limits:
+                memory: "512Mi"
+                cpu: "500m"
+  k8s/apps/api/service.yaml: |
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: api-server
+      namespace: production
+    spec:
+      selector:
+        app: api-server
+      ports:
+      - name: http
+        port: 80
+        targetPort: 8080
+  k8s/apps/api/hpa.yaml: |
+    apiVersion: autoscaling/v2
+    kind: HorizontalPodAutoscaler
+    metadata:
+      name: api-server-hpa
+      namespace: production
+    spec:
+      scaleTargetRef:
+        apiVersion: apps/v1
+        kind: Deployment
+        name: api-server
+      minReplicas: 3
+      maxReplicas: 15
+      metrics:
+      - type: Resource
+        resource:
+          name: cpu
+          target:
+            type: Utilization
+            averageUtilization: 70
+  k8s/monitoring/alerting-rules.yaml: |
+    apiVersion: monitoring.coreos.com/v1
+    kind: PrometheusRule
+    metadata:
+      name: pod-health-alerts
+      namespace: monitoring
+    spec:
+      groups:
+      - name: pod-health
+        rules:
+        - alert: PodNotReady
+          expr: kube_pod_status_ready{condition="true"} == 0
+          for: 5m
+          labels:
+            severity: warning
+        - alert: PodCrashLooping
+          expr: rate(kube_pod_container_status_restarts_total[15m]) > 0
+          for: 5m
+          labels:
+            severity: critical
+changed:
+  src/health.py: |
+    from fastapi import FastAPI, Response
+    from datetime import datetime
+    import psutil
+
+    app = FastAPI()
+
+    @app.get("/health")
+    def health():
+        return {
+            "status": "healthy",
+            "timestamp": datetime.utcnow().isoformat(),
+            "uptime_seconds": psutil.boot_time()
+        }
+
+    @app.get("/ready")
+    def ready():
+        return {"ready": True}
+
+    @app.get("/live")
+    def live():
+        return {"alive": True}
+  k8s/apps/api/deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: api-server
+      namespace: production
+      labels:
+        app: api-server
+        tier: backend
+    spec:
+      replicas: 3
+      selector:
+        matchLabels:
+          app: api-server
+      template:
+        metadata:
+          labels:
+            app: api-server
+            tier: backend
+        spec:
+          containers:
+          - name: api
+            image: api-server:v1.0.0
+            ports:
+            - containerPort: 8080
+              name: http
+            - containerPort: 9090
+              name: metrics
+            livenessProbe:
+              httpGet:
+                path: /live
+                port: 8080
+              initialDelaySeconds: 30
+              periodSeconds: 10
+              timeoutSeconds: 5
+              failureThreshold: 3
+              successThreshold: 1
+            resources:
+              requests:
+                memory: "256Mi"
+                cpu: "250m"
+              limits:
+                memory: "512Mi"
+                cpu: "500m"
+  k8s/apps/api/service.yaml: |
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: api-server
+      namespace: production
+    spec:
+      selector:
+        app: api-server
+      ports:
+      - name: http
+        port: 80
+        targetPort: 8080
+  k8s/apps/api/hpa.yaml: |
+    apiVersion: autoscaling/v2
+    kind: HorizontalPodAutoscaler
+    metadata:
+      name: api-server-hpa
+      namespace: production
+    spec:
+      scaleTargetRef:
+        apiVersion: apps/v1
+        kind: Deployment
+        name: api-server
+      minReplicas: 3
+      maxReplicas: 15
+      metrics:
+      - type: Resource
+        resource:
+          name: cpu
+          target:
+            type: Utilization
+            averageUtilization: 70
+  k8s/monitoring/alerting-rules.yaml: |
+    apiVersion: monitoring.coreos.com/v1
+    kind: PrometheusRule
+    metadata:
+      name: pod-health-alerts
+      namespace: monitoring
+    spec:
+      groups:
+      - name: pod-health
+        rules:
+        - alert: PodNotReady
+          expr: kube_pod_status_ready{condition="true"} == 0
+          for: 5m
+          labels:
+            severity: warning
+        - alert: PodCrashLooping
+          expr: rate(kube_pod_container_status_restarts_total[15m]) > 0
+          for: 5m
+          labels:
+            severity: critical
+must_include_files:
+  - k8s/apps/api/deployment.yaml
+must_include_content_from:
+  k8s/apps/api/deployment.yaml:
+    - 'livenessProbe:'
+    - 'path: /live'
+    - 'initialDelaySeconds: 30'
+    - 'failureThreshold: 3'
+must_not_include:
+  # --- hpa.yaml: same deployment target, different concern ---
+  - api-server-hpa
+  - HorizontalPodAutoscaler
+  - averageUtilization
+  # --- alerting-rules.yaml: downstream consequence of probe failures ---
+  - pod-health-alerts
+  - PrometheusRule
+  - PodNotReady
+  - PodCrashLooping
+must_not_include_files:
+  - k8s/apps/api/hpa.yaml
+  - k8s/monitoring/alerting-rules.yaml
+add_garbage_files: false
+skip_garbage_check: true
+max_fragments: 8
+max_files: 5

@@ -1,0 +1,237 @@
+# Scenario: Adding Kubernetes API version detection to an Ingress template
+#   using .Capabilities.APIVersions.Has to switch between networking.k8s.io/v1
+#   and the legacy extensions/v1beta1. Only templates/ingress.yaml is changed.
+#
+# Reviewer questions:
+#   Q1: "Is the Ingress spec correct for BOTH API versions? Does the legacy
+#        version need different spec fields?"
+#       -> Needs to see the full ingress.yaml (already in diff). The reviewer
+#         should note that extensions/v1beta1 uses different spec structure
+#         (serviceName vs service.name). The current template uses the SAME
+#         spec for both — this is potentially a bug the reviewer should catch.
+#
+#   Q2: "What values drive the Ingress configuration — hosts, paths, TLS?"
+#       -> Needs values.yaml: the ingress template references .Values.ingress
+#         for hosts, paths, and tls configuration. Reviewer must verify the
+#         Ingress spec matches the values structure.
+#
+# Not needed for comprehension:
+#   - templates/deployment.yaml: Sibling template in the same chart.
+#     No connection to Ingress or .Capabilities. Same templates/ directory.
+#
+#   - templates/service.yaml: The Service that the Ingress routes to.
+#     Direct structural edge: Ingress backend points to this Service.
+#     But the SERVICE definition doesn't help review whether the API version
+#     detection logic is correct. The reviewer needs to verify the Ingress
+#     SPEC, not the backend Service.
+#
+#   - templates/_helpers.tpl: Defines helper templates. The ingress.yaml
+#     uses {{ include "myapp.fullname" . }} from helpers. But the helper
+#     output (a name string) doesn't affect API version detection logic.
+#
+#   - Chart.yaml: Chart metadata. .Capabilities is a Helm built-in, not
+#     derived from Chart.yaml fields.
+#
+#   - values-staging.yaml: Staging override with different ingress host.
+#     Same structure as values.yaml ingress section. Reviewer needs the
+#     DEFAULT values, not per-environment overrides.
+
+initial:
+  templates/ingress.yaml: |
+    apiVersion: networking.k8s.io/v1
+    kind: Ingress
+    metadata:
+      name: {{ include "myapp.fullname" . }}
+    spec:
+      rules:
+        {{- range .Values.ingress.hosts }}
+        - host: {{ .host }}
+          http:
+            paths:
+              {{- range .paths }}
+              - path: {{ .path }}
+                pathType: {{ .pathType }}
+                backend:
+                  service:
+                    name: {{ include "myapp.fullname" $ }}
+                    port:
+                      number: {{ $.Values.service.port }}
+              {{- end }}
+        {{- end }}
+  values.yaml: |
+    ingress:
+      enabled: true
+      hosts:
+        - host: myapp.example.com
+          paths:
+            - path: /
+              pathType: Prefix
+      tls: []
+    service:
+      type: ClusterIP
+      port: 80
+  values-staging.yaml: |
+    ingress:
+      enabled: true
+      hosts:
+        - host: staging.myapp.example.com
+          paths:
+            - path: /
+              pathType: Prefix
+    service:
+      port: 8080
+  templates/deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: {{ include "myapp.fullname" . }}
+    spec:
+      replicas: {{ .Values.replicaCount }}
+      template:
+        spec:
+          containers:
+            - name: {{ .Chart.Name }}
+              image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+  templates/service.yaml: |
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: {{ include "myapp.fullname" . }}
+    spec:
+      type: {{ .Values.service.type }}
+      ports:
+        - port: {{ .Values.service.port }}
+          targetPort: http
+  templates/_helpers.tpl: |
+    {{- define "myapp.fullname" -}}
+    {{- printf "%s-%s" .Release.Name .Chart.Name | trunc 63 | trimSuffix "-" -}}
+    {{- end -}}
+  Chart.yaml: |
+    apiVersion: v2
+    name: myapp
+    version: 1.0.0
+
+changed:
+  templates/ingress.yaml: |
+    {{- if .Capabilities.APIVersions.Has "networking.k8s.io/v1" }}
+    apiVersion: networking.k8s.io/v1
+    {{- else }}
+    apiVersion: extensions/v1beta1
+    {{- end }}
+    kind: Ingress
+    metadata:
+      name: {{ include "myapp.fullname" . }}
+    spec:
+      rules:
+        {{- range .Values.ingress.hosts }}
+        - host: {{ .host }}
+          http:
+            paths:
+              {{- range .paths }}
+              - path: {{ .path }}
+                pathType: {{ .pathType }}
+                backend:
+                  service:
+                    name: {{ include "myapp.fullname" $ }}
+                    port:
+                      number: {{ $.Values.service.port }}
+              {{- end }}
+        {{- end }}
+  values.yaml: |
+    ingress:
+      enabled: true
+      hosts:
+        - host: myapp.example.com
+          paths:
+            - path: /
+              pathType: Prefix
+      tls: []
+    service:
+      type: ClusterIP
+      port: 80
+  values-staging.yaml: |
+    ingress:
+      enabled: true
+      hosts:
+        - host: staging.myapp.example.com
+          paths:
+            - path: /
+              pathType: Prefix
+    service:
+      port: 8080
+  templates/deployment.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: {{ include "myapp.fullname" . }}
+    spec:
+      replicas: {{ .Values.replicaCount }}
+      template:
+        spec:
+          containers:
+            - name: {{ .Chart.Name }}
+              image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+  templates/service.yaml: |
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: {{ include "myapp.fullname" . }}
+    spec:
+      type: {{ .Values.service.type }}
+      ports:
+        - port: {{ .Values.service.port }}
+          targetPort: http
+  templates/_helpers.tpl: |
+    {{- define "myapp.fullname" -}}
+    {{- printf "%s-%s" .Release.Name .Chart.Name | trunc 63 | trimSuffix "-" -}}
+    {{- end -}}
+  Chart.yaml: |
+    apiVersion: v2
+    name: myapp
+    version: 1.0.0
+
+must_include_files:
+  - templates/ingress.yaml
+  # Q2: The ingress template references .Values.ingress.hosts, .Values.service.port.
+  # Reviewer needs to see the values structure to verify the Ingress spec.
+  - values.yaml
+
+must_include_content_from:
+  templates/ingress.yaml:
+    - '{{- if .Capabilities.APIVersions.Has "networking.k8s.io/v1" }}'
+    - "extensions/v1beta1"
+    - ".Values.ingress.hosts"
+  values.yaml:
+    - "host: myapp.example.com"
+    - "pathType: Prefix"
+    - "port: 80"
+
+must_not_include:
+  # --- values-staging.yaml: different environment ---
+  # Same ingress structure but different host. Reviewer needs defaults.
+  - staging.myapp.example.com
+  - "port: 8080"
+  # --- templates/deployment.yaml: sibling template ---
+  - ".Values.replicaCount"
+  - ".Values.image.repository"
+  # --- templates/service.yaml: backend Service ---
+  # Direct edge: Ingress routes TO this Service. But the reviewer needs
+  # to verify the API version detection, not the Service definition.
+  - "targetPort: http"
+  - ".Values.service.type"
+  # --- templates/_helpers.tpl: shared helpers ---
+  - "myapp.fullname"
+  # --- Chart.yaml: chart metadata ---
+  - "version: 1.0.0"
+
+must_not_include_files:
+  - values-staging.yaml
+  - templates/deployment.yaml
+  - templates/service.yaml
+  - templates/_helpers.tpl
+  - Chart.yaml
+
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

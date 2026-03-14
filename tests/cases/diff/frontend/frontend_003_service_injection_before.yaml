@@ -1,9 +1,0 @@
-auth.service.ts: "import { Injectable } from '@angular/core';\nimport { BehaviorSubject, Observable } from 'rxjs';\n\nexport interface AuthUser {\n    id: string;\n    email: string;\n    token: string;\n\
-  }\n\n@Injectable({ providedIn: 'root' })\nexport class AuthService {\n    private currentUserSubject = new BehaviorSubject<AuthUser | null>(null);\n\n    get currentUser$(): Observable<AuthUser | null>\
-  \ {\n        return this.currentUserSubject.asObservable();\n    }\n\n    get isAuthenticated(): boolean {\n        return this.currentUserSubject.value !== null;\n    }\n\n    login(email: string, password:\
-  \ string): Promise<AuthUser> {\n        return fetch('/api/login', {\n            method: 'POST',\n            body: JSON.stringify({ email, password }),\n        })\n            .then(res => res.json())\n\
-  \            .then(user => {\n                this.currentUserSubject.next(user);\n                return user;\n            });\n    }\n\n    logout(): void {\n        this.currentUserSubject.next(null);\n\
-  \    }\n}\n\n// angular_garbage_marker_003\n"
-user.service.ts: "import { Injectable } from '@angular/core';\n\n@Injectable({ providedIn: 'root' })\nexport class UserService {\n    getUsers(): Promise<any[]> {\n        return fetch('/api/users').then(res\
-  \ => res.json());\n    }\n}\n"
-dashboard.component.ts: "import { Component } from '@angular/core';\n\n@Component({\n    selector: 'app-dashboard',\n    template: '<div>Initial</div>',\n})\nexport class DashboardComponent {}\n"

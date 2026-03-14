@@ -1,0 +1,266 @@
+# Scenario: utils.sh defines reusable functions (process_file, log_message).
+# main.sh sources utils.sh and calls those functions. The diff adds a new
+# validate_file function to utils.sh and updates main.sh to call all three.
+#
+# Diff: utils.sh gains validate_file(); main.sh rewrites its loop to use
+# validate_file, process_file, and log_message together.
+#
+# Reviewer questions:
+#   Q1: "main.sh calls validate_file — is the return code convention correct?"
+#       -> utils.sh (CHANGED) adds validate_file returning 0/1. main.sh checks
+#          with `if validate_file "$file"`. Reviewer verifies the convention.
+#   Q2: "main.sh still calls process_file and log_message — do they still exist?"
+#       -> utils.sh (CHANGED) still has both functions. Reviewer confirms
+#          the existing API is preserved alongside the new function.
+#
+# Not needed:
+#   - format.sh: text formatting utilities (uppercase, trim, pad). Similar
+#     "utility library" pattern but no source edge from main.sh.
+#   - cleanup.sh: deletes temp files on exit via trap. Related operational
+#     concern but independent script, not sourced by main.sh.
+#   - batch.sh: also sources utils.sh and calls process_file. DIRECT
+#     structural edge (same source, same function calls) but is a separate
+#     consumer — how batch.sh loops over files doesn't help review main.sh.
+#   - lib/file_check.sh: has a validate_file function with identical name.
+#     Name collision trap but completely different implementation, not sourced
+#     by main.sh.
+#   - report.sh: calls log_message directly — same function name — but
+#     sources its own logging module, not utils.sh.
+
+initial:
+  lib/utils.sh: |
+    #!/bin/bash
+
+    process_file() {
+        local file=$1
+        echo "Processing $file"
+        wc -l < "$file"
+    }
+
+    log_message() {
+        local level=$1
+        local message=$2
+        echo "[$level] $(date +%H:%M:%S): $message"
+    }
+
+    get_file_extension() {
+        local file=$1
+        echo "${file##*.}"
+    }
+  main.sh: |
+    #!/bin/bash
+    source ./lib/utils.sh
+
+    for file in data/*.csv; do
+        count=$(process_file "$file")
+        log_message "INFO" "Processed $file ($count lines)"
+    done
+  format.sh: |
+    #!/bin/bash
+
+    to_uppercase() {
+        echo "${1^^}"
+    }
+
+    trim_whitespace() {
+        local text="$1"
+        text="${text#"${text%%[![:space:]]*}"}"
+        text="${text%"${text##*[![:space:]]}"}"
+        echo "$text"
+    }
+
+    pad_right() {
+        printf "%-${2}s" "$1"
+    }
+
+    center_text() {
+        local text="$1"
+        local width=${2:-40}
+        local pad=$(( (width - ${#text}) / 2 ))
+        printf "%*s%s\n" "$pad" "" "$text"
+    }
+  cleanup.sh: |
+    #!/bin/bash
+
+    TEMP_DIR="/tmp/app_work"
+    CLEANUP_LOG="/var/log/cleanup.log"
+
+    cleanup_temp() {
+        if [[ -d "$TEMP_DIR" ]]; then
+            rm -rf "$TEMP_DIR"
+            echo "Cleaned up $TEMP_DIR"
+        fi
+    }
+
+    cleanup_stale_locks() {
+        find /tmp -name "*.lock" -mmin +60 -delete
+    }
+
+    trap cleanup_temp EXIT
+  batch.sh: |
+    #!/bin/bash
+    source ./lib/utils.sh
+
+    BATCH_SIZE=50
+    PARALLEL_JOBS=4
+
+    process_batch() {
+        local dir=$1
+        local count=0
+        for file in "$dir"/*.csv; do
+            if (( count >= BATCH_SIZE )); then
+                log_message "WARN" "Batch limit reached at $BATCH_SIZE"
+                break
+            fi
+            result=$(process_file "$file")
+            log_message "INFO" "Batch processed: $file ($result lines)"
+            count=$((count + 1))
+        done
+        echo "Processed $count files"
+    }
+
+    run_parallel() {
+        local dir=$1
+        find "$dir" -name "*.csv" | xargs -P "$PARALLEL_JOBS" -I{} bash -c \
+            'source ./lib/utils.sh; process_file "{}"'
+    }
+  lib/file_check.sh: |
+    #!/bin/bash
+
+    validate_file() {
+        local file=$1
+        local max_size=${2:-104857600}
+        if [[ ! -f "$file" ]]; then
+            echo "FAIL: not a regular file: $file"
+            return 1
+        fi
+        local size
+        size=$(stat -f%z "$file" 2>/dev/null || stat -c%s "$file" 2>/dev/null)
+        if (( size > max_size )); then
+            echo "FAIL: file too large: $file ($size bytes)"
+            return 1
+        fi
+        return 0
+    }
+
+    check_encoding() {
+        local file=$1
+        file -bi "$file" | grep -q "utf-8"
+    }
+
+    is_binary() {
+        local file=$1
+        file -bi "$file" | grep -q "application/octet-stream"
+    }
+  report.sh: |
+    #!/bin/bash
+    source ./lib/reporting.sh
+
+    generate_report() {
+        local output_file=$1
+        log_message "INFO" "Generating report to $output_file"
+        echo "Report generated at $(date)" > "$output_file"
+        echo "Total records: $(count_records)" >> "$output_file"
+        log_message "INFO" "Report complete"
+    }
+
+    count_records() {
+        find data/ -name "*.csv" -exec wc -l {} + | tail -1 | awk '{print $1}'
+    }
+
+    email_report() {
+        local recipient=$1
+        local report_file=$2
+        mail -s "Daily Report" "$recipient" < "$report_file"
+    }
+
+changed:
+  lib/utils.sh: |
+    #!/bin/bash
+
+    process_file() {
+        local file=$1
+        echo "Processing $file"
+        wc -l < "$file"
+    }
+
+    log_message() {
+        local level=$1
+        local message=$2
+        echo "[$level] $(date +%H:%M:%S): $message"
+    }
+
+    get_file_extension() {
+        local file=$1
+        echo "${file##*.}"
+    }
+
+    validate_file() {
+        local file=$1
+        if [[ ! -f "$file" ]]; then
+            log_message "ERROR" "File not found: $file"
+            return 1
+        fi
+        if [[ ! -r "$file" ]]; then
+            log_message "ERROR" "File not readable: $file"
+            return 1
+        fi
+        return 0
+    }
+  main.sh: |
+    #!/bin/bash
+    source ./lib/utils.sh
+
+    for file in data/*.csv; do
+        if validate_file "$file"; then
+            count=$(process_file "$file")
+            log_message "INFO" "Processed $file ($count lines)"
+        else
+            log_message "WARN" "Skipped $file"
+        fi
+    done
+
+must_include_files:
+  - lib/utils.sh
+must_include_content_from:
+  lib/utils.sh:
+    - "validate_file()"
+    - "log_message()"
+    - "process_file()"
+  main.sh:
+    - "validate_file"
+    - "process_file"
+must_not_include:
+  # format.sh: text formatting, no source edge from main.sh
+  - to_uppercase
+  - trim_whitespace
+  - pad_right
+  - center_text
+  # cleanup.sh: trap-based cleanup, independent script
+  - cleanup_temp
+  - cleanup_stale_locks
+  - TEMP_DIR
+  # batch.sh: HARDEST TRAP — sources utils.sh and calls process_file+log_message
+  # Same source dependency and function calls but different consumer
+  - BATCH_SIZE
+  - PARALLEL_JOBS
+  - process_batch
+  - run_parallel
+  # lib/file_check.sh: has validate_file by same name — name collision trap
+  - check_encoding
+  - is_binary
+  - "max_size"
+  # report.sh: calls log_message but from different source
+  - generate_report
+  - email_report
+  - count_records
+must_not_include_files:
+  - format.sh
+  - cleanup.sh
+  - batch.sh
+  - lib/file_check.sh
+  - report.sh
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

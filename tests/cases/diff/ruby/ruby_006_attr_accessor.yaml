@@ -1,0 +1,193 @@
+# Test: app.rb uses User's attr_accessor/attr_reader to read and write user attributes
+#
+# Scenario: app.rb is rewritten from a trivial puts to a script that requires User,
+# creates an instance, reads attr_reader fields (id, created_at), writes attr_accessor
+# fields (name, email), and calls valid?/to_h. User (UNCHANGED) defines these accessors.
+#
+# Reviewer questions:
+#   Q1: "Which fields are writable vs read-only?"
+#       -> lib/user.rb (UNCHANGED) has attr_accessor :name, :email and
+#          attr_reader :id, :created_at — reviewer needs to verify app.rb usage.
+#   Q2: "What does valid? check?"
+#       -> User.valid? checks name not nil/empty and email contains '@'.
+#
+# Trap files (plausible but unrelated):
+#   - lib/user_preferences.rb: user-related settings — same domain (user data)
+#     but app.rb only uses User, not preferences.
+#   - lib/email_validator.rb: email validation — User.valid? has inline email
+#     check, this is a standalone validator not imported by User.
+
+initial:
+  lib/user.rb: |
+    class User
+      attr_accessor :name, :email
+      attr_reader :id, :created_at
+
+      def initialize(name:, email:, id: nil)
+        @id = id || SecureRandom.uuid
+        @name = name
+        @email = email
+        @created_at = Time.now
+      end
+
+      def to_h
+        { id: @id, name: @name, email: @email, created_at: @created_at }
+      end
+
+      def valid?
+        !@name.nil? && !@name.empty? && @email&.include?('@')
+      end
+    end
+  app.rb: |
+    puts 'Hello'
+  lib/user_preferences.rb: |
+    class UserPreferences
+      DEFAULTS = {
+        theme: 'light',
+        language: 'en',
+        notifications: true,
+        timezone: 'UTC'
+      }.freeze
+
+      def initialize(user_id)
+        @user_id = user_id
+        @settings = DEFAULTS.dup
+      end
+
+      def get(key)
+        @settings[key.to_sym]
+      end
+
+      def set(key, value)
+        @settings[key.to_sym] = value
+      end
+
+      def to_h
+        { user_id: @user_id, settings: @settings }
+      end
+    end
+  lib/email_validator.rb: |
+    class EmailValidator
+      EMAIL_REGEX = /\A[^@\s]+@[^@\s]+\.[a-zA-Z]{2,}\z/
+
+      def self.valid?(email)
+        return false if email.nil? || email.empty?
+        !!(email =~ EMAIL_REGEX)
+      end
+
+      def self.normalize(email)
+        return nil unless valid?(email)
+        email.strip.downcase
+      end
+
+      def self.domain(email)
+        return nil unless valid?(email)
+        email.split('@').last
+      end
+    end
+changed:
+  lib/user.rb: |
+    class User
+      attr_accessor :name, :email
+      attr_reader :id, :created_at
+
+      def initialize(name:, email:, id: nil)
+        @id = id || SecureRandom.uuid
+        @name = name
+        @email = email
+        @created_at = Time.now
+      end
+
+      def to_h
+        { id: @id, name: @name, email: @email, created_at: @created_at }
+      end
+
+      def valid?
+        !@name.nil? && !@name.empty? && @email&.include?('@')
+      end
+    end
+  app.rb: |
+    require_relative 'lib/user'
+
+    user = User.new(name: 'John Doe', email: 'john@example.com')
+    puts user.name
+    puts user.id
+
+    user.email = 'new@example.com'
+    puts user.to_h.inspect
+
+    if user.valid?
+      puts "User is valid"
+    end
+  lib/user_preferences.rb: |
+    class UserPreferences
+      DEFAULTS = {
+        theme: 'light',
+        language: 'en',
+        notifications: true,
+        timezone: 'UTC'
+      }.freeze
+
+      def initialize(user_id)
+        @user_id = user_id
+        @settings = DEFAULTS.dup
+      end
+
+      def get(key)
+        @settings[key.to_sym]
+      end
+
+      def set(key, value)
+        @settings[key.to_sym] = value
+      end
+
+      def to_h
+        { user_id: @user_id, settings: @settings }
+      end
+    end
+  lib/email_validator.rb: |
+    class EmailValidator
+      EMAIL_REGEX = /\A[^@\s]+@[^@\s]+\.[a-zA-Z]{2,}\z/
+
+      def self.valid?(email)
+        return false if email.nil? || email.empty?
+        !!(email =~ EMAIL_REGEX)
+      end
+
+      def self.normalize(email)
+        return nil unless valid?(email)
+        email.strip.downcase
+      end
+
+      def self.domain(email)
+        return nil unless valid?(email)
+        email.split('@').last
+      end
+    end
+must_include_files:
+  - app.rb
+  # Q1/Q2: User defines the accessors and valid? that app.rb relies on
+  - lib/user.rb
+must_include_content_from:
+  app.rb:
+    - "user = User.new(name: 'John Doe', email: 'john@example.com')"
+    - "user.email = 'new@example.com'"
+  lib/user.rb:
+    - "attr_accessor :name, :email"
+    - "attr_reader :id, :created_at"
+must_not_include:
+  # lib/user_preferences.rb: user settings — not imported by app.rb or User
+  - UserPreferences
+  - DEFAULTS
+  - timezone
+  # lib/email_validator.rb: standalone validator — User.valid? has inline check
+  - EmailValidator
+  - EMAIL_REGEX
+  - normalize
+must_not_include_files:
+  - lib/user_preferences.rb
+  - lib/email_validator.rb
+max_fragments: 5
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

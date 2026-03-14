@@ -1,0 +1,365 @@
+# Scenario: UserService gains findAll() and save() methods, expanding
+#   the Spring @Service that the UserController depends on via @Autowired.
+#
+# Diff shows:
+#   - UserService with only findById()
+#   + findAll() returning List<User> and save(User) returning User
+#
+# Reviewer questions:
+#   Q1: "Which controller injects this service — will it expose the new methods?"
+#       -> Needs UserController.java: @Autowired UserService, currently
+#          only calls findById(). Reviewer must check whether new endpoints
+#          need to be added for findAll/save.
+#
+#   Q2: "What is User — the type being returned?"
+#       -> Needs User.java or context showing User shape.
+#
+# Not needed for comprehension:
+#   - ProductService.java: IDENTICAL Spring @Service pattern — same
+#     @Service annotation, same method signatures (findById, findAll, save).
+#     HARDEST TRAP: structurally identical sibling service.
+#
+#   - OrderService.java: Another @Service with similar CRUD methods.
+#     Same Spring stereotype pattern. Different entity.
+#
+#   - UserRepository.java: JPA repository for User persistence. Direct
+#     dependency of UserService. But the diff doesn't show repository
+#     calls — the methods just return hardcoded data.
+#
+#   - UserServiceTest.java: Tests UserService methods. Same class reference.
+#     But test assertions don't help review the implementation.
+#
+#   - ProductController.java: Another @RestController with @Autowired
+#     service. Same controller-service pattern. Different entity.
+
+initial:
+  src/main/java/com/example/UserService.java: |
+    package com.example;
+
+    import org.springframework.stereotype.Service;
+
+    @Service
+    public class UserService {
+        public User findById(Long id) {
+            return new User(id, "John");
+        }
+    }
+  src/main/java/com/example/UserController.java: |
+    package com.example;
+
+    import org.springframework.beans.factory.annotation.Autowired;
+    import org.springframework.web.bind.annotation.*;
+    import java.util.List;
+
+    @RestController
+    @RequestMapping("/users")
+    public class UserController {
+
+        @Autowired
+        private UserService userService;
+
+        @GetMapping("/{id}")
+        public User getUser(@PathVariable Long id) {
+            return userService.findById(id);
+        }
+    }
+  src/main/java/com/example/User.java: |
+    package com.example;
+
+    public class User {
+        private Long id;
+        private String name;
+
+        public User(Long id, String name) {
+            this.id = id;
+            this.name = name;
+        }
+
+        public Long getId() { return id; }
+        public String getName() { return name; }
+    }
+  src/main/java/com/example/ProductService.java: |
+    package com.example;
+
+    import org.springframework.stereotype.Service;
+    import java.util.List;
+
+    @Service
+    public class ProductService {
+        public Product findById(Long id) {
+            return new Product(id, "Widget", 9.99);
+        }
+
+        public List<Product> findAll() {
+            return List.of(new Product(1L, "Widget", 9.99), new Product(2L, "Gadget", 19.99));
+        }
+
+        public Product save(Product product) {
+            return product;
+        }
+    }
+  src/main/java/com/example/OrderService.java: |
+    package com.example;
+
+    import org.springframework.stereotype.Service;
+    import java.util.List;
+
+    @Service
+    public class OrderService {
+        public Order findById(Long id) {
+            return new Order(id, "pending", 100.00);
+        }
+
+        public List<Order> findAll() {
+            return List.of(new Order(1L, "pending", 100.00));
+        }
+
+        public Order save(Order order) {
+            return order;
+        }
+    }
+  src/main/java/com/example/UserRepository.java: |
+    package com.example;
+
+    import org.springframework.data.jpa.repository.JpaRepository;
+    import org.springframework.stereotype.Repository;
+
+    @Repository
+    public interface UserRepository extends JpaRepository<User, Long> {
+        List<User> findByName(String name);
+        boolean existsByName(String name);
+    }
+  src/test/java/com/example/UserServiceTest.java: |
+    package com.example;
+
+    import org.junit.jupiter.api.Test;
+    import static org.junit.jupiter.api.Assertions.*;
+
+    class UserServiceTest {
+        private final UserService service = new UserService();
+
+        @Test
+        void findByIdReturnsUser() {
+            User user = service.findById(1L);
+            assertNotNull(user);
+            assertEquals("John", user.getName());
+        }
+    }
+  src/main/java/com/example/ProductController.java: |
+    package com.example;
+
+    import org.springframework.beans.factory.annotation.Autowired;
+    import org.springframework.web.bind.annotation.*;
+    import java.util.List;
+
+    @RestController
+    @RequestMapping("/products")
+    public class ProductController {
+
+        @Autowired
+        private ProductService productService;
+
+        @GetMapping("/{id}")
+        public Product getProduct(@PathVariable Long id) {
+            return productService.findById(id);
+        }
+
+        @GetMapping
+        public List<Product> getAllProducts() {
+            return productService.findAll();
+        }
+    }
+
+changed:
+  src/main/java/com/example/UserService.java: |
+    package com.example;
+
+    import org.springframework.stereotype.Service;
+    import java.util.List;
+
+    @Service
+    public class UserService {
+        public User findById(Long id) {
+            return new User(id, "John");
+        }
+
+        public List<User> findAll() {
+            return List.of(new User(1L, "John"), new User(2L, "Jane"));
+        }
+
+        public User save(User user) {
+            return user;
+        }
+    }
+  src/main/java/com/example/UserController.java: |
+    package com.example;
+
+    import org.springframework.beans.factory.annotation.Autowired;
+    import org.springframework.web.bind.annotation.*;
+    import java.util.List;
+
+    @RestController
+    @RequestMapping("/users")
+    public class UserController {
+
+        @Autowired
+        private UserService userService;
+
+        @GetMapping("/{id}")
+        public User getUser(@PathVariable Long id) {
+            return userService.findById(id);
+        }
+    }
+  src/main/java/com/example/User.java: |
+    package com.example;
+
+    public class User {
+        private Long id;
+        private String name;
+
+        public User(Long id, String name) {
+            this.id = id;
+            this.name = name;
+        }
+
+        public Long getId() { return id; }
+        public String getName() { return name; }
+    }
+  src/main/java/com/example/ProductService.java: |
+    package com.example;
+
+    import org.springframework.stereotype.Service;
+    import java.util.List;
+
+    @Service
+    public class ProductService {
+        public Product findById(Long id) {
+            return new Product(id, "Widget", 9.99);
+        }
+
+        public List<Product> findAll() {
+            return List.of(new Product(1L, "Widget", 9.99), new Product(2L, "Gadget", 19.99));
+        }
+
+        public Product save(Product product) {
+            return product;
+        }
+    }
+  src/main/java/com/example/OrderService.java: |
+    package com.example;
+
+    import org.springframework.stereotype.Service;
+    import java.util.List;
+
+    @Service
+    public class OrderService {
+        public Order findById(Long id) {
+            return new Order(id, "pending", 100.00);
+        }
+
+        public List<Order> findAll() {
+            return List.of(new Order(1L, "pending", 100.00));
+        }
+
+        public Order save(Order order) {
+            return order;
+        }
+    }
+  src/main/java/com/example/UserRepository.java: |
+    package com.example;
+
+    import org.springframework.data.jpa.repository.JpaRepository;
+    import org.springframework.stereotype.Repository;
+
+    @Repository
+    public interface UserRepository extends JpaRepository<User, Long> {
+        List<User> findByName(String name);
+        boolean existsByName(String name);
+    }
+  src/test/java/com/example/UserServiceTest.java: |
+    package com.example;
+
+    import org.junit.jupiter.api.Test;
+    import static org.junit.jupiter.api.Assertions.*;
+
+    class UserServiceTest {
+        private final UserService service = new UserService();
+
+        @Test
+        void findByIdReturnsUser() {
+            User user = service.findById(1L);
+            assertNotNull(user);
+            assertEquals("John", user.getName());
+        }
+    }
+  src/main/java/com/example/ProductController.java: |
+    package com.example;
+
+    import org.springframework.beans.factory.annotation.Autowired;
+    import org.springframework.web.bind.annotation.*;
+    import java.util.List;
+
+    @RestController
+    @RequestMapping("/products")
+    public class ProductController {
+
+        @Autowired
+        private ProductService productService;
+
+        @GetMapping("/{id}")
+        public Product getProduct(@PathVariable Long id) {
+            return productService.findById(id);
+        }
+
+        @GetMapping
+        public List<Product> getAllProducts() {
+            return productService.findAll();
+        }
+    }
+
+must_include_files:
+  - src/main/java/com/example/UserService.java
+  - src/main/java/com/example/UserController.java
+
+must_include_content_from:
+  src/main/java/com/example/UserService.java:
+    - "public List<User> findAll()"
+    - "public User save(User user)"
+    - "import java.util.List"
+  src/main/java/com/example/UserController.java:
+    - "@Autowired"
+    - "private UserService userService"
+    - "userService.findById(id)"
+
+must_not_include:
+  # ProductService.java: identical @Service pattern, different entity
+  - ProductService
+  - "Widget"
+  - "Gadget"
+  # OrderService.java: another @Service CRUD pattern
+  - OrderService
+  - "pending"
+  # UserRepository.java: JPA repository, not called by current impl
+  - UserRepository
+  - JpaRepository
+  - findByName
+  # UserServiceTest.java: tests the service, doesn't help review impl
+  - UserServiceTest
+  - assertNotNull
+  - assertEquals
+  # ProductController.java: sibling controller-service wiring
+  - ProductController
+  - productService
+  - getAllProducts
+
+must_not_include_files:
+  - src/main/java/com/example/ProductService.java
+  - src/main/java/com/example/OrderService.java
+  - src/main/java/com/example/UserRepository.java
+  - src/test/java/com/example/UserServiceTest.java
+  - src/main/java/com/example/ProductController.java
+
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

@@ -1,0 +1,361 @@
+# Scenario: scheduler.py adds priority-based logic to all three scheduling
+#   functions (schedule_task, cancel_task, reschedule_task).
+#   Only scheduler.py is changed.
+#
+# Diff shows:
+#   - __init__ gains default_priority=5
+#   - schedule_task gains priority param, uses effective_priority
+#   - cancel_task: captures return value of queue.remove() as `removed`
+#   - reschedule_task gains priority param, uses effective_priority
+#   All three call TaskQueue methods: enqueue(item, priority=), remove(item_id)
+#
+# Reviewer questions:
+#   Q1: "What is TaskQueue's API? Do enqueue() and remove() accept the
+#        arguments the refactored code passes?"
+#       -> Needs task_queue.py: enqueue(item, priority=0) returns bool,
+#         remove(item_id) filters by item match and returns bool.
+#         Reviewer must verify: schedule_task passes priority= kwarg
+#         (enqueue accepts it), reschedule_task calls remove then enqueue
+#         (correct sequence), cancel_task uses remove's return value.
+#
+#   Q2: "Does enqueue() respect priority ordering?"
+#       -> task_queue.py sorts by priority descending after insert.
+#         The new default_priority=5 means tasks get mid-range priority
+#         unless overridden. Reviewer needs the sort logic to assess this.
+#
+# Not needed for comprehension:
+#   - workers/task_worker.py: Calls TaskQueue.dequeue() and .peek() in a
+#     processing loop. IMPORTS TaskQueue — same dependency as the diff.
+#     Structural edge: same module, same methods (dequeue/peek are siblings
+#     of enqueue/remove). But HOW a worker consumes the queue doesn't help
+#     review whether the scheduler's priority logic correctly calls enqueue.
+#
+#   - scheduler_runner.py: Imports Scheduler and calls schedule_task(),
+#     cancel_task(), reschedule_task() — the EXACT functions being changed.
+#     Direct backward structural edge: consumer of the changed code.
+#     But seeing WHAT tasks the runner schedules doesn't help verify
+#     whether the priority parameters are wired correctly to TaskQueue.
+#
+#   - tests/test_scheduler.py: Tests for schedule_task, cancel_task,
+#     reschedule_task with mock TaskQueue. Imports Scheduler, creates
+#     instances, calls the changed functions. Structural edge to the
+#     changed code + same method names. But test expectations verify
+#     behavior, not TaskQueue's actual interface.
+#
+#   - priority_config.py: Defines priority constants (HIGH=10, MEDIUM=5,
+#     LOW=1) and a PriorityResolver that computes effective priority.
+#     Lexical overlap: "priority" everywhere, default value 5 matches
+#     Scheduler's default_priority. But neither Scheduler nor TaskQueue
+#     imports this module — the priority logic is inline.
+#
+#   - metrics_collector.py: Runtime metrics. No import relationship.
+#
+#   - health_probe.py: Health checks. No import relationship.
+
+initial:
+  scheduler.py: |
+    from task_queue import TaskQueue
+
+    class Scheduler:
+        def __init__(self):
+            self.queue = TaskQueue(max_size=100)
+
+        def schedule_task(self, task):
+            self.queue.enqueue(task, priority=0)
+            return True
+
+        def cancel_task(self, task_id):
+            return self.queue.remove(task_id)
+
+        def reschedule_task(self, task_id, task):
+            self.queue.remove(task_id)
+            self.queue.enqueue(task, priority=0)
+            return True
+
+  task_queue.py: |
+    class TaskQueue:
+        def __init__(self, max_size=50):
+            self.max_size = max_size
+            self.items = []
+
+        def enqueue(self, item, priority=0):
+            if len(self.items) >= self.max_size:
+                return False
+            self.items.append({"item": item, "priority": priority})
+            self.items.sort(key=lambda x: x["priority"], reverse=True)
+            return True
+
+        def dequeue(self):
+            if not self.items:
+                return None
+            return self.items.pop(0)["item"]
+
+        def remove(self, item_id):
+            before = len(self.items)
+            self.items = [x for x in self.items if x["item"] != item_id]
+            return len(self.items) < before
+
+        def peek(self):
+            if not self.items:
+                return None
+            return self.items[0]["item"]
+
+        def size(self):
+            return len(self.items)
+
+  workers/task_worker.py: |
+    from task_queue import TaskQueue
+    import logging
+    import time
+
+    logger = logging.getLogger(__name__)
+
+    class TaskWorker:
+        def __init__(self, queue: TaskQueue, poll_interval: float = 1.0):
+            self.queue = queue
+            self.poll_interval = poll_interval
+            self._running = False
+
+        def start(self):
+            self._running = True
+            logger.info("Worker started")
+            while self._running:
+                task = self.queue.dequeue()
+                if task is not None:
+                    self._process(task)
+                else:
+                    next_task = self.queue.peek()
+                    if next_task is None:
+                        time.sleep(self.poll_interval)
+
+        def stop(self):
+            self._running = False
+            logger.info("Worker stopped")
+
+        def _process(self, task):
+            logger.info(f"Processing task: {task}")
+            remaining = self.queue.size()
+            logger.info(f"Queue size after dequeue: {remaining}")
+
+  scheduler_runner.py: |
+    from scheduler import Scheduler
+    import logging
+
+    logger = logging.getLogger(__name__)
+
+    class SchedulerRunner:
+        def __init__(self):
+            self.scheduler = Scheduler()
+            self._task_counter = 0
+
+        def submit_task(self, task_data: dict) -> str:
+            self._task_counter += 1
+            task_id = f"task-{self._task_counter}"
+            task = {"id": task_id, **task_data}
+            success = self.scheduler.schedule_task(task)
+            logger.info(f"Submitted {task_id}: {success}")
+            return task_id
+
+        def cancel(self, task_id: str) -> bool:
+            removed = self.scheduler.cancel_task(task_id)
+            logger.info(f"Cancelled {task_id}: {removed}")
+            return removed
+
+        def resubmit(self, task_id: str, task_data: dict) -> bool:
+            task = {"id": task_id, **task_data}
+            result = self.scheduler.reschedule_task(task_id, task)
+            logger.info(f"Resubmitted {task_id}: {result}")
+            return result
+
+  tests/test_scheduler.py: |
+    from scheduler import Scheduler
+
+    def test_schedule_task():
+        s = Scheduler()
+        assert s.schedule_task({"id": "t1", "name": "test"}) is True
+
+    def test_cancel_task():
+        s = Scheduler()
+        s.schedule_task({"id": "t1", "name": "test"})
+        assert s.cancel_task({"id": "t1", "name": "test"}) is True
+
+    def test_cancel_nonexistent():
+        s = Scheduler()
+        assert s.cancel_task("nonexistent") is False
+
+    def test_reschedule_task():
+        s = Scheduler()
+        task = {"id": "t1", "name": "test"}
+        s.schedule_task(task)
+        assert s.reschedule_task("t1", {"id": "t1", "name": "updated"}) is True
+
+    def test_schedule_returns_false_when_full():
+        s = Scheduler()
+        s.queue.max_size = 1
+        s.schedule_task({"id": "t1"})
+        assert s.schedule_task({"id": "t2"}) is False
+
+  priority_config.py: |
+    from dataclasses import dataclass
+    from typing import Optional
+
+    HIGH = 10
+    MEDIUM = 5
+    LOW = 1
+    DEFAULT = MEDIUM
+
+    @dataclass
+    class PriorityRule:
+        pattern: str
+        priority: int
+
+    class PriorityResolver:
+        def __init__(self, rules: list[PriorityRule] = None):
+            self.rules = rules or []
+
+        def resolve(self, task_name: str) -> int:
+            for rule in self.rules:
+                if rule.pattern in task_name:
+                    return rule.priority
+            return DEFAULT
+
+        def add_rule(self, pattern: str, priority: int):
+            self.rules.append(PriorityRule(pattern=pattern, priority=priority))
+
+  metrics_collector.py: |
+    from datetime import datetime
+
+    class MetricsCollector:
+        def __init__(self, namespace="default"):
+            self.namespace = namespace
+            self.counters = {}
+            self.gauges = {}
+
+        def increment_counter(self, metric_name, value=1):
+            key = f"{self.namespace}.{metric_name}"
+            self.counters[key] = self.counters.get(key, 0) + value
+
+        def set_gauge(self, metric_name, value):
+            key = f"{self.namespace}.{metric_name}"
+            self.gauges[key] = {"value": value, "timestamp": datetime.now()}
+
+        def flush_metrics(self):
+            snapshot = {"counters": dict(self.counters), "gauges": dict(self.gauges)}
+            self.counters.clear()
+            return snapshot
+
+  health_probe.py: |
+    class HealthProbe:
+        def __init__(self, checks=None):
+            self.checks = checks or []
+
+        def register_check(self, name, check_fn):
+            self.checks.append({"name": name, "fn": check_fn})
+
+        def run_all(self):
+            results = {}
+            for check in self.checks:
+                try:
+                    check["fn"]()
+                    results[check["name"]] = "healthy"
+                except Exception as exc:
+                    results[check["name"]] = f"unhealthy: {exc}"
+            return results
+
+        def is_healthy(self):
+            results = self.run_all()
+            return all(v == "healthy" for v in results.values())
+
+changed:
+  scheduler.py: |
+    from task_queue import TaskQueue
+
+    class Scheduler:
+        def __init__(self, default_priority=5):
+            self.queue = TaskQueue(max_size=100)
+            self.default_priority = default_priority
+
+        def schedule_task(self, task, priority=None):
+            effective_priority = priority if priority is not None else self.default_priority
+            success = self.queue.enqueue(task, priority=effective_priority)
+            return success
+
+        def cancel_task(self, task_id):
+            removed = self.queue.remove(task_id)
+            return removed
+
+        def reschedule_task(self, task_id, task, priority=None):
+            self.queue.remove(task_id)
+            effective_priority = priority if priority is not None else self.default_priority
+            self.queue.enqueue(task, priority=effective_priority)
+            return True
+
+must_include_files:
+  - scheduler.py
+  # Q1+Q2: TaskQueue defines enqueue(item, priority=0), remove(item_id),
+  # and the priority sort logic. Reviewer must verify that the refactored
+  # scheduler passes correct args and that priority ordering works.
+  - task_queue.py
+
+must_include_content_from:
+  scheduler.py:
+    - "def schedule_task(self, task, priority=None)"
+    - "def reschedule_task(self, task_id, task, priority=None)"
+    - "self.queue.enqueue(task, priority=effective_priority)"
+    - "default_priority=5"
+  task_queue.py:
+    - "def enqueue(self, item, priority=0)"
+    - "def remove(self, item_id)"
+    - 'self.items.sort(key=lambda x: x["priority"], reverse=True)'
+
+must_not_include:
+  # --- workers/task_worker.py: IMPORTS TaskQueue, calls dequeue/peek ---
+  # Same dependency as the diff. Uses sibling methods on the same class.
+  # But how a worker consumes the queue doesn't help review whether the
+  # scheduler's priority args are correct.
+  - TaskWorker
+  - poll_interval
+  - "_process"
+  - "Queue size after dequeue"
+  # --- scheduler_runner.py: imports Scheduler, calls ALL changed functions ---
+  # HARDEST TRAP. Direct backward edge: calls schedule_task(), cancel_task(),
+  # reschedule_task() — the exact functions being refactored. But WHAT
+  # tasks the runner submits doesn't help verify priority wiring.
+  - SchedulerRunner
+  - submit_task
+  - resubmit
+  - "task-{self._task_counter}"
+  # --- tests/test_scheduler.py: tests the changed functions ---
+  # Imports Scheduler, calls schedule_task/cancel_task/reschedule_task.
+  # Structural edge + same method calls. But test expectations don't
+  # show whether enqueue(priority=) is wired correctly.
+  - test_schedule_task
+  - test_cancel_task
+  - test_reschedule_task
+  - test_schedule_returns_false_when_full
+  # --- priority_config.py: "priority" everywhere, DEFAULT=5 matches ---
+  # Lexical trap: MEDIUM=5 matches default_priority=5. PriorityResolver
+  # computes priority. But neither Scheduler nor TaskQueue imports it.
+  - PriorityResolver
+  - PriorityRule
+  - "HIGH = 10"
+  - "MEDIUM = 5"
+  # --- metrics/health: no structural relationship ---
+  - MetricsCollector
+  - increment_counter
+  - flush_metrics
+  - HealthProbe
+  - register_check
+
+must_not_include_files:
+  - workers/task_worker.py
+  - scheduler_runner.py
+  - tests/test_scheduler.py
+  - priority_config.py
+  - metrics_collector.py
+  - health_probe.py
+
+max_fragments: 10
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

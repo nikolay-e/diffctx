@@ -1,0 +1,149 @@
+initial:
+  user_service.py: |
+    class UserService:
+        def __init__(self):
+            self.users = []
+
+        def add_user(self, name):
+            self.users.append(name)
+  tests/test_user_service.py: |
+    from user_service import UserService
+
+    class TestUserService:
+        def test_add_user(self):
+            service = UserService()
+            service.add_user("Alice")
+            assert "Alice" in service.users
+
+  # --- Tricky: same class name UserService in different module (name collision) ---
+  admin_service.py: |
+    GARBAGE_DEP031_ADMIN_SVC_A = "admin_service_module"
+    GARBAGE_DEP031_ADMIN_INIT_B = True
+
+    class UserService:
+        GARBAGE_DEP031_ADMIN_CLASS_C = "admin_user_svc"
+
+        def __init__(self):
+            self.admins = []
+
+        def add_user(self, name, role="admin"):
+            self.admins.append({"name": name, "role": role})
+
+  # --- Tricky: imports UserService, similar test structure ---
+  tests/test_admin_service.py: |
+    from admin_service import UserService
+    GARBAGE_DEP031_ADMINTEST_D = "admin_test_module"
+    GARBAGE_DEP031_ADMINTEST_SETUP_E = True
+
+    class TestUserService:
+        GARBAGE_DEP031_ADMINTEST_CLASS_F = "admin_test_cls"
+
+        def test_add_user(self):
+            service = UserService()
+            service.add_user("Bob")
+            assert len(service.admins) == 1
+
+  # --- Tricky: same directory, similar service pattern ---
+  order_service.py: |
+    GARBAGE_DEP031_ORDER_SVC_G = "order_service_module"
+    GARBAGE_DEP031_ORDER_INIT_H = True
+
+    class OrderService:
+        def __init__(self):
+            self.orders = []
+
+        def deactivate(self, order_id):
+            GARBAGE_DEP031_ORDER_DEACT_I = "deactivating"
+            pass
+
+changed:
+  user_service.py: |
+    class UserService:
+        def __init__(self):
+            self.users = []
+
+        def add_user(self, name):
+            self.users.append(name)
+
+        def deactivate(self, user_id):
+            pass
+  tests/test_user_service.py: |
+    from user_service import UserService
+
+    class TestUserService:
+        def test_add_user(self):
+            service = UserService()
+            service.add_user("Alice")
+            assert "Alice" in service.users
+  admin_service.py: |
+    GARBAGE_DEP031_ADMIN_SVC_A = "admin_service_module"
+    GARBAGE_DEP031_ADMIN_INIT_B = True
+
+    class UserService:
+        GARBAGE_DEP031_ADMIN_CLASS_C = "admin_user_svc"
+
+        def __init__(self):
+            self.admins = []
+
+        def add_user(self, name, role="admin"):
+            self.admins.append({"name": name, "role": role})
+  tests/test_admin_service.py: |
+    from admin_service import UserService
+    GARBAGE_DEP031_ADMINTEST_D = "admin_test_module"
+    GARBAGE_DEP031_ADMINTEST_SETUP_E = True
+
+    class TestUserService:
+        GARBAGE_DEP031_ADMINTEST_CLASS_F = "admin_test_cls"
+
+        def test_add_user(self):
+            service = UserService()
+            service.add_user("Bob")
+            assert len(service.admins) == 1
+  order_service.py: |
+    GARBAGE_DEP031_ORDER_SVC_G = "order_service_module"
+    GARBAGE_DEP031_ORDER_INIT_H = True
+
+    class OrderService:
+        def __init__(self):
+            self.orders = []
+
+        def deactivate(self, order_id):
+            GARBAGE_DEP031_ORDER_DEACT_I = "deactivating"
+            pass
+
+# === Assertions ===
+
+must_include_files:
+- user_service.py
+- tests/test_user_service.py
+
+must_include_content_from:
+  user_service.py:
+    - 'def deactivate(self, user_id):'
+    - 'class UserService:'
+  tests/test_user_service.py:
+    - from user_service import UserService
+
+must_not_include:
+# Tricky: same class name UserService + same add_user method (name collision)
+- GARBAGE_DEP031_ADMIN_SVC_A
+- GARBAGE_DEP031_ADMIN_INIT_B
+- GARBAGE_DEP031_ADMIN_CLASS_C
+# Tricky: same TestUserService class name, same test_add_user method
+- GARBAGE_DEP031_ADMINTEST_D
+- GARBAGE_DEP031_ADMINTEST_SETUP_E
+- GARBAGE_DEP031_ADMINTEST_CLASS_F
+# Tricky: has same "deactivate" method name (structural sibling)
+- GARBAGE_DEP031_ORDER_SVC_G
+- GARBAGE_DEP031_ORDER_INIT_H
+- GARBAGE_DEP031_ORDER_DEACT_I
+
+must_not_include_files:
+- admin_service.py
+- tests/test_admin_service.py
+- order_service.py
+
+max_fragments: 5
+max_files: 2
+add_garbage_files: false
+skip_garbage_check: true

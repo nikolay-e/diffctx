@@ -1,0 +1,234 @@
+# Scenario: app.rb starts using DynamicStruct to access and set arbitrary
+# attributes via method_missing.
+# dynamic_struct.rb defines the class with a hash-backed method_missing
+# implementation supporting both getters and setters.
+#
+# Diff: app.rb changes from a simple puts to creating a DynamicStruct, reading
+# obj.name (getter), and writing obj.email= (setter) — both handled by
+# method_missing.
+#
+# Reviewer questions:
+#   Q1: "How do dynamic getter/setter calls like obj.name and obj.email= work?"
+#       -> dynamic_struct.rb (UNCHANGED) shows method_missing checks if the
+#          method name ends with '=' for setters vs getters, backed by @data hash.
+#   Q2: "Does DynamicStruct respond to arbitrary methods?"
+#       -> dynamic_struct.rb shows respond_to_missing? returns true for any name.
+#
+# Not needed:
+#   - validated_struct.rb: wraps a key-value store with allowed_keys validation.
+#     Similar dynamic attribute concept but independent — no require edge.
+#   - config_store.rb: key-value store with explicit get/set methods.
+#     Same hash-backed pattern but different API, not referenced by app.rb.
+#   - profile_builder.rb: also requires dynamic_struct.rb and calls obj.name=
+#     and obj.email=. DIRECT structural edge (same class, same method) but
+#     is a different consumer building profile objects.
+#   - open_struct_wrapper.rb: wraps OpenStruct with similar dynamic behavior.
+#     Same concept (dynamic attributes) but different implementation.
+#   - lib/hash_proxy.rb: proxies hash access via method calls using
+#     method_missing. Same mechanism but independent class.
+
+initial:
+  dynamic_struct.rb: |
+    class DynamicStruct
+      def initialize(hash = {})
+        @data = hash
+      end
+
+      def method_missing(name, *args)
+        if name.to_s.end_with?('=')
+          @data[name.to_s.chop.to_sym] = args.first
+        else
+          @data[name]
+        end
+      end
+
+      def respond_to_missing?(name, include_private = false)
+        true
+      end
+
+      def to_hash
+        @data.dup
+      end
+    end
+  app.rb: |
+    puts 'Application starting'
+  validated_struct.rb: |
+    class ValidatedStruct
+      def initialize(allowed_keys)
+        @allowed_keys = allowed_keys
+        @store = {}
+      end
+
+      def set(key, value)
+        raise ArgumentError, "Unknown key: #{key}" unless @allowed_keys.include?(key)
+        @store[key] = value
+      end
+
+      def get(key)
+        @store[key]
+      end
+
+      def to_hash
+        @store.dup
+      end
+
+      def valid_keys
+        @allowed_keys.dup
+      end
+    end
+  config_store.rb: |
+    class ConfigStore
+      def initialize(defaults = {})
+        @entries = defaults.dup
+      end
+
+      def fetch(key, fallback = nil)
+        @entries.fetch(key, fallback)
+      end
+
+      def update(key, value)
+        @entries[key] = value
+      end
+
+      def keys
+        @entries.keys
+      end
+
+      def merge(other)
+        @entries.merge!(other)
+      end
+    end
+  profile_builder.rb: |
+    require_relative 'dynamic_struct'
+
+    class ProfileBuilder
+      def build(params)
+        profile = DynamicStruct.new
+        profile.name = params[:name]
+        profile.email = params[:email]
+        profile.role = params[:role] || 'user'
+        profile
+      end
+
+      def build_admin(params)
+        profile = build(params)
+        profile.role = 'admin'
+        profile.permissions = [:read, :write, :delete]
+        profile
+      end
+    end
+  open_struct_wrapper.rb: |
+    require 'ostruct'
+
+    class OpenStructWrapper
+      def initialize(hash = {})
+        @struct = OpenStruct.new(hash)
+      end
+
+      def method_missing(name, *args, &block)
+        @struct.send(name, *args, &block)
+      end
+
+      def respond_to_missing?(name, include_private = false)
+        @struct.respond_to?(name, include_private) || super
+      end
+
+      def freeze_fields
+        @struct.freeze
+      end
+    end
+  lib/hash_proxy.rb: |
+    class HashProxy
+      def initialize(hash)
+        @hash = hash
+      end
+
+      def method_missing(name, *args)
+        key = name.to_s
+        if key.end_with?('=')
+          @hash[key.chop] = args.first
+        elsif @hash.key?(key)
+          @hash[key]
+        else
+          super
+        end
+      end
+
+      def respond_to_missing?(name, include_private = false)
+        @hash.key?(name.to_s) || name.to_s.end_with?('=') || super
+      end
+
+      def inspect
+        "#<HashProxy #{@hash.inspect}>"
+      end
+    end
+
+changed:
+  dynamic_struct.rb: |
+    class DynamicStruct
+      def initialize(hash = {})
+        @data = hash
+      end
+
+      def method_missing(name, *args)
+        if name.to_s.end_with?('=')
+          @data[name.to_s.chop.to_sym] = args.first
+        else
+          @data[name]
+        end
+      end
+
+      def respond_to_missing?(name, include_private = false)
+        true
+      end
+
+      def to_hash
+        @data.dup
+      end
+    end
+  app.rb: |
+    require_relative 'dynamic_struct'
+
+    obj = DynamicStruct.new(name: 'John')
+    puts obj.name
+    obj.email = 'john@example.com'
+
+must_include_files:
+  # Q1: dynamic_struct.rb defines method_missing that handles obj.name and obj.email=
+  - dynamic_struct.rb
+must_include_content_from:
+  dynamic_struct.rb:
+    - "def method_missing(name, *args)"
+    - "respond_to_missing?"
+  app.rb:
+    - "DynamicStruct.new"
+    - "obj.name"
+must_not_include:
+  # validated_struct.rb: validated key-value store, no require edge
+  - ValidatedStruct
+  - allowed_keys
+  - valid_keys
+  # config_store.rb: explicit get/set config store, not referenced by app.rb
+  - ConfigStore
+  - "@entries"
+  # profile_builder.rb: HARDEST TRAP — requires dynamic_struct.rb, calls
+  # .name= and .email= — same class, same dynamic methods, different consumer
+  - ProfileBuilder
+  - build_admin
+  - permissions
+  # open_struct_wrapper.rb: same dynamic attribute concept via OpenStruct
+  - OpenStructWrapper
+  - freeze_fields
+  # lib/hash_proxy.rb: same method_missing mechanism on hashes
+  - HashProxy
+  - "@hash"
+must_not_include_files:
+  - validated_struct.rb
+  - config_store.rb
+  - profile_builder.rb
+  - open_struct_wrapper.rb
+  - lib/hash_proxy.rb
+max_fragments: 5
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

@@ -1,0 +1,114 @@
+# Scenario: Two modules change simultaneously — tests multiple PPR seed nodes
+# Changed: module_a.py returns "modified a", module_b.py returns "modified b"
+# Reviewer needs: module_a.py (changed) + module_b.py (changed)
+# Trap: module_bundle.py — redefines func_a/func_b, name collision but different module
+# Trap: module_d.py — structural sibling matching module_a/module_b naming convention
+# Trap: email_service.py — completely unrelated module
+
+initial:
+  module_a.py: |
+    def func_a():
+        return "a"
+  module_b.py: |
+    def func_b():
+        return "b"
+  module_c.py: |
+    def func_c():
+        return "c"
+  module_bundle.py: |
+    def func_a():
+        return "alternate_a"
+
+    def func_b():
+        return "alternate_b"
+
+    class ModuleBundle:
+        def get_all(self):
+            return [func_a(), func_b()]
+  module_d.py: |
+    def func_d():
+        return "d"
+
+    class ModuleDHandler:
+        def handle(self):
+            return func_d()
+  email_service.py: |
+    SMTP_HOST = "smtp.example.com"
+    SMTP_PORT = 587
+
+    class EmailSender:
+        def send(self, to: str, body: str):
+            pass
+
+changed:
+  module_a.py: |
+    def func_a():
+        return "modified a"
+  module_b.py: |
+    def func_b():
+        return "modified b"
+  module_c.py: |
+    def func_c():
+        return "c"
+  module_bundle.py: |
+    def func_a():
+        return "alternate_a"
+
+    def func_b():
+        return "alternate_b"
+
+    class ModuleBundle:
+        def get_all(self):
+            return [func_a(), func_b()]
+  module_d.py: |
+    def func_d():
+        return "d"
+
+    class ModuleDHandler:
+        def handle(self):
+            return func_d()
+  email_service.py: |
+    SMTP_HOST = "smtp.example.com"
+    SMTP_PORT = 587
+
+    class EmailSender:
+        def send(self, to: str, body: str):
+            pass
+
+# === Assertions ===
+
+must_include:
+- func_a
+- func_b
+- modified a
+- modified b
+
+must_include_files:
+- module_a.py
+- module_b.py
+
+must_include_content_from:
+  module_a.py:
+    - 'def func_a():'
+    - return "modified a"
+  module_b.py:
+    - 'def func_b():'
+    - return "modified b"
+
+must_not_include:
+- ModuleBundle
+- alternate_a
+- ModuleDHandler
+- func_d
+- EmailSender
+- SMTP_HOST
+
+must_not_include_files:
+- module_bundle.py
+- module_d.py
+- email_service.py
+
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

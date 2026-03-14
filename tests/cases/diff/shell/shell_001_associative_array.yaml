@@ -1,0 +1,393 @@
+# Scenario: lookup.sh extends its associative array with debug/timeout keys
+#   and adds a has_config() function with a conditional block.
+#   Only lookup.sh is changed.
+#
+# Diff shows:
+#   + config[debug]="true"
+#   + config[timeout]="30"
+#   + has_config() { [[ -v config[$key] ]] }
+#   + if has_config debug && get_config debug == "true"; then echo "Debug mode"
+#
+# Reviewer questions:
+#   Q1: "The diff hardcodes config[debug]='true' and config[timeout]='30'.
+#        But defaults.sh has DEFAULT_DEBUG='false' and DEFAULT_TIMEOUT='60'.
+#        Why the mismatch? Does lookup.sh ever call load_defaults()?"
+#       -> Needs defaults.sh: it defines load_defaults() which would set
+#         debug=false and timeout=60. lookup.sh NEVER calls load_defaults —
+#         it hardcodes different values. This is either intentional (lookup.sh
+#         overrides defaults) or a bug (should call load_defaults first, then
+#         override selectively). The reviewer can only assess this by seeing
+#         both files.
+#
+#   Q2: "What does get_default() do — is it used as fallback?"
+#       -> defaults.sh defines get_default() which reads DEFAULT_${key^^}.
+#         lookup.sh's get_config() returns "default" as literal string,
+#         NOT calling get_default(). Another potential inconsistency the
+#         reviewer needs defaults.sh to spot.
+#
+# Not needed for comprehension:
+#   - app_runner.sh: Sources lookup.sh, calls get_config/has_config to
+#     configure the application. HARDEST TRAP: direct backward edge,
+#     calls the EXACT functions being added/modified in the diff.
+#     Uses `get_config debug`, `get_config timeout`, `has_config debug`.
+#     But HOW the runner uses config values doesn't help review whether
+#     the defaults mismatch is intentional.
+#
+#   - settings.sh: Sources defaults.sh (same dependency as lookup.sh),
+#     calls load_defaults(). Shows the CORRECT pattern — source defaults,
+#     then override. Reviewer might want to compare patterns, but
+#     settings.sh is a separate consumer with its own array. Its correct
+#     usage of load_defaults doesn't tell the reviewer whether lookup.sh's
+#     OMISSION of load_defaults is a bug.
+#
+#   - tests/test_lookup.sh: Sources lookup.sh, tests get_config and
+#     has_config with assertions. Tests the EXACT functions from the diff.
+#     But test expectations show what the code DOES, not whether the
+#     hardcoded values SHOULD differ from defaults.sh.
+#
+#   - docs/CONFIG_KEYS.md: Documents all config keys — host, port, debug,
+#     timeout — with descriptions and default values. Mentions
+#     defaults.sh as source of truth. Contains the SAME key names from
+#     the diff. But documentation about conventions doesn't show the
+#     actual code defaults or whether load_defaults is called.
+#
+#   - lib/config_merge.sh: Utility for merging two associative arrays.
+#     Uses declare -A, same bash pattern. lookup.sh COULD use this to
+#     merge defaults with overrides. But it doesn't — the merge utility
+#     is unused by lookup.sh.
+
+initial:
+  lookup.sh: |
+    #!/bin/bash
+    source ./defaults.sh
+
+    declare -A config
+    config[host]="localhost"
+    config[port]="8080"
+
+    get_config() {
+        local key=$1
+        if [[ -v config[$key] ]]; then
+            echo "${config[$key]}"
+        else
+            echo "default"
+        fi
+    }
+
+    print_config() {
+        for key in "${!config[@]}"; do
+            echo "$key = ${config[$key]}"
+        done
+    }
+
+  defaults.sh: |
+    #!/bin/bash
+    # Source of truth for default configuration values.
+    # Other scripts should call load_defaults() to populate their arrays.
+
+    DEFAULT_HOST="127.0.0.1"
+    DEFAULT_PORT="3000"
+    DEFAULT_TIMEOUT="60"
+    DEFAULT_DEBUG="false"
+
+    load_defaults() {
+        local -n target=$1
+        target[host]="${DEFAULT_HOST}"
+        target[port]="${DEFAULT_PORT}"
+        target[timeout]="${DEFAULT_TIMEOUT}"
+        target[debug]="${DEFAULT_DEBUG}"
+    }
+
+    get_default() {
+        local key=$1
+        local var="DEFAULT_${key^^}"
+        echo "${!var:-}"
+    }
+
+  app_runner.sh: |
+    #!/bin/bash
+    source ./lookup.sh
+
+    start_app() {
+        local host=$(get_config host)
+        local port=$(get_config port)
+
+        if has_config debug && [[ "$(get_config debug)" == "true" ]]; then
+            echo "[DEBUG] Starting on $host:$port"
+            export APP_DEBUG=1
+        fi
+
+        local timeout=$(get_config timeout)
+        echo "Starting app on $host:$port (timeout=${timeout}s)..."
+        exec ./app --host "$host" --port "$port" --timeout "$timeout"
+    }
+
+    stop_app() {
+        local pid_file="/var/run/app.pid"
+        if [[ -f "$pid_file" ]]; then
+            kill "$(cat "$pid_file")" 2>/dev/null
+            rm -f "$pid_file"
+            echo "App stopped"
+        fi
+    }
+
+    restart_app() {
+        stop_app
+        sleep 2
+        start_app
+    }
+
+    # Main
+    case "${1:-start}" in
+        start)   start_app ;;
+        stop)    stop_app ;;
+        restart) restart_app ;;
+        config)  print_config ;;
+        *)       echo "Usage: $0 {start|stop|restart|config}" ;;
+    esac
+
+  settings.sh: |
+    #!/bin/bash
+    source ./defaults.sh
+
+    declare -A app_settings
+
+    init_settings() {
+        load_defaults app_settings
+        # Override specific values after loading defaults
+        app_settings[app_name]="myapp"
+        app_settings[version]="1.0.0"
+    }
+
+    get_setting() {
+        local key=$1
+        echo "${app_settings[$key]:-$(get_default "$key")}"
+    }
+
+    save_settings() {
+        local file=$1
+        for key in "${!app_settings[@]}"; do
+            echo "$key=${app_settings[$key]}" >> "$file"
+        done
+    }
+
+    reset_settings() {
+        unset app_settings
+        declare -gA app_settings
+        load_defaults app_settings
+    }
+
+  tests/test_lookup.sh: |
+    #!/bin/bash
+    source ./lookup.sh
+
+    PASS=0
+    FAIL=0
+
+    assert_eq() {
+        local desc="$1" expected="$2" actual="$3"
+        if [[ "$expected" == "$actual" ]]; then
+            ((PASS++))
+        else
+            ((FAIL++))
+            echo "FAIL: $desc — expected '$expected', got '$actual'"
+        fi
+    }
+
+    # Test get_config for existing keys
+    assert_eq "host" "localhost" "$(get_config host)"
+    assert_eq "port" "8080" "$(get_config port)"
+    assert_eq "debug" "true" "$(get_config debug)"
+    assert_eq "timeout" "30" "$(get_config timeout)"
+
+    # Test get_config for missing key
+    assert_eq "missing key" "default" "$(get_config nonexistent)"
+
+    # Test has_config
+    has_config host && assert_eq "has host" "yes" "yes" || assert_eq "has host" "yes" "no"
+    has_config debug && assert_eq "has debug" "yes" "yes" || assert_eq "has debug" "yes" "no"
+    has_config missing && assert_eq "has missing" "no" "yes" || assert_eq "has missing" "no" "no"
+
+    echo "Results: $PASS passed, $FAIL failed"
+    [[ "$FAIL" -eq 0 ]]
+
+  docs/CONFIG_KEYS.md: |
+    # Configuration Keys
+
+    All configuration is managed through bash associative arrays.
+    Default values are defined in `defaults.sh`.
+
+    ## Keys
+
+    | Key     | Type    | Default   | Description                      |
+    |---------|---------|-----------|----------------------------------|
+    | host    | string  | 127.0.0.1 | Server bind address             |
+    | port    | integer | 3000      | Server listen port              |
+    | debug   | boolean | false     | Enable debug logging            |
+    | timeout | integer | 60        | Request timeout in seconds      |
+
+    ## Usage
+
+    ```bash
+    source ./lookup.sh
+    echo "Host: $(get_config host)"
+
+    if has_config debug; then
+        echo "Debug is configured"
+    fi
+    ```
+
+    ## Defaults vs Overrides
+
+    Scripts should call `load_defaults` first, then override specific
+    values. See `settings.sh` for the canonical pattern.
+
+    **Note:** `lookup.sh` hardcodes some values instead of calling
+    `load_defaults`. This may lead to drift if defaults change.
+
+  lib/config_merge.sh: |
+    #!/bin/bash
+    # Utility for merging associative arrays.
+    # Usage: merge_config target_array source_array
+
+    merge_config() {
+        local -n _target=$1
+        local -n _source=$2
+        for key in "${!_source[@]}"; do
+            _target[$key]="${_source[$key]}"
+        done
+    }
+
+    merge_with_defaults() {
+        local -n _target=$1
+        source ./defaults.sh
+        load_defaults _target
+        # Then apply overrides from second array if provided
+        if [[ -n "${2:-}" ]]; then
+            local -n _overrides=$2
+            merge_config _target _overrides
+        fi
+    }
+
+    diff_configs() {
+        local -n _a=$1
+        local -n _b=$2
+        for key in "${!_a[@]}"; do
+            if [[ "${_a[$key]}" != "${_b[$key]:-}" ]]; then
+                echo "DIFF: $key = '${_a[$key]}' vs '${_b[$key]:-<unset>}'"
+            fi
+        done
+    }
+
+changed:
+  lookup.sh: |
+    #!/bin/bash
+    source ./defaults.sh
+
+    declare -A config
+    config[host]="localhost"
+    config[port]="8080"
+    config[debug]="true"
+    config[timeout]="30"
+
+    get_config() {
+        local key=$1
+        if [[ -v config[$key] ]]; then
+            echo "${config[$key]}"
+        else
+            echo "default"
+        fi
+    }
+
+    print_config() {
+        for key in "${!config[@]}"; do
+            echo "$key = ${config[$key]}"
+        done
+    }
+
+    has_config() {
+        local key=$1
+        [[ -v config[$key] ]]
+    }
+
+    if has_config debug && [[ "$(get_config debug)" == "true" ]]; then
+        echo "Debug mode: enabled"
+    fi
+
+must_include_files:
+  - lookup.sh
+  # Q1+Q2: defaults.sh has DEFAULT_DEBUG="false" and DEFAULT_TIMEOUT="60".
+  # The diff hardcodes debug="true" and timeout="30" — contradicting defaults.
+  # lookup.sh sources defaults.sh but NEVER calls load_defaults(). The reviewer
+  # must see both to assess whether this mismatch is intentional or a bug.
+  # Also: get_config returns literal "default" string, not get_default() —
+  # another inconsistency only visible with defaults.sh.
+  - defaults.sh
+
+must_include_content_from:
+  lookup.sh:
+    - 'config[debug]="true"'
+    - 'config[timeout]="30"'
+    - "has_config()"
+    - 'echo "Debug mode: enabled"'
+  defaults.sh:
+    - 'DEFAULT_DEBUG="false"'
+    - 'DEFAULT_TIMEOUT="60"'
+    - "load_defaults()"
+    - 'get_default()'
+
+must_not_include:
+  # --- app_runner.sh: sources lookup.sh, calls get_config/has_config ---
+  # HARDEST TRAP. Direct backward edge: `source ./lookup.sh`. Calls
+  # get_config debug, get_config timeout, has_config debug — the EXACT
+  # functions added/modified in the diff. But how the runner uses config
+  # values doesn't help assess whether debug=true contradicts DEFAULT_DEBUG=false.
+  - start_app
+  - stop_app
+  - restart_app
+  - "exec ./app"
+  - APP_DEBUG
+  # --- settings.sh: sources defaults.sh, calls load_defaults ---
+  # Same forward dependency (defaults.sh). Shows the "correct" pattern:
+  # load_defaults then override. But settings.sh's correctness doesn't
+  # tell the reviewer whether lookup.sh's omission is a bug.
+  - app_settings
+  - init_settings
+  - save_settings
+  - reset_settings
+  # --- tests/test_lookup.sh: sources lookup.sh, tests changed functions ---
+  # Imports get_config, has_config. Asserts debug="true", timeout="30".
+  # But test expectations verify behavior, not whether the hardcoded
+  # values should match defaults.sh.
+  - assert_eq
+  - "PASS="
+  - "FAIL="
+  - "missing key"
+  # --- docs/CONFIG_KEYS.md: documents the same keys with defaults ---
+  # Table shows debug=false, timeout=60 — same info as defaults.sh.
+  # Even has a NOTE about lookup.sh hardcoding values. But documentation
+  # about conventions doesn't substitute for the actual code.
+  - "Configuration Keys"
+  - "Default   | Description"
+  - "may lead to drift"
+  - "canonical pattern"
+  # --- lib/config_merge.sh: merge utility for associative arrays ---
+  # merge_with_defaults() even sources defaults.sh and calls load_defaults.
+  # lookup.sh COULD use this to merge defaults with overrides — but it
+  # doesn't. The utility is unused. Including it would suggest a
+  # refactoring path, not explain the current code.
+  - merge_config
+  - merge_with_defaults
+  - diff_configs
+
+must_not_include_files:
+  - app_runner.sh
+  - settings.sh
+  - tests/test_lookup.sh
+  - docs/CONFIG_KEYS.md
+  - lib/config_merge.sh
+
+max_fragments: 5
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

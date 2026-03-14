@@ -1,0 +1,162 @@
+initial:
+  api/src/app.py: |
+    from flask import Flask, jsonify
+    import requests
+    import os
+
+    app = Flask(__name__)
+
+    @app.route('/health')
+    def health():
+        return jsonify(status='ok')
+
+    @app.route('/data')
+    def get_data():
+        db_host = os.environ.get('DB_HOST', 'db')
+        cache_host = os.environ.get('CACHE_HOST', 'redis')
+        return jsonify(db=db_host, cache=cache_host)
+  api/Dockerfile: |
+    FROM python:3.12-slim
+    WORKDIR /app
+    COPY requirements.txt .
+    RUN pip install -r requirements.txt
+    COPY src/ ./src/
+    CMD ["gunicorn", "-b", "0.0.0.0:8080", "src.app:app"]
+  api/requirements.txt: |
+    flask==2.3.0
+    gunicorn==21.2.0
+    requests==2.31.0
+  docker-compose.yml: |
+    version: '3.8'
+    services:
+      api:
+        build: ./api
+        ports:
+          - "8080:8080"
+      db:
+        image: postgres:16-alpine
+      redis:
+        image: redis:7-alpine
+  scripts/network_test.sh: |
+    #!/bin/bash
+    docker network ls
+  tests/test_connectivity.py: |
+    def test_network():
+        pass
+  docs/networking.md: |
+    # Network Architecture
+  terraform/vpc.tf: ''
+  monitoring/network-policy.yaml: ''
+changed:
+  api/src/app.py: |
+    from flask import Flask, jsonify
+    import requests
+    import os
+
+    app = Flask(__name__)
+
+    @app.route('/health')
+    def health():
+        return jsonify(status='ok')
+
+    @app.route('/data')
+    def get_data():
+        db_host = os.environ.get('DB_HOST', 'db')
+        cache_host = os.environ.get('CACHE_HOST', 'redis')
+        return jsonify(db=db_host, cache=cache_host)
+  api/Dockerfile: |
+    FROM python:3.12-slim
+    WORKDIR /app
+    COPY requirements.txt .
+    RUN pip install -r requirements.txt
+    COPY src/ ./src/
+    CMD ["gunicorn", "-b", "0.0.0.0:8080", "src.app:app"]
+  api/requirements.txt: |
+    flask==2.3.0
+    gunicorn==21.2.0
+    requests==2.31.0
+  docker-compose.yml: |
+    version: '3.8'
+
+    services:
+      api:
+        build: ./api
+        ports:
+          - "8080:8080"
+        networks:
+          - frontend
+          - backend
+        environment:
+          - DB_HOST=db
+          - CACHE_HOST=redis
+
+      db:
+        image: postgres:16-alpine
+        environment:
+          - POSTGRES_PASSWORD=secret
+        volumes:
+          - postgres_data:/var/lib/postgresql/data
+        networks:
+          - backend
+        healthcheck:
+          test: ["CMD-SHELL", "pg_isready -U postgres"]
+          interval: 10s
+          timeout: 5s
+          retries: 5
+
+      redis:
+        image: redis:7-alpine
+        command: redis-server --appendonly yes
+        volumes:
+          - redis_data:/data
+        networks:
+          - backend
+        healthcheck:
+          test: ["CMD", "redis-cli", "ping"]
+          interval: 10s
+          timeout: 5s
+          retries: 5
+
+      nginx:
+        image: nginx:alpine
+        ports:
+          - "80:80"
+          - "443:443"
+        networks:
+          - frontend
+        depends_on:
+          - api
+
+    networks:
+      frontend:
+        driver: bridge
+        ipam:
+          config:
+            - subnet: 172.28.0.0/16
+      backend:
+        driver: bridge
+        internal: true
+        ipam:
+          config:
+            - subnet: 172.29.0.0/16
+
+    volumes:
+      postgres_data:
+      redis_data:
+  scripts/network_test.sh: |
+    #!/bin/bash
+    docker network ls
+  tests/test_connectivity.py: |
+    def test_network():
+        pass
+  docs/networking.md: |
+    # Network Architecture
+  terraform/vpc.tf: ''
+  monitoring/network-policy.yaml: ''
+must_include_files:
+- docker-compose.yml
+must_include_content:
+- '- CACHE_HOST=redis'
+- 'driver: bridge'
+add_garbage_files: false
+skip_garbage_check: true

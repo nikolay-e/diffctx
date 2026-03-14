@@ -1,0 +1,197 @@
+# Scenario: check.sh adds nested conditional branches to validate config file
+# permissions and parent directory existence. It sources defaults.sh.
+#
+# Diff: check.sh adds elif/else branches checking -r, -d, and mkdir -p,
+# plus CONFIG_MODE reference. Sources defaults.sh for CONFIG_FILE, CONFIG_DIR.
+#
+# Reviewer questions:
+#   Q1: "What is CONFIG_FILE and where is it expected to exist?"
+#       -> defaults.sh: CONFIG_FILE="${CONFIG_DIR}/config.yaml",
+#          CONFIG_DIR="/etc/app". Reviewer verifies paths.
+#
+#   Q2: "What permissions does the config need?"
+#       -> defaults.sh: CONFIG_MODE="0644". The -r check relates to this.
+#
+# Not needed for comprehension:
+#   - scripts/install.sh: Creates /etc/app and copies default config.
+#     STRUCTURAL TRAP: references same CONFIG_FILE path, same chmod 0644.
+#     But install-time, not runtime validation.
+#
+#   - scripts/migrate.sh: Migrates config from old format.
+#     STRUCTURAL TRAP: references CONFIG_FILE for conversion.
+#     But format migration, not validation.
+#
+#   - scripts/validate_syntax.sh: Validates config.yaml syntax with yq.
+#     HARDEST TRAP: reads same CONFIG_FILE, checks same path, sources
+#     defaults.sh. But validates YAML syntax, not file permissions.
+#
+#   - scripts/backup_config.sh: Backs up config before changes.
+#     STRUCTURAL TRAP: copies CONFIG_FILE, references CONFIG_DIR.
+#     But backup operation, not validation.
+#
+#   - config/defaults_staging.sh: Staging version of defaults.
+#     STRUCTURAL TRAP: same variable names, different paths.
+
+initial:
+  check.sh: |
+    #!/bin/bash
+    source ./defaults.sh
+
+    if [[ -f "$CONFIG_FILE" ]]; then
+        echo "Config file exists"
+    else
+        echo "Config file missing"
+        exit 1
+    fi
+  defaults.sh: |
+    #!/bin/bash
+    export CONFIG_DIR="/etc/app"
+    export CONFIG_FILE="${CONFIG_DIR}/config.yaml"
+    export CONFIG_MODE="0644"
+    export LOG_LEVEL="info"
+  scripts/install.sh: |
+    #!/bin/bash
+    source ./defaults.sh
+    mkdir -p "$CONFIG_DIR"
+    cp templates/config.yaml "$CONFIG_FILE"
+    chmod "$CONFIG_MODE" "$CONFIG_FILE"
+    echo "Config installed to $CONFIG_FILE"
+  scripts/migrate.sh: |
+    #!/bin/bash
+    source ./defaults.sh
+    if [[ -f "${CONFIG_FILE}.v1" ]]; then
+        python3 convert.py "${CONFIG_FILE}.v1" "$CONFIG_FILE"
+        echo "Migration complete"
+    fi
+  scripts/validate_syntax.sh: |
+    #!/bin/bash
+    source ./defaults.sh
+    if command -v yq > /dev/null 2>&1; then
+        if yq eval '.' "$CONFIG_FILE" > /dev/null 2>&1; then
+            echo "YAML syntax: valid"
+        else
+            echo "YAML syntax: invalid"
+            exit 1
+        fi
+    else
+        echo "yq not installed, skipping syntax check"
+    fi
+  scripts/backup_config.sh: |
+    #!/bin/bash
+    source ./defaults.sh
+    TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+    cp "$CONFIG_FILE" "${CONFIG_FILE}.${TIMESTAMP}.bak"
+    echo "Config backed up: ${CONFIG_FILE}.${TIMESTAMP}.bak"
+  config/defaults_staging.sh: |
+    #!/bin/bash
+    export CONFIG_DIR="/etc/app-staging"
+    export CONFIG_FILE="${CONFIG_DIR}/config.yaml"
+    export CONFIG_MODE="0644"
+    export LOG_LEVEL="debug"
+
+changed:
+  check.sh: |
+    #!/bin/bash
+    source ./defaults.sh
+
+    if [[ -f "$CONFIG_FILE" ]]; then
+        echo "Config file exists"
+        if [[ -r "$CONFIG_FILE" ]]; then
+            echo "Config file is readable"
+        else
+            echo "Config file is not readable (expected mode $CONFIG_MODE)"
+            exit 1
+        fi
+    elif [[ -d "$CONFIG_DIR" ]]; then
+        echo "Config directory exists, but file is missing"
+        exit 1
+    else
+        echo "Config directory $CONFIG_DIR does not exist"
+        mkdir -p "$CONFIG_DIR"
+    fi
+  defaults.sh: |
+    #!/bin/bash
+    export CONFIG_DIR="/etc/app"
+    export CONFIG_FILE="${CONFIG_DIR}/config.yaml"
+    export CONFIG_MODE="0644"
+    export LOG_LEVEL="info"
+  scripts/install.sh: |
+    #!/bin/bash
+    source ./defaults.sh
+    mkdir -p "$CONFIG_DIR"
+    cp templates/config.yaml "$CONFIG_FILE"
+    chmod "$CONFIG_MODE" "$CONFIG_FILE"
+    echo "Config installed to $CONFIG_FILE"
+  scripts/migrate.sh: |
+    #!/bin/bash
+    source ./defaults.sh
+    if [[ -f "${CONFIG_FILE}.v1" ]]; then
+        python3 convert.py "${CONFIG_FILE}.v1" "$CONFIG_FILE"
+        echo "Migration complete"
+    fi
+  scripts/validate_syntax.sh: |
+    #!/bin/bash
+    source ./defaults.sh
+    if command -v yq > /dev/null 2>&1; then
+        if yq eval '.' "$CONFIG_FILE" > /dev/null 2>&1; then
+            echo "YAML syntax: valid"
+        else
+            echo "YAML syntax: invalid"
+            exit 1
+        fi
+    else
+        echo "yq not installed, skipping syntax check"
+    fi
+  scripts/backup_config.sh: |
+    #!/bin/bash
+    source ./defaults.sh
+    TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+    cp "$CONFIG_FILE" "${CONFIG_FILE}.${TIMESTAMP}.bak"
+    echo "Config backed up: ${CONFIG_FILE}.${TIMESTAMP}.bak"
+  config/defaults_staging.sh: |
+    #!/bin/bash
+    export CONFIG_DIR="/etc/app-staging"
+    export CONFIG_FILE="${CONFIG_DIR}/config.yaml"
+    export CONFIG_MODE="0644"
+    export LOG_LEVEL="debug"
+
+must_include_files:
+  - check.sh
+  - defaults.sh
+
+must_include_content_from:
+  defaults.sh:
+    - CONFIG_DIR="/etc/app"
+    - CONFIG_FILE="${CONFIG_DIR}/config.yaml"
+    - CONFIG_MODE="0644"
+  check.sh:
+    - "source ./defaults.sh"
+    - 'if [[ -r "$CONFIG_FILE" ]]'
+
+must_not_include:
+  # --- install.sh: references same paths but for setup ---
+  - "cp templates/config.yaml"
+  - "Config installed"
+  # --- migrate.sh: format conversion ---
+  - "convert.py"
+  - "Migration complete"
+  # --- validate_syntax.sh: HARDEST TRAP, sources defaults.sh ---
+  - "yq eval"
+  - "YAML syntax"
+  # --- backup_config.sh: copies CONFIG_FILE ---
+  - "Config backed up"
+  - ".bak"
+  # --- defaults_staging.sh: same variables, different paths ---
+  - "/etc/app-staging"
+
+must_not_include_files:
+  - scripts/install.sh
+  - scripts/migrate.sh
+  - scripts/validate_syntax.sh
+  - scripts/backup_config.sh
+  - config/defaults_staging.sh
+
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

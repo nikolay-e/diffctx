@@ -1,0 +1,138 @@
+# Scenario: Security headers config relaxes XFO, adds CSP unsafe-inline, adds HSTS
+#
+# Diff: security.yaml changes x_frame_options DENY→SAMEORIGIN, adds
+# unsafe-inline to CSP, adds strict_transport_security with max-age.
+#
+# Reviewer questions:
+#   Q1: "How are these header values applied to responses?"
+#       → src/security.py (UNCHANGED) iterates header keys, converts
+#         underscores to dashes, and sets them on the response. This
+#         generic approach means ALL config changes take effect directly.
+#   Q2: "Is SAMEORIGIN safe for all responses?"
+#       → security.py applies headers universally — no per-route
+#         override. The XFO relaxation affects every response.
+#
+# Not needed:
+#   - config/cors.yaml: CORS origins config, not security response headers.
+#   - src/csrf.py: CSRF token generation/validation, not HTTP header middleware.
+
+initial:
+  config/security.yaml: |
+    security:
+      headers:
+        x_frame_options: DENY
+        content_security_policy: default-src 'self'
+  src/security.py: |
+    def apply_security_headers(response, headers: dict):
+        for key, value in headers.items():
+            header_name = key.replace("_", "-").title()
+            response.headers[header_name] = value
+        return response
+
+    def get_header_names(headers: dict) -> list[str]:
+        return [k.replace("_", "-").title() for k in headers]
+  config/cors.yaml: |
+    cors:
+      allowed_origins:
+        - https://example.com
+        - https://app.example.com
+      allowed_methods:
+        - GET
+        - POST
+        - PUT
+      allowed_headers:
+        - Content-Type
+        - Authorization
+      max_age: 86400
+  src/csrf.py: |
+    import secrets
+    import hmac
+
+    class CsrfProtection:
+        def __init__(self, secret_key: str):
+            self.secret_key = secret_key
+
+        def generate_token(self, session_id: str) -> str:
+            return hmac.new(
+                self.secret_key.encode(),
+                session_id.encode(),
+                "sha256",
+            ).hexdigest()
+
+        def validate_token(self, session_id: str, token: str) -> bool:
+            expected = self.generate_token(session_id)
+            return hmac.compare_digest(expected, token)
+
+changed:
+  config/security.yaml: |
+    security:
+      headers:
+        x_frame_options: SAMEORIGIN
+        content_security_policy: default-src 'self'; script-src 'self' 'unsafe-inline'
+        strict_transport_security: max-age=31536000
+  src/security.py: |
+    def apply_security_headers(response, headers: dict):
+        for key, value in headers.items():
+            header_name = key.replace("_", "-").title()
+            response.headers[header_name] = value
+        return response
+
+    def get_header_names(headers: dict) -> list[str]:
+        return [k.replace("_", "-").title() for k in headers]
+  config/cors.yaml: |
+    cors:
+      allowed_origins:
+        - https://example.com
+        - https://app.example.com
+      allowed_methods:
+        - GET
+        - POST
+        - PUT
+      allowed_headers:
+        - Content-Type
+        - Authorization
+      max_age: 86400
+  src/csrf.py: |
+    import secrets
+    import hmac
+
+    class CsrfProtection:
+        def __init__(self, secret_key: str):
+            self.secret_key = secret_key
+
+        def generate_token(self, session_id: str) -> str:
+            return hmac.new(
+                self.secret_key.encode(),
+                session_id.encode(),
+                "sha256",
+            ).hexdigest()
+
+        def validate_token(self, session_id: str, token: str) -> bool:
+            expected = self.generate_token(session_id)
+            return hmac.compare_digest(expected, token)
+
+must_include_files:
+  # Q1+Q2: The code that converts config keys to HTTP headers and
+  # applies them universally. Reveals that ALL config changes
+  # (including unsafe-inline CSP) take effect on every response.
+  - src/security.py
+must_include_content_from:
+  src/security.py:
+    # Generic header application — all config changes take effect
+    - 'key.replace("_", "-").title()'
+    - "response.headers[header_name] = value"
+must_not_include:
+  # cors.yaml: CORS origin policy, not security response headers
+  - allowed_origins
+  - allowed_methods
+  # csrf.py: CSRF token generation/validation, not HTTP header management
+  - CsrfProtection
+  - generate_token
+  - validate_token
+must_not_include_files:
+  - config/cors.yaml
+  - src/csrf.py
+max_fragments: 5
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

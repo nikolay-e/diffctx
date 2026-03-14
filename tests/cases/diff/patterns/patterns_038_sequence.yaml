@@ -1,0 +1,205 @@
+# Test 038: test_rate_limiter adds time-mocked sequence test
+#           — reviewer needs RateLimiter to understand is_allowed/time interaction
+#
+# Scenario: test_rate_limiter.py adds test_rate_limit_sequence that uses
+# @patch to mock time.time() and verify the full allow/block/expire cycle.
+# Tests call is_allowed() multiple times with controlled timestamps.
+#
+# Reviewer questions:
+#   Q1: "How does is_allowed() use time.time()?"
+#       -> Filters calls older than period, appends current time if under limit.
+#   Q2: "What's the time-based expiration logic?"
+#       -> calls list filtered by `now - c < period`, then count checked.
+#
+# Trap files (plausible but unrelated):
+#   - src/token_bucket.py: alternative rate limiting algorithm with similar
+#     is_allowed semantics but token-based, not time-window.
+#   - tests/test_token_bucket.py: tests for token bucket rate limiter,
+#     similar mock patterns but different algorithm.
+
+initial:
+  src/rate_limiter.py: |
+    import time
+
+    class RateLimiter:
+        def __init__(self, max_calls: int, period: float):
+            self.max_calls = max_calls
+            self.period = period
+            self.calls = []
+
+        def is_allowed(self) -> bool:
+            now = time.time()
+            self.calls = [c for c in self.calls if now - c < self.period]
+            if len(self.calls) < self.max_calls:
+                self.calls.append(now)
+                return True
+            return False
+
+        def wait_time(self) -> float:
+            if not self.calls:
+                return 0
+            oldest = min(self.calls)
+            return max(0, self.period - (time.time() - oldest))
+  tests/test_rate_limiter.py: |
+    from src.rate_limiter import RateLimiter
+
+    def test_allows_within_limit():
+        limiter = RateLimiter(max_calls=3, period=1.0)
+        assert limiter.is_allowed() is True
+  src/token_bucket.py: |
+    import time
+
+    class TokenBucket:
+        def __init__(self, capacity: int, refill_rate: float):
+            self.capacity = capacity
+            self.tokens = capacity
+            self.refill_rate = refill_rate
+            self.last_refill = time.time()
+
+        def is_allowed(self) -> bool:
+            self._refill()
+            if self.tokens >= 1:
+                self.tokens -= 1
+                return True
+            return False
+
+        def _refill(self):
+            now = time.time()
+            elapsed = now - self.last_refill
+            self.tokens = min(self.capacity, self.tokens + elapsed * self.refill_rate)
+            self.last_refill = now
+  tests/test_token_bucket.py: |
+    from unittest.mock import patch
+    from src.token_bucket import TokenBucket
+
+    def test_allows_with_tokens():
+        bucket = TokenBucket(capacity=5, refill_rate=1.0)
+        assert bucket.is_allowed() is True
+
+    @patch('src.token_bucket.time.time')
+    def test_refill_after_time(mock_time):
+        mock_time.return_value = 0.0
+        bucket = TokenBucket(capacity=1, refill_rate=1.0)
+        bucket.is_allowed()
+        assert bucket.is_allowed() is False
+        mock_time.return_value = 2.0
+        assert bucket.is_allowed() is True
+
+changed:
+  src/rate_limiter.py: |
+    import time
+
+    class RateLimiter:
+        def __init__(self, max_calls: int, period: float):
+            self.max_calls = max_calls
+            self.period = period
+            self.calls = []
+
+        def is_allowed(self) -> bool:
+            now = time.time()
+            self.calls = [c for c in self.calls if now - c < self.period]
+            if len(self.calls) < self.max_calls:
+                self.calls.append(now)
+                return True
+            return False
+
+        def wait_time(self) -> float:
+            if not self.calls:
+                return 0
+            oldest = min(self.calls)
+            return max(0, self.period - (time.time() - oldest))
+  tests/test_rate_limiter.py: |
+    from unittest.mock import patch
+    from src.rate_limiter import RateLimiter
+
+    def test_allows_within_limit():
+        limiter = RateLimiter(max_calls=3, period=1.0)
+        assert limiter.is_allowed() is True
+
+    @patch('src.rate_limiter.time.time')
+    def test_rate_limit_sequence(mock_time):
+        mock_time.side_effect = [
+            0.0,    # First call check
+            0.0,    # First call append
+            0.1,    # Second call check
+            0.1,    # Second call append
+            0.2,    # Third call check
+            0.2,    # Third call append
+            0.3,    # Fourth call check (should be blocked)
+            1.5,    # Fifth call check (period passed)
+            1.5,    # Fifth call append
+        ]
+        limiter = RateLimiter(max_calls=3, period=1.0)
+        assert limiter.is_allowed() is True
+        assert limiter.is_allowed() is True
+        assert limiter.is_allowed() is True
+        assert limiter.is_allowed() is False
+        assert limiter.is_allowed() is True
+  src/token_bucket.py: |
+    import time
+
+    class TokenBucket:
+        def __init__(self, capacity: int, refill_rate: float):
+            self.capacity = capacity
+            self.tokens = capacity
+            self.refill_rate = refill_rate
+            self.last_refill = time.time()
+
+        def is_allowed(self) -> bool:
+            self._refill()
+            if self.tokens >= 1:
+                self.tokens -= 1
+                return True
+            return False
+
+        def _refill(self):
+            now = time.time()
+            elapsed = now - self.last_refill
+            self.tokens = min(self.capacity, self.tokens + elapsed * self.refill_rate)
+            self.last_refill = now
+  tests/test_token_bucket.py: |
+    from unittest.mock import patch
+    from src.token_bucket import TokenBucket
+
+    def test_allows_with_tokens():
+        bucket = TokenBucket(capacity=5, refill_rate=1.0)
+        assert bucket.is_allowed() is True
+
+    @patch('src.token_bucket.time.time')
+    def test_refill_after_time(mock_time):
+        mock_time.return_value = 0.0
+        bucket = TokenBucket(capacity=1, refill_rate=1.0)
+        bucket.is_allowed()
+        assert bucket.is_allowed() is False
+        mock_time.return_value = 2.0
+        assert bucket.is_allowed() is True
+
+must_include_files:
+  - tests/test_rate_limiter.py
+  # Q1/Q2: Reviewer needs RateLimiter to understand time-based filtering
+  - src/rate_limiter.py
+
+must_include_content_from:
+  tests/test_rate_limiter.py:
+    - "from unittest.mock import patch"
+    - "@patch('src.rate_limiter.time.time')"
+  src/rate_limiter.py:
+    - "def is_allowed(self) -> bool:"
+
+must_not_include:
+  # --- token_bucket.py: alternative rate limiter, similar is_allowed but different algo ---
+  - "class TokenBucket"
+  - "refill_rate"
+  - "_refill"
+  # --- test_token_bucket.py: tests for different rate limiter ---
+  - "test_allows_with_tokens"
+  - "test_refill_after_time"
+
+must_not_include_files:
+  - src/token_bucket.py
+  - tests/test_token_bucket.py
+
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

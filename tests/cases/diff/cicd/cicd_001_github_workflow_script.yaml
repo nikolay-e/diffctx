@@ -1,0 +1,404 @@
+initial:
+  .github/workflows/ci.yml: |
+    name: CI
+    on: [push]
+    jobs:
+      build:
+        runs-on: ubuntu-latest
+        steps:
+          - uses: actions/checkout@v4
+          - name: Setup Node.js
+            uses: actions/setup-node@v4
+            with:
+              node-version: '20'
+              cache: 'npm'
+          - run: npm run build
+  src/build.ts: |
+    import { getConfig } from './config';
+    import { Logger } from './utils/logger';
+
+    const logger = new Logger('build');
+
+    export interface BuildOptions {
+      minify: boolean;
+      sourceMaps: boolean;
+      outDir: string;
+    }
+
+    export function build(options?: Partial<BuildOptions>): void {
+      const config = getConfig();
+      const opts: BuildOptions = {
+        minify: config.production,
+        sourceMaps: !config.production,
+        outDir: './dist',
+        ...options,
+      };
+
+      logger.info('Starting build process');
+      logger.debug(`Build options: ${JSON.stringify(opts)}`);
+
+      compileSources(opts);
+      copyAssets(opts.outDir);
+
+      logger.info('Build completed successfully');
+    }
+
+    function compileSources(options: BuildOptions): void {
+      logger.info(`Compiling sources to ${options.outDir}`);
+    }
+
+    function copyAssets(outDir: string): void {
+      logger.info(`Copying assets to ${outDir}`);
+    }
+  src/config.ts: |
+    export interface AppConfig {
+      production: boolean;
+      apiUrl: string;
+      version: string;
+    }
+
+    let config: AppConfig | null = null;
+
+    export function getConfig(): AppConfig {
+      if (!config) {
+        config = {
+          production: process.env.NODE_ENV === 'production',
+          apiUrl: process.env.API_URL || 'http://localhost:3000',
+          version: process.env.npm_package_version || '0.0.0',
+        };
+      }
+      return config;
+    }
+
+    export function resetConfig(): void {
+      config = null;
+    }
+  src/utils/logger.ts: |
+    export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
+
+    export class Logger {
+      constructor(private context: string) {}
+
+      debug(message: string): void {
+        this.log('debug', message);
+      }
+
+      info(message: string): void {
+        this.log('info', message);
+      }
+
+      warn(message: string): void {
+        this.log('warn', message);
+      }
+
+      error(message: string): void {
+        this.log('error', message);
+      }
+
+      private log(level: LogLevel, message: string): void {
+        const timestamp = new Date().toISOString();
+        console.log(`[${timestamp}] [${level.toUpperCase()}] [${this.context}] ${message}`);
+      }
+    }
+  src/index.ts: |
+    export { build, BuildOptions } from './build';
+    export { getConfig, AppConfig } from './config';
+    export { Logger } from './utils/logger';
+  docs/README.md: |
+    # Build Tool
+    This is the documentation for the build tool.
+  scripts/deploy.sh: |
+    #!/bin/bash
+    echo "Deploying application"
+  tests/build.test.ts: |
+    import { build, BuildOptions } from '../src/build';
+
+    describe('build', () => {
+      it('should build with default options', () => {
+        expect(() => build()).not.toThrow();
+      });
+
+      it('should build with custom options', () => {
+        const options: Partial<BuildOptions> = {
+          minify: true,
+          outDir: './custom-dist',
+        };
+        expect(() => build(options)).not.toThrow();
+      });
+    });
+
+  # --- Tricky: sibling workflow, shares actions/checkout, setup-node, npm, ubuntu-latest ---
+  .github/workflows/deploy.yml: |
+    name: Deploy
+    on:
+      push:
+        branches: [main]
+    jobs:
+      deploy:
+        runs-on: ubuntu-latest
+        GARBAGE_ALGO_CICD_001_DEPLOY_MARKER_A: true
+        steps:
+          - uses: actions/checkout@v4
+          - name: Setup Node.js
+            uses: actions/setup-node@v4
+            with:
+              node-version: '20'
+              cache: 'npm'
+          - run: npm ci
+          - run: npm run build
+          - name: GARBAGE_ALGO_CICD_001_DEPLOY_STEP_B
+            run: |
+              echo "Deploying to production"
+              GARBAGE_ALGO_CICD_001_DEPLOY_CMD_C="deploy"
+
+  # --- Tricky: another workflow with pull_request trigger (same as added in diff) ---
+  .github/workflows/lint.yml: |
+    name: Lint
+    on: [push, pull_request]
+    jobs:
+      lint:
+        runs-on: ubuntu-latest
+        GARBAGE_ALGO_CICD_001_LINT_MARKER_D: true
+        steps:
+          - uses: actions/checkout@v4
+          - name: Setup Node.js
+            uses: actions/setup-node@v4
+            with:
+              node-version: '20'
+              cache: 'npm'
+          - run: npm ci
+          - run: GARBAGE_ALGO_CICD_001_LINT_CMD_E="eslint"
+          - run: npm run lint
+
+  # --- Tricky: Dockerfile with npm commands ---
+  Dockerfile: |
+    FROM node:20-alpine
+    WORKDIR /app
+    GARBAGE_ALGO_CICD_001_DOCKER_MARKER_F="base"
+    COPY package*.json ./
+    RUN npm ci
+    COPY . .
+    RUN npm run build
+    RUN npm test
+    EXPOSE 3000
+    CMD ["node", "dist/index.js"]
+
+changed:
+  .github/workflows/ci.yml: |
+    name: CI
+    on: [push, pull_request]
+    jobs:
+      build:
+        runs-on: ubuntu-latest
+        steps:
+          - uses: actions/checkout@v4
+          - name: Setup Node.js
+            uses: actions/setup-node@v4
+            with:
+              node-version: '20'
+              cache: 'npm'
+          - run: npm ci
+          - run: npm run build
+          - run: npm test
+  src/build.ts: |
+    import { getConfig } from './config';
+    import { Logger } from './utils/logger';
+
+    const logger = new Logger('build');
+
+    export interface BuildOptions {
+      minify: boolean;
+      sourceMaps: boolean;
+      outDir: string;
+    }
+
+    export function build(options?: Partial<BuildOptions>): void {
+      const config = getConfig();
+      const opts: BuildOptions = {
+        minify: config.production,
+        sourceMaps: !config.production,
+        outDir: './dist',
+        ...options,
+      };
+
+      logger.info('Starting build process');
+      logger.debug(`Build options: ${JSON.stringify(opts)}`);
+
+      compileSources(opts);
+      copyAssets(opts.outDir);
+
+      logger.info('Build completed successfully');
+    }
+
+    function compileSources(options: BuildOptions): void {
+      logger.info(`Compiling sources to ${options.outDir}`);
+    }
+
+    function copyAssets(outDir: string): void {
+      logger.info(`Copying assets to ${outDir}`);
+    }
+  src/config.ts: |
+    export interface AppConfig {
+      production: boolean;
+      apiUrl: string;
+      version: string;
+    }
+
+    let config: AppConfig | null = null;
+
+    export function getConfig(): AppConfig {
+      if (!config) {
+        config = {
+          production: process.env.NODE_ENV === 'production',
+          apiUrl: process.env.API_URL || 'http://localhost:3000',
+          version: process.env.npm_package_version || '0.0.0',
+        };
+      }
+      return config;
+    }
+
+    export function resetConfig(): void {
+      config = null;
+    }
+  src/utils/logger.ts: |
+    export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
+
+    export class Logger {
+      constructor(private context: string) {}
+
+      debug(message: string): void {
+        this.log('debug', message);
+      }
+
+      info(message: string): void {
+        this.log('info', message);
+      }
+
+      warn(message: string): void {
+        this.log('warn', message);
+      }
+
+      error(message: string): void {
+        this.log('error', message);
+      }
+
+      private log(level: LogLevel, message: string): void {
+        const timestamp = new Date().toISOString();
+        console.log(`[${timestamp}] [${level.toUpperCase()}] [${this.context}] ${message}`);
+      }
+    }
+  src/index.ts: |
+    export { build, BuildOptions } from './build';
+    export { getConfig, AppConfig } from './config';
+    export { Logger } from './utils/logger';
+  docs/README.md: |
+    # Build Tool
+    This is the documentation for the build tool.
+  scripts/deploy.sh: |
+    #!/bin/bash
+    echo "Deploying application"
+  tests/build.test.ts: |
+    import { build, BuildOptions } from '../src/build';
+
+    describe('build', () => {
+      it('should build with default options', () => {
+        expect(() => build()).not.toThrow();
+      });
+
+      it('should build with custom options', () => {
+        const options: Partial<BuildOptions> = {
+          minify: true,
+          outDir: './custom-dist',
+        };
+        expect(() => build(options)).not.toThrow();
+      });
+    });
+  .github/workflows/deploy.yml: |
+    name: Deploy
+    on:
+      push:
+        branches: [main]
+    jobs:
+      deploy:
+        runs-on: ubuntu-latest
+        GARBAGE_ALGO_CICD_001_DEPLOY_MARKER_A: true
+        steps:
+          - uses: actions/checkout@v4
+          - name: Setup Node.js
+            uses: actions/setup-node@v4
+            with:
+              node-version: '20'
+              cache: 'npm'
+          - run: npm ci
+          - run: npm run build
+          - name: GARBAGE_ALGO_CICD_001_DEPLOY_STEP_B
+            run: |
+              echo "Deploying to production"
+              GARBAGE_ALGO_CICD_001_DEPLOY_CMD_C="deploy"
+  .github/workflows/lint.yml: |
+    name: Lint
+    on: [push, pull_request]
+    jobs:
+      lint:
+        runs-on: ubuntu-latest
+        GARBAGE_ALGO_CICD_001_LINT_MARKER_D: true
+        steps:
+          - uses: actions/checkout@v4
+          - name: Setup Node.js
+            uses: actions/setup-node@v4
+            with:
+              node-version: '20'
+              cache: 'npm'
+          - run: npm ci
+          - run: GARBAGE_ALGO_CICD_001_LINT_CMD_E="eslint"
+          - run: npm run lint
+  Dockerfile: |
+    FROM node:20-alpine
+    WORKDIR /app
+    GARBAGE_ALGO_CICD_001_DOCKER_MARKER_F="base"
+    COPY package*.json ./
+    RUN npm ci
+    COPY . .
+    RUN npm run build
+    RUN npm test
+    EXPOSE 3000
+    CMD ["node", "dist/index.js"]
+
+# === Assertions ===
+
+must_include_files:
+- .github/workflows/ci.yml
+
+must_include_content_from:
+  .github/workflows/ci.yml:
+    - 'on: [push, pull_request]'
+    - '- run: npm ci'
+    - '- run: npm test'
+    - 'name: CI'
+
+must_not_include:
+# Deploy workflow — sibling, shares checkout/setup-node/npm structure
+- GARBAGE_ALGO_CICD_001_DEPLOY_MARKER_A
+- GARBAGE_ALGO_CICD_001_DEPLOY_STEP_B
+- GARBAGE_ALGO_CICD_001_DEPLOY_CMD_C
+# Lint workflow — has pull_request trigger (same token as added in diff)
+- GARBAGE_ALGO_CICD_001_LINT_MARKER_D
+- GARBAGE_ALGO_CICD_001_LINT_CMD_E
+# Dockerfile — has npm ci, npm run build, npm test (exact same commands)
+- GARBAGE_ALGO_CICD_001_DOCKER_MARKER_F
+
+must_not_include_files:
+- .github/workflows/deploy.yml
+- .github/workflows/lint.yml
+- Dockerfile
+- src/build.ts
+- src/config.ts
+- src/utils/logger.ts
+- src/index.ts
+- docs/README.md
+- scripts/deploy.sh
+
+max_fragments: 4
+max_files: 2
+add_garbage_files: false
+skip_garbage_check: true

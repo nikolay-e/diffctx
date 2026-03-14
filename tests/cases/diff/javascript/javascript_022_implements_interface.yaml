@@ -1,0 +1,200 @@
+# Scenario: impl.ts is rewritten to import Serializable and Comparable from
+#   interfaces.ts and implement both on DataRecord. Only impl.ts is changed.
+#
+# Diff shows:
+#   - console.log('initial');
+#   + import { Serializable, Comparable } from './interfaces';
+#   + export class DataRecord implements Serializable, Comparable<DataRecord> { ... }
+#
+# Reviewer questions:
+#   Q1: "What methods must DataRecord implement for Serializable?"
+#       -> interfaces.ts (UNCHANGED) requires serialize(): string and
+#          deserialize(data: string): void. Reviewer must verify DataRecord
+#          implements both with correct signatures.
+#
+#   Q2: "What is the contract for Comparable<T>.compareTo?"
+#       -> Same file: compareTo(other: T): number. Reviewer must check that
+#          DataRecord.compareTo(other: DataRecord) returns a number and
+#          follows comparison semantics (negative/zero/positive).
+#
+# Not needed for comprehension:
+#   - json-serializer.ts: A class that also implements Serializable.
+#     STRUCTURAL TRAP: same interface, same method signatures (serialize/deserialize).
+#     Sibling implementation. But reviewing another implementation doesn't help
+#     verify DataRecord's correctness.
+#
+#   - sortable-list.ts: Uses Comparable<T> to sort items. CONSUMER of the
+#     same interface. Direct structural edge via Comparable. But HOW the
+#     list sorts doesn't help review DataRecord's compareTo implementation.
+
+initial:
+  interfaces.ts: |
+    export interface Serializable {
+        serialize(): string;
+        deserialize(data: string): void;
+    }
+
+    export interface Comparable<T> {
+        compareTo(other: T): number;
+    }
+  impl.ts: |
+    console.log('initial');
+  json-serializer.ts: |
+    import { Serializable } from './interfaces';
+
+    export class JsonSerializer implements Serializable {
+        private data: Record<string, unknown> = {};
+
+        set(key: string, value: unknown): void {
+            this.data[key] = value;
+        }
+
+        get(key: string): unknown {
+            return this.data[key];
+        }
+
+        serialize(): string {
+            return JSON.stringify(this.data);
+        }
+
+        deserialize(data: string): void {
+            this.data = JSON.parse(data);
+        }
+    }
+  sortable-list.ts: |
+    import { Comparable } from './interfaces';
+
+    export class SortableList<T extends Comparable<T>> {
+        private items: T[] = [];
+
+        add(item: T): void {
+            this.items.push(item);
+        }
+
+        sort(): T[] {
+            return [...this.items].sort((a, b) => a.compareTo(b));
+        }
+
+        min(): T | undefined {
+            return this.sort()[0];
+        }
+
+        max(): T | undefined {
+            const sorted = this.sort();
+            return sorted[sorted.length - 1];
+        }
+    }
+
+changed:
+  interfaces.ts: |
+    export interface Serializable {
+        serialize(): string;
+        deserialize(data: string): void;
+    }
+
+    export interface Comparable<T> {
+        compareTo(other: T): number;
+    }
+  impl.ts: |
+    import { Serializable, Comparable } from './interfaces';
+
+    export class DataRecord implements Serializable, Comparable<DataRecord> {
+        constructor(public id: number, public value: string) {}
+
+        serialize(): string {
+            return JSON.stringify({ id: this.id, value: this.value });
+        }
+
+        deserialize(data: string): void {
+            const parsed = JSON.parse(data);
+            this.id = parsed.id;
+            this.value = parsed.value;
+        }
+
+        compareTo(other: DataRecord): number {
+            return this.id - other.id;
+        }
+    }
+  json-serializer.ts: |
+    import { Serializable } from './interfaces';
+
+    export class JsonSerializer implements Serializable {
+        private data: Record<string, unknown> = {};
+
+        set(key: string, value: unknown): void {
+            this.data[key] = value;
+        }
+
+        get(key: string): unknown {
+            return this.data[key];
+        }
+
+        serialize(): string {
+            return JSON.stringify(this.data);
+        }
+
+        deserialize(data: string): void {
+            this.data = JSON.parse(data);
+        }
+    }
+  sortable-list.ts: |
+    import { Comparable } from './interfaces';
+
+    export class SortableList<T extends Comparable<T>> {
+        private items: T[] = [];
+
+        add(item: T): void {
+            this.items.push(item);
+        }
+
+        sort(): T[] {
+            return [...this.items].sort((a, b) => a.compareTo(b));
+        }
+
+        min(): T | undefined {
+            return this.sort()[0];
+        }
+
+        max(): T | undefined {
+            const sorted = this.sort();
+            return sorted[sorted.length - 1];
+        }
+    }
+
+must_include_files:
+  - impl.ts
+  # Q1+Q2: interfaces.ts defines the contracts DataRecord must fulfill
+  - interfaces.ts
+
+must_include_content_from:
+  impl.ts:
+    - "import { Serializable, Comparable } from './interfaces'"
+    - "class DataRecord implements Serializable, Comparable<DataRecord>"
+    - "serialize(): string"
+    - "compareTo(other: DataRecord): number"
+  interfaces.ts:
+    - "interface Serializable"
+    - "serialize(): string"
+    - "deserialize(data: string): void"
+    - "compareTo(other: T): number"
+
+must_not_include:
+  # --- json-serializer.ts: sibling Serializable implementation ---
+  # STRUCTURAL TRAP: imports Serializable, implements same methods.
+  # But another implementation doesn't help review DataRecord.
+  - JsonSerializer
+  - "this.data[key]"
+  # --- sortable-list.ts: consumer of Comparable<T> ---
+  # Direct edge: imports Comparable, uses compareTo. But HOW
+  # the list sorts doesn't validate DataRecord's implementation.
+  - SortableList
+  - "a.compareTo(b)"
+
+must_not_include_files:
+  - json-serializer.ts
+  - sortable-list.ts
+
+max_fragments: 5
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

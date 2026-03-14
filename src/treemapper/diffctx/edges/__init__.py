@@ -17,6 +17,8 @@ from .structural import get_structural_builders
 if TYPE_CHECKING:
     from ..types import Fragment
 
+logger = logging.getLogger(__name__)
+
 EdgeCategories = dict[tuple[FragmentId, FragmentId], str]
 
 _BUILDER_CATEGORIES: list[tuple[str, Callable[[], list[type[EdgeBuilder]]]]] = [
@@ -53,7 +55,7 @@ def collect_all_edges(
     edge_categories: EdgeCategories = {}
     for category, get_builders in _BUILDER_CATEGORIES:
         if skip_expensive and category in _EXPENSIVE_CATEGORIES:
-            logging.debug("diffctx: skipping %s edge builders (skip_expensive=True)", category)
+            logger.debug("diffctx: skipping %s edge builders (skip_expensive=True)", category)
             continue
         for cls in get_builders():
             builder = cls()

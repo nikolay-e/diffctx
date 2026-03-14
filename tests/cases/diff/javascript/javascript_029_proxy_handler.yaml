@@ -1,0 +1,111 @@
+# Scenario: Proxy created with imported handler — reviewer needs the handler traps.
+#
+# Diff: proxy.ts is rewritten to import loggingHandler from handlers.ts and create
+# a Proxy using new Proxy(target, loggingHandler).
+#
+# Reviewer questions:
+#   Q1: "What traps does loggingHandler implement?"
+#       -> handlers.ts (UNCHANGED) defines get and set traps that log property
+#          access via Reflect.get/Reflect.set. The reviewer must see the handler
+#          to understand what the proxy intercepts.
+#
+# Not needed:
+#   - validation-handler.ts: another ProxyHandler that validates property writes.
+#     Same pattern (ProxyHandler) but different handler, not imported by proxy.ts.
+#   - proxy-utils.ts: revocable proxy utilities. Different Proxy API usage,
+#     not imported by proxy.ts.
+
+initial:
+  handlers.ts: |
+    export const loggingHandler: ProxyHandler<object> = {
+        get(target, prop, receiver) {
+            console.log(`Getting ${String(prop)}`);
+            return Reflect.get(target, prop, receiver);
+        },
+        set(target, prop, value, receiver) {
+            console.log(`Setting ${String(prop)} = ${value}`);
+            return Reflect.set(target, prop, value, receiver);
+        },
+    };
+  proxy.ts: |
+    console.log('initial');
+  validation-handler.ts: |
+    export const validationHandler: ProxyHandler<Record<string, unknown>> = {
+        set(target, prop, value) {
+            if (typeof prop === 'string' && prop.startsWith('_')) {
+                throw new Error(`Cannot set private property: ${prop}`);
+            }
+            target[prop as string] = value;
+            return true;
+        },
+    };
+  proxy-utils.ts: |
+    export function createRevocable<T extends object>(target: T, handler: ProxyHandler<T>) {
+        return Proxy.revocable(target, handler);
+    }
+
+    export function isProxy(obj: unknown): boolean {
+        try { return obj !== null && typeof obj === 'object'; }
+        catch { return true; }
+    }
+
+changed:
+  handlers.ts: |
+    export const loggingHandler: ProxyHandler<object> = {
+        get(target, prop, receiver) {
+            console.log(`Getting ${String(prop)}`);
+            return Reflect.get(target, prop, receiver);
+        },
+        set(target, prop, value, receiver) {
+            console.log(`Setting ${String(prop)} = ${value}`);
+            return Reflect.set(target, prop, value, receiver);
+        },
+    };
+  proxy.ts: |
+    import { loggingHandler } from './handlers';
+
+    export function createLoggingProxy<T extends object>(target: T): T {
+        return new Proxy(target, loggingHandler);
+    }
+  validation-handler.ts: |
+    export const validationHandler: ProxyHandler<Record<string, unknown>> = {
+        set(target, prop, value) {
+            if (typeof prop === 'string' && prop.startsWith('_')) {
+                throw new Error(`Cannot set private property: ${prop}`);
+            }
+            target[prop as string] = value;
+            return true;
+        },
+    };
+  proxy-utils.ts: |
+    export function createRevocable<T extends object>(target: T, handler: ProxyHandler<T>) {
+        return Proxy.revocable(target, handler);
+    }
+
+    export function isProxy(obj: unknown): boolean {
+        try { return obj !== null && typeof obj === 'object'; }
+        catch { return true; }
+    }
+
+must_include_files:
+  # Q1: handlers.ts defines the loggingHandler traps used by the Proxy
+  - handlers.ts
+must_include_content_from:
+  handlers.ts:
+    - "loggingHandler"
+    - "get(target, prop, receiver)"
+    - "set(target, prop, value, receiver)"
+must_not_include:
+  # validation-handler.ts: different handler, not imported by proxy.ts
+  - validationHandler
+  - "Cannot set private property"
+  # proxy-utils.ts: revocable proxy utilities, not used here
+  - createRevocable
+  - isProxy
+must_not_include_files:
+  - validation-handler.ts
+  - proxy-utils.ts
+max_fragments: 5
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

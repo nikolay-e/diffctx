@@ -1,0 +1,97 @@
+# Scenario: main() adds a return value while still calling do_work() from
+#   helper module. Only main.py is changed.
+#
+# Diff shows:
+#   + return 1   (added after do_work() call)
+#
+# Reviewer questions:
+#   Q1: "What does do_work() do — does it return something main should use?"
+#       -> do_work() returns None (pass). The diff ignores its return value
+#         and returns 1 separately. Reviewer should verify do_work() is
+#         called for side effects only.
+#
+# Not needed for comprehension:
+#   - scheduler.py: Also imports do_work from helper. HARDEST TRAP: same
+#     `from helper import do_work` statement. But how the scheduler uses
+#     do_work() doesn't help review main.py's change.
+#
+#   - cli.py: Defines its own main() function. Name collision trap. But
+#     different module, no import relationship to helper.
+
+initial:
+  main.py: |
+    from helper import do_work
+
+    def main():
+        do_work()
+  helper.py: |
+    def do_work():
+        pass
+  scheduler.py: |
+    from helper import do_work
+
+    class TaskScheduler:
+        def run_scheduled(self):
+            return do_work()
+
+        def schedule(self, task_name):
+            return f"scheduled: {task_name}"
+  cli.py: |
+    def main():
+        return "cli_entry_point"
+
+    def parse_args(argv):
+        return {"verbose": False}
+
+changed:
+  main.py: |
+    from helper import do_work
+
+    def main():
+        do_work()
+        return 1
+  helper.py: |
+    def do_work():
+        pass
+  scheduler.py: |
+    from helper import do_work
+
+    class TaskScheduler:
+        def run_scheduled(self):
+            return do_work()
+
+        def schedule(self, task_name):
+            return f"scheduled: {task_name}"
+  cli.py: |
+    def main():
+        return "cli_entry_point"
+
+    def parse_args(argv):
+        return {"verbose": False}
+
+must_include_files:
+  - main.py
+
+must_include_content_from:
+  main.py:
+    - "def main():"
+    - "do_work()"
+    - "return 1"
+
+must_not_include:
+  # --- scheduler.py: same `from helper import do_work` import ---
+  - TaskScheduler
+  - run_scheduled
+  - "schedule"
+  # --- cli.py: defines main() — name collision ---
+  - cli_entry_point
+  - parse_args
+
+must_not_include_files:
+  - scheduler.py
+  - cli.py
+
+max_fragments: 4
+max_files: 2
+add_garbage_files: false
+skip_garbage_check: true

@@ -1,5 +1,0 @@
-authMiddleware.ts: "import { Request, Response, NextFunction } from 'express';\n\nexport function authMiddleware(req: Request, res: Response, next: NextFunction) {\n    const token = req.headers.authorization;\n\
-  \    if (!token) {\n        return res.status(401).json({ error: 'Unauthorized' });\n    }\n    next();\n}\n\n// node_garbage_marker_001\n"
-app.ts: 'console.log(''initial'');
-
-  '

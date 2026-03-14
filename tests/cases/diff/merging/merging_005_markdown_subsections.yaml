@@ -1,0 +1,178 @@
+# Scenario: Architecture doc updated -- "three" -> "four" services, fraud scoring added.
+# Reviewer asks: "What architectural changes were documented?"
+# Trap rationale: api_reference.md and onboarding_guide.md share the same project
+# domain vocabulary (payment, services) but are separate docs with no link.
+
+initial:
+  docs/architecture.md: |
+    # System Architecture
+
+    This document describes the high-level architecture of the payment processing platform.
+    The system handles millions of transactions daily across multiple regions.
+
+    ## Core Components
+
+    The platform consists of three main services that communicate via message queues.
+    Each service is independently deployable and horizontally scalable.
+
+    ### Payment Gateway
+
+    The gateway receives incoming payment requests from merchant integrations.
+    It validates the request format and routes to the appropriate processor.
+    Rate limiting is applied per merchant based on their subscription tier.
+
+    ### Transaction Processor
+
+    The processor handles the core payment logic including authorization,
+    capture, and settlement. It maintains an event-sourced transaction log
+    for full auditability and supports idempotent retry semantics.
+
+    ## Infrastructure
+
+    All services run on Kubernetes with auto-scaling based on queue depth.
+    Prometheus and Grafana provide observability across the entire stack.
+
+    ## Security Considerations
+
+    All inter-service communication uses mTLS with certificate rotation.
+    PCI DSS compliance is maintained through network segmentation.
+  docs/api_reference.md: |
+    # API Reference
+
+    ## Authentication
+
+    All API requests require a Bearer token in the Authorization header.
+    Tokens are issued via the /auth/token endpoint using client credentials.
+
+    ## Endpoints
+
+    ### POST /payments
+
+    Create a new payment request.
+    - **merchant_id** (required): Unique merchant identifier
+    - **amount** (required): Payment amount in minor units
+    - **currency** (required): ISO 4217 currency code
+
+    ### GET /payments/{id}
+
+    Retrieve payment status by transaction ID.
+    Returns the current state and processing history.
+
+    ### POST /refunds
+
+    Initiate a refund for a completed payment.
+    Partial refunds are supported up to the original amount.
+  docs/onboarding_guide.md: |
+    # Developer Onboarding Guide
+
+    ## Prerequisites
+
+    - Access to the private container registry
+    - VPN credentials for internal services
+    - GitHub organization membership
+
+    ## Local Development Setup
+
+    1. Clone the repository
+    2. Install dependencies using the provided Makefile
+    3. Start local services with docker-compose
+    4. Run the integration test suite
+
+    ## Code Review Process
+
+    All changes require at least two approvals from senior engineers.
+    Security-sensitive changes need an additional review from the security team.
+changed:
+  docs/architecture.md: |
+    # System Architecture
+
+    This document describes the high-level architecture of the payment processing platform.
+    The system handles millions of transactions daily across multiple regions.
+
+    ## Core Components
+
+    The platform consists of four main services that communicate via message queues.
+    Each service is independently deployable and horizontally scalable.
+    Service discovery is handled through Consul with health checking.
+
+    ### Payment Gateway
+
+    The gateway receives incoming payment requests from merchant integrations.
+    It validates the request format, applies fraud scoring, and routes to the processor.
+    Rate limiting is applied per merchant based on their subscription tier.
+
+    ### Transaction Processor
+
+    The processor handles the core payment logic including authorization,
+    capture, and settlement. It maintains an event-sourced transaction log
+    for full auditability and supports idempotent retry semantics.
+
+    ## Infrastructure
+
+    All services run on Kubernetes with auto-scaling based on queue depth.
+    Prometheus and Grafana provide observability across the entire stack.
+
+    ## Security Considerations
+
+    All inter-service communication uses mTLS with certificate rotation.
+    PCI DSS compliance is maintained through network segmentation.
+  docs/api_reference.md: |
+    # API Reference
+
+    ## Authentication
+
+    All API requests require a Bearer token in the Authorization header.
+    Tokens are issued via the /auth/token endpoint using client credentials.
+
+    ## Endpoints
+
+    ### POST /payments
+
+    Create a new payment request.
+    - **merchant_id** (required): Unique merchant identifier
+    - **amount** (required): Payment amount in minor units
+    - **currency** (required): ISO 4217 currency code
+
+    ### GET /payments/{id}
+
+    Retrieve payment status by transaction ID.
+    Returns the current state and processing history.
+
+    ### POST /refunds
+
+    Initiate a refund for a completed payment.
+    Partial refunds are supported up to the original amount.
+  docs/onboarding_guide.md: |
+    # Developer Onboarding Guide
+
+    ## Prerequisites
+
+    - Access to the private container registry
+    - VPN credentials for internal services
+    - GitHub organization membership
+
+    ## Local Development Setup
+
+    1. Clone the repository
+    2. Install dependencies using the provided Makefile
+    3. Start local services with docker-compose
+    4. Run the integration test suite
+
+    ## Code Review Process
+
+    All changes require at least two approvals from senior engineers.
+    Security-sensitive changes need an additional review from the security team.
+must_include_files:
+- docs/architecture.md
+must_include_content:
+- The platform consists of four main services that communicate via message queues.
+must_not_include:
+- API Reference
+- Developer Onboarding Guide
+- api_reference.md
+- onboarding_guide.md
+must_not_include_files:
+- docs/api_reference.md
+- docs/onboarding_guide.md
+add_garbage_files: false
+skip_garbage_check: true

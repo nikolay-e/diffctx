@@ -1,0 +1,162 @@
+# Scenario: .prettierrc.json changes semi from true to false, singleQuote
+#   from false to true, tabWidth from 2 to 4, adds printWidth 100,
+#   trailingComma from "es5" to "all".
+#
+# Reviewer questions:
+#   Q1: "Will removing semicolons (semi: false) cause ASI issues in the codebase?"
+#       -> src/format.js: uses return statements, function declarations, and
+#          multi-line chains. Without semicolons, ASI could cause issues
+#          especially with lines starting with ( or [.
+#
+#   Q2: "Does changing tabWidth from 2 to 4 affect readability significantly?"
+#       -> src/format.js and src/config-loader.js: both use 4-space indentation
+#          already in their function bodies. The config change aligns with
+#          existing code. But this is a large formatting diff.
+#
+# Not needed:
+#   - .editorconfig: Editor configuration. Related to formatting but
+#     different tool. Won't help review prettier-specific settings.
+#
+#   - node_modules/.cache/prettier: Cached formatting results.
+#     Internal to prettier, not reviewable.
+#
+#   - package.json: Could show prettier version. But version doesn't
+#     help review the config change.
+
+initial:
+  .prettierrc.json: |
+    {
+      "semi": true,
+      "singleQuote": false,
+      "tabWidth": 2,
+      "trailingComma": "es5",
+      "arrowParens": "always",
+      "endOfLine": "lf",
+      "bracketSpacing": true
+    }
+
+  src/format.js: |
+    function formatCode(code) {
+        return code.trim();
+    }
+
+    function normalizeWhitespace(text) {
+        return text
+            .replace(/\t/g, '    ')
+            .replace(/[ ]+$/gm, '')
+            .replace(/\n{3,}/g, '\n\n');
+    }
+
+    function indentBlock(text, spaces) {
+        const prefix = ' '.repeat(spaces);
+        return text
+            .split('\n')
+            .map((line) => (line.length > 0 ? prefix + line : line))
+            .join('\n');
+    }
+
+    function wrapLines(text, maxWidth) {
+        const words = text.split(' ');
+        const lines = [];
+        let current = '';
+        for (const word of words) {
+            if (current.length + word.length + 1 > maxWidth && current.length > 0) {
+                lines.push(current);
+                current = word;
+            } else {
+                current = current.length > 0 ? current + ' ' + word : word;
+            }
+        }
+        if (current.length > 0) lines.push(current);
+        return lines.join('\n');
+    }
+
+    export { formatCode, normalizeWhitespace, indentBlock, wrapLines };
+
+  src/config-loader.js: |
+    import { formatCode, normalizeWhitespace } from './format';
+
+    function loadConfig(rawText) {
+        const cleaned = normalizeWhitespace(rawText);
+        const formatted = formatCode(cleaned);
+        return JSON.parse(formatted);
+    }
+
+    function validateConfig(config) {
+        const required = ['name', 'version', 'entry'];
+        const missing = required.filter((key) => !(key in config));
+        if (missing.length > 0) {
+            throw new Error(`Missing config keys: ${missing.join(', ')}`);
+        }
+        return true;
+    }
+
+    export { loadConfig, validateConfig };
+
+  .editorconfig: |
+    root = true
+
+    [*]
+    indent_style = space
+    indent_size = 4
+    end_of_line = lf
+    charset = utf-8
+    trim_trailing_whitespace = true
+    insert_final_newline = true
+
+  package.json: |
+    {
+      "name": "format-app",
+      "version": "1.0.0",
+      "scripts": {
+        "format": "prettier --write .",
+        "format:check": "prettier --check ."
+      },
+      "devDependencies": {
+        "prettier": "^3.0.0"
+      }
+    }
+
+changed:
+  .prettierrc.json: |
+    {
+      "semi": false,
+      "singleQuote": true,
+      "tabWidth": 4,
+      "printWidth": 100,
+      "trailingComma": "all",
+      "arrowParens": "always",
+      "endOfLine": "lf",
+      "bracketSpacing": true
+    }
+
+must_include_files:
+  - .prettierrc.json
+
+must_include_content_from:
+  .prettierrc.json:
+    - '"semi": false'
+    - '"singleQuote": true'
+    - '"tabWidth": 4'
+    - '"printWidth": 100'
+    - '"trailingComma": "all"'
+
+must_not_include:
+  # --- .editorconfig: different formatting tool, could conflict but independent ---
+  - "root = true"
+  - indent_style
+  - trim_trailing_whitespace
+  - insert_final_newline
+  # --- package.json: deps and scripts, not formatting config ---
+  - "prettier --write"
+  - "format:check"
+  - "format-app"
+
+must_not_include_files:
+  - .editorconfig
+  - package.json
+
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

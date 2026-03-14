@@ -1,0 +1,145 @@
+# Scenario: Localization config adds French and German to supported locales
+#
+# Diff: i18n.yaml adds fr and de to supported_locales list.
+#
+# Reviewer questions:
+#   Q1: "Does the code validate locale against the supported list?"
+#       → src/i18n.py (UNCHANGED) falls back to default_locale with
+#         NO validation against supported_locales. Any locale string
+#         is accepted — the supported list is decorative only.
+#   Q2: "Are translation files needed for the new locales?"
+#       → i18n.py loads translations via load(locale, data). New
+#         locales fr/de have no translations loaded, so translate()
+#         returns the raw key as fallback for those locales.
+#
+# Not needed:
+#   - config/timezone.yaml: timezone display preferences, not translations.
+#   - src/currency.py: currency formatting by locale symbol, not text
+#     translations.
+
+initial:
+  config/i18n.yaml: |
+    localization:
+      default_locale: en
+      supported_locales:
+        - en
+        - es
+  src/i18n.py: |
+    class Translator:
+        def __init__(self, default_locale: str = "en"):
+            self.default_locale = default_locale
+            self.translations: dict[str, dict[str, str]] = {}
+
+        def load(self, locale: str, data: dict[str, str]):
+            self.translations[locale] = data
+
+        def translate(self, key: str, locale: str = None) -> str:
+            locale = locale or self.default_locale
+            return self.translations.get(locale, {}).get(key, key)
+
+        def available_locales(self) -> list[str]:
+            return list(self.translations.keys())
+  config/timezone.yaml: |
+    timezone:
+      default: UTC
+      display_format: "YYYY-MM-DD HH:mm:ss Z"
+      supported:
+        - UTC
+        - America/New_York
+        - Europe/London
+        - Asia/Tokyo
+      auto_detect: true
+  src/currency.py: |
+    from decimal import Decimal
+
+    CURRENCY_FORMATS = {
+        "USD": {"symbol": "$", "decimal_places": 2, "position": "before"},
+        "EUR": {"symbol": "\u20ac", "decimal_places": 2, "position": "before"},
+        "GBP": {"symbol": "\u00a3", "decimal_places": 2, "position": "before"},
+        "JPY": {"symbol": "\u00a5", "decimal_places": 0, "position": "before"},
+    }
+
+    def format_currency(amount: Decimal, currency_code: str) -> str:
+        fmt = CURRENCY_FORMATS.get(currency_code, CURRENCY_FORMATS["USD"])
+        formatted = f"{amount:.{fmt['decimal_places']}f}"
+        if fmt["position"] == "before":
+            return f"{fmt['symbol']}{formatted}"
+        return f"{formatted}{fmt['symbol']}"
+
+changed:
+  config/i18n.yaml: |
+    localization:
+      default_locale: en
+      supported_locales:
+        - en
+        - es
+        - fr
+        - de
+  src/i18n.py: |
+    class Translator:
+        def __init__(self, default_locale: str = "en"):
+            self.default_locale = default_locale
+            self.translations: dict[str, dict[str, str]] = {}
+
+        def load(self, locale: str, data: dict[str, str]):
+            self.translations[locale] = data
+
+        def translate(self, key: str, locale: str = None) -> str:
+            locale = locale or self.default_locale
+            return self.translations.get(locale, {}).get(key, key)
+
+        def available_locales(self) -> list[str]:
+            return list(self.translations.keys())
+  config/timezone.yaml: |
+    timezone:
+      default: UTC
+      display_format: "YYYY-MM-DD HH:mm:ss Z"
+      supported:
+        - UTC
+        - America/New_York
+        - Europe/London
+        - Asia/Tokyo
+      auto_detect: true
+  src/currency.py: |
+    from decimal import Decimal
+
+    CURRENCY_FORMATS = {
+        "USD": {"symbol": "$", "decimal_places": 2, "position": "before"},
+        "EUR": {"symbol": "\u20ac", "decimal_places": 2, "position": "before"},
+        "GBP": {"symbol": "\u00a3", "decimal_places": 2, "position": "before"},
+        "JPY": {"symbol": "\u00a5", "decimal_places": 0, "position": "before"},
+    }
+
+    def format_currency(amount: Decimal, currency_code: str) -> str:
+        fmt = CURRENCY_FORMATS.get(currency_code, CURRENCY_FORMATS["USD"])
+        formatted = f"{amount:.{fmt['decimal_places']}f}"
+        if fmt["position"] == "before":
+            return f"{fmt['symbol']}{formatted}"
+        return f"{formatted}{fmt['symbol']}"
+
+must_include_files:
+  # Q1+Q2: The code has NO locale validation and returns raw keys
+  # for missing translations. Without i18n.py, the reviewer thinks
+  # adding fr/de to the list is sufficient for localization.
+  - src/i18n.py
+must_include_content_from:
+  src/i18n.py:
+    # No validation against supported_locales — accepts any string
+    - "locale = locale or self.default_locale"
+    # Falls back to raw key when translations missing
+    - "self.translations.get(locale, {}).get(key, key)"
+must_not_include:
+  # timezone.yaml: timezone display preferences, not translations
+  - auto_detect
+  - display_format
+  - Asia/Tokyo
+  # currency.py: currency formatting, not text translations
+  - CURRENCY_FORMATS
+  - format_currency
+must_not_include_files:
+  - config/timezone.yaml
+  - src/currency.py
+max_fragments: 5
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

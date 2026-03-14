@@ -1,0 +1,79 @@
+initial:
+  app.py: |
+    import os
+    from pathlib import Path
+
+    DEBUG = os.getenv("DEBUG", False)
+    LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
+
+    def main():
+        if DEBUG:
+            print("Debug mode")
+
+    def unrelated_function_080():
+
+    class UnrelatedClass080:
+
+        def method_a(self):
+
+    def another_unrelated_080():
+  .env: |
+    DEBUG=false
+    LOG_LEVEL=INFO
+  garbage_080.py: |
+    import os
+
+    GARBAGE_VAR = os.getenv("GARBAGE_FRAG_garbvar080")
+
+    def garbage_function_080():
+        return "GARBAGE_FRAG_garbfunc080"
+
+    class Garbage080:
+        VALUE = "GARBAGE_FRAG_garbclass080"
+  garbage_080.env: |
+    GARBAGE_ONLY_KEY=GARBAGE_FRAG_garbonlykey080
+    ANOTHER_GARBAGE=GARBAGE_FRAG_anothergarbenv080
+changed:
+  app.py: |
+    import os
+    from pathlib import Path
+
+    DEBUG = os.getenv("DEBUG", False)
+    LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
+
+    def main():
+        if DEBUG:
+            print("Debug mode")
+
+    def unrelated_function_080():
+
+    class UnrelatedClass080:
+
+        def method_a(self):
+
+    def another_unrelated_080():
+  .env: |
+    DEBUG=true
+    LOG_LEVEL=INFO
+  garbage_080.py: |
+    import os
+
+    GARBAGE_VAR = os.getenv("GARBAGE_FRAG_garbvar080")
+
+    def garbage_function_080():
+        return "GARBAGE_FRAG_garbfunc080"
+
+    class Garbage080:
+        VALUE = "GARBAGE_FRAG_garbclass080"
+  garbage_080.env: |
+    GARBAGE_ONLY_KEY=GARBAGE_FRAG_garbonlykey080
+    ANOTHER_GARBAGE=GARBAGE_FRAG_anothergarbenv080
+must_include_files:
+- .env
+must_not_include:
+- GARBAGE_ONLY_KEY=GARBAGE_FRAG_garbonlykey080
+- GARBAGE_VAR
+- garbage_080.env
+- garbage_080.py
+add_garbage_files: false
+skip_garbage_check: true

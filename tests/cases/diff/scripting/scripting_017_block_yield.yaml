@@ -1,0 +1,266 @@
+# Scenario: service.rb includes RetryHelper and calls with_retry(max_attempts: 5)
+# with a block. retry_helper.rb defines the module with the yield-based retry logic.
+#
+# Diff: service.rb changes from empty class to including RetryHelper and adding
+# a fetch_data method that calls with_retry with a block.
+#
+# Reviewer questions:
+#   Q1: "How does with_retry work — what happens to the yielded block on failure?"
+#       -> retry_helper.rb (UNCHANGED) shows with_retry uses begin/rescue/retry
+#          pattern: it yields the block, catches StandardError, retries up to
+#          max_attempts, then re-raises. Reviewer understands the retry semantics.
+#   Q2: "Service passes max_attempts: 5 but the default is 3 — is this override safe?"
+#       -> retry_helper.rb shows the parameter signature with_retry(max_attempts: 3).
+#          Overriding to 5 is valid — just increases retry count.
+#
+# Not needed:
+#   - circuit_breaker.rb: prevents repeated calls to failing services. Related
+#     resilience pattern but doesn't include or reference RetryHelper — no edge.
+#   - timeout_helper.rb: wraps operations with a timeout. Similar concern
+#     (error handling) but independent module with no import to RetryHelper.
+#   - api_client.rb: also includes RetryHelper and calls with_retry.
+#     DIRECT structural edge (same module, same method) but different consumer.
+#   - lib/backoff_strategy.rb: implements exponential backoff with a block.
+#     Same yield+retry concept but independent — no require to RetryHelper.
+#   - error_handler.rb: rescues StandardError like RetryHelper does. Same
+#     exception type but different pattern — no module inclusion.
+
+initial:
+  lib/retry_helper.rb: |
+    module RetryHelper
+      def with_retry(max_attempts: 3)
+        attempts = 0
+        begin
+          attempts += 1
+          yield
+        rescue StandardError => e
+          retry if attempts < max_attempts
+          raise e
+        end
+      end
+
+      def retryable?(error)
+        error.is_a?(StandardError) && !error.is_a?(ArgumentError)
+      end
+    end
+  lib/service.rb: |
+    class Service
+    end
+  lib/circuit_breaker.rb: |
+    class CircuitBreaker
+      CLOSED = :closed
+      OPEN = :open
+      HALF_OPEN = :half_open
+
+      def initialize(threshold: 5, timeout: 30)
+        @threshold = threshold
+        @timeout = timeout
+        @failure_count = 0
+        @state = CLOSED
+        @last_failure_time = nil
+      end
+
+      def call(&block)
+        case @state
+        when CLOSED
+          begin
+            result = block.call
+            reset
+            result
+          rescue StandardError
+            record_failure
+            raise
+          end
+        when OPEN
+          if Time.now - @last_failure_time > @timeout
+            @state = HALF_OPEN
+            call(&block)
+          else
+            raise "Circuit is open"
+          end
+        when HALF_OPEN
+          begin
+            result = block.call
+            reset
+            result
+          rescue StandardError
+            @state = OPEN
+            @last_failure_time = Time.now
+            raise
+          end
+        end
+      end
+
+      private
+
+      def record_failure
+        @failure_count += 1
+        if @failure_count >= @threshold
+          @state = OPEN
+          @last_failure_time = Time.now
+        end
+      end
+
+      def reset
+        @failure_count = 0
+        @state = CLOSED
+      end
+    end
+  lib/timeout_helper.rb: |
+    module TimeoutHelper
+      def with_timeout(seconds: 10)
+        Timeout.timeout(seconds) do
+          yield
+        end
+      rescue Timeout::Error
+        raise "Operation timed out after #{seconds} seconds"
+      end
+
+      def safe_timeout(seconds: 10, fallback: nil)
+        with_timeout(seconds: seconds) { yield }
+      rescue
+        fallback
+      end
+    end
+  lib/api_client.rb: |
+    require_relative 'retry_helper'
+
+    class ApiClient
+      include RetryHelper
+
+      def initialize(base_url)
+        @base_url = base_url
+      end
+
+      def get(path)
+        with_retry(max_attempts: 3) do
+          uri = URI("#{@base_url}#{path}")
+          Net::HTTP.get_response(uri)
+        end
+      end
+
+      def post(path, body)
+        with_retry(max_attempts: 2) do
+          uri = URI("#{@base_url}#{path}")
+          Net::HTTP.post(uri, body.to_json)
+        end
+      end
+    end
+  lib/backoff_strategy.rb: |
+    class BackoffStrategy
+      def initialize(base_delay: 1.0, max_delay: 60.0, multiplier: 2.0)
+        @base_delay = base_delay
+        @max_delay = max_delay
+        @multiplier = multiplier
+      end
+
+      def execute(max_retries: 3)
+        retries = 0
+        begin
+          yield
+        rescue StandardError => e
+          retries += 1
+          raise e if retries >= max_retries
+          sleep(delay_for(retries))
+          retry
+        end
+      end
+
+      private
+
+      def delay_for(attempt)
+        [@base_delay * (@multiplier ** (attempt - 1)), @max_delay].min
+      end
+    end
+  lib/error_handler.rb: |
+    module ErrorHandler
+      def handle_errors
+        yield
+      rescue ArgumentError => e
+        { error: :invalid_argument, message: e.message }
+      rescue StandardError => e
+        { error: :internal, message: e.message }
+      end
+
+      def safe_execute(fallback: nil)
+        yield
+      rescue StandardError
+        fallback
+      end
+    end
+
+changed:
+  lib/retry_helper.rb: |
+    module RetryHelper
+      def with_retry(max_attempts: 3)
+        attempts = 0
+        begin
+          attempts += 1
+          yield
+        rescue StandardError => e
+          retry if attempts < max_attempts
+          raise e
+        end
+      end
+
+      def retryable?(error)
+        error.is_a?(StandardError) && !error.is_a?(ArgumentError)
+      end
+    end
+  lib/service.rb: |
+    require_relative 'retry_helper'
+
+    class Service
+      include RetryHelper
+
+      def fetch_data
+        with_retry(max_attempts: 5) do
+          raise "Error" if rand < 0.5
+        end
+      end
+    end
+
+must_include_files:
+  # Q1: retry_helper.rb defines the with_retry method that service.rb includes
+  - lib/retry_helper.rb
+must_include_content_from:
+  lib/retry_helper.rb:
+    - "module RetryHelper"
+    - "def with_retry(max_attempts: 3)"
+    - "yield"
+  lib/service.rb:
+    - "include RetryHelper"
+    - "with_retry(max_attempts: 5)"
+must_not_include:
+  # circuit_breaker.rb: different resilience pattern, no reference to RetryHelper
+  - CircuitBreaker
+  - HALF_OPEN
+  - record_failure
+  - reset
+  # timeout_helper.rb: timeout wrapper, independent module
+  - TimeoutHelper
+  - with_timeout
+  - safe_timeout
+  # api_client.rb: HARDEST TRAP — includes RetryHelper, calls with_retry
+  # Same module, same method, same include pattern, but different consumer
+  - ApiClient
+  - "@base_url"
+  - "Net::HTTP"
+  # lib/backoff_strategy.rb: retry+yield concept but independent class
+  - BackoffStrategy
+  - delay_for
+  - max_delay
+  # lib/error_handler.rb: rescues StandardError but different pattern
+  - ErrorHandler
+  - handle_errors
+  - safe_execute
+must_not_include_files:
+  - lib/circuit_breaker.rb
+  - lib/timeout_helper.rb
+  - lib/api_client.rb
+  - lib/backoff_strategy.rb
+  - lib/error_handler.rb
+max_fragments: 5
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

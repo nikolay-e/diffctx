@@ -1,0 +1,120 @@
+# Scenario: actions.ts adds RESET and SET action types with creators.
+# reducer.ts imports INCREMENT and DECREMENT and handles them in a switch/case.
+#
+# Diff: actions.ts adds `RESET = 'RESET'`, `SET = 'SET'`, plus reset() and
+# setValue(value) action creators alongside existing increment/decrement.
+#
+# Reviewer questions:
+#   Q1: "Does the reducer handle the new actions?"
+#       -> reducer.ts (UNCHANGED) imports INCREMENT and DECREMENT only. Its switch/case
+#          handles INCREMENT and DECREMENT — RESET and SET fall through to default,
+#          returning state unchanged. This is likely a bug: new actions with no handling.
+#   Q2: "What's the existing reducer pattern for adding new cases?"
+#       -> reducer.ts shows the switch/case convention with initialState = { count: 0 }.
+#
+# Not needed:
+#   - store.ts: creates Redux store with createStore. Infrastructure concern that
+#     doesn't need updating when new actions are added.
+#   - selectors.ts: state selector functions. Read-only functions that don't change
+#     when new actions are introduced.
+
+initial:
+  actions.ts: |
+    export const INCREMENT = 'INCREMENT';
+    export const DECREMENT = 'DECREMENT';
+
+    export const increment = () => ({ type: INCREMENT });
+    export const decrement = () => ({ type: DECREMENT });
+  reducer.ts: |
+    import { INCREMENT, DECREMENT } from './actions';
+
+    const initialState = { count: 0 };
+
+    export function counterReducer(state = initialState, action: any) {
+        switch (action.type) {
+            case INCREMENT:
+                return { count: state.count + 1 };
+            case DECREMENT:
+                return { count: state.count - 1 };
+            default:
+                return state;
+        }
+    }
+  store.ts: |
+    import { createStore } from 'redux';
+    import { counterReducer } from './reducer';
+
+    export const store = createStore(counterReducer);
+
+    export type RootState = ReturnType<typeof store.getState>;
+    export type AppDispatch = typeof store.dispatch;
+  selectors.ts: |
+    import { RootState } from './store';
+
+    export const selectCount = (state: RootState) => state.count;
+    export const isPositive = (state: RootState) => state.count > 0;
+    export const isZero = (state: RootState) => state.count === 0;
+changed:
+  actions.ts: |
+    export const INCREMENT = 'INCREMENT';
+    export const DECREMENT = 'DECREMENT';
+    export const RESET = 'RESET';
+    export const SET = 'SET';
+
+    export const increment = () => ({ type: INCREMENT });
+    export const decrement = () => ({ type: DECREMENT });
+    export const reset = () => ({ type: RESET });
+    export const setValue = (value: number) => ({ type: SET, payload: value });
+  reducer.ts: |
+    import { INCREMENT, DECREMENT } from './actions';
+
+    const initialState = { count: 0 };
+
+    export function counterReducer(state = initialState, action: any) {
+        switch (action.type) {
+            case INCREMENT:
+                return { count: state.count + 1 };
+            case DECREMENT:
+                return { count: state.count - 1 };
+            default:
+                return state;
+        }
+    }
+  store.ts: |
+    import { createStore } from 'redux';
+    import { counterReducer } from './reducer';
+
+    export const store = createStore(counterReducer);
+
+    export type RootState = ReturnType<typeof store.getState>;
+    export type AppDispatch = typeof store.dispatch;
+  selectors.ts: |
+    import { RootState } from './store';
+
+    export const selectCount = (state: RootState) => state.count;
+    export const isPositive = (state: RootState) => state.count > 0;
+    export const isZero = (state: RootState) => state.count === 0;
+must_include_files:
+  # Q1: reducer.ts imports from actions.ts — reviewer checks if new actions are handled
+  - reducer.ts
+must_include_content_from:
+  reducer.ts:
+    - "import { INCREMENT, DECREMENT } from './actions'"
+    - "case INCREMENT:"
+    - "case DECREMENT:"
+must_not_include:
+  # store.ts: store creation infrastructure, unchanged by new actions
+  - createStore
+  - RootState
+  - AppDispatch
+  # selectors.ts: read-only state access, not affected by new action types
+  - selectCount
+  - isPositive
+  - isZero
+must_not_include_files:
+  - store.ts
+  - selectors.ts
+max_fragments: 5
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

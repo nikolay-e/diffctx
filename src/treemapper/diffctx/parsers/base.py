@@ -4,6 +4,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Protocol, runtime_checkable
 
+from ..config.extensions import CODE_EXTENSIONS
 from ..types import Fragment, FragmentId, extract_identifiers
 
 _MIN_FRAGMENT_LINES = 1
@@ -168,56 +169,6 @@ def find_indent_safe_end_line(lines: list[str], start_idx: int, target_end_idx: 
 
     return target_end_idx
 
-
-CODE_EXTENSIONS = {
-    ".py",
-    ".pyw",
-    ".pyi",
-    ".js",
-    ".jsx",
-    ".mjs",
-    ".cjs",
-    ".ts",
-    ".tsx",
-    ".mts",
-    ".cts",
-    ".vue",
-    ".svelte",
-    ".go",
-    ".rs",
-    ".java",
-    ".kt",
-    ".kts",
-    ".scala",
-    ".c",
-    ".h",
-    ".cpp",
-    ".hpp",
-    ".cc",
-    ".cxx",
-    ".cs",
-    ".swift",
-    ".rb",
-    ".rake",
-    ".php",
-    ".lua",
-    ".sh",
-    ".bash",
-    ".zsh",
-    ".pl",
-    ".pm",
-    ".r",
-    ".R",
-    ".dart",
-    ".zig",
-    ".nim",
-    ".v",
-    ".ex",
-    ".exs",
-    ".hs",
-    ".ml",
-    ".mli",
-}
 
 YAML_EXTENSIONS = {".yaml", ".yml"}
 INDENT_EXTENSIONS = {".py", ".pyw", ".pyi"} | YAML_EXTENSIONS

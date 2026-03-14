@@ -1,0 +1,120 @@
+# Scenario: Database config changes host from localhost to production server
+#
+# Diff: config.yaml changes database.host localhost→production-db.example.com
+# and database.name myapp→myapp_prod.
+#
+# Reviewer questions:
+#   Q1: "Does any code actually read this config file?"
+#       → src/db.py (UNCHANGED) reads DB_HOST/DB_PORT/DB_NAME from env vars
+#         with HARDCODED DEFAULTS (localhost, 5432, myapp). Without seeing
+#         db.py, the reviewer can't tell if the config change takes effect
+#         or if env-var defaults override it.
+#   Q2: "Will the production host be used?"
+#       → db.py constructs a postgresql:// URL from env vars only. The YAML
+#         config may be entirely ignored unless there's an env loader.
+#
+# Not needed:
+#   - config/cache.yaml: another infra config but for Redis, not database
+#     connection. Knowing Redis settings adds nothing to understanding
+#     whether the database config change takes effect.
+#   - src/migrations.py: database-related but handles schema migrations
+#     via alembic CLI, not connection URL construction.
+
+initial:
+  config.yaml: |
+    database:
+      host: localhost
+      port: 5432
+      name: myapp
+  src/db.py: |
+    import os
+
+    def get_database_url():
+        host = os.getenv("DB_HOST", "localhost")
+        port = os.getenv("DB_PORT", "5432")
+        name = os.getenv("DB_NAME", "myapp")
+        return f"postgresql://{host}:{port}/{name}"
+  config/cache.yaml: |
+    redis:
+      host: localhost
+      port: 6379
+      db: 0
+      max_connections: 10
+  src/migrations.py: |
+    import subprocess
+
+    def run_migrations(direction: str = "up"):
+        if direction == "up":
+            subprocess.run(["alembic", "upgrade", "head"], check=True)
+        elif direction == "down":
+            subprocess.run(["alembic", "downgrade", "-1"], check=True)
+
+    def create_migration(message: str):
+        subprocess.run(["alembic", "revision", "--autogenerate", "-m", message], check=True)
+
+    def get_current_revision():
+        result = subprocess.run(["alembic", "current"], capture_output=True, text=True)
+        return result.stdout.strip()
+
+changed:
+  config.yaml: |
+    database:
+      host: production-db.example.com
+      port: 5432
+      name: myapp_prod
+  src/db.py: |
+    import os
+
+    def get_database_url():
+        host = os.getenv("DB_HOST", "localhost")
+        port = os.getenv("DB_PORT", "5432")
+        name = os.getenv("DB_NAME", "myapp")
+        return f"postgresql://{host}:{port}/{name}"
+  config/cache.yaml: |
+    redis:
+      host: localhost
+      port: 6379
+      db: 0
+      max_connections: 10
+  src/migrations.py: |
+    import subprocess
+
+    def run_migrations(direction: str = "up"):
+        if direction == "up":
+            subprocess.run(["alembic", "upgrade", "head"], check=True)
+        elif direction == "down":
+            subprocess.run(["alembic", "downgrade", "-1"], check=True)
+
+    def create_migration(message: str):
+        subprocess.run(["alembic", "revision", "--autogenerate", "-m", message], check=True)
+
+    def get_current_revision():
+        result = subprocess.run(["alembic", "current"], capture_output=True, text=True)
+        return result.stdout.strip()
+
+must_include_files:
+  # Q1+Q2: The code that constructs the DB URL reveals env-var defaults
+  # that DISAGREE with the new config. Without this, the reviewer can't
+  # tell if the YAML change has any effect.
+  - src/db.py
+must_include_content_from:
+  src/db.py:
+    # Defaults that now disagree with the config change
+    - 'os.getenv("DB_HOST", "localhost")'
+    - 'os.getenv("DB_NAME", "myapp")'
+    # The URL construction that would use these values
+    - "postgresql://{host}:{port}/{name}"
+must_not_include:
+  # cache.yaml: Redis config, different infra service
+  - max_connections
+  # migrations.py: schema management via alembic CLI, not connections
+  - run_migrations
+  - create_migration
+  - alembic
+must_not_include_files:
+  - config/cache.yaml
+  - src/migrations.py
+max_fragments: 5
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

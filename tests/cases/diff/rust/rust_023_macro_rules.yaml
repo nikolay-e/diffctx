@@ -1,0 +1,178 @@
+# Scenario: Adding hashmap! and ensure! declarative macros, updating main to use them
+# Changed: src/macros.rs — added hashmap! and ensure! macros; src/main.rs — uses hashmap! with config
+# Reviewer questions: Does hashmap! handle trailing comma? Is ensure! early-return correct in all contexts?
+# Trap files:
+#   - src/logging_macros.rs: log_debug!/log_error! macros — "macro_rules" pattern overlap but independent
+#   - src/assert_helpers.rs: Custom assertion macros — "ensure/assert" vocabulary but no import
+initial:
+  src/macros.rs: |
+    #[macro_export]
+    macro_rules! vec_of_strings {
+        ($($x:expr),*) => {
+            vec![$($x.to_string()),*]
+        };
+    }
+
+    #[macro_export]
+    macro_rules! log_info {
+        ($($arg:tt)*) => {
+            println!("[INFO] {}", format!($($arg)*));
+        };
+    }
+  src/main.rs: |
+    mod macros;
+
+    fn main() {
+        let v = vec_of_strings!["hello", "world", "rust"];
+        for item in &v {
+            log_info!("Item: {}", item);
+        }
+        println!("Total items: {}", v.len());
+    }
+  src/logging_macros.rs: |
+    #[macro_export]
+    macro_rules! log_debug {
+        ($($arg:tt)*) => {
+            if cfg!(debug_assertions) {
+                eprintln!("[DEBUG] {}", format!($($arg)*));
+            }
+        };
+    }
+
+    #[macro_export]
+    macro_rules! log_error {
+        ($($arg:tt)*) => {
+            eprintln!("[ERROR] {}", format!($($arg)*));
+        };
+    }
+
+    #[macro_export]
+    macro_rules! log_warn {
+        ($($arg:tt)*) => {
+            eprintln!("[WARN] {}", format!($($arg)*));
+        };
+    }
+  src/assert_helpers.rs: |
+    #[macro_export]
+    macro_rules! assert_approx_eq {
+        ($left:expr, $right:expr, $epsilon:expr) => {
+            let diff = ($left - $right).abs();
+            assert!(diff < $epsilon, "Values not approximately equal: {} vs {} (diff: {})", $left, $right, diff);
+        };
+    }
+
+    #[macro_export]
+    macro_rules! assert_contains {
+        ($haystack:expr, $needle:expr) => {
+            assert!($haystack.contains($needle), "{:?} does not contain {:?}", $haystack, $needle);
+        };
+    }
+changed:
+  src/macros.rs: |
+    #[macro_export]
+    macro_rules! vec_of_strings {
+        ($($x:expr),*) => {
+            vec![$($x.to_string()),*]
+        };
+    }
+
+    #[macro_export]
+    macro_rules! log_info {
+        ($($arg:tt)*) => {
+            println!("[INFO] {}", format!($($arg)*));
+        };
+    }
+
+    #[macro_export]
+    macro_rules! hashmap {
+        ($($key:expr => $value:expr),* $(,)?) => {{
+            let mut map = std::collections::HashMap::new();
+            $(map.insert($key, $value);)*
+            map
+        }};
+    }
+
+    #[macro_export]
+    macro_rules! ensure {
+        ($cond:expr, $msg:expr) => {
+            if !$cond {
+                return Err($msg.to_string());
+            }
+        };
+    }
+  src/main.rs: |
+    mod macros;
+
+    fn main() {
+        let v = vec_of_strings!["hello", "world", "rust"];
+        for item in &v {
+            log_info!("Item: {}", item);
+        }
+
+        let config = hashmap! {
+            "host" => "localhost",
+            "port" => "8080",
+        };
+        for (k, v) in &config {
+            log_info!("Config: {} = {}", k, v);
+        }
+
+        println!("Total items: {}", v.len());
+    }
+  src/logging_macros.rs: |
+    #[macro_export]
+    macro_rules! log_debug {
+        ($($arg:tt)*) => {
+            if cfg!(debug_assertions) {
+                eprintln!("[DEBUG] {}", format!($($arg)*));
+            }
+        };
+    }
+
+    #[macro_export]
+    macro_rules! log_error {
+        ($($arg:tt)*) => {
+            eprintln!("[ERROR] {}", format!($($arg)*));
+        };
+    }
+
+    #[macro_export]
+    macro_rules! log_warn {
+        ($($arg:tt)*) => {
+            eprintln!("[WARN] {}", format!($($arg)*));
+        };
+    }
+  src/assert_helpers.rs: |
+    #[macro_export]
+    macro_rules! assert_approx_eq {
+        ($left:expr, $right:expr, $epsilon:expr) => {
+            let diff = ($left - $right).abs();
+            assert!(diff < $epsilon, "Values not approximately equal: {} vs {} (diff: {})", $left, $right, diff);
+        };
+    }
+
+    #[macro_export]
+    macro_rules! assert_contains {
+        ($haystack:expr, $needle:expr) => {
+            assert!($haystack.contains($needle), "{:?} does not contain {:?}", $haystack, $needle);
+        };
+    }
+must_include_files:
+- src/macros.rs
+- src/main.rs
+must_include_content:
+- macro_rules! hashmap {
+- let config = hashmap! {
+must_not_include:
+- log_debug
+- log_error
+- assert_approx_eq
+- assert_contains
+- logging_macros.rs
+- assert_helpers.rs
+must_not_include_files:
+- src/logging_macros.rs
+- src/assert_helpers.rs
+max_files: 4
+add_garbage_files: false
+skip_garbage_check: true

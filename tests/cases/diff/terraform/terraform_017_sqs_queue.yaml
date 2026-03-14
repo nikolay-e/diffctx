@@ -1,0 +1,218 @@
+# Scenario: Add an SQS tasks queue with dead-letter queue and IAM policy
+#
+# Reviewer questions:
+#   Q1: "What IAM policy grants access to this queue?"
+#       -> iam.tf defines SQS permissions for the Lambda role, specifically
+#         referencing aws_sqs_queue.tasks.arn.
+#   Q2: "What consumer uses this queue?"
+#       -> iam.tf shows the Lambda role has SQS access.
+#   Q3: "Is there an event source mapping for this queue?"
+#       -> lambda.tf (UNCHANGED) defines an event source mapping from
+#         the tasks queue to the Lambda function. Shows the consumer config.
+#
+# Not needed:
+#   - audit_queue.tf: Same SQS type but for audit events. HARDEST TRAP:
+#     identical resource type (aws_sqs_queue), same attribute names
+#     (delay_seconds, message_retention_seconds, visibility_timeout),
+#     has its own DLQ. But audit events is a different queue.
+#
+#   - notifications_queue.tf: Another SQS queue for notifications. Same
+#     resource type, same pattern. But email notifications, different concern.
+#
+#   - worker.py: Python consumer code that receives SQS messages. Direct
+#     edge: calls sqs.receive_message for this queue. But application code,
+#     not Terraform infrastructure.
+#
+#   - monitoring/queue_alarms.tf: CloudWatch alarms on SQS metrics.
+#     References aws_sqs_queue.tasks. HARD TRAP: same queue reference.
+#     But monitoring is observation, not configuration.
+
+initial:
+  messaging.tf: |
+    # Messaging resources
+  iam.tf: |
+    resource "aws_iam_role_policy" "lambda_sqs" {
+      name = "lambda-sqs-access"
+      role = aws_iam_role.lambda_exec.id
+
+      policy = jsonencode({
+        Version = "2012-10-17"
+        Statement = [{
+          Effect = "Allow"
+          Action = [
+            "sqs:ReceiveMessage",
+            "sqs:DeleteMessage",
+            "sqs:GetQueueAttributes"
+          ]
+          Resource = aws_sqs_queue.tasks.arn
+        }]
+      })
+    }
+  lambda.tf: |
+    resource "aws_lambda_event_source_mapping" "tasks" {
+      event_source_arn = aws_sqs_queue.tasks.arn
+      function_name    = aws_lambda_function.processor.arn
+      batch_size       = 10
+
+      function_response_types = ["ReportBatchItemFailures"]
+    }
+
+    resource "aws_lambda_function" "processor" {
+      function_name = "task-processor"
+      runtime       = "python3.11"
+      handler       = "processor.handler"
+      role          = aws_iam_role.lambda_exec.arn
+      filename      = "processor.zip"
+
+      environment {
+        variables = {
+          QUEUE_URL = aws_sqs_queue.tasks.url
+        }
+      }
+    }
+  audit_queue.tf: |
+    resource "aws_sqs_queue" "audit" {
+      name                       = "audit-events-queue"
+      delay_seconds              = 10
+      message_retention_seconds  = 1209600
+      visibility_timeout_seconds = 60
+
+      redrive_policy = jsonencode({
+        deadLetterTargetArn = aws_sqs_queue.audit_dlq.arn
+        maxReceiveCount     = 5
+      })
+    }
+
+    resource "aws_sqs_queue" "audit_dlq" {
+      name                      = "audit-events-queue-dlq"
+      message_retention_seconds = 1209600
+    }
+  notifications_queue.tf: |
+    resource "aws_sqs_queue" "notifications" {
+      name                       = "email-notifications-queue"
+      delay_seconds              = 5
+      message_retention_seconds  = 86400
+      visibility_timeout_seconds = 120
+    }
+
+    resource "aws_sqs_queue" "notifications_dlq" {
+      name = "email-notifications-queue-dlq"
+    }
+  worker.py: |
+    import boto3
+    import json
+
+    sqs = boto3.client('sqs')
+
+    def process_task(message):
+        body = json.loads(message['Body'])
+        task_type = body.get('type')
+        if task_type == 'data_sync':
+            sync_data(body['payload'])
+        elif task_type == 'report_generation':
+            generate_report(body['payload'])
+
+    def poll_queue(queue_url):
+        while True:
+            response = sqs.receive_message(
+                QueueUrl=queue_url,
+                MaxNumberOfMessages=10,
+                WaitTimeSeconds=20,
+            )
+            for message in response.get('Messages', []):
+                process_task(message)
+                sqs.delete_message(
+                    QueueUrl=queue_url,
+                    ReceiptHandle=message['ReceiptHandle'],
+                )
+  monitoring/queue_alarms.tf: |
+    resource "aws_cloudwatch_metric_alarm" "tasks_queue_depth" {
+      alarm_name          = "tasks-queue-depth-high"
+      comparison_operator = "GreaterThanThreshold"
+      evaluation_periods  = 2
+      metric_name         = "ApproximateNumberOfMessagesVisible"
+      namespace           = "AWS/SQS"
+      period              = 300
+      statistic           = "Average"
+      threshold           = 1000
+
+      dimensions = {
+        QueueName = "tasks-queue"
+      }
+    }
+
+    resource "aws_cloudwatch_metric_alarm" "tasks_dlq_messages" {
+      alarm_name          = "tasks-dlq-has-messages"
+      comparison_operator = "GreaterThanThreshold"
+      evaluation_periods  = 1
+      metric_name         = "ApproximateNumberOfMessagesVisible"
+      namespace           = "AWS/SQS"
+      period              = 60
+      statistic           = "Sum"
+      threshold           = 0
+
+      dimensions = {
+        QueueName = "tasks-queue-dlq"
+      }
+    }
+
+changed:
+  messaging.tf: |
+    resource "aws_sqs_queue" "tasks" {
+      name                       = "tasks-queue"
+      delay_seconds              = 0
+      max_message_size           = 262144
+      message_retention_seconds  = 345600
+      visibility_timeout_seconds = 30
+
+      redrive_policy = jsonencode({
+        deadLetterTargetArn = aws_sqs_queue.tasks_dlq.arn
+        maxReceiveCount     = 3
+      })
+    }
+
+    resource "aws_sqs_queue" "tasks_dlq" {
+      name = "tasks-queue-dlq"
+    }
+
+must_include_files:
+  # Q1+Q2: IAM policy granting access to this specific queue
+  - iam.tf
+  # Q3: Event source mapping connecting queue to Lambda
+  - lambda.tf
+
+must_include_content_from:
+  iam.tf:
+    - resource "aws_iam_role_policy" "lambda_sqs" {
+    - aws_sqs_queue.tasks.arn
+  lambda.tf:
+    - aws_lambda_event_source_mapping
+    - event_source_arn = aws_sqs_queue.tasks.arn
+    - ReportBatchItemFailures
+
+must_not_include:
+  # --- audit_queue.tf: same SQS type but for audit events ---
+  - audit-events-queue
+  - message_retention_seconds  = 1209600
+  - audit_dlq
+  # --- notifications_queue.tf: another SQS queue, different concern ---
+  - email-notifications-queue
+  - visibility_timeout_seconds = 120
+  # --- worker.py: consumer code, not Terraform ---
+  - sqs.receive_message
+  - process_task
+  - poll_queue
+  # --- monitoring: queue alarms, observation concern ---
+  - tasks-queue-depth-high
+  - ApproximateNumberOfMessagesVisible
+
+must_not_include_files:
+  - audit_queue.tf
+  - notifications_queue.tf
+  - worker.py
+  - monitoring/queue_alarms.tf
+
+max_fragments: 5
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

@@ -1,9 +1,0 @@
-must_include_files:
-- infrastructure/api.tf
-must_include_content:
-- cors_origins = ["https://example.com", "https://app.example.com"]
-must_not_include:
-- GARBAGE_TF_GLUE_443_001
-- GARBAGE_TF_SFN_443_006
-- glue.tf
-- step_functions.tf

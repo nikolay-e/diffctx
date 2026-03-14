@@ -1,0 +1,304 @@
+# Scenario: build.gradle adds Spring dependency management, JaCoCo code
+#   coverage, actuator, and test dependencies to an existing Spring Boot project.
+#
+# Diff shows:
+#   - plugins: java, spring-boot 3.0.0; deps: spring-boot-starter-web
+#   + plugins: io.spring.dependency-management 1.1.0, jacoco;
+#     deps: +actuator, +spring-boot-starter-test; jacoco config
+#
+# Reviewer questions:
+#   Q1: "What Spring Boot version is being used — is 1.1.0 dependency-management
+#       compatible?"
+#       -> The diff shows spring-boot 3.0.0 in the existing plugins block.
+#
+#   Q2: "Are there other build config files that might conflict?"
+#       -> Needs settings.gradle or context about multi-module setup.
+#
+# Not needed for comprehension:
+#   - build.gradle.kts (Kotlin DSL): IDENTICAL Gradle config but in Kotlin
+#     DSL syntax. Same plugins, same dependencies. HARDEST TRAP: same
+#     build system, different syntax.
+#
+#   - pom.xml: Maven build file for a parallel project. Same Spring Boot
+#     dependencies. Different build tool entirely.
+#
+#   - Dockerfile: Docker build using gradle. References build.gradle
+#     output. But container build doesn't help review Gradle config.
+#
+#   - gradle.properties: Gradle property overrides. Same build system.
+#     But property values don't help review plugin/dependency additions.
+#
+#   - ci.yml: GitHub Actions CI pipeline running gradle build. References
+#     build.gradle tasks. But CI config doesn't help review dependencies.
+
+initial:
+  build.gradle: |
+    plugins {
+        id 'java'
+        id 'org.springframework.boot' version '3.0.0'
+    }
+
+    group = 'com.example'
+    version = '0.0.1-SNAPSHOT'
+
+    java {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    repositories {
+        mavenCentral()
+    }
+
+    dependencies {
+        implementation 'org.springframework.boot:spring-boot-starter-web'
+    }
+  settings.gradle: |
+    rootProject.name = 'my-service'
+  build.gradle.kts: |
+    plugins {
+        java
+        id("org.springframework.boot") version "3.0.0"
+        id("io.spring.dependency-management") version "1.1.0"
+        jacoco
+    }
+
+    group = "com.example.other"
+    version = "1.0.0"
+
+    java {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    repositories {
+        mavenCentral()
+    }
+
+    dependencies {
+        implementation("org.springframework.boot:spring-boot-starter-web")
+        implementation("org.springframework.boot:spring-boot-starter-actuator")
+        testImplementation("org.springframework.boot:spring-boot-starter-test")
+    }
+
+    tasks.jacocoTestReport {
+        reports {
+            xml.required.set(true)
+            html.required.set(true)
+        }
+    }
+  pom.xml: |
+    <?xml version="1.0" encoding="UTF-8"?>
+    <project xmlns="http://maven.apache.org/POM/4.0.0">
+        <modelVersion>4.0.0</modelVersion>
+        <parent>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-parent</artifactId>
+            <version>3.0.0</version>
+        </parent>
+        <groupId>com.example</groupId>
+        <artifactId>legacy-service</artifactId>
+        <version>0.0.1-SNAPSHOT</version>
+        <dependencies>
+            <dependency>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-starter-web</artifactId>
+            </dependency>
+        </dependencies>
+    </project>
+  Dockerfile: |
+    FROM gradle:7-jdk17 AS builder
+    WORKDIR /app
+    COPY build.gradle settings.gradle ./
+    COPY src ./src
+    RUN gradle build --no-daemon -x test
+
+    FROM eclipse-temurin:17-jre-alpine
+    WORKDIR /app
+    COPY --from=builder /app/build/libs/*.jar app.jar
+    EXPOSE 8080
+    ENTRYPOINT ["java", "-jar", "app.jar"]
+  gradle.properties: |
+    org.gradle.jvmargs=-Xmx512m
+    org.gradle.parallel=true
+    org.gradle.caching=true
+    spring.boot.mainclass=com.example.Application
+  .github/workflows/ci.yml: |
+    name: CI
+    on: [push, pull_request]
+    jobs:
+      build:
+        runs-on: ubuntu-latest
+        steps:
+          - uses: actions/checkout@v4
+          - uses: actions/setup-java@v4
+            with:
+              java-version: '17'
+              distribution: 'temurin'
+          - name: Build
+            run: ./gradlew build
+          - name: Test
+            run: ./gradlew test
+
+changed:
+  build.gradle: |
+    plugins {
+        id 'java'
+        id 'org.springframework.boot' version '3.0.0'
+        id 'io.spring.dependency-management' version '1.1.0'
+        id 'jacoco'
+    }
+
+    group = 'com.example'
+    version = '0.0.1-SNAPSHOT'
+
+    java {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    repositories {
+        mavenCentral()
+    }
+
+    dependencies {
+        implementation 'org.springframework.boot:spring-boot-starter-web'
+        implementation 'org.springframework.boot:spring-boot-starter-actuator'
+        testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    }
+
+    jacoco {
+        toolVersion = "0.8.8"
+    }
+  settings.gradle: |
+    rootProject.name = 'my-service'
+  build.gradle.kts: |
+    plugins {
+        java
+        id("org.springframework.boot") version "3.0.0"
+        id("io.spring.dependency-management") version "1.1.0"
+        jacoco
+    }
+
+    group = "com.example.other"
+    version = "1.0.0"
+
+    java {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    repositories {
+        mavenCentral()
+    }
+
+    dependencies {
+        implementation("org.springframework.boot:spring-boot-starter-web")
+        implementation("org.springframework.boot:spring-boot-starter-actuator")
+        testImplementation("org.springframework.boot:spring-boot-starter-test")
+    }
+
+    tasks.jacocoTestReport {
+        reports {
+            xml.required.set(true)
+            html.required.set(true)
+        }
+    }
+  pom.xml: |
+    <?xml version="1.0" encoding="UTF-8"?>
+    <project xmlns="http://maven.apache.org/POM/4.0.0">
+        <modelVersion>4.0.0</modelVersion>
+        <parent>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-parent</artifactId>
+            <version>3.0.0</version>
+        </parent>
+        <groupId>com.example</groupId>
+        <artifactId>legacy-service</artifactId>
+        <version>0.0.1-SNAPSHOT</version>
+        <dependencies>
+            <dependency>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-starter-web</artifactId>
+            </dependency>
+        </dependencies>
+    </project>
+  Dockerfile: |
+    FROM gradle:7-jdk17 AS builder
+    WORKDIR /app
+    COPY build.gradle settings.gradle ./
+    COPY src ./src
+    RUN gradle build --no-daemon -x test
+
+    FROM eclipse-temurin:17-jre-alpine
+    WORKDIR /app
+    COPY --from=builder /app/build/libs/*.jar app.jar
+    EXPOSE 8080
+    ENTRYPOINT ["java", "-jar", "app.jar"]
+  gradle.properties: |
+    org.gradle.jvmargs=-Xmx512m
+    org.gradle.parallel=true
+    org.gradle.caching=true
+    spring.boot.mainclass=com.example.Application
+  .github/workflows/ci.yml: |
+    name: CI
+    on: [push, pull_request]
+    jobs:
+      build:
+        runs-on: ubuntu-latest
+        steps:
+          - uses: actions/checkout@v4
+          - uses: actions/setup-java@v4
+            with:
+              java-version: '17'
+              distribution: 'temurin'
+          - name: Build
+            run: ./gradlew build
+          - name: Test
+            run: ./gradlew test
+
+must_include_files:
+  - build.gradle
+
+must_include_content_from:
+  build.gradle:
+    - "id 'io.spring.dependency-management' version '1.1.0'"
+    - "id 'jacoco'"
+    - "spring-boot-starter-actuator"
+    - "spring-boot-starter-test"
+    - 'toolVersion = "0.8.8"'
+
+must_not_include:
+  # build.gradle.kts: Kotlin DSL version, same deps, different syntax
+  - "build.gradle.kts"
+  - "xml.required.set"
+  - "jacocoTestReport"
+  # pom.xml: Maven build, different build tool
+  - "pom.xml"
+  - "modelVersion"
+  - "artifactId"
+  - legacy-service
+  # Dockerfile: container build, doesn't help review Gradle config
+  - Dockerfile
+  - "eclipse-temurin"
+  - "ENTRYPOINT"
+  # gradle.properties: property overrides, not relevant
+  - "org.gradle.jvmargs"
+  - "org.gradle.parallel"
+  - "spring.boot.mainclass"
+  # ci.yml: CI pipeline, doesn't help review build config
+  - "actions/checkout"
+  - "actions/setup-java"
+  - "gradlew"
+
+must_not_include_files:
+  - build.gradle.kts
+  - pom.xml
+  - Dockerfile
+  - gradle.properties
+  - .github/workflows/ci.yml
+
+max_fragments: 4
+max_files: 2
+add_garbage_files: false
+skip_garbage_check: true

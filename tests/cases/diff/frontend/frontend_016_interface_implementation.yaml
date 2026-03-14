@@ -1,0 +1,62 @@
+initial:
+  interfaces.ts: |
+    export interface IService {
+        start(): void;
+        stop(): void;
+        getStatus(): string;
+    }
+
+    export interface ILogger {
+        log(message: string): void;
+        error(message: string): void;
+    }
+
+    // ts_garbage_marker_001
+  service.ts: |
+    console.log('initial');
+changed:
+  interfaces.ts: |
+    export interface IService {
+        start(): void;
+        stop(): void;
+        getStatus(): string;
+    }
+
+    export interface ILogger {
+        log(message: string): void;
+        error(message: string): void;
+    }
+
+    // ts_garbage_marker_001
+  service.ts: |
+    import { IService, ILogger } from './interfaces';
+
+    export class MyService implements IService {
+        private running = false;
+        private logger: ILogger;
+
+        constructor(logger: ILogger) {
+            this.logger = logger;
+        }
+
+        start(): void {
+            this.running = true;
+            this.logger.log('Service started');
+        }
+
+        stop(): void {
+            this.running = false;
+            this.logger.log('Service stopped');
+        }
+
+        getStatus(): string {
+            return this.running ? 'running' : 'stopped';
+        }
+    }
+must_include_files:
+- service.ts
+must_include_content:
+- import { IService, ILogger } from './interfaces';
+- 'constructor(logger: ILogger) {'
+add_garbage_files: false
+skip_garbage_check: true

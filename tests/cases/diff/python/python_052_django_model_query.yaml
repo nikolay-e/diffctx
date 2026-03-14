@@ -1,0 +1,268 @@
+# Scenario: Django models.py adds restore(), avatar_url, User methods, Profile
+#   preferences, Post.publish(), and ordering to multiple models.
+#
+# Reviewer questions:
+#   - Does SoftDeleteMixin.restore() properly reset both fields?
+#   - Is ordering = ["-created_at"] appropriate for User and Post?
+#
+# Trap files:
+#   - services/search_engine.py: queries data and returns results, uses "model"
+#     vocabulary but has no Django model dependency
+#   - tasks/notification_worker.py: sends notifications to users, mentions "user"
+#     but does not import from models
+
+initial:
+  models.py: |
+    from django.db import models
+    from django.contrib.auth.models import AbstractUser
+    from django.utils import timezone
+    from typing import List, Optional
+
+    class TimestampMixin(models.Model):
+        created_at = models.DateTimeField(auto_now_add=True)
+        updated_at = models.DateTimeField(auto_now=True)
+
+        class Meta:
+            abstract = True
+
+    class SoftDeleteManager(models.Manager):
+        def get_queryset(self):
+            return super().get_queryset().filter(is_deleted=False)
+
+    class SoftDeleteMixin(models.Model):
+        is_deleted = models.BooleanField(default=False)
+        deleted_at = models.DateTimeField(null=True, blank=True)
+
+        objects = SoftDeleteManager()
+        all_objects = models.Manager()
+
+        def soft_delete(self):
+            self.is_deleted = True
+            self.deleted_at = timezone.now()
+            self.save()
+
+        class Meta:
+            abstract = True
+
+    class User(AbstractUser, TimestampMixin):
+        name = models.CharField(max_length=100)
+        email = models.EmailField(unique=True)
+        bio = models.TextField(blank=True, default="")
+        is_verified = models.BooleanField(default=False)
+
+        USERNAME_FIELD = "email"
+        REQUIRED_FIELDS = ["name"]
+
+        class Meta:
+            db_table = "users"
+
+    class Profile(TimestampMixin):
+        user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="profile")
+        phone = models.CharField(max_length=20, blank=True, default="")
+        address = models.TextField(blank=True, default="")
+
+        class Meta:
+            db_table = "profiles"
+
+    class Post(TimestampMixin, SoftDeleteMixin):
+        author = models.ForeignKey(User, on_delete=models.CASCADE, related_name="posts")
+        title = models.CharField(max_length=200)
+        content = models.TextField()
+        is_published = models.BooleanField(default=False)
+
+        class Meta:
+            db_table = "posts"
+  views.py: |
+    from models import User, Post
+
+    class UserListView:
+        def get(self):
+            return User.objects.all()
+
+    def index():
+        pass
+  services/search_engine.py: |
+    from typing import Any
+
+    class SearchEngine:
+        def __init__(self, index_name: str = "default"):
+            self._documents: dict[str, dict] = {}
+
+        def index_document(self, doc_id: str, fields: dict[str, Any]) -> None:
+            self._documents[doc_id] = fields
+
+        def search(self, query: str, model_type: str = "all") -> list[dict]:
+            results = []
+            for doc_id, fields in self._documents.items():
+                for value in fields.values():
+                    if query.lower() in str(value).lower():
+                        results.append({"id": doc_id, **fields})
+                        break
+            return results
+  tasks/notification_worker.py: |
+    from typing import Any
+
+    class NotificationWorker:
+        def __init__(self, channel: str = "email"):
+            self.channel = channel
+            self._queue: list[dict] = []
+
+        def enqueue(self, user_id: int, message: str) -> None:
+            self._queue.append({"user_id": user_id, "message": message, "channel": self.channel})
+
+        def process_all(self) -> int:
+            count = len(self._queue)
+            self._queue.clear()
+            return count
+
+changed:
+  models.py: |
+    from django.db import models
+    from django.contrib.auth.models import AbstractUser
+    from django.utils import timezone
+    from typing import List, Optional
+
+    class TimestampMixin(models.Model):
+        created_at = models.DateTimeField(auto_now_add=True)
+        updated_at = models.DateTimeField(auto_now=True)
+
+        class Meta:
+            abstract = True
+
+    class SoftDeleteManager(models.Manager):
+        def get_queryset(self):
+            return super().get_queryset().filter(is_deleted=False)
+
+    class SoftDeleteMixin(models.Model):
+        is_deleted = models.BooleanField(default=False)
+        deleted_at = models.DateTimeField(null=True, blank=True)
+
+        objects = SoftDeleteManager()
+        all_objects = models.Manager()
+
+        def soft_delete(self):
+            self.is_deleted = True
+            self.deleted_at = timezone.now()
+            self.save()
+
+        def restore(self):
+            self.is_deleted = False
+            self.deleted_at = None
+            self.save()
+
+        class Meta:
+            abstract = True
+
+    class User(AbstractUser, TimestampMixin):
+        name = models.CharField(max_length=100)
+        email = models.EmailField(unique=True)
+        bio = models.TextField(blank=True, default="")
+        avatar_url = models.URLField(blank=True, default="")
+        is_verified = models.BooleanField(default=False)
+
+        USERNAME_FIELD = "email"
+        REQUIRED_FIELDS = ["name"]
+
+        class Meta:
+            db_table = "users"
+            ordering = ["-created_at"]
+
+        def get_full_name(self) -> str:
+            return self.name
+
+        @classmethod
+        def find_by_email(cls, email: str) -> Optional["User"]:
+            try:
+                return cls.objects.get(email=email)
+            except cls.DoesNotExist:
+                return None
+
+    class Profile(TimestampMixin):
+        user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="profile")
+        phone = models.CharField(max_length=20, blank=True, default="")
+        address = models.TextField(blank=True, default="")
+        preferences = models.JSONField(default=dict)
+
+        class Meta:
+            db_table = "profiles"
+
+        def update_preferences(self, key: str, value) -> None:
+            self.preferences[key] = value
+            self.save()
+
+    class Post(TimestampMixin, SoftDeleteMixin):
+        author = models.ForeignKey(User, on_delete=models.CASCADE, related_name="posts")
+        title = models.CharField(max_length=200)
+        content = models.TextField()
+        is_published = models.BooleanField(default=False)
+        published_at = models.DateTimeField(null=True, blank=True)
+
+        class Meta:
+            db_table = "posts"
+            ordering = ["-created_at"]
+
+        def publish(self) -> None:
+            self.is_published = True
+            self.published_at = timezone.now()
+            self.save()
+  views.py: |
+    from models import User, Post
+
+    class UserListView:
+        def get(self):
+            return User.objects.all()
+
+    def index():
+        pass
+  services/search_engine.py: |
+    from typing import Any
+
+    class SearchEngine:
+        def __init__(self, index_name: str = "default"):
+            self._documents: dict[str, dict] = {}
+
+        def index_document(self, doc_id: str, fields: dict[str, Any]) -> None:
+            self._documents[doc_id] = fields
+
+        def search(self, query: str, model_type: str = "all") -> list[dict]:
+            results = []
+            for doc_id, fields in self._documents.items():
+                for value in fields.values():
+                    if query.lower() in str(value).lower():
+                        results.append({"id": doc_id, **fields})
+                        break
+            return results
+  tasks/notification_worker.py: |
+    from typing import Any
+
+    class NotificationWorker:
+        def __init__(self, channel: str = "email"):
+            self.channel = channel
+            self._queue: list[dict] = []
+
+        def enqueue(self, user_id: int, message: str) -> None:
+            self._queue.append({"user_id": user_id, "message": message, "channel": self.channel})
+
+        def process_all(self) -> int:
+            count = len(self._queue)
+            self._queue.clear()
+            return count
+
+must_include_files:
+- models.py
+must_include_content:
+- 'def restore(self):'
+- 'def get_full_name(self) -> str:'
+must_not_include:
+- SearchEngine
+- index_document
+- NotificationWorker
+- enqueue
+- process_all
+must_not_include_files:
+- services/search_engine.py
+- tasks/notification_worker.py
+max_fragments: 8
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

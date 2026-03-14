@@ -1,0 +1,202 @@
+# Scenario: Flask Dockerfile refactored to multi-stage build with HEALTHCHECK
+# using curl against /health, non-root user, and curl installed explicitly.
+# The app code and requirements are unchanged.
+#
+# Reviewer questions:
+#   1. Does app.py define GET /health returning 200 — matching the HEALTHCHECK curl target?
+#   2. Does the app run on port 8080 — matching the HEALTHCHECK localhost:8080 URL?
+#   3. Does config.py define timing defaults consistent with HEALTHCHECK intervals?
+
+initial:
+  app.py: |
+    from flask import Flask, jsonify
+    import os
+    import time
+
+    app = Flask(__name__)
+    START_TIME = time.time()
+
+    @app.route('/health')
+    def health():
+        return 'OK', 200
+
+    @app.route('/healthz')
+    def healthz():
+        uptime = time.time() - START_TIME
+        return jsonify({
+            'status': 'healthy',
+            'uptime_seconds': round(uptime, 2)
+        })
+
+    @app.route('/ready')
+    def ready():
+        return jsonify({'status': 'ready'})
+
+    if __name__ == '__main__':
+        app.run(host='0.0.0.0', port=8080)
+  config.py: |
+    import os
+
+    HEALTH_CHECK_INTERVAL = int(os.getenv('HEALTH_CHECK_INTERVAL', '30'))
+    HEALTH_CHECK_TIMEOUT = int(os.getenv('HEALTH_CHECK_TIMEOUT', '3'))
+    START_PERIOD = int(os.getenv('START_PERIOD', '5'))
+  requirements.txt: |
+    flask==2.3.0
+    gunicorn==21.2.0
+  Dockerfile: |
+    FROM python:3.11-slim
+    COPY app.py .
+    RUN pip install flask
+    CMD ["python", "app.py"]
+
+  # Trap: health check shell script — similar curl calls but is ops testing utility
+  scripts/health_test.sh: |
+    #!/bin/bash
+    set -e
+    curl -f http://localhost:8080/health
+    curl -f http://localhost:8080/healthz
+    curl -f http://localhost:8080/ready
+    echo "All health checks passed"
+
+  # Trap: K8s probes config — same liveness/readiness concept but different layer
+  k8s/probes.yaml: |
+    livenessProbe:
+      httpGet:
+        path: /health
+        port: 8080
+      initialDelaySeconds: 5
+      periodSeconds: 30
+    readinessProbe:
+      httpGet:
+        path: /ready
+        port: 8080
+
+  # Trap: Prometheus scrape config — monitoring infrastructure, different concern
+  prometheus/scrape.yml: |
+    scrape_configs:
+      - job_name: flask-app
+        metrics_path: /metrics
+        static_configs:
+          - targets: ['localhost:8080']
+
+changed:
+  app.py: |
+    from flask import Flask, jsonify
+    import os
+    import time
+
+    app = Flask(__name__)
+    START_TIME = time.time()
+
+    @app.route('/health')
+    def health():
+        return 'OK', 200
+
+    @app.route('/healthz')
+    def healthz():
+        uptime = time.time() - START_TIME
+        return jsonify({
+            'status': 'healthy',
+            'uptime_seconds': round(uptime, 2)
+        })
+
+    @app.route('/ready')
+    def ready():
+        return jsonify({'status': 'ready'})
+
+    if __name__ == '__main__':
+        app.run(host='0.0.0.0', port=8080)
+  config.py: |
+    import os
+
+    HEALTH_CHECK_INTERVAL = int(os.getenv('HEALTH_CHECK_INTERVAL', '30'))
+    HEALTH_CHECK_TIMEOUT = int(os.getenv('HEALTH_CHECK_TIMEOUT', '3'))
+    START_PERIOD = int(os.getenv('START_PERIOD', '5'))
+  requirements.txt: |
+    flask==2.3.0
+    gunicorn==21.2.0
+  Dockerfile: |
+    # Build stage
+    FROM python:3.12-slim AS builder
+    WORKDIR /build
+    COPY requirements.txt .
+    RUN pip install --no-cache-dir --target=/deps -r requirements.txt
+
+    # Production stage
+    FROM python:3.12-slim AS production
+    WORKDIR /app
+
+    # Install curl for health checks
+    RUN apt-get update && \
+        apt-get install -y --no-install-recommends curl && \
+        rm -rf /var/lib/apt/lists/* && \
+        useradd --create-home --shell /bin/bash appuser
+
+    # Copy dependencies and application
+    COPY --from=builder /deps /usr/local/lib/python3.12/site-packages
+    COPY app.py config.py ./
+
+    ENV PYTHONUNBUFFERED=1
+    ENV PYTHONDONTWRITEBYTECODE=1
+
+    USER appuser
+    EXPOSE 8080
+
+    # Comprehensive health check configuration
+    HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+        CMD curl -f http://localhost:8080/health || exit 1
+
+    CMD ["python", "app.py"]
+
+  scripts/health_test.sh: |
+    #!/bin/bash
+    set -e
+    curl -f http://localhost:8080/health
+    curl -f http://localhost:8080/healthz
+    curl -f http://localhost:8080/ready
+    echo "All health checks passed"
+  k8s/probes.yaml: |
+    livenessProbe:
+      httpGet:
+        path: /health
+        port: 8080
+      initialDelaySeconds: 5
+      periodSeconds: 30
+    readinessProbe:
+      httpGet:
+        path: /ready
+        port: 8080
+  prometheus/scrape.yml: |
+    scrape_configs:
+      - job_name: flask-app
+        metrics_path: /metrics
+        static_configs:
+          - targets: ['localhost:8080']
+
+# === Assertions ===
+
+must_include_files:
+- Dockerfile
+
+must_include_content_from:
+  # Reviewer needs to verify /health route exists and returns 200 for the HEALTHCHECK curl
+  app.py:
+    - "@app.route('/health')"
+    - "return 'OK', 200"
+  # Reviewer needs to see config timing defaults match HEALTHCHECK interval/timeout/start-period
+  config.py:
+    - "HEALTH_CHECK_INTERVAL = int(os.getenv('HEALTH_CHECK_INTERVAL', '30'))"
+    - "HEALTH_CHECK_TIMEOUT = int(os.getenv('HEALTH_CHECK_TIMEOUT', '3'))"
+
+must_not_include_files:
+  # Health test script — similar curl calls but is ops testing utility, not build concern
+- scripts/health_test.sh
+  # K8s probes — same liveness/readiness concept but different orchestration layer
+- k8s/probes.yaml
+  # Prometheus scrape — monitoring infrastructure, unrelated to Docker HEALTHCHECK
+- prometheus/scrape.yml
+
+max_fragments: 6
+max_files: 4
+add_garbage_files: false
+skip_garbage_check: true

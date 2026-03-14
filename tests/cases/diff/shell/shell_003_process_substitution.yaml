@@ -1,0 +1,261 @@
+# Scenario: compare.sh adds new process substitution patterns for CSV
+# column extraction and set intersection. It sources csv_utils.sh which
+# provides helper functions for CSV field extraction used alongside the
+# new process substitution patterns.
+#
+# Diff: compare.sh adds paste+cut and comm pipeline using process substitution.
+#
+# Reviewer questions:
+#   Q1: "What CSV extraction utilities are available?"
+#       -> csv_utils.sh (UNCHANGED) defines extract_column, count_rows,
+#          and header_fields. Reviewer sees the utility layer the new
+#          paste/cut commands complement.
+#   Q2: "Does the existing pattern in compare.sh use consistent idioms?"
+#       -> csv_utils.sh shows extract_column uses cut -d, -f internally.
+#          The new paste+cut in compare.sh follows the same delimiter
+#          convention. Reviewer verifies consistency.
+#
+# Not needed:
+#   - archive.sh: tar/gzip archival script. Same shell domain but no
+#     sourcing from compare.sh and no shared data files.
+#   - network_check.sh: ping/curl connectivity tests. Uses process
+#     substitution style (subshells) but no sourcing relationship.
+#   - merge_csv.sh: also sources csv_utils.sh and uses extract_column.
+#     DIRECT structural edge (same source, same functions) but merges
+#     CSVs rather than comparing — different consumer.
+#   - diff_report.sh: generates diff reports between files. Same "compare"
+#     domain and uses diff command, but doesn't source csv_utils.sh.
+#   - lib/sort_utils.sh: provides sort-related helpers. compare.sh uses
+#     sort in process substitution — similar domain but independent.
+
+initial:
+  compare.sh: |
+    #!/bin/bash
+    source ./csv_utils.sh
+
+    diff <(sort file1.txt) <(sort file2.txt)
+
+    while read -r line; do
+        echo "Found: $line"
+    done < <(grep -r "TODO" src/)
+  csv_utils.sh: |
+    #!/bin/bash
+
+    extract_column() {
+        local file=$1
+        local col=$2
+        cut -d, -f"$col" "$file"
+    }
+
+    count_rows() {
+        local file=$1
+        wc -l < "$file" | tr -d ' '
+    }
+
+    header_fields() {
+        local file=$1
+        head -1 "$file" | tr ',' '\n'
+    }
+
+    validate_csv() {
+        local file=$1
+        local expected_cols=$2
+        local actual
+        actual=$(head -1 "$file" | awk -F, '{print NF}')
+        [[ "$actual" -eq "$expected_cols" ]]
+    }
+  archive.sh: |
+    #!/bin/bash
+    ARCHIVE_DIR="/var/archives"
+    RETENTION_DAYS=30
+
+    create_archive() {
+        local source_dir=$1
+        local name=$2
+        local timestamp=$(date +%Y%m%d)
+        tar czf "${ARCHIVE_DIR}/${name}_${timestamp}.tar.gz" -C "$source_dir" .
+        echo "Archived: ${name}_${timestamp}.tar.gz"
+    }
+
+    extract_archive() {
+        local archive=$1
+        local dest=$2
+        mkdir -p "$dest"
+        tar xzf "$archive" -C "$dest"
+    }
+
+    list_archives() {
+        ls -lh "${ARCHIVE_DIR}"/*.tar.gz 2>/dev/null
+    }
+
+    purge_old_archives() {
+        find "$ARCHIVE_DIR" -name "*.tar.gz" -mtime "+$RETENTION_DAYS" -delete
+    }
+  network_check.sh: |
+    #!/bin/bash
+    CHECK_HOSTS=("google.com" "github.com" "cloudflare.com")
+    TIMEOUT=5
+
+    check_connectivity() {
+        local host=$1
+        if ping -c 1 -W "$TIMEOUT" "$host" > /dev/null 2>&1; then
+            echo "$host: reachable"
+        else
+            echo "$host: unreachable"
+        fi
+    }
+
+    check_all() {
+        for host in "${CHECK_HOSTS[@]}"; do
+            check_connectivity "$host"
+        done
+    }
+
+    check_http() {
+        local url=$1
+        local status=$(curl -s -o /dev/null -w "%{http_code}" "$url")
+        echo "$url: HTTP $status"
+    }
+
+    check_dns() {
+        local domain=$1
+        nslookup "$domain" > /dev/null 2>&1
+    }
+  merge_csv.sh: |
+    #!/bin/bash
+    source ./csv_utils.sh
+
+    merge_by_key() {
+        local file1=$1
+        local file2=$2
+        local key_col=$3
+        local output=$4
+
+        local keys1
+        keys1=$(extract_column "$file1" "$key_col" | tail -n +2 | sort)
+        local keys2
+        keys2=$(extract_column "$file2" "$key_col" | tail -n +2 | sort)
+
+        comm -12 <(echo "$keys1") <(echo "$keys2") > /tmp/common_keys.txt
+
+        echo "$(header_fields "$file1"),$(header_fields "$file2")" > "$output"
+        echo "Common keys: $(count_rows /tmp/common_keys.txt)"
+    }
+
+    append_csv() {
+        local base=$1
+        local addition=$2
+        tail -n +2 "$addition" >> "$base"
+    }
+  diff_report.sh: |
+    #!/bin/bash
+
+    REPORT_DIR="/tmp/diff_reports"
+    mkdir -p "$REPORT_DIR"
+
+    generate_diff_report() {
+        local file1=$1
+        local file2=$2
+        local report="${REPORT_DIR}/report_$(date +%Y%m%d).txt"
+        diff <(sort "$file1") <(sort "$file2") > "$report"
+        echo "Report saved to $report"
+    }
+
+    side_by_side() {
+        local file1=$1
+        local file2=$2
+        diff -y --width=120 "$file1" "$file2"
+    }
+
+    count_differences() {
+        local file1=$1
+        local file2=$2
+        diff "$file1" "$file2" | grep -c "^[<>]"
+    }
+  lib/sort_utils.sh: |
+    #!/bin/bash
+
+    sort_numeric() {
+        local file=$1
+        local col=${2:-1}
+        sort -t, -k"$col" -n "$file"
+    }
+
+    sort_unique() {
+        local file=$1
+        sort -u "$file"
+    }
+
+    reverse_sort() {
+        local file=$1
+        sort -r "$file"
+    }
+
+    dedup_lines() {
+        local file=$1
+        awk '!seen[$0]++' "$file"
+    }
+
+changed:
+  compare.sh: |
+    #!/bin/bash
+    source ./csv_utils.sh
+
+    diff <(sort file1.txt) <(sort file2.txt)
+
+    while read -r line; do
+        echo "Found: $line"
+    done < <(grep -r "TODO" src/)
+
+    paste <(cut -d, -f1 data.csv) <(cut -d, -f3 data.csv) > combined.txt
+
+    comm -12 <(sort list_a.txt) <(sort list_b.txt) | while read -r common; do
+        echo "Common item: $common"
+    done
+
+must_include_files:
+  # Q1+Q2: csv_utils.sh defines extraction helpers using same cut conventions
+  - csv_utils.sh
+must_include_content_from:
+  compare.sh:
+    - "paste"
+    - "comm"
+  csv_utils.sh:
+    - "extract_column"
+    - 'cut -d, -f"$col"'
+must_not_include:
+  # archive.sh: tar/gzip archival, no sourcing from compare.sh
+  - ARCHIVE_DIR
+  - create_archive
+  - extract_archive
+  - purge_old_archives
+  # network_check.sh: connectivity checks, no sourcing relationship
+  - CHECK_HOSTS
+  - check_connectivity
+  - check_http
+  - check_dns
+  # merge_csv.sh: HARDEST TRAP — sources csv_utils.sh and uses extract_column
+  # Same source dependency, same functions, but different consumer
+  - merge_by_key
+  - append_csv
+  - common_keys
+  # diff_report.sh: diff-based reports, uses diff command like compare.sh
+  - REPORT_DIR
+  - generate_diff_report
+  - side_by_side
+  - count_differences
+  # lib/sort_utils.sh: sort utilities, compare.sh uses sort but independently
+  - sort_numeric
+  - sort_unique
+  - reverse_sort
+  - dedup_lines
+must_not_include_files:
+  - archive.sh
+  - network_check.sh
+  - merge_csv.sh
+  - diff_report.sh
+  - lib/sort_utils.sh
+max_fragments: 5
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

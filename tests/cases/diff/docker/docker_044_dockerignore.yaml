@@ -1,0 +1,236 @@
+# Scenario: .dockerignore expanded from a single "*.log" rule to a comprehensive
+# exclusion list covering .git, node_modules, venv, __pycache__, IDE files, test
+# dirs, build artifacts, secrets, docs, CI/CD, Docker files themselves, K8s/Helm,
+# and Terraform. The Dockerfile is unchanged — only the build context filtering changes.
+#
+# Reviewer questions:
+#   1. Does the Dockerfile COPY rely on files that .dockerignore now excludes?
+#   2. Does "COPY src/ ./src/" still work — is src/ excluded? (no, but tests/ is)
+#   3. Are .env files excluded — does the app need them at build time?
+
+initial:
+  src/app.py: |
+    from flask import Flask, jsonify
+    import os
+
+    app = Flask(__name__)
+
+    @app.route('/health')
+    def health():
+        return jsonify(status='ok')
+
+    @app.route('/version')
+    def version():
+        return jsonify(version=os.getenv('APP_VERSION', 'unknown'))
+
+    if __name__ == '__main__':
+        app.run(host='0.0.0.0', port=8080)
+  src/config.py: |
+    import os
+
+    class Config:
+        DEBUG = os.getenv('DEBUG', 'false').lower() == 'true'
+        LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')
+        SECRET_KEY = os.getenv('SECRET_KEY', 'dev-secret')
+  requirements.txt: |
+    flask==2.3.0
+    gunicorn==21.2.0
+  Dockerfile: |
+    FROM python:3.12-slim
+    WORKDIR /app
+    COPY requirements.txt .
+    RUN pip install -r requirements.txt
+    COPY src/ ./src/
+    CMD ["gunicorn", "-b", "0.0.0.0:8080", "src.app:app"]
+  .dockerignore: |
+    *.log
+
+  # Trap: build script — mentions docker build but is a wrapper script
+  scripts/build_image.sh: |
+    #!/bin/bash
+    docker build -t app:latest --no-cache .
+    docker image prune -f
+
+  # Trap: CI workflow — mentions docker but is CI config now excluded by .dockerignore
+  .github/workflows/docker.yml: |
+    name: Docker
+    on: [push]
+    jobs:
+      build:
+        runs-on: ubuntu-latest
+        steps:
+          - uses: actions/checkout@v4
+          - run: docker build -t app:latest .
+
+  # Trap: an unrelated ignore-like file — similar naming pattern
+  makefile.ignore: |
+    *.pyc
+    __pycache__/
+    dist/
+
+changed:
+  src/app.py: |
+    from flask import Flask, jsonify
+    import os
+
+    app = Flask(__name__)
+
+    @app.route('/health')
+    def health():
+        return jsonify(status='ok')
+
+    @app.route('/version')
+    def version():
+        return jsonify(version=os.getenv('APP_VERSION', 'unknown'))
+
+    if __name__ == '__main__':
+        app.run(host='0.0.0.0', port=8080)
+  src/config.py: |
+    import os
+
+    class Config:
+        DEBUG = os.getenv('DEBUG', 'false').lower() == 'true'
+        LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')
+        SECRET_KEY = os.getenv('SECRET_KEY', 'dev-secret')
+  requirements.txt: |
+    flask==2.3.0
+    gunicorn==21.2.0
+  Dockerfile: |
+    FROM python:3.12-slim
+    WORKDIR /app
+    COPY requirements.txt .
+    RUN pip install -r requirements.txt
+    COPY src/ ./src/
+    CMD ["gunicorn", "-b", "0.0.0.0:8080", "src.app:app"]
+  .dockerignore: |
+    # Version control
+    .git
+    .gitignore
+    .gitattributes
+
+    # Dependencies
+    node_modules
+    venv
+    .venv
+    __pycache__
+    *.pyc
+    *.pyo
+    *.pyd
+    .Python
+    pip-log.txt
+    pip-delete-this-directory.txt
+
+    # IDE and editors
+    .idea
+    .vscode
+    *.swp
+    *.swo
+    *~
+    .project
+    .settings
+
+    # Testing and coverage
+    .pytest_cache
+    .coverage
+    htmlcov
+    .tox
+    .nox
+    coverage.xml
+    *.cover
+    .hypothesis
+
+    # Build artifacts
+    dist
+    build
+    *.egg-info
+    .eggs
+
+    # Environment and secrets
+    .env
+    .env.*
+    *.env
+    .envrc
+    secrets/
+    credentials/
+
+    # Logs and temp files
+    *.log
+    logs/
+    tmp/
+    temp/
+
+    # Documentation
+    docs/
+    *.md
+    !README.md
+
+    # CI/CD
+    .github
+    .gitlab-ci.yml
+    .travis.yml
+    Jenkinsfile
+    azure-pipelines.yml
+
+    # Docker
+    Dockerfile*
+    docker-compose*.yml
+    .dockerignore
+
+    # Kubernetes
+    k8s/
+    helm/
+    charts/
+
+    # Terraform
+    terraform/
+    *.tfstate
+    *.tfstate.*
+    .terraform/
+
+    # Test fixtures
+    tests/
+    test/
+    *_test.py
+    test_*.py
+
+  scripts/build_image.sh: |
+    #!/bin/bash
+    docker build -t app:latest --no-cache .
+    docker image prune -f
+  .github/workflows/docker.yml: |
+    name: Docker
+    on: [push]
+    jobs:
+      build:
+        runs-on: ubuntu-latest
+        steps:
+          - uses: actions/checkout@v4
+          - run: docker build -t app:latest .
+  makefile.ignore: |
+    *.pyc
+    __pycache__/
+    dist/
+
+# === Assertions ===
+
+must_include_files:
+- .dockerignore
+
+must_include_content_from:
+  # Reviewer needs to verify COPY targets are not excluded by new .dockerignore rules
+  Dockerfile:
+    - COPY src/ ./src/
+    - COPY requirements.txt .
+
+must_not_include_files:
+  # Build script — docker build wrapper, not relevant to .dockerignore exclusion review
+- scripts/build_image.sh
+  # CI workflow — in .github which is excluded, but is a different infrastructure layer
+- .github/workflows/docker.yml
+  # Makefile ignore — similar naming pattern but completely different purpose
+- makefile.ignore
+
+max_fragments: 6
+max_files: 4
+add_garbage_files: false
+skip_garbage_check: true

@@ -1,0 +1,387 @@
+# Scenario: UserService is implemented with LINQ queries over a List<User>,
+#   using Where, OrderBy, Select, and Average against User properties.
+#
+# Diff shows:
+#   - class UserService { }  (empty)
+#   + constructor taking List<User>, GetAdults() filtering by Age >= 18,
+#     GetActiveUserNames() chaining Where/OrderBy/Select on IsActive/Name,
+#     AverageAge() calling Average on Age.
+#
+# Reviewer questions:
+#   Q1: "What properties does User have — does Age, IsActive, Name exist?"
+#       -> Needs User.cs: has Id, Name, Age, IsActive properties.
+#          UserService accesses u.Age, u.IsActive, u.Name — reviewer must
+#          verify these properties exist with correct types.
+#
+#   Q2: "Is Age an int so >= 18 comparison is valid? Is Name a string?"
+#       -> Same file: Age is int, Name is string, IsActive is bool.
+#
+# Not needed for comprehension:
+#   - ProductService.cs: IDENTICAL LINQ query pattern — Where, OrderBy,
+#     Select, Average over a List<Product>. Same using directives, same
+#     IEnumerable return types. HARDEST TRAP: structurally identical
+#     sibling but queries Product not User.
+#
+#   - UserRepository.cs: Persistence layer that stores and retrieves User
+#     entities. Uses User type directly, has FindById/Save methods. Direct
+#     structural edge: same entity type. But persistence operations don't
+#     help verify LINQ query correctness.
+#
+#   - UserValidator.cs: Validates User fields — checks Name length, Age range,
+#     IsActive status. References the SAME User properties as the diff.
+#     But validation rules don't help review the LINQ queries.
+#
+#   - UserExtensions.cs: Extension methods on IEnumerable<User> for filtering
+#     and sorting. Same LINQ vocabulary, same User type. But these extensions
+#     are not called by UserService.
+#
+#   - ReportGenerator.cs: Generates reports from user data using LINQ
+#     GroupBy and Aggregate. Same LINQ namespace, operates on User lists.
+#     But report generation is independent of UserService queries.
+
+initial:
+  User.cs: |
+    public class User
+    {
+        public int Id { get; set; }
+        public string Name { get; set; }
+        public int Age { get; set; }
+        public bool IsActive { get; set; }
+    }
+  UserService.cs: |
+    class UserService { }
+  Services/ProductService.cs: |
+    using System.Collections.Generic;
+    using System.Linq;
+
+    class ProductService
+    {
+        private readonly List<Product> _products;
+
+        public ProductService(List<Product> products)
+        {
+            _products = products;
+        }
+
+        public IEnumerable<Product> GetExpensive()
+        {
+            return _products.Where(p => p.Price >= 100.0m);
+        }
+
+        public IEnumerable<string> GetAvailableProductNames()
+        {
+            return _products
+                .Where(p => p.InStock)
+                .OrderBy(p => p.Name)
+                .Select(p => p.Name);
+        }
+
+        public decimal AveragePrice()
+        {
+            return _products.Average(p => p.Price);
+        }
+    }
+  Repositories/UserRepository.cs: |
+    using System.Collections.Generic;
+    using System.Linq;
+
+    class UserRepository
+    {
+        private readonly Dictionary<int, User> _store = new();
+
+        public void Save(User user)
+        {
+            _store[user.Id] = user;
+        }
+
+        public User FindById(int id)
+        {
+            return _store.TryGetValue(id, out var user) ? user : null;
+        }
+
+        public List<User> FindAll()
+        {
+            return _store.Values.ToList();
+        }
+
+        public void Delete(int id)
+        {
+            _store.Remove(id);
+        }
+    }
+  Validators/UserValidator.cs: |
+    using System.Collections.Generic;
+
+    class UserValidator
+    {
+        public List<string> Validate(User user)
+        {
+            var errors = new List<string>();
+            if (string.IsNullOrWhiteSpace(user.Name))
+                errors.Add("Name is required");
+            if (user.Age < 0 || user.Age > 150)
+                errors.Add("Age must be between 0 and 150");
+            if (!user.IsActive)
+                errors.Add("User must be active");
+            return errors;
+        }
+
+        public bool IsValid(User user)
+        {
+            return Validate(user).Count == 0;
+        }
+    }
+  Extensions/UserExtensions.cs: |
+    using System.Collections.Generic;
+    using System.Linq;
+
+    static class UserExtensions
+    {
+        public static IEnumerable<User> ActiveOnly(this IEnumerable<User> users)
+        {
+            return users.Where(u => u.IsActive);
+        }
+
+        public static IEnumerable<User> SortedByName(this IEnumerable<User> users)
+        {
+            return users.OrderBy(u => u.Name);
+        }
+
+        public static IEnumerable<User> OlderThan(this IEnumerable<User> users, int age)
+        {
+            return users.Where(u => u.Age > age);
+        }
+    }
+  Reports/ReportGenerator.cs: |
+    using System.Collections.Generic;
+    using System.Linq;
+
+    class ReportGenerator
+    {
+        public Dictionary<bool, int> CountByActiveStatus(List<User> users)
+        {
+            return users
+                .GroupBy(u => u.IsActive)
+                .ToDictionary(g => g.Key, g => g.Count());
+        }
+
+        public Dictionary<string, double> AverageAgeByStatus(List<User> users)
+        {
+            return users
+                .GroupBy(u => u.IsActive ? "Active" : "Inactive")
+                .ToDictionary(g => g.Key, g => g.Average(u => u.Age));
+        }
+    }
+
+changed:
+  User.cs: |
+    public class User
+    {
+        public int Id { get; set; }
+        public string Name { get; set; }
+        public int Age { get; set; }
+        public bool IsActive { get; set; }
+    }
+  UserService.cs: |
+    using System.Collections.Generic;
+    using System.Linq;
+
+    class UserService
+    {
+        private readonly List<User> _users;
+
+        public UserService(List<User> users)
+        {
+            _users = users;
+        }
+
+        public IEnumerable<User> GetAdults()
+        {
+            return _users.Where(u => u.Age >= 18);
+        }
+
+        public IEnumerable<string> GetActiveUserNames()
+        {
+            return _users
+                .Where(u => u.IsActive)
+                .OrderBy(u => u.Name)
+                .Select(u => u.Name);
+        }
+
+        public double AverageAge()
+        {
+            return _users.Average(u => u.Age);
+        }
+    }
+  Services/ProductService.cs: |
+    using System.Collections.Generic;
+    using System.Linq;
+
+    class ProductService
+    {
+        private readonly List<Product> _products;
+
+        public ProductService(List<Product> products)
+        {
+            _products = products;
+        }
+
+        public IEnumerable<Product> GetExpensive()
+        {
+            return _products.Where(p => p.Price >= 100.0m);
+        }
+
+        public IEnumerable<string> GetAvailableProductNames()
+        {
+            return _products
+                .Where(p => p.InStock)
+                .OrderBy(p => p.Name)
+                .Select(p => p.Name);
+        }
+
+        public decimal AveragePrice()
+        {
+            return _products.Average(p => p.Price);
+        }
+    }
+  Repositories/UserRepository.cs: |
+    using System.Collections.Generic;
+    using System.Linq;
+
+    class UserRepository
+    {
+        private readonly Dictionary<int, User> _store = new();
+
+        public void Save(User user)
+        {
+            _store[user.Id] = user;
+        }
+
+        public User FindById(int id)
+        {
+            return _store.TryGetValue(id, out var user) ? user : null;
+        }
+
+        public List<User> FindAll()
+        {
+            return _store.Values.ToList();
+        }
+
+        public void Delete(int id)
+        {
+            _store.Remove(id);
+        }
+    }
+  Validators/UserValidator.cs: |
+    using System.Collections.Generic;
+
+    class UserValidator
+    {
+        public List<string> Validate(User user)
+        {
+            var errors = new List<string>();
+            if (string.IsNullOrWhiteSpace(user.Name))
+                errors.Add("Name is required");
+            if (user.Age < 0 || user.Age > 150)
+                errors.Add("Age must be between 0 and 150");
+            if (!user.IsActive)
+                errors.Add("User must be active");
+            return errors;
+        }
+
+        public bool IsValid(User user)
+        {
+            return Validate(user).Count == 0;
+        }
+    }
+  Extensions/UserExtensions.cs: |
+    using System.Collections.Generic;
+    using System.Linq;
+
+    static class UserExtensions
+    {
+        public static IEnumerable<User> ActiveOnly(this IEnumerable<User> users)
+        {
+            return users.Where(u => u.IsActive);
+        }
+
+        public static IEnumerable<User> SortedByName(this IEnumerable<User> users)
+        {
+            return users.OrderBy(u => u.Name);
+        }
+
+        public static IEnumerable<User> OlderThan(this IEnumerable<User> users, int age)
+        {
+            return users.Where(u => u.Age > age);
+        }
+    }
+  Reports/ReportGenerator.cs: |
+    using System.Collections.Generic;
+    using System.Linq;
+
+    class ReportGenerator
+    {
+        public Dictionary<bool, int> CountByActiveStatus(List<User> users)
+        {
+            return users
+                .GroupBy(u => u.IsActive)
+                .ToDictionary(g => g.Key, g => g.Count());
+        }
+
+        public Dictionary<string, double> AverageAgeByStatus(List<User> users)
+        {
+            return users
+                .GroupBy(u => u.IsActive ? "Active" : "Inactive")
+                .ToDictionary(g => g.Key, g => g.Average(u => u.Age));
+        }
+    }
+
+must_include_files:
+  - UserService.cs
+  - User.cs
+
+must_include_content_from:
+  UserService.cs:
+    - "return _users.Where(u => u.Age >= 18)"
+    - ".Where(u => u.IsActive)"
+    - ".Select(u => u.Name)"
+    - "return _users.Average(u => u.Age)"
+  User.cs:
+    - "public int Age { get; set; }"
+    - "public bool IsActive { get; set; }"
+    - "public string Name { get; set; }"
+
+must_not_include:
+  # ProductService.cs: identical LINQ pattern but queries Product not User
+  - ProductService
+  - GetExpensive
+  - GetAvailableProductNames
+  - AveragePrice
+  # UserRepository.cs: persistence for User, no LINQ query relevance
+  - UserRepository
+  - FindById
+  - FindAll
+  # UserValidator.cs: validates User fields, not referenced by UserService
+  - UserValidator
+  - "Name is required"
+  # UserExtensions.cs: extension methods on IEnumerable<User>, not called
+  - UserExtensions
+  - ActiveOnly
+  - SortedByName
+  - OlderThan
+  # ReportGenerator.cs: LINQ GroupBy on User, independent of UserService
+  - ReportGenerator
+  - CountByActiveStatus
+  - AverageAgeByStatus
+
+must_not_include_files:
+  - Services/ProductService.cs
+  - Repositories/UserRepository.cs
+  - Validators/UserValidator.cs
+  - Extensions/UserExtensions.cs
+  - Reports/ReportGenerator.cs
+
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

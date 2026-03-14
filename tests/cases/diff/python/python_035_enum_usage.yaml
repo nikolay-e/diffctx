@@ -1,0 +1,291 @@
+# Scenario: Adding new enum members (REFUNDED, CRYPTO, URGENT, EXECUTE) and methods
+#   to OrderStatus, PaymentMethod, Priority, and Permission enums.
+#
+# Reviewer questions:
+#   - Which existing code references these enums and might break?
+#   - Does orders.py handle the new REFUNDED status correctly?
+#
+# Trap files:
+#   - pricing/discount_engine.py: uses "order" vocabulary (apply, percentage) but
+#     has no import or dependency on enums.py
+#   - billing/invoice_renderer.py: mentions "payment" and "status" but does not
+#     import any of the changed enums
+#   - fulfillment/tracking_service.py: references "shipping" and "order" terms but
+#     is completely independent of the enum definitions
+
+initial:
+  enums.py: |
+    from enum import Enum, auto, IntEnum, Flag
+    from typing import List, Optional
+
+    class OrderStatus(Enum):
+        PENDING = auto()
+        PROCESSING = auto()
+        SHIPPED = auto()
+        DELIVERED = auto()
+        CANCELLED = auto()
+
+        def is_terminal(self) -> bool:
+            return self in (OrderStatus.DELIVERED, OrderStatus.CANCELLED)
+
+        def can_cancel(self) -> bool:
+            return self in (OrderStatus.PENDING, OrderStatus.PROCESSING)
+
+    class PaymentMethod(str, Enum):
+        CREDIT_CARD = "credit_card"
+        DEBIT_CARD = "debit_card"
+        PAYPAL = "paypal"
+        BANK_TRANSFER = "bank_transfer"
+
+        @classmethod
+        def card_methods(cls) -> List["PaymentMethod"]:
+            return [cls.CREDIT_CARD, cls.DEBIT_CARD]
+
+    class Priority(IntEnum):
+        LOW = 1
+        MEDIUM = 2
+        HIGH = 3
+        CRITICAL = 4
+
+        def is_urgent(self) -> bool:
+            return self >= Priority.HIGH
+
+    class Permission(Flag):
+        NONE = 0
+        READ = auto()
+        WRITE = auto()
+        DELETE = auto()
+        ADMIN = READ | WRITE | DELETE
+
+        def can_read(self) -> bool:
+            return bool(self & Permission.READ)
+  orders.py: |
+    from enums import OrderStatus, Priority
+
+    class Order:
+        def __init__(self, order_id: int):
+            self.order_id = order_id
+            self.status = OrderStatus.PENDING
+  pricing/discount_engine.py: |
+    from decimal import Decimal
+
+    class DiscountRule:
+        def __init__(self, name: str, percentage: Decimal):
+            self.name = name
+            self.percentage = percentage
+
+        def apply(self, order_total: Decimal) -> Decimal:
+            return order_total * (1 - self.percentage / 100)
+
+        def is_applicable(self, min_amount: Decimal, order_total: Decimal) -> bool:
+            return order_total >= min_amount
+
+    class BulkDiscountCalculator:
+        def __init__(self, tiers: list[tuple[int, float]]):
+            self.tiers = sorted(tiers, key=lambda t: t[0], reverse=True)
+
+        def calculate(self, quantity: int, unit_price: float) -> float:
+            for threshold, rate in self.tiers:
+                if quantity >= threshold:
+                    return unit_price * quantity * (1 - rate)
+            return unit_price * quantity
+  billing/invoice_renderer.py: |
+    from datetime import datetime
+    from typing import Optional
+
+    class InvoiceRenderer:
+        def __init__(self, template_path: str = "templates/invoice.html"):
+            self.template_path = template_path
+
+        def render(self, order_id: int, line_items: list[dict], status: str) -> str:
+            total = sum(item["amount"] for item in line_items)
+            return f"Invoice #{order_id} | Status: {status} | Total: ${total:.2f}"
+
+        def render_payment_receipt(self, payment_id: str, amount: float) -> str:
+            timestamp = datetime.utcnow().isoformat()
+            return f"Receipt for payment {payment_id}: ${amount:.2f} at {timestamp}"
+  fulfillment/tracking_service.py: |
+    from dataclasses import dataclass
+    from datetime import datetime
+
+    @dataclass
+    class ShipmentTracking:
+        tracking_number: str
+        carrier: str
+        origin: str
+        destination: str
+        estimated_delivery: datetime
+
+        def days_until_delivery(self) -> int:
+            delta = self.estimated_delivery - datetime.utcnow()
+            return max(0, delta.days)
+
+    class TrackingService:
+        def __init__(self, api_base_url: str):
+            self.api_base_url = api_base_url
+            self._cache: dict[str, ShipmentTracking] = {}
+
+        def get_tracking(self, tracking_number: str) -> ShipmentTracking | None:
+            return self._cache.get(tracking_number)
+
+changed:
+  enums.py: |
+    from enum import Enum, auto, IntEnum, Flag
+    from typing import List, Optional
+
+    class OrderStatus(Enum):
+        PENDING = auto()
+        PROCESSING = auto()
+        SHIPPED = auto()
+        DELIVERED = auto()
+        CANCELLED = auto()
+        REFUNDED = auto()
+
+        def is_terminal(self) -> bool:
+            return self in (OrderStatus.DELIVERED, OrderStatus.CANCELLED, OrderStatus.REFUNDED)
+
+        def can_cancel(self) -> bool:
+            return self in (OrderStatus.PENDING, OrderStatus.PROCESSING)
+
+        def next_status(self) -> Optional["OrderStatus"]:
+            transitions = {
+                OrderStatus.PENDING: OrderStatus.PROCESSING,
+                OrderStatus.PROCESSING: OrderStatus.SHIPPED,
+                OrderStatus.SHIPPED: OrderStatus.DELIVERED,
+            }
+            return transitions.get(self)
+
+    class PaymentMethod(str, Enum):
+        CREDIT_CARD = "credit_card"
+        DEBIT_CARD = "debit_card"
+        PAYPAL = "paypal"
+        BANK_TRANSFER = "bank_transfer"
+        CRYPTO = "crypto"
+
+        @classmethod
+        def card_methods(cls) -> List["PaymentMethod"]:
+            return [cls.CREDIT_CARD, cls.DEBIT_CARD]
+
+        @classmethod
+        def digital_methods(cls) -> List["PaymentMethod"]:
+            return [cls.PAYPAL, cls.CRYPTO]
+
+    class Priority(IntEnum):
+        LOW = 1
+        MEDIUM = 2
+        HIGH = 3
+        CRITICAL = 4
+        URGENT = 5
+
+        def is_urgent(self) -> bool:
+            return self >= Priority.HIGH
+
+        def display_name(self) -> str:
+            return self.name.replace("_", " ").title()
+
+    class Permission(Flag):
+        NONE = 0
+        READ = auto()
+        WRITE = auto()
+        DELETE = auto()
+        EXECUTE = auto()
+        ADMIN = READ | WRITE | DELETE | EXECUTE
+
+        def can_read(self) -> bool:
+            return bool(self & Permission.READ)
+
+        def can_write(self) -> bool:
+            return bool(self & Permission.WRITE)
+  orders.py: |
+    from enums import OrderStatus, Priority
+
+    class Order:
+        def __init__(self, order_id: int):
+            self.order_id = order_id
+            self.status = OrderStatus.PENDING
+  pricing/discount_engine.py: |
+    from decimal import Decimal
+
+    class DiscountRule:
+        def __init__(self, name: str, percentage: Decimal):
+            self.name = name
+            self.percentage = percentage
+
+        def apply(self, order_total: Decimal) -> Decimal:
+            return order_total * (1 - self.percentage / 100)
+
+        def is_applicable(self, min_amount: Decimal, order_total: Decimal) -> bool:
+            return order_total >= min_amount
+
+    class BulkDiscountCalculator:
+        def __init__(self, tiers: list[tuple[int, float]]):
+            self.tiers = sorted(tiers, key=lambda t: t[0], reverse=True)
+
+        def calculate(self, quantity: int, unit_price: float) -> float:
+            for threshold, rate in self.tiers:
+                if quantity >= threshold:
+                    return unit_price * quantity * (1 - rate)
+            return unit_price * quantity
+  billing/invoice_renderer.py: |
+    from datetime import datetime
+    from typing import Optional
+
+    class InvoiceRenderer:
+        def __init__(self, template_path: str = "templates/invoice.html"):
+            self.template_path = template_path
+
+        def render(self, order_id: int, line_items: list[dict], status: str) -> str:
+            total = sum(item["amount"] for item in line_items)
+            return f"Invoice #{order_id} | Status: {status} | Total: ${total:.2f}"
+
+        def render_payment_receipt(self, payment_id: str, amount: float) -> str:
+            timestamp = datetime.utcnow().isoformat()
+            return f"Receipt for payment {payment_id}: ${amount:.2f} at {timestamp}"
+  fulfillment/tracking_service.py: |
+    from dataclasses import dataclass
+    from datetime import datetime
+
+    @dataclass
+    class ShipmentTracking:
+        tracking_number: str
+        carrier: str
+        origin: str
+        destination: str
+        estimated_delivery: datetime
+
+        def days_until_delivery(self) -> int:
+            delta = self.estimated_delivery - datetime.utcnow()
+            return max(0, delta.days)
+
+    class TrackingService:
+        def __init__(self, api_base_url: str):
+            self.api_base_url = api_base_url
+            self._cache: dict[str, ShipmentTracking] = {}
+
+        def get_tracking(self, tracking_number: str) -> ShipmentTracking | None:
+            return self._cache.get(tracking_number)
+
+must_include_files:
+- enums.py
+- orders.py
+must_include_content:
+- return self in (OrderStatus.DELIVERED, OrderStatus.CANCELLED, OrderStatus.REFUNDED)
+- 'def next_status(self) -> Optional["OrderStatus"]:'
+must_include_content_from:
+  orders.py:
+  - from enums import OrderStatus, Priority
+must_not_include:
+- BulkDiscountCalculator
+- InvoiceRenderer
+- ShipmentTracking
+- TrackingService
+- render_payment_receipt
+- days_until_delivery
+must_not_include_files:
+- pricing/discount_engine.py
+- billing/invoice_renderer.py
+- fulfillment/tracking_service.py
+max_fragments: 8
+max_files: 4
+add_garbage_files: false
+skip_garbage_check: true

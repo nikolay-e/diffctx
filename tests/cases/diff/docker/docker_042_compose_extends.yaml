@@ -1,0 +1,135 @@
+initial:
+  src/api.py: |
+    from flask import Flask, jsonify
+    import os
+
+    app = Flask(__name__)
+
+    LOG_LEVEL = os.getenv("LOG_LEVEL", "info")
+    APP_ENV = os.getenv("APP_ENV", "production")
+
+    @app.route('/health')
+    def health():
+        return jsonify(status='ok', env=APP_ENV)
+
+    @app.route('/api/version')
+    def version():
+        return jsonify(version="1.0.0")
+
+    if __name__ == "__main__":
+        app.run(host="0.0.0.0", port=8080)
+  requirements.txt: |
+    flask==2.3.0
+    gunicorn==21.2.0
+  Dockerfile: |
+    FROM python:3.12-slim
+    WORKDIR /app
+    COPY requirements.txt .
+    RUN pip install --no-cache-dir -r requirements.txt
+    COPY src/ ./src/
+    EXPOSE 8080
+    CMD ["gunicorn", "-b", "0.0.0.0:8080", "src.api:app"]
+  common.yml: |
+    version: '3.8'
+    services:
+      base:
+        environment:
+          - LOG_LEVEL=info
+        logging:
+          driver: json-file
+          options:
+            max-size: "10m"
+            max-file: "3"
+        restart: unless-stopped
+  docker-compose.yml: |
+    version: '3.8'
+    services:
+      api:
+        build: .
+        ports:
+          - "8080:8080"
+        environment:
+          - APP_ENV=production
+  scripts/deploy.sh: |
+    #!/bin/bash
+    docker-compose up -d
+  tests/test_extends.py: |
+    def test_extends_config():
+        pass
+  docs/compose-patterns.md: |
+    # Compose Patterns
+  k8s/base-deployment.yaml: |
+    apiVersion: apps/v1
+  helm/values-common.yaml: ''
+changed:
+  src/api.py: |
+    from flask import Flask, jsonify
+    import os
+
+    app = Flask(__name__)
+
+    LOG_LEVEL = os.getenv("LOG_LEVEL", "info")
+    APP_ENV = os.getenv("APP_ENV", "production")
+
+    @app.route('/health')
+    def health():
+        return jsonify(status='ok', env=APP_ENV)
+
+    @app.route('/api/version')
+    def version():
+        return jsonify(version="1.0.0")
+
+    if __name__ == "__main__":
+        app.run(host="0.0.0.0", port=8080)
+  requirements.txt: |
+    flask==2.3.0
+    gunicorn==21.2.0
+  Dockerfile: |
+    FROM python:3.12-slim
+    WORKDIR /app
+    COPY requirements.txt .
+    RUN pip install --no-cache-dir -r requirements.txt
+    COPY src/ ./src/
+    EXPOSE 8080
+    CMD ["gunicorn", "-b", "0.0.0.0:8080", "src.api:app"]
+  common.yml: |
+    version: '3.8'
+    services:
+      base:
+        environment:
+          - LOG_LEVEL=info
+        logging:
+          driver: json-file
+          options:
+            max-size: "10m"
+            max-file: "3"
+        restart: unless-stopped
+  docker-compose.yml: |
+    version: '3.8'
+    services:
+      api:
+        extends:
+          file: common.yml
+          service: base
+        build: .
+        ports:
+          - "8080:8080"
+        environment:
+          - APP_ENV=production
+  scripts/deploy.sh: |
+    #!/bin/bash
+    docker-compose up -d
+  tests/test_extends.py: |
+    def test_extends_config():
+        pass
+  docs/compose-patterns.md: |
+    # Compose Patterns
+  k8s/base-deployment.yaml: |
+    apiVersion: apps/v1
+  helm/values-common.yaml: ''
+must_include_files:
+- docker-compose.yml
+must_include_content:
+- 'file: common.yml'
+add_garbage_files: false
+skip_garbage_check: true

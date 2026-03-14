@@ -1,0 +1,119 @@
+# Scenario: Adding explicit depends_on to an ECS service to ensure the ALB
+#   listener and IAM policy attachment are ready before deployment.
+# Reviewer questions:
+#   1. What is the ALB listener being depended on? (alb.tf defines aws_lb_listener.https)
+#   2. What IAM policy attachment is referenced? (iam.tf defines the attachment + policy)
+# Traps:
+#   - batch/worker.tf: another ECS service with its own depends_on (same pattern, different service)
+#   - scripts/deploy.sh: mentions ECS service deployment but is operational tooling
+
+initial:
+  main.tf: |
+    resource "aws_ecs_service" "app" {
+      name            = "app-service"
+      cluster         = aws_ecs_cluster.main.id
+      task_definition = aws_ecs_task_definition.app.arn
+      desired_count   = 2
+
+      load_balancer {
+        target_group_arn = aws_lb_target_group.app.arn
+        container_name   = "app"
+        container_port   = 8080
+      }
+    }
+  alb.tf: |
+    resource "aws_lb_listener" "https" {
+      load_balancer_arn = aws_lb.main.arn
+      port              = 443
+      protocol          = "HTTPS"
+      ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"
+      certificate_arn   = aws_acm_certificate.main.arn
+
+      default_action {
+        type             = "forward"
+        target_group_arn = aws_lb_target_group.app.arn
+      }
+    }
+  iam.tf: |
+    resource "aws_iam_role_policy_attachment" "ecs_task" {
+      role       = aws_iam_role.ecs_task.name
+      policy_arn = aws_iam_policy.ecs_task.arn
+    }
+
+    resource "aws_iam_policy" "ecs_task" {
+      name = "ecs-task-policy"
+      policy = jsonencode({
+        Version = "2012-10-17"
+        Statement = [{
+          Effect   = "Allow"
+          Action   = ["s3:GetObject", "sqs:SendMessage"]
+          Resource = "*"
+        }]
+      })
+    }
+  batch/worker.tf: |
+    resource "aws_ecs_service" "worker" {
+      name            = "worker-service"
+      cluster         = aws_ecs_cluster.main.id
+      task_definition = aws_ecs_task_definition.worker.arn
+
+      depends_on = [
+        aws_sqs_queue.tasks,
+        aws_iam_role_policy_attachment.worker
+      ]
+    }
+  scripts/deploy.sh: |
+    #!/bin/bash
+    echo "Deploying ECS services..."
+    aws ecs update-service --cluster main --service app-service --force-new-deployment
+
+changed:
+  main.tf: |
+    resource "aws_ecs_service" "app" {
+      name            = "app-service"
+      cluster         = aws_ecs_cluster.main.id
+      task_definition = aws_ecs_task_definition.app.arn
+      desired_count   = 2
+
+      load_balancer {
+        target_group_arn = aws_lb_target_group.app.arn
+        container_name   = "app"
+        container_port   = 8080
+      }
+
+      depends_on = [
+        aws_lb_listener.https,
+        aws_iam_role_policy_attachment.ecs_task
+      ]
+    }
+
+# alb.tf and iam.tf are unchanged but the reviewer needs them to understand
+# what the depends_on targets actually are -- the listener config and the
+# IAM policy permissions the ECS task will use
+must_include_files:
+  - alb.tf
+  - iam.tf
+
+must_include_content_from:
+  alb.tf:
+    - resource "aws_lb_listener" "https" {
+    - target_group_arn = aws_lb_target_group.app.arn
+  iam.tf:
+    - resource "aws_iam_role_policy_attachment" "ecs_task" {
+    - ecs-task-policy
+
+must_not_include:
+  # Worker service - similar ECS depends_on pattern but different service/deps
+  - worker-service
+  - aws_sqs_queue.tasks
+  # Deploy script - mentions ECS but is operational tooling
+  - force-new-deployment
+
+must_not_include_files:
+  - batch/worker.tf
+  - scripts/deploy.sh
+
+max_fragments: 5
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

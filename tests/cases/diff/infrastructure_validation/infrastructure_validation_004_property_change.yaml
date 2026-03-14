@@ -1,0 +1,177 @@
+# Scenario: Adding an optional `title` parameter to User.__init__() and
+#   modifying the full_name property to prepend the title when present.
+#   Only user.py is changed.
+#
+# Reviewer questions:
+#   Q1: "What code uses user.full_name? Will the title prefix break
+#        any downstream display logic?"
+#       -> Needs views.py: render_user shows "Name: {user.full_name}",
+#         render_user_card shows "[{user.initials}] {user.full_name}".
+#         With the title change, these will now display "Dr. John Smith"
+#         instead of "John Smith". Reviewer must verify this is acceptable.
+#
+#   Q2: "What code serializes User? Does adding the title field affect
+#        serialization output?"
+#       -> Needs serializers.py: user_to_dict includes user.full_name
+#         and user.initials. The dict output will now include the title
+#         in full_name. user_to_display uses the same. Reviewer should
+#         note that `title` itself is NOT in the serialized dict — only
+#         its effect via full_name is visible.
+#
+# Not needed for comprehension:
+#   - scripts/create_users.sh: Shell script. No connection to User fields.
+#
+#   - tests/test_user.py: Empty test stub. No assertions to review.
+#
+#   - docs/user-model.md: Documentation file.
+#
+#   - migrations/002_add_title.sql: SQL migration adding title column.
+#     Structural connection: DB schema matches the new Python field.
+#     But the migration is about the DATABASE, not about whether the
+#     Python property logic is correct. The reviewer needs to see HOW
+#     full_name uses title (in user.py) and WHO uses full_name (views,
+#     serializers), not the DB schema.
+
+initial:
+  user.py: |
+    from typing import Optional
+
+    class User:
+        def __init__(self, first: str, last: str):
+            self.first = first
+            self.last = last
+
+        @property
+        def full_name(self) -> str:
+            return f"{self.first} {self.last}"
+
+        @property
+        def initials(self) -> str:
+            return f"{self.first[0]}{self.last[0]}".upper()
+
+        def greet(self) -> str:
+            return f"Hello, {self.full_name}!"
+  views.py: |
+    from user import User
+
+    def render_user(user: User) -> str:
+        return f"Name: {user.full_name}"
+
+    def render_user_card(user: User) -> str:
+        return f"[{user.initials}] {user.full_name}"
+
+    def render_greeting(user: User) -> str:
+        return user.greet()
+  serializers.py: |
+    from user import User
+
+    def user_to_dict(user: User) -> dict:
+        return {
+            "first": user.first,
+            "last": user.last,
+            "full_name": user.full_name,
+            "initials": user.initials,
+        }
+
+    def user_to_display(user: User) -> str:
+        return f"{user.full_name} ({user.initials})"
+  scripts/create_users.sh: |
+    #!/bin/bash
+    python create_users.py
+  tests/test_user.py: |
+    def test_user_creation():
+        pass
+  docs/user-model.md: |
+    # User Model
+  migrations/002_add_title.sql: |
+    ALTER TABLE users ADD COLUMN title VARCHAR(50);
+
+changed:
+  user.py: |
+    from typing import Optional
+
+    class User:
+        def __init__(self, first: str, last: str, title: Optional[str] = None):
+            self.first = first
+            self.last = last
+            self.title = title
+
+        @property
+        def full_name(self) -> str:
+            if self.title:
+                return f"{self.title} {self.first} {self.last}"
+            return f"{self.first} {self.last}"
+
+        @property
+        def initials(self) -> str:
+            return f"{self.first[0]}{self.last[0]}".upper()
+
+        def greet(self) -> str:
+            return f"Hello, {self.full_name}!"
+  views.py: |
+    from user import User
+
+    def render_user(user: User) -> str:
+        return f"Name: {user.full_name}"
+
+    def render_user_card(user: User) -> str:
+        return f"[{user.initials}] {user.full_name}"
+
+    def render_greeting(user: User) -> str:
+        return user.greet()
+  serializers.py: |
+    from user import User
+
+    def user_to_dict(user: User) -> dict:
+        return {
+            "first": user.first,
+            "last": user.last,
+            "full_name": user.full_name,
+            "initials": user.initials,
+        }
+
+    def user_to_display(user: User) -> str:
+        return f"{user.full_name} ({user.initials})"
+  scripts/create_users.sh: |
+    #!/bin/bash
+    python create_users.py
+  tests/test_user.py: |
+    def test_user_creation():
+        pass
+  docs/user-model.md: |
+    # User Model
+  migrations/002_add_title.sql: |
+    ALTER TABLE users ADD COLUMN title VARCHAR(50);
+
+must_include_files:
+  - user.py
+
+must_include_content_from:
+  user.py:
+    - "def __init__(self, first: str, last: str, title: Optional[str] = None):"
+    - "self.title = title"
+    - "if self.title:"
+
+must_not_include:
+  # --- scripts/create_users.sh: shell script ---
+  - create_users
+  # --- tests/test_user.py: empty test stub ---
+  - test_user_creation
+  # --- docs/user-model.md: documentation ---
+  - "# User Model"
+  # --- migrations/002_add_title.sql: DB schema change ---
+  # Structural connection: DB column matches new Python field. But the
+  # migration doesn't help review the Python property logic.
+  - "ALTER TABLE"
+  - VARCHAR
+
+must_not_include_files:
+  - scripts/create_users.sh
+  - tests/test_user.py
+  - docs/user-model.md
+  - migrations/002_add_title.sql
+
+max_fragments: 6
+max_files: 4
+add_garbage_files: false
+skip_garbage_check: true

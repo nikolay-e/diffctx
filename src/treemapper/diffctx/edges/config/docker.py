@@ -37,7 +37,7 @@ def _strip_dot_slash(s: str) -> str:
     return s
 
 
-def _normalize_path(base_dir: Path, rel_path: str) -> Path:
+def _resolve_docker_path(base_dir: Path, rel_path: str) -> Path:
     rel_path = rel_path.strip().strip("'\"")
     rel_path = _strip_dot_slash(rel_path)
     normalized = base_dir / rel_path
@@ -136,7 +136,7 @@ class DockerEdgeBuilder(EdgeBuilder):
         path_to_frags: dict[Path, list[FragmentId]],
         edges: EdgeDict,
     ) -> None:
-        target = _normalize_path(base_dir, src_path)
+        target = _resolve_docker_path(base_dir, src_path)
         for frag_id in path_to_frags.get(target, []):
             self.add_edge(edges, df_id, frag_id, self.copy_weight)
 
@@ -186,7 +186,7 @@ class DockerEdgeBuilder(EdgeBuilder):
             build_path = match.group(1).strip()
             if not build_path or build_path.startswith("$"):
                 continue
-            dockerfile_path = _normalize_path(base_dir, build_path) / "Dockerfile"
+            dockerfile_path = _resolve_docker_path(base_dir, build_path) / "Dockerfile"
             for frag_id in path_to_frags.get(dockerfile_path, []):
                 self.add_edge(edges, cf.id, frag_id, self.compose_weight)
 
@@ -196,7 +196,7 @@ class DockerEdgeBuilder(EdgeBuilder):
             context_path = match.group(1).strip()
             if not context_path or context_path.startswith("$"):
                 continue
-            target_dir = _normalize_path(base_dir, context_path)
+            target_dir = _resolve_docker_path(base_dir, context_path)
             self._link_context_files(cf.id, target_dir, path_to_frags, edges)
 
     def _link_context_files(
@@ -219,6 +219,6 @@ class DockerEdgeBuilder(EdgeBuilder):
         for match in _COMPOSE_VOLUME_RE.finditer(cf.content):
             vol_path = match.group(1).strip()
             if vol_path:
-                target = _normalize_path(base_dir, vol_path)
+                target = _resolve_docker_path(base_dir, vol_path)
                 for frag_id in path_to_frags.get(target, []):
                     self.add_edge(edges, cf.id, frag_id, self.compose_weight * 0.6)

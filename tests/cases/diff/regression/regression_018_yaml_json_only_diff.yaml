@@ -1,0 +1,235 @@
+# Test: YAML/JSON config-only diff — pre-commit, CI workflow, and package.json
+#
+# Scenario: Three config files changed simultaneously: .pre-commit-config.yaml
+# gets new hooks (gitleaks), .github/workflows/ci.yml adds lint job and
+# pull_request trigger, package.json bumps to v2.0.0 with new deps and scripts.
+# No source code files are changed.
+#
+# Reviewer questions:
+#   Q1: "What security tooling was added?"
+#       -> .pre-commit-config.yaml adds gitleaks hook for secrets scanning.
+#   Q2: "What new npm scripts were added?"
+#       -> package.json adds lint, build, start scripts with eslint/tsc.
+#
+# Trap files (plausible but unrelated):
+#   - src/server.ts: Express server code — references express from package.json
+#     but is unchanged and not affected by config changes.
+#   - src/middleware/auth.ts: auth middleware — same project but unrelated to
+#     config updates.
+#   - tsconfig.json: TypeScript config — CI-adjacent but not changed.
+
+initial:
+  .pre-commit-config.yaml: |
+    repos:
+      - repo: https://github.com/pre-commit/pre-commit-hooks
+        rev: v4.5.0
+        hooks:
+          - id: trailing-whitespace
+  .github/workflows/ci.yml: |
+    name: CI
+    on: [push]
+    jobs:
+      build:
+        runs-on: ubuntu-latest
+        steps:
+          - uses: actions/checkout@v4
+  package.json: |
+    {
+      "name": "myapp",
+      "version": "1.0.0",
+      "dependencies": {
+        "express": "^4.18.0"
+      }
+    }
+  src/server.ts: |
+    import express from 'express';
+    import { authMiddleware } from './middleware/auth';
+
+    const app = express();
+    app.use(express.json());
+    app.use(authMiddleware);
+
+    app.get('/health', (req, res) => {
+        res.json({ status: 'ok' });
+    });
+
+    app.get('/api/users', (req, res) => {
+        res.json({ users: [] });
+    });
+
+    app.listen(3000, () => {
+        console.log('Server running on port 3000');
+    });
+  src/middleware/auth.ts: |
+    import { Request, Response, NextFunction } from 'express';
+
+    export function authMiddleware(req: Request, res: Response, next: NextFunction): void {
+        const token = req.headers.authorization;
+        if (!token) {
+            res.status(401).json({ error: 'Unauthorized' });
+            return;
+        }
+        if (!token.startsWith('Bearer ')) {
+            res.status(401).json({ error: 'Invalid token format' });
+            return;
+        }
+        next();
+    }
+
+    export function optionalAuth(req: Request, res: Response, next: NextFunction): void {
+        const token = req.headers.authorization;
+        if (token && token.startsWith('Bearer ')) {
+            req.user = { authenticated: true };
+        }
+        next();
+    }
+  tsconfig.json: |
+    {
+      "compilerOptions": {
+        "target": "ES2020",
+        "module": "commonjs",
+        "strict": true,
+        "esModuleInterop": true,
+        "outDir": "./dist",
+        "rootDir": "./src"
+      },
+      "include": ["src/**/*"],
+      "exclude": ["node_modules", "dist"]
+    }
+changed:
+  .pre-commit-config.yaml: |
+    repos:
+      - repo: https://github.com/pre-commit/pre-commit-hooks
+        rev: v5.0.0
+        hooks:
+          - id: trailing-whitespace
+          - id: end-of-file-fixer
+          - id: check-yaml
+      - repo: https://github.com/gitleaks/gitleaks
+        rev: v8.21.0
+        hooks:
+          - id: gitleaks
+  .github/workflows/ci.yml: |
+    name: CI
+    on:
+      push:
+        branches: [main]
+      pull_request:
+        branches: [main]
+    jobs:
+      lint:
+        runs-on: ubuntu-latest
+        steps:
+          - uses: actions/checkout@v4
+          - name: Lint
+            run: npm run lint
+      build:
+        runs-on: ubuntu-latest
+        needs: lint
+        steps:
+          - uses: actions/checkout@v4
+          - name: Install
+            run: npm ci
+          - name: Build
+            run: npm run build
+  package.json: |
+    {
+      "name": "myapp",
+      "version": "2.0.0",
+      "dependencies": {
+        "express": "^5.0.0",
+        "helmet": "^7.0.0"
+      },
+      "devDependencies": {
+        "eslint": "^9.0.0",
+        "prettier": "^3.0.0"
+      },
+      "scripts": {
+        "lint": "eslint .",
+        "build": "tsc",
+        "start": "node dist/index.js"
+      }
+    }
+  src/server.ts: |
+    import express from 'express';
+    import { authMiddleware } from './middleware/auth';
+
+    const app = express();
+    app.use(express.json());
+    app.use(authMiddleware);
+
+    app.get('/health', (req, res) => {
+        res.json({ status: 'ok' });
+    });
+
+    app.get('/api/users', (req, res) => {
+        res.json({ users: [] });
+    });
+
+    app.listen(3000, () => {
+        console.log('Server running on port 3000');
+    });
+  src/middleware/auth.ts: |
+    import { Request, Response, NextFunction } from 'express';
+
+    export function authMiddleware(req: Request, res: Response, next: NextFunction): void {
+        const token = req.headers.authorization;
+        if (!token) {
+            res.status(401).json({ error: 'Unauthorized' });
+            return;
+        }
+        if (!token.startsWith('Bearer ')) {
+            res.status(401).json({ error: 'Invalid token format' });
+            return;
+        }
+        next();
+    }
+
+    export function optionalAuth(req: Request, res: Response, next: NextFunction): void {
+        const token = req.headers.authorization;
+        if (token && token.startsWith('Bearer ')) {
+            req.user = { authenticated: true };
+        }
+        next();
+    }
+  tsconfig.json: |
+    {
+      "compilerOptions": {
+        "target": "ES2020",
+        "module": "commonjs",
+        "strict": true,
+        "esModuleInterop": true,
+        "outDir": "./dist",
+        "rootDir": "./src"
+      },
+      "include": ["src/**/*"],
+      "exclude": ["node_modules", "dist"]
+    }
+must_include_files:
+  - .pre-commit-config.yaml
+  - .github/workflows/ci.yml
+  - package.json
+must_include_content_from:
+  .pre-commit-config.yaml:
+    - "gitleaks"
+  .github/workflows/ci.yml:
+    - "needs: lint"
+  package.json:
+    - '"version": "2.0.0"'
+must_not_include:
+  # src/server.ts: Express server — unchanged, not affected by config updates
+  - authMiddleware
+  - "app.listen"
+  # src/middleware/auth.ts: auth middleware — unchanged
+  - optionalAuth
+  - "Invalid token format"
+  # tsconfig.json: TypeScript config — unchanged
+  - esModuleInterop
+must_not_include_files:
+  - src/server.ts
+  - src/middleware/auth.ts
+  - tsconfig.json
+max_fragments: 5
+max_files: 4
+add_garbage_files: false
+skip_garbage_check: true

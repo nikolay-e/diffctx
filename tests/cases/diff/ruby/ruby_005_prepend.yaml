@@ -1,0 +1,189 @@
+# Test: Handler uses prepend to wrap process/validate with timing and logging via Wrapper
+#
+# Scenario: lib/handler.rb gains `prepend Wrapper`, so Wrapper's process/validate
+# methods intercept calls via super. Wrapper (UNCHANGED) adds timing and
+# before/after logging around each method.
+#
+# Reviewer questions:
+#   Q1: "What does prepend Wrapper actually intercept?"
+#       -> lib/wrapper.rb (UNCHANGED) defines process(data) and validate(input)
+#          that call super to delegate to Handler's originals.
+#   Q2: "How does timing measurement work in the wrapper?"
+#       -> Wrapper captures Time.now before super, computes elapsed after.
+#
+# Trap files (plausible but unrelated):
+#   - lib/benchmarker.rb: performance benchmarking utility — similar timing concept
+#     to Wrapper, but Handler never requires or uses it.
+#   - lib/input_sanitizer.rb: input cleaning — similar to validate() concept,
+#     but Handler.validate checks nil/empty, not sanitization.
+
+initial:
+  lib/wrapper.rb: |
+    module Wrapper
+      def process(data)
+        start_time = Time.now
+        puts "Before processing: #{data.inspect}"
+        result = super
+        elapsed = Time.now - start_time
+        puts "After processing (#{elapsed.round(3)}s): #{result.inspect}"
+        result
+      end
+
+      def validate(input)
+        puts "Validating input..."
+        result = super
+        puts "Validation complete: #{result}"
+        result
+      end
+    end
+  lib/handler.rb: |
+    class Handler
+      def process(data)
+        data.upcase
+      end
+
+      def validate(input)
+        !input.nil? && !input.empty?
+      end
+    end
+  lib/benchmarker.rb: |
+    class Benchmarker
+      def initialize(label)
+        @label = label
+        @runs = []
+      end
+
+      def measure
+        start = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        result = yield
+        elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - start
+        @runs << elapsed
+        result
+      end
+
+      def average_time
+        return 0 if @runs.empty?
+        @runs.sum / @runs.size
+      end
+
+      def report
+        "#{@label}: avg=#{average_time.round(4)}s runs=#{@runs.size}"
+      end
+    end
+  lib/input_sanitizer.rb: |
+    class InputSanitizer
+      DANGEROUS_CHARS = ['<', '>', '&', '"', "'"].freeze
+
+      def sanitize(input)
+        return "" if input.nil?
+        result = input.to_s.dup
+        DANGEROUS_CHARS.each { |char| result.gsub!(char, '') }
+        result.strip
+      end
+
+      def sanitize_hash(hash)
+        hash.transform_values { |v| v.is_a?(String) ? sanitize(v) : v }
+      end
+    end
+changed:
+  lib/wrapper.rb: |
+    module Wrapper
+      def process(data)
+        start_time = Time.now
+        puts "Before processing: #{data.inspect}"
+        result = super
+        elapsed = Time.now - start_time
+        puts "After processing (#{elapsed.round(3)}s): #{result.inspect}"
+        result
+      end
+
+      def validate(input)
+        puts "Validating input..."
+        result = super
+        puts "Validation complete: #{result}"
+        result
+      end
+    end
+  lib/handler.rb: |
+    require_relative 'wrapper'
+
+    class Handler
+      prepend Wrapper
+
+      def process(data)
+        data.upcase
+      end
+
+      def validate(input)
+        !input.nil? && !input.empty?
+      end
+    end
+
+    handler = Handler.new
+    handler.process("hello world")
+    handler.validate("test input")
+  lib/benchmarker.rb: |
+    class Benchmarker
+      def initialize(label)
+        @label = label
+        @runs = []
+      end
+
+      def measure
+        start = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        result = yield
+        elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - start
+        @runs << elapsed
+        result
+      end
+
+      def average_time
+        return 0 if @runs.empty?
+        @runs.sum / @runs.size
+      end
+
+      def report
+        "#{@label}: avg=#{average_time.round(4)}s runs=#{@runs.size}"
+      end
+    end
+  lib/input_sanitizer.rb: |
+    class InputSanitizer
+      DANGEROUS_CHARS = ['<', '>', '&', '"', "'"].freeze
+
+      def sanitize(input)
+        return "" if input.nil?
+        result = input.to_s.dup
+        DANGEROUS_CHARS.each { |char| result.gsub!(char, '') }
+        result.strip
+      end
+
+      def sanitize_hash(hash)
+        hash.transform_values { |v| v.is_a?(String) ? sanitize(v) : v }
+      end
+    end
+must_include_files:
+  - lib/handler.rb
+  # Q1/Q2: Wrapper defines the prepended methods with super and timing
+  - lib/wrapper.rb
+must_include_content_from:
+  lib/handler.rb:
+    - "prepend Wrapper"
+  lib/wrapper.rb:
+    - "def process(data)"
+    - "result = super"
+must_not_include:
+  # lib/benchmarker.rb: benchmarking — similar timing, but not used by Handler
+  - Benchmarker
+  - clock_gettime
+  - average_time
+  # lib/input_sanitizer.rb: sanitization — different from validate()
+  - InputSanitizer
+  - DANGEROUS_CHARS
+  - sanitize_hash
+must_not_include_files:
+  - lib/benchmarker.rb
+  - lib/input_sanitizer.rb
+max_fragments: 5
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

@@ -1,0 +1,406 @@
+# Scenario: CreateUserHandler is implemented as a MediatR request handler
+#   that processes CreateUser commands, accessing request.Name and request.Email
+#   to create a User entity and persist via IUserRepository.
+#
+# Diff shows:
+#   - class CreateUserHandler { }  (empty)
+#   + IRequestHandler<CreateUser, User> implementation with constructor
+#     injecting IUserRepository, Handle method reading request.Name/Email,
+#     creating User, calling _repository.AddAsync().
+#
+# Reviewer questions:
+#   Q1: "What properties does CreateUser have — do Name and Email exist?"
+#       -> Needs CreateUser.cs: IRequest<User> with Name and Email properties.
+#
+#   Q2: "What is IUserRepository — does AddAsync exist?"
+#       -> Needs IUserRepository.cs: interface defining AddAsync method.
+#
+#   Q3: "What is User — the entity being created and returned?"
+#       -> Needs User.cs or CreateUser.cs context showing User type shape.
+#
+# Not needed for comprehension:
+#   - UpdateUserHandler.cs: IDENTICAL MediatR handler pattern — same
+#     IRequestHandler<>, same IUserRepository injection, same Handle method.
+#     HARDEST TRAP: structurally identical sibling but handles UpdateUser
+#     not CreateUser.
+#
+#   - DeleteUserHandler.cs: Another MediatR handler with IUserRepository.
+#     Same constructor pattern, same async Task<> return type.
+#
+#   - UserCreatedNotification.cs: MediatR INotification triggered after
+#     user creation. Same MediatR namespace, same User type reference.
+#     But notification handling doesn't help review the command handler.
+#
+#   - MediatRConfig.cs: Registers MediatR in DI container. Same using
+#     MediatR directive. Infrastructure, not handler logic.
+#
+#   - UserController.cs: Sends CreateUser command via IMediator.Send().
+#     Direct consumer of the changed handler. But how the controller
+#     dispatches doesn't help review the handler implementation.
+
+initial:
+  Commands/CreateUser.cs: |
+    using MediatR;
+
+    namespace App.Commands
+    {
+        public class CreateUser : IRequest<User>
+        {
+            public string Name { get; set; }
+            public string Email { get; set; }
+        }
+    }
+  Handlers/CreateUserHandler.cs: |
+    namespace App.Handlers
+    {
+        class CreateUserHandler { }
+    }
+  Interfaces/IUserRepository.cs: |
+    using System.Threading;
+    using System.Threading.Tasks;
+
+    namespace App.Interfaces
+    {
+        public interface IUserRepository
+        {
+            Task<User> AddAsync(User user, CancellationToken cancellationToken);
+            Task<User> GetByIdAsync(int id, CancellationToken cancellationToken);
+            Task UpdateAsync(User user, CancellationToken cancellationToken);
+            Task DeleteAsync(int id, CancellationToken cancellationToken);
+        }
+    }
+  Handlers/UpdateUserHandler.cs: |
+    using MediatR;
+    using System.Threading;
+    using System.Threading.Tasks;
+
+    namespace App.Handlers
+    {
+        public class UpdateUserHandler : IRequestHandler<UpdateUser, User>
+        {
+            private readonly IUserRepository _repository;
+
+            public UpdateUserHandler(IUserRepository repository)
+            {
+                _repository = repository;
+            }
+
+            public async Task<User> Handle(UpdateUser request, CancellationToken cancellationToken)
+            {
+                var user = await _repository.GetByIdAsync(request.Id, cancellationToken);
+                user.Name = request.Name;
+                user.Email = request.Email;
+                await _repository.UpdateAsync(user, cancellationToken);
+                return user;
+            }
+        }
+    }
+  Handlers/DeleteUserHandler.cs: |
+    using MediatR;
+    using System.Threading;
+    using System.Threading.Tasks;
+
+    namespace App.Handlers
+    {
+        public class DeleteUserHandler : IRequestHandler<DeleteUser, Unit>
+        {
+            private readonly IUserRepository _repository;
+
+            public DeleteUserHandler(IUserRepository repository)
+            {
+                _repository = repository;
+            }
+
+            public async Task<Unit> Handle(DeleteUser request, CancellationToken cancellationToken)
+            {
+                await _repository.DeleteAsync(request.Id, cancellationToken);
+                return Unit.Value;
+            }
+        }
+    }
+  Notifications/UserCreatedNotification.cs: |
+    using MediatR;
+
+    namespace App.Notifications
+    {
+        public class UserCreatedNotification : INotification
+        {
+            public int UserId { get; set; }
+            public string UserName { get; set; }
+            public string UserEmail { get; set; }
+        }
+
+        public class UserCreatedHandler : INotificationHandler<UserCreatedNotification>
+        {
+            public Task Handle(UserCreatedNotification notification, CancellationToken cancellationToken)
+            {
+                Console.WriteLine($"User created: {notification.UserName}");
+                return Task.CompletedTask;
+            }
+        }
+    }
+  Config/MediatRConfig.cs: |
+    using MediatR;
+    using Microsoft.Extensions.DependencyInjection;
+
+    namespace App.Config
+    {
+        public static class MediatRConfig
+        {
+            public static IServiceCollection AddMediatRHandlers(this IServiceCollection services)
+            {
+                services.AddMediatR(cfg => cfg.RegisterServicesFromAssembly(typeof(MediatRConfig).Assembly));
+                return services;
+            }
+        }
+    }
+  Controllers/UserController.cs: |
+    using MediatR;
+    using Microsoft.AspNetCore.Mvc;
+
+    namespace App.Controllers
+    {
+        [ApiController]
+        [Route("api/users")]
+        public class UserController : ControllerBase
+        {
+            private readonly IMediator _mediator;
+
+            public UserController(IMediator mediator)
+            {
+                _mediator = mediator;
+            }
+
+            [HttpPost]
+            public async Task<IActionResult> Create([FromBody] CreateUser command)
+            {
+                var user = await _mediator.Send(command);
+                return CreatedAtAction(nameof(GetById), new { id = user.Id }, user);
+            }
+
+            [HttpGet("{id}")]
+            public async Task<IActionResult> GetById(int id)
+            {
+                return Ok();
+            }
+        }
+    }
+
+changed:
+  Commands/CreateUser.cs: |
+    using MediatR;
+
+    namespace App.Commands
+    {
+        public class CreateUser : IRequest<User>
+        {
+            public string Name { get; set; }
+            public string Email { get; set; }
+        }
+    }
+  Handlers/CreateUserHandler.cs: |
+    using MediatR;
+    using System.Threading;
+    using System.Threading.Tasks;
+
+    namespace App.Handlers
+    {
+        public class CreateUserHandler : IRequestHandler<CreateUser, User>
+        {
+            private readonly IUserRepository _repository;
+
+            public CreateUserHandler(IUserRepository repository)
+            {
+                _repository = repository;
+            }
+
+            public async Task<User> Handle(CreateUser request, CancellationToken cancellationToken)
+            {
+                var user = new User
+                {
+                    Name = request.Name,
+                    Email = request.Email
+                };
+
+                await _repository.AddAsync(user, cancellationToken);
+                return user;
+            }
+        }
+    }
+  Interfaces/IUserRepository.cs: |
+    using System.Threading;
+    using System.Threading.Tasks;
+
+    namespace App.Interfaces
+    {
+        public interface IUserRepository
+        {
+            Task<User> AddAsync(User user, CancellationToken cancellationToken);
+            Task<User> GetByIdAsync(int id, CancellationToken cancellationToken);
+            Task UpdateAsync(User user, CancellationToken cancellationToken);
+            Task DeleteAsync(int id, CancellationToken cancellationToken);
+        }
+    }
+  Handlers/UpdateUserHandler.cs: |
+    using MediatR;
+    using System.Threading;
+    using System.Threading.Tasks;
+
+    namespace App.Handlers
+    {
+        public class UpdateUserHandler : IRequestHandler<UpdateUser, User>
+        {
+            private readonly IUserRepository _repository;
+
+            public UpdateUserHandler(IUserRepository repository)
+            {
+                _repository = repository;
+            }
+
+            public async Task<User> Handle(UpdateUser request, CancellationToken cancellationToken)
+            {
+                var user = await _repository.GetByIdAsync(request.Id, cancellationToken);
+                user.Name = request.Name;
+                user.Email = request.Email;
+                await _repository.UpdateAsync(user, cancellationToken);
+                return user;
+            }
+        }
+    }
+  Handlers/DeleteUserHandler.cs: |
+    using MediatR;
+    using System.Threading;
+    using System.Threading.Tasks;
+
+    namespace App.Handlers
+    {
+        public class DeleteUserHandler : IRequestHandler<DeleteUser, Unit>
+        {
+            private readonly IUserRepository _repository;
+
+            public DeleteUserHandler(IUserRepository repository)
+            {
+                _repository = repository;
+            }
+
+            public async Task<Unit> Handle(DeleteUser request, CancellationToken cancellationToken)
+            {
+                await _repository.DeleteAsync(request.Id, cancellationToken);
+                return Unit.Value;
+            }
+        }
+    }
+  Notifications/UserCreatedNotification.cs: |
+    using MediatR;
+
+    namespace App.Notifications
+    {
+        public class UserCreatedNotification : INotification
+        {
+            public int UserId { get; set; }
+            public string UserName { get; set; }
+            public string UserEmail { get; set; }
+        }
+
+        public class UserCreatedHandler : INotificationHandler<UserCreatedNotification>
+        {
+            public Task Handle(UserCreatedNotification notification, CancellationToken cancellationToken)
+            {
+                Console.WriteLine($"User created: {notification.UserName}");
+                return Task.CompletedTask;
+            }
+        }
+    }
+  Config/MediatRConfig.cs: |
+    using MediatR;
+    using Microsoft.Extensions.DependencyInjection;
+
+    namespace App.Config
+    {
+        public static class MediatRConfig
+        {
+            public static IServiceCollection AddMediatRHandlers(this IServiceCollection services)
+            {
+                services.AddMediatR(cfg => cfg.RegisterServicesFromAssembly(typeof(MediatRConfig).Assembly));
+                return services;
+            }
+        }
+    }
+  Controllers/UserController.cs: |
+    using MediatR;
+    using Microsoft.AspNetCore.Mvc;
+
+    namespace App.Controllers
+    {
+        [ApiController]
+        [Route("api/users")]
+        public class UserController : ControllerBase
+        {
+            private readonly IMediator _mediator;
+
+            public UserController(IMediator mediator)
+            {
+                _mediator = mediator;
+            }
+
+            [HttpPost]
+            public async Task<IActionResult> Create([FromBody] CreateUser command)
+            {
+                var user = await _mediator.Send(command);
+                return CreatedAtAction(nameof(GetById), new { id = user.Id }, user);
+            }
+
+            [HttpGet("{id}")]
+            public async Task<IActionResult> GetById(int id)
+            {
+                return Ok();
+            }
+        }
+    }
+
+must_include_files:
+  - Handlers/CreateUserHandler.cs
+  - Commands/CreateUser.cs
+
+must_include_content_from:
+  Handlers/CreateUserHandler.cs:
+    - "IRequestHandler<CreateUser, User>"
+    - "Name = request.Name"
+    - "Email = request.Email"
+    - "await _repository.AddAsync(user, cancellationToken)"
+  Commands/CreateUser.cs:
+    - "public class CreateUser : IRequest<User>"
+    - "public string Name { get; set; }"
+    - "public string Email { get; set; }"
+
+must_not_include:
+  # UpdateUserHandler.cs: identical MediatR handler pattern, different command
+  - UpdateUserHandler
+  - "request.Id"
+  - UpdateAsync
+  # DeleteUserHandler.cs: another MediatR handler with same DI
+  - DeleteUserHandler
+  - "Unit.Value"
+  # UserCreatedNotification.cs: MediatR notification, not handler logic
+  - UserCreatedNotification
+  - INotification
+  - INotificationHandler
+  # MediatRConfig.cs: DI registration, infrastructure
+  - MediatRConfig
+  - RegisterServicesFromAssembly
+  # UserController.cs: dispatches command, doesn't help review handler
+  - UserController
+  - CreatedAtAction
+  - _mediator
+
+must_not_include_files:
+  - Handlers/UpdateUserHandler.cs
+  - Handlers/DeleteUserHandler.cs
+  - Notifications/UserCreatedNotification.cs
+  - Config/MediatRConfig.cs
+  - Controllers/UserController.cs
+
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

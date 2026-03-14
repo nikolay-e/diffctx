@@ -1,0 +1,251 @@
+# Scenario: concrete models implement Protocol interfaces (Serializable, Comparable)
+# Changed: models.py imports Protocols and implements their methods on concrete classes
+# Reviewer questions: Are all protocol methods implemented? Does structural subtyping work?
+# Trap 1: validators.py — validates model data, shares "model" vocabulary but no dep on protocols
+# Trap 2: mappers.py — maps between models, shares "model" domain but independent of protocols
+initial:
+  protocols.py: |
+    from typing import Protocol, TypeVar, Optional, List, runtime_checkable
+    from dataclasses import dataclass, field
+    from datetime import datetime
+
+    T = TypeVar("T")
+
+    @runtime_checkable
+    class Serializable(Protocol):
+        def to_dict(self) -> dict:
+            ...
+
+        def from_dict(self, data: dict) -> None:
+            ...
+
+    @runtime_checkable
+    class Comparable(Protocol):
+        def __lt__(self, other: "Comparable") -> bool:
+            ...
+
+        def __eq__(self, other: object) -> bool:
+            ...
+
+    @runtime_checkable
+    class Repository(Protocol[T]):
+        def get(self, id: str) -> Optional[T]:
+            ...
+
+        def save(self, entity: T) -> T:
+            ...
+
+        def delete(self, id: str) -> bool:
+            ...
+
+    @dataclass
+    class EntityMetadata:
+        created_at: datetime = field(default_factory=datetime.now)
+        version: int = 1
+
+        def increment_version(self) -> None:
+            self.version += 1
+
+    def is_serializable(obj) -> bool:
+        return isinstance(obj, Serializable)
+  models.py: |
+    class User:
+        pass
+  validators.py: |
+    from typing import Dict, Any, List, Optional
+    from dataclasses import dataclass
+
+    @dataclass
+    class ValidationError:
+        field: str
+        message: str
+
+    class ModelValidator:
+        def __init__(self):
+            self._rules: Dict[str, List[callable]] = {}
+
+        def add_rule(self, field: str, rule: callable) -> None:
+            if field not in self._rules:
+                self._rules[field] = []
+            self._rules[field].append(rule)
+
+        def validate(self, data: Dict[str, Any]) -> List[ValidationError]:
+            errors = []
+            for field, rules in self._rules.items():
+                value = data.get(field)
+                for rule in rules:
+                    if not rule(value):
+                        errors.append(ValidationError(field, f"Validation failed for {field}"))
+            return errors
+  mappers.py: |
+    from typing import Dict, Any, TypeVar, Type
+
+    T = TypeVar('T')
+
+    class ModelMapper:
+        def __init__(self):
+            self._mappings: Dict[str, Dict[str, str]] = {}
+
+        def register_mapping(self, source: str, target: str, field_map: Dict[str, str]) -> None:
+            self._mappings[f"{source}->{target}"] = field_map
+
+        def map(self, source_data: Dict[str, Any], source: str, target: str) -> Dict[str, Any]:
+            field_map = self._mappings.get(f"{source}->{target}", {})
+            return {field_map.get(k, k): v for k, v in source_data.items()}
+changed:
+  protocols.py: |
+    from typing import Protocol, TypeVar, Optional, List, runtime_checkable
+    from dataclasses import dataclass, field
+    from datetime import datetime
+
+    T = TypeVar("T")
+
+    @runtime_checkable
+    class Serializable(Protocol):
+        def to_dict(self) -> dict:
+            ...
+
+        def from_dict(self, data: dict) -> None:
+            ...
+
+    @runtime_checkable
+    class Comparable(Protocol):
+        def __lt__(self, other: "Comparable") -> bool:
+            ...
+
+        def __eq__(self, other: object) -> bool:
+            ...
+
+    @runtime_checkable
+    class Repository(Protocol[T]):
+        def get(self, id: str) -> Optional[T]:
+            ...
+
+        def save(self, entity: T) -> T:
+            ...
+
+        def delete(self, id: str) -> bool:
+            ...
+
+    @dataclass
+    class EntityMetadata:
+        created_at: datetime = field(default_factory=datetime.now)
+        version: int = 1
+
+        def increment_version(self) -> None:
+            self.version += 1
+
+    def is_serializable(obj) -> bool:
+        return isinstance(obj, Serializable)
+  models.py: |
+    from protocols import Serializable, Comparable, Repository, EntityMetadata, is_serializable
+    from typing import Optional, List, Dict
+    from dataclasses import dataclass, field
+
+    @dataclass
+    class User:
+        id: str
+        name: str
+        email: str
+        age: int
+        metadata: EntityMetadata = field(default_factory=EntityMetadata)
+
+        def to_dict(self) -> dict:
+            return {
+                "id": self.id,
+                "name": self.name,
+                "email": self.email,
+                "age": self.age,
+                "version": self.metadata.version
+            }
+
+        def from_dict(self, data: dict) -> None:
+            self.id = data.get("id", "")
+            self.name = data.get("name", "")
+            self.email = data.get("email", "")
+            self.age = data.get("age", 0)
+
+        def __lt__(self, other: "User") -> bool:
+            return self.age < other.age
+
+        def __eq__(self, other: object) -> bool:
+            return isinstance(other, User) and self.id == other.id
+
+    class UserRepository:
+        def __init__(self):
+            self._storage: Dict[str, User] = {}
+
+        def get(self, id: str) -> Optional[User]:
+            return self._storage.get(id)
+
+        def save(self, entity: User) -> User:
+            entity.metadata.increment_version()
+            self._storage[entity.id] = entity
+            return entity
+
+        def delete(self, id: str) -> bool:
+            if id in self._storage:
+                del self._storage[id]
+                return True
+            return False
+  validators.py: |
+    from typing import Dict, Any, List, Optional
+    from dataclasses import dataclass
+
+    @dataclass
+    class ValidationError:
+        field: str
+        message: str
+
+    class ModelValidator:
+        def __init__(self):
+            self._rules: Dict[str, List[callable]] = {}
+
+        def add_rule(self, field: str, rule: callable) -> None:
+            if field not in self._rules:
+                self._rules[field] = []
+            self._rules[field].append(rule)
+
+        def validate(self, data: Dict[str, Any]) -> List[ValidationError]:
+            errors = []
+            for field, rules in self._rules.items():
+                value = data.get(field)
+                for rule in rules:
+                    if not rule(value):
+                        errors.append(ValidationError(field, f"Validation failed for {field}"))
+            return errors
+  mappers.py: |
+    from typing import Dict, Any, TypeVar, Type
+
+    T = TypeVar('T')
+
+    class ModelMapper:
+        def __init__(self):
+            self._mappings: Dict[str, Dict[str, str]] = {}
+
+        def register_mapping(self, source: str, target: str, field_map: Dict[str, str]) -> None:
+            self._mappings[f"{source}->{target}"] = field_map
+
+        def map(self, source_data: Dict[str, Any], source: str, target: str) -> Dict[str, Any]:
+            field_map = self._mappings.get(f"{source}->{target}", {})
+            return {field_map.get(k, k): v for k, v in source_data.items()}
+must_include_files:
+- models.py
+- protocols.py
+must_include_content_from:
+  models.py:
+  - 'from protocols import Serializable, Comparable, Repository, EntityMetadata, is_serializable'
+  - 'def __lt__(self, other: "User") -> bool:'
+must_not_include:
+- ModelValidator
+- ValidationError
+- add_rule
+- ModelMapper
+- register_mapping
+must_not_include_files:
+- validators.py
+- mappers.py
+add_garbage_files: false
+skip_garbage_check: true
+max_fragments: 10
+max_files: 5

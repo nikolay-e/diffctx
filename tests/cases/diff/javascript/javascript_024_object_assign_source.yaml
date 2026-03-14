@@ -1,0 +1,92 @@
+# Scenario: Object.assign merges imported defaults — reviewer needs default values.
+#
+# Diff: config.ts is rewritten to import defaultConfig from defaults.ts and use
+# Object.assign({}, defaultConfig, overrides) to create merged configs.
+#
+# Reviewer questions:
+#   Q1: "What are the default values being merged?"
+#       -> defaults.ts (UNCHANGED) defines timeout: 5000, retries: 3,
+#          baseUrl: 'https://api.example.com'. The reviewer must see these
+#          to understand what Partial<typeof defaultConfig> can override.
+#
+# Not needed:
+#   - config.validator.ts: validates config objects after creation.
+#     Different step in the pipeline, not involved in the merge.
+#   - env.ts: reads config from environment variables.
+#     Different config source, not imported by createConfig.
+
+initial:
+  defaults.ts: |
+    export const defaultConfig = {
+        timeout: 5000,
+        retries: 3,
+        baseUrl: 'https://api.example.com',
+    };
+  config.ts: |
+    console.log('initial');
+  config.validator.ts: |
+    export function validateConfig(config: Record<string, unknown>): boolean {
+        if (typeof config.timeout !== 'number' || config.timeout < 0) return false;
+        if (typeof config.retries !== 'number' || config.retries < 0) return false;
+        if (typeof config.baseUrl !== 'string') return false;
+        return true;
+    }
+  env.ts: |
+    export function getEnvConfig() {
+        return {
+            timeout: parseInt(process.env.TIMEOUT ?? '5000', 10),
+            retries: parseInt(process.env.RETRIES ?? '3', 10),
+            baseUrl: process.env.BASE_URL ?? 'https://api.example.com',
+        };
+    }
+
+changed:
+  defaults.ts: |
+    export const defaultConfig = {
+        timeout: 5000,
+        retries: 3,
+        baseUrl: 'https://api.example.com',
+    };
+  config.ts: |
+    import { defaultConfig } from './defaults';
+
+    export function createConfig(overrides: Partial<typeof defaultConfig>) {
+        return Object.assign({}, defaultConfig, overrides);
+    }
+  config.validator.ts: |
+    export function validateConfig(config: Record<string, unknown>): boolean {
+        if (typeof config.timeout !== 'number' || config.timeout < 0) return false;
+        if (typeof config.retries !== 'number' || config.retries < 0) return false;
+        if (typeof config.baseUrl !== 'string') return false;
+        return true;
+    }
+  env.ts: |
+    export function getEnvConfig() {
+        return {
+            timeout: parseInt(process.env.TIMEOUT ?? '5000', 10),
+            retries: parseInt(process.env.RETRIES ?? '3', 10),
+            baseUrl: process.env.BASE_URL ?? 'https://api.example.com',
+        };
+    }
+
+must_include_files:
+  # Q1: defaults.ts defines the default values being merged
+  - defaults.ts
+must_include_content_from:
+  defaults.ts:
+    - "timeout: 5000"
+    - "retries: 3"
+    - "baseUrl: 'https://api.example.com'"
+must_not_include:
+  # config.validator.ts: validation step, not involved in Object.assign merge
+  - validateConfig
+  # env.ts: environment-based config, different source mechanism
+  - getEnvConfig
+  - process.env
+must_not_include_files:
+  - config.validator.ts
+  - env.ts
+max_fragments: 5
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true
