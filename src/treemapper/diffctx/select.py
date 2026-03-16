@@ -18,6 +18,18 @@ _BASELINE_K_MAX = 5
 _CORE_BUDGET_FRACTION = 0.70
 
 
+def _drop_redundant_signatures(candidates: list[Fragment], budget: int) -> list[Fragment]:
+    # Prefer full fragments over their signature variants in the greedy loop.
+    # Signatures have much higher density (same gain / fewer tokens), causing
+    # them to crowd out full fragments via the overlap check. Only keep a
+    # signature variant if the full fragment exceeds the available budget.
+    full_token_by_loc: dict[tuple[Path, int], int] = {}
+    for f in candidates:
+        if "_signature" not in f.kind:
+            full_token_by_loc[(f.path, f.start_line)] = f.token_count
+    return [f for f in candidates if "_signature" not in f.kind or full_token_by_loc.get((f.path, f.start_line), 10**9) > budget]
+
+
 def _adaptive_baseline_k(n_candidates: int) -> int:
     return min(_BASELINE_K_MAX, math.ceil(0.1 * n_candidates))
 
@@ -271,6 +283,8 @@ def lazy_greedy_select(
     base_budget = state.remaining_budget
 
     candidates = [f for f in non_core_fragments if not state.selected_ids.overlaps(f)]
+    candidates = _drop_redundant_signatures(candidates, state.remaining_budget)
+
     baseline_k = _adaptive_baseline_k(len(candidates))
     id_to_frag: dict[FragmentId, Fragment] = {}
     heap = _build_initial_heap(candidates, rel, needs, state.utility_state, id_to_frag)

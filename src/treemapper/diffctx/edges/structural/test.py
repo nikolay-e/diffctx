@@ -6,7 +6,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from ...config import EDGE_WEIGHTS
-from ...types import Fragment, FragmentId
+from ...types import Fragment
 from ..base import EdgeBuilder, EdgeDict, path_to_module
 
 _IMPORT_RE = re.compile(r"(?:from\s+([\w.]+)\s+import|import\s+([\w.]+))")
@@ -155,7 +155,3 @@ class TestEdgeBuilder(EdgeBuilder):
         weight = self.weight_direct if _has_direct_import(test_frag, src_frag, repo_root) else self.weight_naming
         edges[(test_frag.id, src_frag.id)] = weight
         edges[(src_frag.id, test_frag.id)] = EDGE_WEIGHTS["test_reverse"].forward
-
-
-def _build_test_edges(fragments: list[Fragment]) -> dict[tuple[FragmentId, FragmentId], float]:
-    return TestEdgeBuilder().build(fragments)

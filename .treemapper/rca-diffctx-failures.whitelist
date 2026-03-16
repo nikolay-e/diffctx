@@ -1,0 +1,21 @@
+# RCA: diffctx failure investigation
+# Covers: terraform/yaml 0%, JS redux/export 0%, rust/scala/go 0%,
+#         proto/golden/test files missing in real repos, budget sensitivity
+
+# All diffctx source (pipeline, parsers, edges, graph, ranking, selection, types, utils)
+src/treemapper/diffctx/**
+
+# Language module outside diffctx
+src/treemapper/languages.py
+
+# Test framework
+tests/framework/**
+tests/conftest.py
+
+# Failing test cases by language
+tests/cases/diff/terraform/**
+tests/cases/diff/yaml/**
+tests/cases/diff/javascript/**
+tests/cases/diff/rust/**
+tests/cases/diff/go/**
+tests/cases/diff/scala/**

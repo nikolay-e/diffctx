@@ -72,7 +72,3 @@ class CochangeEdgeBuilder(EdgeBuilder):
             except ValueError:
                 continue
         return path_to_frags
-
-
-def _build_cochange_edges(fragments: list[Fragment], repo_root: Path | None) -> dict[tuple[FragmentId, FragmentId], float]:
-    return CochangeEdgeBuilder().build(fragments, repo_root)

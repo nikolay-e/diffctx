@@ -7,12 +7,6 @@ default_language_version:
 fail_fast: false
 
 repos:
-  - repo: https://github.com/nikolay-e/pre-commit-hooks
-    rev: v2.1.0
-    hooks:
-      - id: shift-commit-time
-        stages: [post-commit]
-
   # ============================================================================
   # README AUTO-GENERATION
   # ============================================================================
@@ -50,6 +44,21 @@ repos:
         exclude: ^tests/(utils|conftest|framework/.*)\.py$
       - id: fix-byte-order-marker
       - id: detect-private-key
+
+  - repo: https://github.com/abravalheri/validate-pyproject
+    rev: "v0.25"
+    hooks:
+      - id: validate-pyproject
+        name: validate-pyproject (PEP 621 schema)
+
+  # ============================================================================
+  # PYPROJECT.TOML FORMATTING
+  # ============================================================================
+  - repo: https://github.com/tox-dev/pyproject-fmt
+    rev: "v2.18.1"
+    hooks:
+      - id: pyproject-fmt
+        name: pyproject-fmt (normalize pyproject.toml)
 
   # ============================================================================
   # GITHUB ACTIONS VALIDATION
@@ -146,6 +155,21 @@ repos:
         files: ^src/
 
   # ============================================================================
+  # COMPLEXITY ANALYSIS
+  # ============================================================================
+  - repo: https://github.com/yunojuno/pre-commit-xenon
+    rev: cc59b0431a5d072786b59430e9b342b2881064f6
+    hooks:
+      - id: xenon
+        name: xenon (cyclomatic complexity)
+        args:
+          - "--max-absolute=C"
+          - "--max-modules=B"
+          - "--max-average=A"
+          - "src/"
+        pass_filenames: false
+
+  # ============================================================================
   # DEAD CODE DETECTION
   # ============================================================================
   - repo: https://github.com/jendrikseipp/vulture
@@ -153,9 +177,21 @@ repos:
     hooks:
       - id: vulture
         name: vulture (dead code)
-        args: ["--min-confidence=80", "src/"]
+        args: ["--min-confidence=60", "src/", "whitelist_vulture.py"]
         files: ^src/
         pass_filenames: false
+
+  # ============================================================================
+  # ARCHITECTURE ENFORCEMENT
+  # ============================================================================
+  - repo: local
+    hooks:
+      - id: lint-imports
+        name: import-linter (architecture contracts)
+        entry: lint-imports
+        language: system
+        pass_filenames: false
+        types: [python]
 
   # ============================================================================
   # CODE DUPLICATION DETECTION

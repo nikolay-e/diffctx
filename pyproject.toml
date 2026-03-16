@@ -1,26 +1,168 @@
 # pyproject.toml
-
 [build-system]
-requires = ["setuptools>=77", "wheel"]
 build-backend = "setuptools.build_meta"
+requires = [ "setuptools>=77", "wheel" ]
+
+[project]
+name = "treemapper"
+description = "Export codebase structure and contents for AI/LLM context"
+readme = "README.md"
+keywords = [
+  "ai",
+  "chatgpt",
+  "claude",
+  "code-analysis",
+  "code-context",
+  "code-review",
+  "code-to-prompt",
+  "codebase",
+  "context",
+  "context-selection",
+  "diff-context",
+  "directory-tree",
+  "export",
+  "git-diff",
+  "json",
+  "llm",
+  "llm-context",
+  "tree",
+  "yaml",
+]
+license = "Apache-2.0"
+authors = [
+  { name = "Nikolay Eremeev", email = "nikolay.eremeev@outlook.com" },
+]
+requires-python = ">=3.10"
+classifiers = [
+  "Development Status :: 5 - Production/Stable",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Topic :: Software Development",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+  "Topic :: Software Development :: Version Control :: Git",
+  "Topic :: Utilities",
+  "Typing :: Typed",
+]
+dynamic = [ "version" ]  # Version is still managed in version.py
+dependencies = [
+  "lxml>=5.0,<7.0",
+  "mistune>=3.0,<4.0",
+  "pathspec>=0.11,<2.0",
+  "pyyaml>=6.0.2,<8.0",
+  "ruamel-yaml>=0.18,<1.0",
+  "tiktoken>=0.7,<1.0",
+]
+optional-dependencies.dev = [
+  "autoflake>=2.0,<3.0",
+  "black>=23.0.0,<27.0",
+  # Build and release
+  "build>=0.10,<2.0",
+  "coverage>=7.0,<8.0",
+  "hypothesis>=6.0,<7.0",
+  "import-linter>=2.0,<3.0",
+  "isort>=5.12,<9.0",
+  "mutmut>=3.5,<4.0",
+  "mypy>=1.0,<2.0",
+  "pre-commit>=3.0,<5.0",
+  "pyinstaller>=5.0,<7.0",
+  "pytest>=7.0,<10.0",
+  "pytest-cov>=3.0,<8.0",
+  "pytest-xdist>=3.0,<4.0",
+  "radon>=6.0,<7.0",
+  # Quality checks
+  "ruff>=0.4,<1.0",
+  "treemapper[tree-sitter]",
+  "twine>=4.0,<7.0",
+  # Type stubs
+  "types-pyyaml>=6.0,<7.0",
+  # Security fixes
+  "urllib3>=2.6.0",
+]
+optional-dependencies.embeddings = [
+  # Semantic code embeddings for diffctx
+  "sentence-transformers>=3.0,<6.0",
+]
+optional-dependencies.full = [
+  "pysbd>=0.3,<1.0",
+  "treemapper[tree-sitter]",
+]
+optional-dependencies.nlp = [
+  # Natural language processing for document tokenization
+  "spacy>=3.7,<4.0",
+]
+optional-dependencies.tree-sitter = [
+  "tree-sitter>=0.21,<1.0",
+  "tree-sitter-c>=0.21,<1.0",
+  "tree-sitter-c-sharp>=0.21,<1.0",
+  "tree-sitter-cpp>=0.22,<1.0",
+  "tree-sitter-go>=0.21,<1.0",
+  "tree-sitter-java>=0.21,<1.0",
+  "tree-sitter-javascript>=0.21,<1.0",
+  "tree-sitter-python>=0.21,<1.0",
+  "tree-sitter-ruby>=0.21,<1.0",
+  "tree-sitter-rust>=0.21,<1.0",
+  "tree-sitter-typescript>=0.21,<1.0",
+]
+urls.Changelog = "https://github.com/nikolay-e/treemapper/releases"
+urls.Homepage = "https://github.com/nikolay-e/treemapper"
+urls.Issues = "https://github.com/nikolay-e/treemapper/issues"
+urls.Repository = "https://github.com/nikolay-e/treemapper"
+scripts.treemapper = "treemapper.treemapper:main"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+dynamic.version = { attr = "treemapper.version.__version__" }
+package-data.treemapper = [ "py.typed" ]
+packages.find.where = [ "src" ]
 
 [tool.black]
 line-length = 130
+
+[tool.ruff]
+target-version = "py310"
+line-length = 130
+lint.select = [ "C901", "E", "F", "I", "N", "RUF", "UP", "W" ]
+lint.ignore = [ "E501" ]  # Line length handled by black
+lint.per-file-ignores."whitelist_vulture.py" = [ "F401", "F821" ]
+lint.mccabe.max-complexity = 15
 
 [tool.isort]
 profile = "black"
 line_length = 130
 
-[tool.ruff]
-line-length = 130
-target-version = "py310"
+[tool.pyproject-fmt]
+column_width = 130
+keep_full_version = true
 
-[tool.ruff.lint]
-select = ["E", "F", "W", "I", "N", "UP", "RUF", "C901"]
-ignore = ["E501"]  # Line length handled by black
+[tool.pytest]
+ini_options.testpaths = [ "tests" ]
+ini_options.pythonpath = [ "src" ]
+ini_options.norecursedirs = [ "mutants", ".git", ".mypy_cache", ".pytest_cache", "__pycache__", ".hypothesis" ]
+ini_options.addopts = "-n auto --dist loadfile"
 
-[tool.ruff.lint.mccabe]
-max-complexity = 15
+[tool.coverage]
+run.branch = true
+run.omit = [
+  "*/__pycache__/*",
+  "*/tests/*",
+]
+run.source = [ "treemapper" ]
+report.exclude_lines = [
+  "@(abc\\.)?abstractmethod",
+  "if __name__ == .__main__.:",
+  "if TYPE_CHECKING:",
+  "pragma: no cover",
+]
+report.fail_under = 80
+report.show_missing = true
+report.skip_empty = true
 
 [tool.mypy]
 python_version = "3.10"
@@ -36,160 +178,84 @@ warn_redundant_casts = true
 warn_unused_ignores = true
 warn_no_return = true
 warn_unreachable = true
-files = ["src"]
+files = [ "src" ]
 
 [[tool.mypy.overrides]]
 module = [
-    "tree_sitter",
-    "tree_sitter_python",
-    "tree_sitter_javascript",
-    "tree_sitter_typescript",
-    "tree_sitter_typescript.tsx",
-    "tree_sitter_go",
-    "tree_sitter_rust",
-    "tree_sitter_java",
-    "tree_sitter_c",
-    "tree_sitter_cpp",
-    "tree_sitter_ruby",
-    "tree_sitter_c_sharp",
-    "mistune",
-    "pysbd",
-    "ruamel.yaml",
-    "lxml",
-    "lxml.html",
-    "tiktoken",
-    "sentence_transformers",
-    "spacy",
-    "spacy.cli",
-    "spacy.cli.download",
-    "spacy.language",
+  "tree_sitter",
+  "tree_sitter_python",
+  "tree_sitter_javascript",
+  "tree_sitter_typescript",
+  "tree_sitter_typescript.tsx",
+  "tree_sitter_go",
+  "tree_sitter_rust",
+  "tree_sitter_java",
+  "tree_sitter_c",
+  "tree_sitter_cpp",
+  "tree_sitter_ruby",
+  "tree_sitter_c_sharp",
+  "mistune",
+  "pysbd",
+  "ruamel.yaml",
+  "lxml",
+  "lxml.html",
+  "tiktoken",
+  "sentence_transformers",
+  "spacy",
+  "spacy.cli",
+  "spacy.cli.download",
+  "spacy.language",
+  "numpy",
 ]
 ignore_missing_imports = true
 
 [tool.commitizen]
 name = "cz_conventional_commits"
 tag_format = "v$version"
-version_files = ["src/treemapper/version.py:__version__"]
+version_files = [ "src/treemapper/version.py:__version__" ]
 
-[project]
-name = "treemapper"
-dynamic = ["version"]  # Version is still managed in version.py
-authors = [
-    { name = "Nikolay Eremeev", email = "nikolay.eremeev@outlook.com" },
-]
-description = "Export codebase structure and contents for AI/LLM context"
-readme = "README.md"
-requires-python = ">=3.10"
-license = "Apache-2.0"
-keywords = ["code-analysis", "directory-tree", "yaml", "json", "llm", "ai", "codebase", "context", "chatgpt", "claude", "code-context", "export", "tree", "gpt-context", "llm-context", "code-to-prompt", "claude-context"]
-classifiers = [
-    "Development Status :: 5 - Production/Stable",
-    "Environment :: Console",
-    "Intended Audience :: Developers",
-    "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
-    "Programming Language :: Python :: 3.12",
-    "Programming Language :: Python :: 3.13",
+[tool.importlinter]
+root_package = "treemapper"
 
-    "Operating System :: OS Independent",
-    "Topic :: Software Development :: Libraries :: Python Modules",
-    "Topic :: Utilities",
-    "Typing :: Typed",
-]
-dependencies = [
-    "pathspec>=0.11,<2.0",
-    "pyyaml>=6.0.2,<8.0",
-    "tiktoken>=0.7,<1.0",
-    "mistune>=3.0,<4.0",
-    "ruamel.yaml>=0.18,<1.0",
-    "lxml>=5.0,<7.0",
-]
+[[tool.importlinter.contracts]]
+id = "no-cli-writer"
+name = "CLI should not import writer directly"
+type = "forbidden"
+source_modules = [ "treemapper.cli" ]
+forbidden_modules = [ "treemapper.writer" ]
 
-[project.urls]
-Homepage = "https://github.com/nikolay-e/treemapper"
-Repository = "https://github.com/nikolay-e/treemapper"
-Issues = "https://github.com/nikolay-e/treemapper/issues"
-Changelog = "https://github.com/nikolay-e/treemapper/releases"
+[[tool.importlinter.contracts]]
+id = "no-tree-cli"
+name = "Tree building should not import CLI"
+type = "forbidden"
+source_modules = [ "treemapper.tree" ]
+forbidden_modules = [ "treemapper.cli" ]
 
-[project.scripts]
-treemapper = "treemapper.treemapper:main"
+[[tool.importlinter.contracts]]
+id = "no-diffctx-writer"
+name = "Diffctx should not import writer"
+type = "forbidden"
+source_modules = [ "treemapper.diffctx" ]
+forbidden_modules = [ "treemapper.writer" ]
 
-[project.optional-dependencies]
-tree-sitter = [
-    "tree-sitter>=0.21,<1.0",
-    "tree-sitter-python>=0.21,<1.0",
-    "tree-sitter-javascript>=0.21,<1.0",
-    "tree-sitter-typescript>=0.21,<1.0",
-    "tree-sitter-go>=0.21,<1.0",
-    "tree-sitter-rust>=0.21,<1.0",
-    "tree-sitter-java>=0.21,<1.0",
-    "tree-sitter-c>=0.21,<1.0",
-    "tree-sitter-cpp>=0.22,<1.0",
-    "tree-sitter-ruby>=0.21,<1.0",
-    "tree-sitter-c-sharp>=0.21,<1.0",
-]
-full = [
-    "treemapper[tree-sitter]",
-    "pysbd>=0.3,<1.0",
-]
-embeddings = [
-    # Semantic code embeddings for diffctx
-    "sentence-transformers>=3.0,<6.0",
-]
-nlp = [
-    # Natural language processing for document tokenization
-    "spacy>=3.7,<4.0",
-]
-dev = [
-    "treemapper[tree-sitter]",
-    "pytest>=7.0,<10.0",
-    "pytest-cov>=3.0,<8.0",
-    "pytest-xdist>=3.0,<4.0",
-    "hypothesis>=6.0,<7.0",
-    "mutmut>=3.5,<4.0",
-    "coverage>=7.0,<8.0",
-    # Quality checks
-    "ruff>=0.4,<1.0",
-    "black>=23.0.0,<27.0",
-    "isort>=5.12,<9.0",
-    "mypy>=1.0,<2.0",
-    "radon>=6.0,<7.0",
-    "import-linter>=2.0,<3.0",
-    "pre-commit>=3.0,<5.0",
-    "autoflake>=2.0,<3.0",
-    # Type stubs
-    "types-PyYAML>=6.0,<7.0",
-    # Build and release
-    "build>=0.10,<2.0",
-    "twine>=4.0,<7.0",
-    "pyinstaller>=5.0,<7.0",
-    # Security fixes
-    "urllib3>=2.6.0",
-]
+[[tool.importlinter.contracts]]
+id = "no-writer-cli"
+name = "Writer should not import CLI"
+type = "forbidden"
+source_modules = [ "treemapper.writer" ]
+forbidden_modules = [ "treemapper.cli" ]
+
+[[tool.importlinter.contracts]]
+id = "no-tree-writer"
+name = "Tree building should not import writer"
+type = "forbidden"
+source_modules = [ "treemapper.tree" ]
+forbidden_modules = [ "treemapper.writer" ]
 
 [tool.mutmut]
-paths_to_mutate = ["src/treemapper/"]
-tests_dir = ["tests/"]
+paths_to_mutate = [ "src/treemapper/" ]
+tests_dir = [ "tests/" ]
 do_not_mutate = [
-    "src/treemapper/diffctx/parsers/__init__.py",
-    "src/treemapper/diffctx/stopwords.py",
+  "src/treemapper/diffctx/parsers/__init__.py",
+  "src/treemapper/diffctx/stopwords.py",
 ]
-
-[tool.setuptools.dynamic]
-version = { attr = "treemapper.version.__version__" }
-
-[tool.setuptools.package-data]
-treemapper = ["py.typed"]
-
-[tool.setuptools]
-package-dir = { "" = "src" }
-
-[tool.setuptools.packages.find]
-where = ["src"]
-
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-pythonpath = ["src"]
-norecursedirs = ["mutants", ".git", ".mypy_cache", ".pytest_cache", "__pycache__", ".hypothesis"]
-addopts = "-n auto --dist loadfile"

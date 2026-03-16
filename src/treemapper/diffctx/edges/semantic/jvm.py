@@ -157,6 +157,42 @@ class JVMEdgeBuilder(EdgeBuilder):
     annotation_weight = EDGE_WEIGHTS["jvm_annotation"].forward
     reverse_weight_factor = EDGE_WEIGHTS["jvm_import"].reverse_factor
 
+    def discover_related_files(
+        self,
+        changed_files: list[Path],
+        all_candidate_files: list[Path],
+        repo_root: Path | None = None,
+    ) -> list[Path]:
+        jvm_changed = [f for f in changed_files if _is_jvm_file(f)]
+        if not jvm_changed:
+            return []
+
+        type_refs: set[str] = set()
+        for f in jvm_changed:
+            try:
+                content = f.read_text(encoding="utf-8")
+                type_refs.update(_extract_type_refs(content))
+            except (OSError, UnicodeDecodeError):
+                pass
+
+        changed_dirs = {f.parent for f in jvm_changed}
+        changed_set = set(changed_files)
+        discovered: list[Path] = []
+
+        for candidate in all_candidate_files:
+            if candidate in changed_set or not _is_jvm_file(candidate):
+                continue
+            if candidate.parent not in changed_dirs:
+                continue
+            try:
+                content = candidate.read_text(encoding="utf-8")
+                if _extract_classes(content, candidate) & type_refs:
+                    discovered.append(candidate)
+            except (OSError, UnicodeDecodeError):
+                pass
+
+        return discovered
+
     def build(self, fragments: list[Fragment], repo_root: Path | None = None) -> EdgeDict:
         jvm_frags = [f for f in fragments if _is_jvm_file(f.path)]
         if not jvm_frags:

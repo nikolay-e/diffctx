@@ -4,7 +4,7 @@ from collections import defaultdict
 from pathlib import Path
 
 from ...config import EDGE_WEIGHTS
-from ...types import Fragment, FragmentId
+from ...types import Fragment
 from ..base import EdgeBuilder, EdgeDict
 
 
@@ -28,7 +28,3 @@ class DocumentStructureEdgeBuilder(EdgeBuilder):
                 self.add_edge(edges, curr.id, next_f.id)
 
         return edges
-
-
-def _build_document_structure_edges(fragments: list[Fragment]) -> dict[tuple[FragmentId, FragmentId], float]:
-    return DocumentStructureEdgeBuilder().build(fragments)

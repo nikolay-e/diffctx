@@ -59,7 +59,3 @@ class SiblingEdgeBuilder(EdgeBuilder):
                 if f1_id and f2_id:
                     edges[(f1_id, f2_id)] = self.weight
                     edges[(f2_id, f1_id)] = self.weight
-
-
-def _build_package_sibling_edges(fragments: list[Fragment]) -> dict[tuple[FragmentId, FragmentId], float]:
-    return SiblingEdgeBuilder().build(fragments)

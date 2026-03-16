@@ -75,6 +75,32 @@ class RustEdgeBuilder(EdgeBuilder):
     same_crate_weight = EDGE_WEIGHTS["rust_same_crate"].forward
     reverse_weight_factor = EDGE_WEIGHTS["rust_mod"].reverse_factor
 
+    def discover_related_files(
+        self,
+        changed_files: list[Path],
+        all_candidate_files: list[Path],
+        repo_root: Path | None = None,
+    ) -> list[Path]:
+        rust_changed = [f for f in changed_files if _is_rust_file(f)]
+        if not rust_changed:
+            return []
+        changed_stems = {f.stem for f in rust_changed}
+        changed_dirs = {f.parent for f in rust_changed}
+        changed_set = set(changed_files)
+        discovered: list[Path] = []
+        for candidate in all_candidate_files:
+            if candidate in changed_set or not _is_rust_file(candidate):
+                continue
+            if candidate.parent not in changed_dirs:
+                continue
+            try:
+                content = candidate.read_text(encoding="utf-8")
+                if _extract_mods(content) & changed_stems:
+                    discovered.append(candidate)
+            except (OSError, UnicodeDecodeError):
+                pass
+        return discovered
+
     def build(self, fragments: list[Fragment], repo_root: Path | None = None) -> EdgeDict:
         rust_frags = [f for f in fragments if _is_rust_file(f.path)]
         if not rust_frags:

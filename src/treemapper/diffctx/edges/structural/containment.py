@@ -4,7 +4,7 @@ from collections import defaultdict
 from pathlib import Path
 
 from ...config import EDGE_WEIGHTS
-from ...types import Fragment, FragmentId
+from ...types import Fragment
 from ..base import EdgeBuilder, EdgeDict
 
 
@@ -41,7 +41,3 @@ class ContainmentEdgeBuilder(EdgeBuilder):
     def _add_containment_edge(self, child: Fragment, parent: Fragment, edges: EdgeDict) -> None:
         if parent.start_line <= child.start_line and child.end_line <= parent.end_line and parent.id != child.id:
             self.add_edge(edges, child.id, parent.id)
-
-
-def _build_containment_edges(fragments: list[Fragment]) -> dict[tuple[FragmentId, FragmentId], float]:
-    return ContainmentEdgeBuilder().build(fragments)

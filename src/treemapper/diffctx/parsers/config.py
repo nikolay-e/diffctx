@@ -9,6 +9,103 @@ from .base import MIN_FRAGMENT_LINES, YAML_EXTENSIONS, check_library_available, 
 
 logger = logging.getLogger(__name__)
 
+_TF_EXTENSIONS = {".tf", ".hcl"}
+# Matches any top-level HCL block header: identifier optionally followed by quoted labels, then {
+# Covers: resource, variable, data, output, module, locals, terraform, provider,
+#         moved, import, check, removed, and any future HCL block types.
+_TF_BLOCK_HEADER_RE = re.compile(r'^\w[\w-]*(?:\s+"[^"]*")*\s*\{')
+
+_TF_COMPOUND_REF_RE = re.compile(r"(?<![.\w])(\w+)\.(\w+)\.\w+")
+_TF_COMPOUND_REF_SKIP = frozenset({"var", "local", "data", "module", "path", "terraform", "count", "each", "self"})
+
+
+def _tf_block_symbol(header_line: str) -> str | None:
+    m = re.match(r'^resource\s+"([^"]+)"\s+"([^"]+)"', header_line)
+    if m:
+        return f"{m.group(1)}.{m.group(2)}"
+    m = re.match(r'^data\s+"([^"]+)"\s+"([^"]+)"', header_line)
+    if m:
+        return f"data.{m.group(1)}.{m.group(2)}"
+    m = re.match(r'^variable\s+"([^"]+)"', header_line)
+    if m:
+        return m.group(1)
+    names = re.findall(r'"([^"]+)"', header_line)
+    return names[-1] if names else None
+
+
+def _tf_find_block_end(lines: list[str], start: int) -> int:
+    depth = 0
+    for i in range(start, len(lines)):
+        for ch in lines[i]:
+            if ch == "{":
+                depth += 1
+            elif ch == "}":
+                depth -= 1
+                if depth == 0:
+                    return i
+    return len(lines) - 1
+
+
+def _extract_compound_tf_refs(content: str) -> frozenset[str]:
+    refs: set[str] = set()
+    for m in _TF_COMPOUND_REF_RE.finditer(content):
+        ref_type = m.group(1).lower()
+        if ref_type not in _TF_COMPOUND_REF_SKIP:
+            refs.add(f"{m.group(1).lower()}.{m.group(2).lower()}")
+    return frozenset(refs)
+
+
+class TerraformStrategy:
+    priority = 46
+
+    def can_handle(self, path: Path, _content: str) -> bool:
+        return path.suffix.lower() in _TF_EXTENSIONS
+
+    def fragment(self, path: Path, content: str) -> list[Fragment]:
+        lines = content.splitlines()
+        if not lines:
+            return []
+
+        # Collect block boundaries (all 0-indexed)
+        blocks: list[tuple[int, int, str | None]] = []
+        i = 0
+        while i < len(lines):
+            if _TF_BLOCK_HEADER_RE.match(lines[i].strip()):
+                end_i = _tf_find_block_end(lines, i)
+                sym = _tf_block_symbol(lines[i].strip())
+                blocks.append((i, end_i, sym))
+                i = end_i + 1
+            else:
+                i += 1
+
+        if not blocks:
+            return []
+
+        fragments: list[Fragment] = []
+        prev_end = -1
+
+        for start_i, end_i, sym in blocks:
+            # Gap before this block (comments, blank lines, etc.)
+            if start_i > prev_end + 1:
+                frag = create_fragment_from_lines(path, lines, prev_end + 2, start_i, "config", "data")
+                if frag:
+                    fragments.append(frag)
+            frag = create_fragment_from_lines(path, lines, start_i + 1, end_i + 1, "config", "data", symbol_name=sym)
+            if frag:
+                compound_refs = _extract_compound_tf_refs(frag.content)
+                if compound_refs:
+                    frag.identifiers = frag.identifiers | compound_refs
+                fragments.append(frag)
+            prev_end = end_i
+
+        # Tail after last block
+        if prev_end < len(lines) - 1:
+            frag = create_fragment_from_lines(path, lines, prev_end + 2, len(lines), "config", "data")
+            if frag:
+                fragments.append(frag)
+
+        return fragments
+
 
 def _import_ruamel_yaml() -> None:
     from ruamel.yaml import YAML  # noqa: F401

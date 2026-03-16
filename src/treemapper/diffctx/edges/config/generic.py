@@ -147,7 +147,7 @@ class ConfigToCodeEdgeBuilder(EdgeBuilder):
     def _build_key_patterns(self, keys: set[str]) -> dict[str, re.Pattern[str]]:
         patterns: dict[str, re.Pattern[str]] = {}
         for key in keys:
-            if len(key) >= 6 and key not in _CONFIG_KEY_STOPWORDS:
+            if len(key) >= 4 and key not in _CONFIG_KEY_STOPWORDS:
                 patterns[key] = re.compile(rf"\b{re.escape(key)}\b", re.IGNORECASE)
         return patterns
 

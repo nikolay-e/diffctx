@@ -11,6 +11,12 @@ __all__ = [
 
 
 def expand_config_key(key: str) -> set[str]:
-    if len(key) < 6:
+    if len(key) < 4:
         return set()
-    return {key}
+    result: set[str] = {key}
+    if "_" in key:
+        result.update(p for p in key.split("_") if len(p) >= 4)
+        joined = key.replace("_", "")
+        if len(joined) >= 5:
+            result.add(joined)
+    return result

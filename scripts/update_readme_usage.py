@@ -26,6 +26,14 @@ _USAGE_EXAMPLES: list[tuple[str, str]] = [
     ("treemapper . -c", "copy to clipboard"),
     ("treemapper . -c -o tree.yaml", "clipboard + save to file"),
     ("treemapper -v", "show version"),
+    # diff context mode
+    ("", ""),
+    ("# diff context mode (requires git repo):", ""),
+    ("treemapper . --diff HEAD~1", "context for last commit"),
+    ("treemapper . --diff main..feature", "context for feature branch"),
+    ("treemapper . --diff HEAD~1 --budget 30000", "limit diff context to ~30k tokens"),
+    ("treemapper . --diff HEAD~1 --full", "all changed code, no smart selection"),
+    ("treemapper . --diff HEAD~1 -c", "diff context to clipboard"),
 ]
 
 _BEGIN = "<!-- BEGIN USAGE -->"
@@ -33,8 +41,16 @@ _END = "<!-- END USAGE -->"
 
 
 def _generate_block() -> str:
-    max_cmd = max(len(cmd) for cmd, _ in _USAGE_EXAMPLES)
-    lines = [f"{cmd}{' ' * (max_cmd - len(cmd) + 3)}# {comment}" for cmd, comment in _USAGE_EXAMPLES]
+    real_cmds = [cmd for cmd, _ in _USAGE_EXAMPLES if cmd and not cmd.startswith("#")]
+    max_cmd = max(len(cmd) for cmd in real_cmds)
+    lines = []
+    for cmd, comment in _USAGE_EXAMPLES:
+        if not cmd and not comment:
+            lines.append("")
+        elif cmd.startswith("#"):
+            lines.append(cmd)
+        else:
+            lines.append(f"{cmd}{' ' * (max_cmd - len(cmd) + 3)}# {comment}")
     return "```bash\n" + "\n".join(lines) + "\n```\n"
 
 

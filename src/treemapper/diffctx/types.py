@@ -88,10 +88,6 @@ class DiffHunk:
         return self.new_len == 0 and self.old_len > 0
 
     @property
-    def is_addition(self) -> bool:
-        return self.old_len == 0 and self.new_len > 0
-
-    @property
     def core_selection_range(self) -> tuple[int, int]:
         if self.is_deletion:
             anchor = max(1, self.new_start)

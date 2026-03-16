@@ -6,7 +6,7 @@ import pytest
 import yaml
 
 from treemapper import map_directory, to_json, to_text, to_yaml
-from treemapper.writer import write_tree_json, write_tree_text, write_tree_to_file, write_tree_yaml
+from treemapper.writer import tree_to_string, write_string_to_file, write_tree_json, write_tree_text, write_tree_yaml
 
 from .conftest import run_treemapper_subprocess
 from .utils import load_yaml
@@ -184,30 +184,30 @@ def test_write_tree_text_edge_cases():
     assert "file.txt" in non_blank_lines[-1]
 
 
-def test_write_tree_to_file_creates_parent_dirs(tmp_path):
+def test_write_string_to_file_creates_parent_dirs(tmp_path):
     tree = {"name": "test", "type": "directory", "children": []}
     output_file = tmp_path / "nested" / "dir" / "output.yaml"
-    write_tree_to_file(tree, output_file, "yaml")
+    write_string_to_file(tree_to_string(tree, "yaml"), output_file, "yaml")
     assert output_file.exists()
     assert output_file.parent.exists()
 
 
 @pytest.mark.parametrize("fmt", ["yaml", "json", "txt"])
-def test_write_tree_to_file_formats(tmp_path, fmt):
+def test_write_string_to_file_formats(tmp_path, fmt):
     tree = {"name": "test", "type": "directory", "children": [{"name": "file.txt", "type": "file", "content": "test\n"}]}
     output_file = tmp_path / f"output.{fmt}"
-    write_tree_to_file(tree, output_file, fmt)
+    write_string_to_file(tree_to_string(tree, fmt), output_file, fmt)
     assert output_file.exists()
     content = output_file.read_text(encoding="utf-8")
     assert "test" in content
 
 
-def test_write_tree_to_file_directory_error(tmp_path):
+def test_write_string_to_file_directory_error(tmp_path):
     tree = {"name": "test", "type": "directory", "children": []}
     output_dir = tmp_path / "output_dir"
     output_dir.mkdir()
     with pytest.raises(IOError, match="Is a directory"):
-        write_tree_to_file(tree, output_dir, "yaml")
+        write_string_to_file(tree_to_string(tree, "yaml"), output_dir, "yaml")
 
 
 def test_write_tree_yaml_multiline_content():
@@ -236,7 +236,7 @@ def test_write_tree_json_unicode():
 
 
 @pytest.mark.parametrize("fmt", ["yaml", "json", "txt"])
-def test_write_tree_to_file_stdout(fmt):
+def test_write_string_to_file_stdout(fmt):
     import sys
     from io import StringIO
 
@@ -244,7 +244,7 @@ def test_write_tree_to_file_stdout(fmt):
     old_stdout = sys.stdout
     sys.stdout = StringIO()
     try:
-        write_tree_to_file(tree, None, fmt)
+        write_string_to_file(tree_to_string(tree, fmt), None, fmt)
         output = sys.stdout.getvalue()
     finally:
         sys.stdout = old_stdout

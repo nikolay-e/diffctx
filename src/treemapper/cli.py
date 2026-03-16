@@ -133,7 +133,7 @@ def _warn_diff_only_flags(args: argparse.Namespace) -> None:
         used.append("--full")
     if used:
         flags = ", ".join(used)
-        logger.warning("Diff-mode flags ignored without --diff: %s", flags)
+        print(f"Warning: diff-mode flags ignored without --diff: {flags}", file=sys.stderr)
 
 
 @dataclass

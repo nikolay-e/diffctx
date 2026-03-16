@@ -5,7 +5,7 @@ from pathlib import Path
 
 from ..types import Fragment
 from .base import FragmentationStrategy
-from .config import ConfigStrategy, RuamelYamlStrategy
+from .config import ConfigStrategy, RuamelYamlStrategy, TerraformStrategy
 from .generic import GenericStrategy
 from .html import HTMLStrategy
 from .kubernetes import KubernetesYamlStrategy
@@ -38,6 +38,7 @@ class FragmentationEngine:
             RegexMarkdownStrategy(),
             HTMLStrategy(),
             KubernetesYamlStrategy(),
+            TerraformStrategy(),
             RuamelYamlStrategy(),
             ConfigStrategy(),
             PySBDTextStrategy(),
@@ -92,6 +93,7 @@ __all__ = [
     "PythonAstStrategy",
     "RegexMarkdownStrategy",
     "RuamelYamlStrategy",
+    "TerraformStrategy",
     "enclosing_fragment",
     "fragment_file",
 ]

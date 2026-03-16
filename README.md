@@ -11,10 +11,11 @@
 **Export your codebase for AI/LLM context in one command.**
 
 ```bash
-pip install treemapper                    # core (no native extensions)
-pip install 'treemapper[tree-sitter]'     # + AST parsing for 10 languages
-treemapper . -o context.yaml              # paste into ChatGPT/Claude
+pipx install treemapper          # install
+treemapper . -o context.yaml    # paste into ChatGPT/Claude
 ```
+
+![demo](docs/demo.gif)
 
 ## Why TreeMapper?
 
@@ -40,29 +41,59 @@ children:
               return a + b
 ```
 
+| Feature                  | `tree` | repomix | **TreeMapper** |
+|--------------------------|:------:|:-------:|:--------------:|
+| File contents            | ✗      | ✓       | ✓              |
+| Token counting           | ✗      | ✓       | ✓              |
+| Smart diff context       | ✗      | ✗       | ✓              |
+| Multiple output formats  | ✗      | limited | YAML/JSON/MD/txt |
+| Python API               | ✗      | ✗       | ✓              |
+| 100% local / offline     | ✓      | ✓       | ✓              |
+
+## Installation
+
+```bash
+pipx install treemapper                    # recommended: isolated, no venv needed
+pip install treemapper                     # or with pip
+pip install 'treemapper[tree-sitter]'      # + AST parsing for smarter diff context
+```
+
+**Standalone binary** (no Python required): download from the
+[releases page](https://github.com/nikolay-e/treemapper/releases/latest).
+
+> Diff context mode works out of the box. Adding `[tree-sitter]` enables AST-level
+> parsing for more accurate context selection across 10 languages.
+
 ## Usage
 
 <!-- BEGIN USAGE -->
 ```bash
-treemapper                            # current dir, YAML to stdout
-treemapper .                          # YAML to stdout + token count
-treemapper . -o tree.yaml             # save to file
-treemapper . --save                   # save to tree.yaml (default name)
-treemapper . -o -                     # explicit stdout
-treemapper . -f json                  # JSON format
-treemapper . -f txt                   # plain text with indentation
-treemapper . -f md                    # Markdown with fenced code blocks
-treemapper . --no-content             # structure only, no file contents
-treemapper . --max-depth 3            # limit depth (0=root only)
-treemapper . --max-file-bytes 10000   # skip files > 10KB (default: 10 MB)
-treemapper . --no-file-size-limit     # include all files regardless of size
-treemapper . -i custom.ignore         # custom ignore patterns
-treemapper . -w whitelist             # include-only filter
-treemapper . --no-default-ignores     # disable built-in ignore patterns
-treemapper . --log-level info         # log level (default: error)
-treemapper . -c                       # copy to clipboard
-treemapper . -c -o tree.yaml          # clipboard + save to file
-treemapper -v                         # show version
+treemapper                                  # current dir, YAML to stdout
+treemapper .                                # YAML to stdout + token count
+treemapper . -o tree.yaml                   # save to file
+treemapper . --save                         # save to tree.yaml (default name)
+treemapper . -o -                           # explicit stdout
+treemapper . -f json                        # JSON format
+treemapper . -f txt                         # plain text with indentation
+treemapper . -f md                          # Markdown with fenced code blocks
+treemapper . --no-content                   # structure only, no file contents
+treemapper . --max-depth 3                  # limit depth (0=root only)
+treemapper . --max-file-bytes 10000         # skip files > 10KB (default: 10 MB)
+treemapper . --no-file-size-limit           # include all files regardless of size
+treemapper . -i custom.ignore               # custom ignore patterns
+treemapper . -w whitelist                   # include-only filter
+treemapper . --no-default-ignores           # disable built-in ignore patterns
+treemapper . --log-level info               # log level (default: error)
+treemapper . -c                             # copy to clipboard
+treemapper . -c -o tree.yaml                # clipboard + save to file
+treemapper -v                               # show version
+
+# diff context mode (requires git repo):
+treemapper . --diff HEAD~1                  # context for last commit
+treemapper . --diff main..feature           # context for feature branch
+treemapper . --diff HEAD~1 --budget 30000   # limit diff context to ~30k tokens
+treemapper . --diff HEAD~1 --full           # all changed code, no smart selection
+treemapper . --diff HEAD~1 -c               # diff context to clipboard
 ```
 <!-- END USAGE -->
 
@@ -162,6 +193,19 @@ yaml_str = to_yaml(tree)
 json_str = to_json(tree)
 text_str = to_text(tree)
 md_str = to_markdown(tree)
+
+# Diff context mode
+from treemapper import build_diff_context
+
+ctx = build_diff_context(
+    root_dir,                 # Path to repository root
+    diff_range,               # e.g. "HEAD~1..HEAD", "main..feature"
+    budget_tokens=None,       # token limit (None = convergence-based)
+    alpha=0.6,                # PPR damping factor
+    tau=0.08,                 # stopping threshold
+    full=False,               # skip smart selection
+)
+yaml_str = to_yaml(ctx)
 ```
 
 ## Ignore Patterns

@@ -9,7 +9,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any, TextIO
 
-from .diffctx.languages import get_language_for_file
+from .languages import get_language_for_file
 
 logger = logging.getLogger(__name__)
 
@@ -382,28 +382,6 @@ def _write_to_file_path(output_file: Path, writer: Callable[[TextIO], None]) -> 
 def write_string_to_file(content: str, output_file: Path | None, output_format: str = "yaml") -> None:
     def writer(f: TextIO) -> None:
         f.write(content)
-
-    if output_file is None:
-        ok = _write_to_stdout_with_wrapper(writer)
-        if ok:
-            logger.info("Output written to stdout in %s format", output_format)
-        else:
-            logger.debug("Stdout pipe broken, output truncated")
-    else:
-        _write_to_file_path(output_file, writer)
-        logger.info("Output saved to %s in %s format", output_file, output_format)
-
-
-def write_tree_to_file(tree: dict[str, Any], output_file: Path | None, output_format: str = "yaml") -> None:
-    def writer(f: TextIO) -> None:
-        if output_format == "json":
-            write_tree_json(f, tree)
-        elif output_format == "txt":
-            write_tree_text(f, tree)
-        elif output_format == "md":
-            write_tree_markdown(f, tree)
-        else:
-            write_tree_yaml(f, tree)
 
     if output_file is None:
         ok = _write_to_stdout_with_wrapper(writer)

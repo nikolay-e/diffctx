@@ -20,14 +20,11 @@ class AlgorithmLimits:
 @dataclass(frozen=True)
 class PPRConfig:
     alpha: float = 0.60
-    tolerance: float = 1e-4
-    max_iterations: int = 50
 
 
 @dataclass(frozen=True)
 class LexicalConfig:
     min_similarity: float = 0.30
-    hub_percentile: float = 0.95
     top_k_neighbors: int = 5
     max_df_ratio: float = 0.15
     min_idf: float = 2.0

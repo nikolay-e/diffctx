@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 
-from treemapper.diffctx.semantic_types import EMPTY_JS_SEMANTIC_INFO, JsSemanticInfo
+from .semantic_types import EMPTY_JS_SEMANTIC_INFO, JsSemanticInfo
 
 JsFragmentInfo = JsSemanticInfo
 
@@ -505,12 +505,12 @@ def analyze_javascript_fragment(code: str) -> JsFragmentInfo:
     if not code.strip():
         return _EMPTY_INFO
 
-    import_sources, imported_names = _extract_imports_full(code)
+    import_sources, _imported_names = _extract_imports_full(code)
     exports = _extract_exports(code)
     defines = _extract_defines(code)
     calls = _extract_calls(code)
     type_refs = _extract_type_refs(code)
-    references = _extract_references(code, defines | imported_names)
+    references = _extract_references(code, defines)
 
     return JsFragmentInfo(
         defines=defines | exports,

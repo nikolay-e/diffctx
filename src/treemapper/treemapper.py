@@ -18,7 +18,8 @@ def _configure_windows_utf8() -> None:
 def _build_diff_tree(args: ParsedArgs) -> dict[str, Any]:
     from .diffctx import GitError, build_diff_context
 
-    assert args.diff_range is not None
+    if not args.diff_range:
+        raise RuntimeError("diff_range is required in diff mode")
     try:
         return build_diff_context(
             root_dir=args.root_dir,

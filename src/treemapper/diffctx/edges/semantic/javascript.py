@@ -239,7 +239,45 @@ class JavaScriptEdgeBuilder(EdgeBuilder):
                 self_defs,
             )
 
+        self._add_import_edges(js_frags, info_cache, edges)
+
         return edges
+
+    _IMPORT_WEIGHT = 0.55
+
+    def _add_import_edges(
+        self,
+        js_frags: list[Fragment],
+        info_cache: dict[FragmentId, JsFragmentInfo],
+        edges: EdgeDict,
+    ) -> None:
+        file_to_frags: dict[Path, list[FragmentId]] = defaultdict(list)
+        for f in js_frags:
+            file_to_frags[f.path].append(f.id)
+
+        fragment_paths = set(file_to_frags.keys())
+
+        file_imports: dict[Path, set[str]] = defaultdict(set)
+        for f in js_frags:
+            for import_source in info_cache[f.id].imports:
+                if import_source.startswith("."):
+                    file_imports[f.path].add(import_source)
+
+        for src_path, import_sources in file_imports.items():
+            for import_source in import_sources:
+                resolved = _resolve_relative_import(src_path, import_source, fragment_paths)
+                if resolved is None or resolved == src_path:
+                    continue
+                target_ids = file_to_frags.get(resolved, [])
+                if not target_ids:
+                    continue
+                for src_id in file_to_frags[src_path]:
+                    for target_id in target_ids:
+                        if target_id == src_id:
+                            continue
+                        w = self._IMPORT_WEIGHT
+                        edges[(src_id, target_id)] = max(edges.get((src_id, target_id), 0.0), w)
+                        edges[(target_id, src_id)] = max(edges.get((target_id, src_id), 0.0), w * self.reverse_weight_factor)
 
     def _discover_forward_imports(
         self,

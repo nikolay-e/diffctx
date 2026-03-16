@@ -1,6 +1,10 @@
 # UX / Usability Review
-# CLI interface, output formatting, user feedback, error handling
+# CLI interface, output formatting, user feedback, error handling,
+# public API, and all project presentation surfaces
 
+# CLI & output
+src/treemapper/__main__.py
+src/treemapper/treemapper.py
 src/treemapper/cli.py
 src/treemapper/writer.py
 src/treemapper/logger.py
@@ -9,4 +13,19 @@ src/treemapper/tokens.py
 src/treemapper/version.py
 src/treemapper/diffctx/render.py
 src/treemapper/__init__.py
+
+# Presentation & packaging
 README.md
+pyproject.toml
+scripts/update_readme_usage.py
+CONTRIBUTING.md
+SECURITY.md
+CODE_OF_CONDUCT.md
+
+# GitHub community & CI
+.github/ISSUE_TEMPLATE/bug_report.yml
+.github/ISSUE_TEMPLATE/feature_request.yml
+.github/ISSUE_TEMPLATE/config.yml
+.github/PULL_REQUEST_TEMPLATE.md
+.github/workflows/ci.yml
+.github/workflows/cd.yml

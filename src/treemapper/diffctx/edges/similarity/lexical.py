@@ -153,9 +153,5 @@ class LexicalEdgeBuilder(EdgeBuilder):
         return neighbors_by_node
 
 
-def _build_lexical_edges_sparse(fragments: list[Fragment]) -> dict[tuple[FragmentId, FragmentId], float]:
-    return LexicalEdgeBuilder().build(fragments)
-
-
 def clamp_lexical_weight(raw_sim: float, src_path: Path | None = None, dst_path: Path | None = None) -> float:
     return _clamp_lexical_weight(raw_sim, src_path, dst_path)

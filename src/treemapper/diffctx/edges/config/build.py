@@ -113,7 +113,6 @@ def _collect_build_refs(make_files: list[Path], cmake_files: list[Path]) -> set[
 
 class BuildSystemEdgeBuilder(EdgeBuilder):
     weight = 0.55
-    target_weight = 0.50
     file_ref_weight = 0.60
     reverse_weight_factor = 0.35
 

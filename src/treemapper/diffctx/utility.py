@@ -21,6 +21,12 @@ _CALL_RE = re.compile(r"(\w+)\s*\(")
 _TYPE_REF_RE = re.compile(r"(?::|->)\s*([A-Z]\w+)")
 _GENERIC_TYPE_RE = re.compile(r"[\[<,]\s*([A-Z]\w*)")
 
+_TF_EXTENSIONS = frozenset({".tf", ".tfvars", ".hcl"})
+_CONFIG_EXTENSIONS_FOR_DIFF = frozenset({".yaml", ".yml", ".json", ".toml", ".ini"})
+_TF_VAR_NEED_RE = re.compile(r"var\.(\w+)")
+_TF_RES_REF_NEED_RE = re.compile(r"(?<![.\w])(\w+)\.(\w+)\.\w+")
+_TF_SKIP_REF_TYPES = frozenset({"var", "local", "data", "module", "path", "terraform", "count", "each", "self"})
+
 _LANGUAGE_BUILTINS: frozenset[str] = frozenset(
     {
         "range",
@@ -269,46 +275,6 @@ def concepts_from_diff_text(diff_text: str, profile: str = "code", *, use_nlp: b
     return frozenset(ident.lower() for ident in raw if len(ident) >= 3 and ident.lower() not in CODE_STOPWORDS)
 
 
-def _extract_diff_symbols(diff_text: str) -> set[str]:
-    symbols: set[str] = set()
-    for line in _extract_changed_lines(diff_text):
-        if _is_comment_line(line):
-            continue
-        for m in _CALL_RE.finditer(line):
-            name = m.group(1)
-            if len(name) >= 3 and name.lower() not in CODE_STOPWORDS and name.lower() not in _LANGUAGE_BUILTINS:
-                symbols.add(name.lower())
-        for m in _TYPE_REF_RE.finditer(line):
-            symbols.add(m.group(1).lower())
-        for m in _GENERIC_TYPE_RE.finditer(line):
-            symbols.add(m.group(1).lower())
-    return symbols
-
-
-def _build_sigma(
-    all_fragments: list[Fragment],
-    core_ids: set[FragmentId],
-    diff_text: str,
-) -> set[str]:
-    sigma: set[str] = set()
-
-    for frag in all_fragments:
-        if frag.id in core_ids and frag.symbol_name:
-            sigma.add(frag.symbol_name.lower())
-
-    sigma.update(_extract_diff_symbols(diff_text))
-
-    for frag in all_fragments:
-        if not _is_test_fragment(frag):
-            continue
-        sym_lower = frag.symbol_name.lower() if frag.symbol_name else None
-        tested = sym_lower.removeprefix("test_") if sym_lower else None
-        if tested and tested in sigma and sym_lower:
-            sigma.add(sym_lower)
-
-    return sigma
-
-
 _CLOSURE_EDGE_CATEGORIES = frozenset({"structural", "semantic"})
 
 
@@ -365,22 +331,6 @@ def _apply_closure(
         closure |= new_symbols
 
     return closure
-
-
-def concepts_from_diff(
-    all_fragments: list[Fragment],
-    core_ids: set[FragmentId],
-    graph: Graph,
-    diff_text: str,
-    closure_depth: int = 1,
-) -> frozenset[str]:
-    sigma = _build_sigma(all_fragments, core_ids, diff_text)
-    closure = _apply_closure(sigma, all_fragments, graph, closure_depth)
-
-    if not closure:
-        return concepts_from_diff_text(diff_text)
-
-    return frozenset(closure)
 
 
 def _collect_core_needs(
@@ -457,6 +407,48 @@ def _collect_invariant_needs(
                 needs.setdefault(("invariant", sym), InformationNeed("invariant", sym, None, 0.85))
 
 
+def _is_terraform_diff(all_fragments: list[Fragment], core_ids: set[FragmentId]) -> bool:
+    return any(f.path.suffix.lower() in _TF_EXTENSIONS for f in all_fragments if f.id in core_ids)
+
+
+def _is_config_only_diff(all_fragments: list[Fragment], core_ids: set[FragmentId]) -> bool:
+    core_frags = [f for f in all_fragments if f.id in core_ids]
+    return bool(core_frags) and all(f.path.suffix.lower() in _CONFIG_EXTENSIONS_FOR_DIFF for f in core_frags)
+
+
+def _collect_config_context_needs(
+    all_fragments: list[Fragment],
+    core_ids: set[FragmentId],
+    needs: dict[tuple[str, str], InformationNeed],
+) -> None:
+    covered = {n.symbol for n in needs.values()}
+    for frag in all_fragments:
+        if frag.id not in core_ids:
+            continue
+        for ident in frag.identifiers:
+            if len(ident) >= 5 and ident not in covered:
+                key = ("background", ident)
+                if key not in needs:
+                    needs[key] = InformationNeed("background", ident, None, 0.2)
+
+
+def _collect_terraform_needs(
+    diff_text: str,
+    needs: dict[tuple[str, str], InformationNeed],
+) -> None:
+    for line in _extract_changed_lines(diff_text):
+        for m in _TF_VAR_NEED_RE.finditer(line):
+            sym = m.group(1).lower()
+            if len(sym) >= 3 and sym not in CODE_STOPWORDS:
+                needs.setdefault(("definition", sym), InformationNeed("definition", sym, None, 1.0))
+        for m in _TF_RES_REF_NEED_RE.finditer(line):
+            ref_type, ref_name = m.group(1).lower(), m.group(2).lower()
+            if ref_type in _TF_SKIP_REF_TYPES:
+                continue
+            full_ref = f"{ref_type}.{ref_name}"
+            needs.setdefault(("definition", full_ref), InformationNeed("definition", full_ref, None, 0.9))
+
+
 def needs_from_diff(
     all_fragments: list[Fragment],
     core_ids: set[FragmentId],
@@ -470,6 +462,10 @@ def needs_from_diff(
     _collect_diff_line_needs(diff_text, needs)
     _collect_invariant_needs(diff_text, needs)
     _collect_test_needs(all_fragments, core_symbol_names, needs)
+    if _is_terraform_diff(all_fragments, core_ids):
+        _collect_terraform_needs(diff_text, needs)
+    if _is_config_only_diff(all_fragments, core_ids):
+        _collect_config_context_needs(all_fragments, core_ids, needs)
 
     base_symbols = {n.symbol for n in needs.values()}
     closure = _apply_closure(base_symbols, all_fragments, graph, closure_depth)
@@ -523,7 +519,7 @@ def _phi(x: float) -> float:
 
 
 _MIN_REL_FOR_BONUS = 0.03
-_STRONG_REL_THRESHOLD = 0.10
+_STRONG_REL_THRESHOLD = 0.07
 _RELATEDNESS_BONUS = 0.25
 
 

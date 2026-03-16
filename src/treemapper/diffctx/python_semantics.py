@@ -3,7 +3,7 @@ from __future__ import annotations
 import ast
 import textwrap
 
-from treemapper.diffctx.semantic_types import EMPTY_SEMANTIC_INFO, SemanticInfo
+from .semantic_types import EMPTY_SEMANTIC_INFO, SemanticInfo
 
 PyFragmentInfo = SemanticInfo
 

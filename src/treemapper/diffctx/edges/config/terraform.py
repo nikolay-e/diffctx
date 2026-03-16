@@ -104,6 +104,7 @@ class _TFIndex:
 class TerraformEdgeBuilder(EdgeBuilder):
     weight = 0.60
     reverse_weight_factor = 0.40
+    category = "semantic"
 
     def discover_related_files(
         self,

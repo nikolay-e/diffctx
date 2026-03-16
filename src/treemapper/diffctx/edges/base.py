@@ -202,16 +202,6 @@ class EdgeBuilder(ABC):
             reverse = w * self.reverse_weight_factor
             edges[(dst, src)] = max(edges.get((dst, src), 0.0), reverse)
 
-    def add_edge_no_reverse(
-        self,
-        edges: EdgeDict,
-        src: FragmentId,
-        dst: FragmentId,
-        weight: float | None = None,
-    ) -> None:
-        w = weight if weight is not None else self.weight
-        edges[(src, dst)] = max(edges.get((src, dst), 0.0), w)
-
     def add_edges_from_ids(
         self,
         source_id: FragmentId,
@@ -235,22 +225,6 @@ class EdgeBuilder(ABC):
         ref_lower = ref.lower()
         for path_str, frag_ids in idx.by_path.items():
             if ref in path_str or ref_lower in path_str.lower():
-                for fid in frag_ids:
-                    if fid != src_id:
-                        self.add_edge(edges, src_id, fid, w)
-
-    def link_by_name_match(
-        self,
-        src_id: FragmentId,
-        ref_name: str,
-        idx: FragmentIndex,
-        edges: EdgeDict,
-        weight: float | None = None,
-    ) -> None:
-        w = weight if weight is not None else self.weight
-        ref_lower = ref_name.lower()
-        for name, frag_ids in idx.by_name.items():
-            if name == ref_lower:
                 for fid in frag_ids:
                     if fid != src_id:
                         self.add_edge(edges, src_id, fid, w)

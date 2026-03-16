@@ -45,7 +45,3 @@ class AnchorLinkEdgeBuilder(EdgeBuilder):
             target_id = anchor_index.get(target_slug)
             if target_id and target_id != f.id:
                 self.add_edge(edges, f.id, target_id)
-
-
-def _build_anchor_link_edges(fragments: list[Fragment]) -> dict[tuple[FragmentId, FragmentId], float]:
-    return AnchorLinkEdgeBuilder().build(fragments)

@@ -12,7 +12,6 @@ _POWERSHELL_EXTS = {".ps1", ".psm1", ".psd1"}
 _ALL_SHELL = _SHELL_EXTS | _POWERSHELL_EXTS
 
 _SOURCE_RE = re.compile(r"^\s{0,20}(?:source|\.)\s{1,10}['\"]?([^'\"#\s]{1,300})", re.MULTILINE)
-_BASH_FUNC_RE = re.compile(r"^\s{0,20}(?:function\s{1,10})?(\w{1,100})\s{0,10}\(\s{0,10}\)", re.MULTILINE)
 
 _SCRIPT_CALL_RE = re.compile(r"(?:bash|sh|zsh|python|python3|node|ruby|perl)\s{1,10}['\"]?([^\s'\"]{1,300})", re.MULTILINE)
 _EXEC_CALL_RE = re.compile(r"(?:\./|scripts/|bin/)([a-zA-Z0-9_.-]{1,100}(?:\.(?:sh|py|rb|pl))?)", re.MULTILINE)
@@ -20,7 +19,6 @@ _ENV_FILE_RE = re.compile(r"^\s{0,20}(?:source|\.)\s{1,10}[^\n]{0,500}\.env", re
 
 _PS_IMPORT_RE = re.compile(r"Import-Module\s+['\"]?([^\s'\"]+)", re.IGNORECASE)
 _PS_DOT_SOURCE_RE = re.compile(r"\.\s+['\"]?([^\s'\"]+\.ps[m1d]?1)", re.IGNORECASE)
-_PS_FUNC_RE = re.compile(r"^\s*function\s+(\w+[-\w]*)", re.MULTILINE | re.IGNORECASE)
 
 
 def _is_shell_script(path: Path) -> bool:
@@ -65,11 +63,6 @@ def _extract_ps_refs(content: str) -> tuple[set[str], set[str]]:
         scripts.add(match.group(1))
 
     return imports, scripts
-
-
-def _extract_functions(content: str, is_ps: bool) -> set[str]:
-    pattern = _PS_FUNC_RE if is_ps else _BASH_FUNC_RE
-    return {m.group(1) for m in pattern.finditer(content)}
 
 
 def _collect_shell_refs(shell_files: list[Path]) -> set[str]:

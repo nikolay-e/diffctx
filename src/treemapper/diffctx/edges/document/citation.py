@@ -30,7 +30,3 @@ class CitationEdgeBuilder(EdgeBuilder):
                 edges[(other, hub)] = self.weight
 
         return edges
-
-
-def _build_citation_edges_sparse(fragments: list[Fragment]) -> dict[tuple[FragmentId, FragmentId], float]:
-    return CitationEdgeBuilder().build(fragments)

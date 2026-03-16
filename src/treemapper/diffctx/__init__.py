@@ -226,7 +226,13 @@ def _process_files_for_fragments(
         content = _read_file_content(file_path, root_dir, preferred_revs)
         if content is None:
             continue
-        file_frags = [f for f in fragment_file(file_path, content) if f.id not in seen_frag_ids]
+        raw_frags = [f for f in fragment_file(file_path, content) if f.id not in seen_frag_ids]
+        local_seen: set[FragmentId] = set()
+        file_frags = []
+        for f in raw_frags:
+            if f.id not in local_seen:
+                file_frags.append(f)
+                local_seen.add(f.id)
 
         is_generated = _is_generated_file(file_path, content)
         cap = _MAX_GENERATED_FRAGMENTS if is_generated else max_frags
