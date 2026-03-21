@@ -63,7 +63,6 @@ EXTENSION_TO_LANGUAGE: dict[str, str] = {
     ".m": "objectivec",
     ".mm": "objectivec",
     ".r": "r",
-    ".R": "r",
     ".lua": "lua",
     ".pl": "perl",
     ".pm": "perl",

@@ -9,21 +9,11 @@ from ..base import EdgeBuilder, EdgeDict, FragmentIndex, discover_files_by_refs
 _MAKEFILE_NAMES = {"makefile", "gnumakefile"}
 _MAKEFILE_EXTS = {".mk", ".mak", ".make"}
 
-_MAKE_TARGET_RE = re.compile(r"^([a-zA-Z_][a-zA-Z0-9_.-]{0,100})\s{0,20}:(?!=)", re.MULTILINE)
 _MAKE_INCLUDE_RE = re.compile(r"^(?:-)?include\s+([^\n]{1,500})$", re.MULTILINE)
-_MAKE_VAR_RE = re.compile(r"^\s{0,20}([A-Z_][A-Z0-9_]{0,100})\s{0,20}[:?]?=", re.MULTILINE)
 _MAKE_RECIPE_RE = re.compile(r"^\t([^\n]{1,1000})$", re.MULTILINE)
 
-_CMAKE_ADD_EXE_RE = re.compile(r"add_executable\s{0,10}\(\s{0,10}(\w{1,100})", re.IGNORECASE)
-_CMAKE_ADD_LIB_RE = re.compile(r"add_library\s{0,10}\(\s{0,10}(\w{1,100})", re.IGNORECASE)
-_CMAKE_TARGET_LINK_RE = re.compile(
-    r"target_link_libraries\s{0,10}\(\s{0,10}(\w{1,100})\s{1,20}(?:PUBLIC|PRIVATE|INTERFACE)?\s{0,10}([^)]{1,500})\)",
-    re.IGNORECASE,
-)
 _CMAKE_INCLUDE_RE = re.compile(r"include\s{0,10}\(\s{0,10}([^)]{1,300})\)", re.IGNORECASE)
 _CMAKE_ADD_SUBDIR_RE = re.compile(r"add_subdirectory\s{0,10}\(\s{0,10}([^\)\s]{1,200})", re.IGNORECASE)
-_CMAKE_FIND_PKG_RE = re.compile(r"find_package\s{0,10}\(\s{0,10}(\w{1,100})", re.IGNORECASE)
-_CMAKE_SET_RE = re.compile(r"set\s{0,10}\(\s{0,10}([A-Z_][A-Z0-9_]{0,100})", re.IGNORECASE)
 
 _SCRIPT_CALL_RE = re.compile(r"(?:bash|sh|python|python3|\.\/scripts\/|\.\/bin\/)([a-zA-Z0-9_.-]+)")
 _SOURCE_FILE_RE = re.compile(r"\b([a-zA-Z_]\w*\.(?:c|cpp|cc|cxx|h|hpp|hxx|py|sh|go|rs|java))\b")
@@ -39,12 +29,8 @@ def _is_cmake(path: Path) -> bool:
     return name == "cmakelists.txt" or path.suffix.lower() == ".cmake"
 
 
-def _extract_make_refs(content: str) -> tuple[set[str], set[str]]:
-    targets: set[str] = set()
+def _extract_make_refs(content: str) -> set[str]:
     file_refs: set[str] = set()
-
-    for match in _MAKE_TARGET_RE.finditer(content):
-        targets.add(match.group(1))
 
     for match in _MAKE_INCLUDE_RE.finditer(content):
         includes = match.group(1).split()
@@ -60,21 +46,11 @@ def _extract_make_refs(content: str) -> tuple[set[str], set[str]]:
 
     file_refs.update(_SOURCE_FILE_RE.findall(content))
 
-    return targets, file_refs
+    return file_refs
 
 
-def _extract_cmake_refs(content: str) -> tuple[set[str], set[str]]:
-    targets: set[str] = set()
+def _extract_cmake_refs(content: str) -> set[str]:
     file_refs: set[str] = set()
-
-    for pattern in [_CMAKE_ADD_EXE_RE, _CMAKE_ADD_LIB_RE]:
-        for match in pattern.finditer(content):
-            targets.add(match.group(1))
-
-    for match in _CMAKE_TARGET_LINK_RE.finditer(content):
-        targets.add(match.group(1))
-        deps = match.group(2).split()
-        targets.update(d for d in deps if d and not d.startswith("$"))
 
     for match in _CMAKE_INCLUDE_RE.finditer(content):
         file_refs.add(match.group(1).strip())
@@ -86,7 +62,7 @@ def _extract_cmake_refs(content: str) -> tuple[set[str], set[str]]:
 
     file_refs.update(_SOURCE_FILE_RE.findall(content))
 
-    return targets, file_refs
+    return file_refs
 
 
 def _collect_build_refs(make_files: list[Path], cmake_files: list[Path]) -> set[str]:
@@ -95,16 +71,14 @@ def _collect_build_refs(make_files: list[Path], cmake_files: list[Path]) -> set[
     for mf in make_files:
         try:
             content = mf.read_text(encoding="utf-8")
-            _, file_refs = _extract_make_refs(content)
-            refs.update(file_refs)
+            refs.update(_extract_make_refs(content))
         except (OSError, UnicodeDecodeError):
             continue
 
     for cf in cmake_files:
         try:
             content = cf.read_text(encoding="utf-8")
-            _, file_refs = _extract_cmake_refs(content)
-            refs.update(file_refs)
+            refs.update(_extract_cmake_refs(content))
         except (OSError, UnicodeDecodeError):
             continue
 
@@ -150,7 +124,7 @@ class BuildSystemEdgeBuilder(EdgeBuilder):
         return edges
 
     def _add_makefile_edges(self, mf: Fragment, cmake_frags: list[Fragment], idx: FragmentIndex, edges: EdgeDict) -> None:
-        _, file_refs = _extract_make_refs(mf.content)
+        file_refs = _extract_make_refs(mf.content)
 
         for ref in file_refs:
             self._link_ref(mf.id, ref, idx, edges)
@@ -160,7 +134,7 @@ class BuildSystemEdgeBuilder(EdgeBuilder):
                 self.add_edge(edges, mf.id, cf.id, self.weight * 0.7)
 
     def _add_cmake_edges(self, cf: Fragment, fragments: list[Fragment], idx: FragmentIndex, edges: EdgeDict) -> None:
-        _, file_refs = _extract_cmake_refs(cf.content)
+        file_refs = _extract_cmake_refs(cf.content)
 
         for ref in file_refs:
             self._link_ref(cf.id, ref, idx, edges)

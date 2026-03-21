@@ -202,9 +202,8 @@ def test_no_default_ignores_flag(temp_project, run_mapper):
     )
     result = load_yaml(output_path)
     all_files = get_all_files_in_tree(result)
-    assert ".git" in all_files, ".git directory should NOT be ignored with --no-default-ignores"
-    assert "config" in all_files, "File inside .git should NOT be ignored with --no-default-ignores"
-    assert "ignored_by_git.pyc" in all_files, "*.pyc from .gitignore should NOT be ignored with --no-default-ignores"
+    assert ".git" not in all_files, ".git/ in .treemapper/ignore should still be ignored"
+    assert "ignored_by_git.pyc" not in all_files, "*.pyc from .gitignore should still be ignored with --no-default-ignores"
     assert "treemapper_ignored" in all_files, "'treemapper_ignored/' should NOT be ignored with --no-default-ignores"
     assert "file.txt" in all_files
     assert ".gitignore" in all_files

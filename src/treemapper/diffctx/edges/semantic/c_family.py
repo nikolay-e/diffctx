@@ -35,6 +35,74 @@ _TYPE_REF_RE = re.compile(r"\b([A-Z]\w*)\b")
 
 _METHOD_IMPL_RE = re.compile(r"^\s*(?:[\w:]+\s+)?(\w+)::(\w+)\s*\(", re.MULTILINE)
 
+_C_KEYWORDS = frozenset(
+    {
+        "if",
+        "for",
+        "while",
+        "switch",
+        "case",
+        "return",
+        "sizeof",
+        "typeof",
+        "alignof",
+        "static_assert",
+        "do",
+        "else",
+        "goto",
+        "break",
+        "continue",
+        "default",
+        "register",
+        "volatile",
+        "extern",
+        "typedef",
+        "auto",
+        "inline",
+        "restrict",
+        "noexcept",
+        "decltype",
+        "nullptr",
+        "throw",
+        "try",
+        "catch",
+        "delete",
+        "new",
+        "template",
+        "namespace",
+        "using",
+        "operator",
+    }
+)
+
+_C_COMMON_MACROS = frozenset(
+    {
+        "NULL",
+        "TRUE",
+        "FALSE",
+        "BOOL",
+        "DWORD",
+        "HANDLE",
+        "VOID",
+        "HRESULT",
+        "LPCTSTR",
+        "LPCSTR",
+        "LPWSTR",
+        "INT",
+        "UINT",
+        "LONG",
+        "ULONG",
+        "WORD",
+        "BYTE",
+        "CHAR",
+        "SHORT",
+        "EOF",
+        "SIZE_MAX",
+        "INT_MAX",
+        "INT_MIN",
+    }
+)
+
 
 def _is_c_family(path: Path) -> bool:
     return path.suffix.lower() in _ALL_C_FAMILY
@@ -56,7 +124,10 @@ def _extract_definitions(content: str) -> tuple[set[str], set[str], set[str]]:
     namespaces: set[str] = set()
 
     for match in _FUNC_DEF_RE.finditer(content):
-        functions.add(match.group(1))
+        name = match.group(1)
+        if name in _C_KEYWORDS:
+            continue
+        functions.add(name)
 
     for pattern in [_CLASS_RE, _TYPEDEF_RE, _USING_TYPE_RE, _ENUM_RE]:
         for match in pattern.finditer(content):
@@ -79,11 +150,15 @@ def _extract_references(content: str, own_defs: set[str]) -> tuple[set[str], set
 
     for match in _FUNC_CALL_RE.finditer(content):
         name = match.group(1)
+        if name in _C_KEYWORDS:
+            continue
         if name not in own_defs and not name.startswith("_") and len(name) > 2:
             calls.add(name)
 
     for match in _TYPE_REF_RE.finditer(content):
         name = match.group(1)
+        if name in _C_COMMON_MACROS:
+            continue
         if name not in own_defs and len(name) > 2:
             type_refs.add(name)
 

@@ -7,7 +7,7 @@ from pathlib import Path
 from .types import DiffHunk
 
 _HUNK_RE = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
-_RANGE_RE = re.compile(r"^\s*(\S+?)(\.\.\.?)(\S+?)\s*$")  # NOSONAR(S5852)
+_RANGE_RE = re.compile(r"^\s*(\S+?)(\.\.\.?)(\S*?)\s*$")  # NOSONAR(S5852)
 
 
 class GitError(Exception):
@@ -96,14 +96,13 @@ def parse_diff(repo_root: Path, diff_range: str) -> list[DiffHunk]:
     return hunks
 
 
+def _run_git_z(repo_root: Path, args: list[str]) -> list[str]:
+    output = run_git(repo_root, args)
+    return [p for p in output.split("\0") if p]
+
+
 def get_changed_files(repo_root: Path, diff_range: str) -> list[Path]:
-    output = run_git(repo_root, ["diff", "--name-only", "-M", diff_range])
-    files: list[Path] = []
-    for line in output.splitlines():
-        line = line.strip()
-        if line:
-            files.append(repo_root / line)
-    return files
+    return [repo_root / p for p in _run_git_z(repo_root, ["diff", "--name-only", "-M", "-z", diff_range])]
 
 
 def split_diff_range(diff_range: str) -> tuple[str | None, str | None]:
@@ -116,22 +115,28 @@ def split_diff_range(diff_range: str) -> tuple[str | None, str | None]:
 
 
 def get_untracked_files(repo_root: Path) -> list[Path]:
-    output = run_git(repo_root, ["ls-files", "--others", "--exclude-standard"])
-    return [repo_root / line.strip() for line in output.splitlines() if line.strip()]
+    return [repo_root / p for p in _run_git_z(repo_root, ["ls-files", "--others", "--exclude-standard", "-z"])]
 
 
 def get_deleted_files(repo_root: Path, diff_range: str) -> set[Path]:
-    output = run_git(repo_root, ["diff", "--diff-filter=D", "--name-only", "-M", diff_range])
-    return {(repo_root / line.strip()).resolve() for line in output.splitlines() if line.strip()}
+    return {
+        (repo_root / p).resolve()
+        for p in _run_git_z(repo_root, ["diff", "--diff-filter=D", "--name-only", "-M", "-z", diff_range])
+    }
 
 
 def get_renamed_old_paths(repo_root: Path, diff_range: str) -> set[Path]:
-    output = run_git(repo_root, ["diff", "--diff-filter=R", "--name-status", "-M", diff_range])
+    output = run_git(repo_root, ["diff", "--diff-filter=R", "--name-status", "-M", "-z", diff_range])
+    parts = output.split("\0")
     old_paths: set[Path] = set()
-    for line in output.splitlines():
-        parts = line.strip().split("\t")
-        if len(parts) >= 3 and parts[0].startswith("R"):
-            old_paths.add((repo_root / parts[1]).resolve())
+    i = 0
+    while i < len(parts):
+        if parts[i].startswith("R"):
+            if i + 2 < len(parts) and parts[i + 1]:
+                old_paths.add((repo_root / parts[i + 1]).resolve())
+            i += 3
+        else:
+            i += 1
     return old_paths
 
 

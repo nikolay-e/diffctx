@@ -27,7 +27,7 @@ _KOTLIN_CLASS_RE = re.compile(
     re.MULTILINE,
 )
 _KOTLIN_FUN_RE = re.compile(
-    r"^\s*(?:\w+\s+)*fun\s+(?:<[^>]+>\s+)?([a-z]\w*)",
+    r"^\s*(?:\w+\s+)*fun\s+(?:<[^>]+>\s+)?([a-zA-Z_]\w*)",
     re.MULTILINE,
 )
 

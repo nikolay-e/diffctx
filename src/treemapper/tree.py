@@ -123,6 +123,8 @@ class TreeBuildContext:
     def is_output_file(self, entry: Path) -> bool:
         if not self._resolved_output_file:
             return False
+        if entry.name != self._resolved_output_file.name:
+            return False
         try:
             return entry.resolve() == self._resolved_output_file
         except (OSError, RuntimeError):

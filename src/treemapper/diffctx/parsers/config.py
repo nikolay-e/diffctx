@@ -66,45 +66,50 @@ class TerraformStrategy:
         if not lines:
             return []
 
-        # Collect block boundaries (all 0-indexed)
-        blocks: list[tuple[int, int, str | None]] = []
-        i = 0
-        while i < len(lines):
-            if _TF_BLOCK_HEADER_RE.match(lines[i].strip()):
-                end_i = _tf_find_block_end(lines, i)
-                sym = _tf_block_symbol(lines[i].strip())
-                blocks.append((i, end_i, sym))
-                i = end_i + 1
-            else:
-                i += 1
-
+        blocks = _collect_tf_blocks(lines)
         if not blocks:
             return []
 
-        fragments: list[Fragment] = []
-        prev_end = -1
+        return _assemble_tf_fragments(path, lines, blocks)
 
-        for start_i, end_i, sym in blocks:
-            # Gap before this block (comments, blank lines, etc.)
-            if start_i > prev_end + 1:
-                frag = create_fragment_from_lines(path, lines, prev_end + 2, start_i, "config", "data")
-                if frag:
-                    fragments.append(frag)
-            frag = create_fragment_from_lines(path, lines, start_i + 1, end_i + 1, "config", "data", symbol_name=sym)
+
+def _collect_tf_blocks(lines: list[str]) -> list[tuple[int, int, str | None]]:
+    blocks: list[tuple[int, int, str | None]] = []
+    i = 0
+    while i < len(lines):
+        if _TF_BLOCK_HEADER_RE.match(lines[i].strip()):
+            end_i = _tf_find_block_end(lines, i)
+            sym = _tf_block_symbol(lines[i].strip())
+            blocks.append((i, end_i, sym))
+            i = end_i + 1
+        else:
+            i += 1
+    return blocks
+
+
+def _assemble_tf_fragments(path: Path, lines: list[str], blocks: list[tuple[int, int, str | None]]) -> list[Fragment]:
+    fragments: list[Fragment] = []
+    prev_end = -1
+
+    for start_i, end_i, sym in blocks:
+        if start_i > prev_end + 1:
+            frag = create_fragment_from_lines(path, lines, prev_end + 2, start_i, "config", "data")
             if frag:
-                compound_refs = _extract_compound_tf_refs(frag.content)
-                if compound_refs:
-                    frag.identifiers = frag.identifiers | compound_refs
                 fragments.append(frag)
-            prev_end = end_i
+        frag = create_fragment_from_lines(path, lines, start_i + 1, end_i + 1, "config", "data", symbol_name=sym)
+        if frag:
+            compound_refs = _extract_compound_tf_refs(frag.content)
+            if compound_refs:
+                frag.identifiers = frag.identifiers | compound_refs
+            fragments.append(frag)
+        prev_end = end_i
 
-        # Tail after last block
-        if prev_end < len(lines) - 1:
-            frag = create_fragment_from_lines(path, lines, prev_end + 2, len(lines), "config", "data")
-            if frag:
-                fragments.append(frag)
+    if prev_end < len(lines) - 1:
+        frag = create_fragment_from_lines(path, lines, prev_end + 2, len(lines), "config", "data")
+        if frag:
+            fragments.append(frag)
 
-        return fragments
+    return fragments
 
 
 def _import_ruamel_yaml() -> None:

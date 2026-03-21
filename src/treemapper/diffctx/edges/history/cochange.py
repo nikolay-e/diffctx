@@ -32,6 +32,8 @@ class CochangeEdgeBuilder(EdgeBuilder):
             weight = min(self.weight, 0.1 * math.log(1 + count))
             for fid1 in path_to_frags.get(p1, []):
                 for fid2 in path_to_frags.get(p2, []):
+                    if fid1 == fid2:
+                        continue
                     edges[(fid1, fid2)] = max(edges.get((fid1, fid2), 0.0), weight)
                     edges[(fid2, fid1)] = max(edges.get((fid2, fid1), 0.0), weight)
 

@@ -33,7 +33,7 @@ from .graph import Graph, build_graph
 from .languages import get_language_for_file
 from .ppr import personalized_pagerank
 from .render import build_diff_context_output
-from .select import SelectionResult, lazy_greedy_select
+from .select import SelectionResult, _IntervalIndex, lazy_greedy_select
 from .types import DiffHunk, Fragment, FragmentId, extract_identifiers
 from .utility import concepts_from_diff_text, needs_from_diff
 
@@ -214,6 +214,30 @@ def _truncate_generated_fragments(file_frags: list[Fragment]) -> list[Fragment]:
     return truncated
 
 
+def _dedup_fragments(raw_frags: list[Fragment]) -> list[Fragment]:
+    seen: set[FragmentId] = set()
+    result: list[Fragment] = []
+    for f in raw_frags:
+        if f.id not in seen:
+            result.append(f)
+            seen.add(f.id)
+    return result
+
+
+def _cap_fragments(file_frags: list[Fragment], cap: int, file_path: Path, is_generated: bool) -> list[Fragment]:
+    if len(file_frags) <= cap:
+        return file_frags
+    file_frags.sort(key=lambda f: f.line_count, reverse=True)
+    file_frags = file_frags[:cap]
+    logger.debug(
+        "diffctx: capped %s to %d fragments%s",
+        file_path.name,
+        cap,
+        " (generated)" if is_generated else "",
+    )
+    return file_frags
+
+
 def _process_files_for_fragments(
     files: list[Path],
     root_dir: Path,
@@ -227,25 +251,11 @@ def _process_files_for_fragments(
         if content is None:
             continue
         raw_frags = [f for f in fragment_file(file_path, content) if f.id not in seen_frag_ids]
-        local_seen: set[FragmentId] = set()
-        file_frags = []
-        for f in raw_frags:
-            if f.id not in local_seen:
-                file_frags.append(f)
-                local_seen.add(f.id)
+        file_frags = _dedup_fragments(raw_frags)
 
         is_generated = _is_generated_file(file_path, content)
         cap = _MAX_GENERATED_FRAGMENTS if is_generated else max_frags
-
-        if len(file_frags) > cap:
-            file_frags.sort(key=lambda f: f.line_count, reverse=True)
-            file_frags = file_frags[:cap]
-            logger.debug(
-                "diffctx: capped %s to %d fragments%s",
-                file_path.name,
-                cap,
-                " (generated)" if is_generated else "",
-            )
+        file_frags = _cap_fragments(file_frags, cap, file_path, is_generated)
 
         if is_generated:
             file_frags = _truncate_generated_fragments(file_frags)
@@ -656,7 +666,12 @@ def build_diff_context(
 
     if not is_large_repo:
         expanded_files = _expand_universe_by_rare_identifiers(
-            root_dir, expansion_concepts, changed_files + edge_discovered, combined_spec
+            root_dir,
+            expansion_concepts,
+            changed_files + edge_discovered,
+            combined_spec,
+            candidate_files=all_candidate_files,
+            changed_files=changed_files,
         )
         expanded_files = [_normalize_path(p, root_dir) for p in expanded_files]
         all_fragments.extend(_process_files_for_fragments(expanded_files, root_dir, preferred_revs, seen_frag_ids))
@@ -745,6 +760,9 @@ def _coherence_post_pass(
     budget: int,
 ) -> SelectionResult:
     selected_ids = {f.id for f in result.selected}
+    interval_idx = _IntervalIndex()
+    for f in result.selected:
+        interval_idx.add(f.id)
     remaining = budget - result.used_tokens
 
     name_to_frags: dict[str, list[Fragment]] = {}
@@ -758,9 +776,10 @@ def _coherence_post_pass(
     added: list[Fragment] = []
     for name in dangling_names:
         pick = _pick_best_fragment(name_to_frags.get(name, []), selected_ids)
-        if pick and pick.token_count <= remaining and pick.id not in selected_ids:
+        if pick and pick.token_count <= remaining and pick.id not in selected_ids and not interval_idx.overlaps(pick):
             added.append(pick)
             selected_ids.add(pick.id)
+            interval_idx.add(pick.id)
             remaining -= pick.token_count
 
     if not added:
@@ -856,13 +875,45 @@ _SIGNATURE_ELIGIBLE_KINDS = frozenset({"function", "class", "method", "struct", 
 _MIN_LINES_FOR_SIGNATURE = 5
 
 
+def _count_brackets_outside_strings(line: str) -> tuple[int, int, int, int]:
+    open_parens = 0
+    close_parens = 0
+    open_braces = 0
+    close_braces = 0
+    in_string: str | None = None
+    escaped = False
+    for ch in line:
+        if in_string is not None:
+            if escaped:
+                escaped = False
+            elif ch == "\\":
+                escaped = True
+            elif ch == in_string:
+                in_string = None
+            continue
+        if ch in ("'", '"', "`"):
+            in_string = ch
+            escaped = False
+            continue
+        if ch == "(":
+            open_parens += 1
+        elif ch == ")":
+            close_parens += 1
+        elif ch == "{":
+            open_braces += 1
+        elif ch == "}":
+            close_braces += 1
+    return open_parens, close_parens, open_braces, close_braces
+
+
 def _find_signature_end(lines: list[str]) -> int:
     depth = 0
     for i, line in enumerate(lines):
-        depth += line.count("(") - line.count(")")
+        op, cp, ob, cb = _count_brackets_outside_strings(line)
+        depth += op - cp
         if depth <= 0 and i > 0:
             return i + 1
-        depth += line.count("{") - line.count("}")
+        depth += ob - cb
         if depth > 0:
             return i + 1
     return min(2, len(lines))
@@ -926,16 +977,12 @@ def _add_container_headers(core_ids: set[FragmentId], frags_by_path: dict[Path, 
 
 
 def _log_full_mode(selected: list[Fragment]) -> None:
-    try:
-        used = sum(f.token_count for f in selected)
-        logger.info(
-            "diffctx: full mode selected=%d from changed files used=%d tokens",
-            len(selected),
-            used,
-        )
-    except (TypeError, AttributeError) as e:
-        # nosemgrep: python-logger-credential-disclosure
-        logger.debug("diffctx: failed to compute token count: %s", e)
+    used = sum(f.token_count for f in selected)
+    logger.info(
+        "diffctx: full mode selected=%d from changed files used=%d tokens",
+        len(selected),
+        used,
+    )
 
 
 def _log_ppr_mode(
@@ -946,23 +993,19 @@ def _log_ppr_mode(
     alpha: float,
     tau: float,
 ) -> None:
-    try:
-        used = sum(f.token_count for f in selected)
-        budget_str = str(budget_tokens) if budget_tokens is not None else "unlimited"
-        logger.info(
-            "diffctx: selected=%d core=%d used=%d/%s reason=%s utility=%.4f alpha=%.3f tau=%.3f",
-            len(selected),
-            len(core_ids),
-            used,
-            budget_str,
-            result.reason,
-            result.utility,
-            alpha,
-            tau,
-        )
-    except (TypeError, AttributeError) as e:
-        # nosemgrep: python-logger-credential-disclosure
-        logger.debug("diffctx: failed to compute token count: %s", e)
+    used = sum(f.token_count for f in selected)
+    budget_str = str(budget_tokens) if budget_tokens is not None else "unlimited"
+    logger.info(
+        "diffctx: selected=%d core=%d used=%d/%s reason=%s utility=%.4f alpha=%.3f tau=%.3f",
+        len(selected),
+        len(core_ids),
+        used,
+        budget_str,
+        result.reason,
+        result.utility,
+        alpha,
+        tau,
+    )
 
 
 _MAX_FILE_SIZE = LIMITS.max_file_size
@@ -1063,9 +1106,36 @@ def _collect_candidate_files(
     return fallback, False
 
 
-def _build_ident_index(files: list[Path], concepts: frozenset[str]) -> dict[str, list[Path]]:
+def _path_distance(a: Path, b: Path) -> int:
+    a_parts = a.parent.parts
+    b_parts = b.parent.parts
+    common = 0
+    for x, y in zip(a_parts, b_parts):
+        if x != y:
+            break
+        common += 1
+    return (len(a_parts) - common) + (len(b_parts) - common)
+
+
+def _build_ident_index(
+    files: list[Path],
+    concepts: frozenset[str],
+    changed_files: list[Path] | None = None,
+) -> dict[str, list[Path]]:
+    if changed_files:
+        changed_dirs = {f.parent for f in changed_files}
+
+        def sort_key(p: Path) -> tuple[int, int, str]:
+            in_same_dir = 0 if p.parent in changed_dirs else 1
+            min_dist = min((_path_distance(p, cf) for cf in changed_files), default=0)
+            return (in_same_dir, min_dist, str(p))
+
+        prioritized = sorted(files, key=sort_key)[:2000]
+    else:
+        prioritized = sorted(files)[:2000]
+
     inverted_index: dict[str, list[Path]] = defaultdict(list)
-    for file_path in sorted(files)[:2000]:
+    for file_path in prioritized:
         try:
             content = file_path.read_text(encoding="utf-8")
             file_idents = extract_identifiers(content, skip_stopwords=False)
@@ -1197,13 +1267,18 @@ def _expand_universe_by_rare_identifiers(
     concepts: frozenset[str],
     already_included: list[Path],
     combined_spec: pathspec.PathSpec,
+    candidate_files: list[Path] | None = None,
+    changed_files: list[Path] | None = None,
 ) -> list[Path]:
     if not concepts:
         return []
 
     included_set = set(already_included)
-    files, _ = _collect_candidate_files(root_dir, included_set, combined_spec)
-    inverted_index = _build_ident_index(files, concepts)
+    if candidate_files is not None:
+        files = [f for f in candidate_files if f not in included_set]
+    else:
+        files, _ = _collect_candidate_files(root_dir, included_set, combined_spec)
+    inverted_index = _build_ident_index(files, concepts, changed_files=changed_files)
     return _collect_expansion_files(inverted_index, concepts, included_set)
 
 

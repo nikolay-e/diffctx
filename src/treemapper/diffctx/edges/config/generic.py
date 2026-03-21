@@ -7,7 +7,7 @@ from ...constants import CODE_EXTENSIONS, expand_config_key
 from ...types import Fragment
 from ..base import EdgeBuilder, EdgeDict
 
-_CONFIG_EXTENSIONS = {".yaml", ".yml", ".json", ".toml", ".ini", ".env"}
+_CONFIG_EXTENSIONS = {".yaml", ".yml", ".json", ".toml", ".ini", ".cfg", ".conf", ".xml", ".properties", ".env"}
 
 _CONFIG_KEY_STOPWORDS = frozenset(
     {

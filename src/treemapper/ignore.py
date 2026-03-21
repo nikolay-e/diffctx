@@ -26,7 +26,10 @@ def read_ignore_file(file_path: Path) -> list[str]:
                     continue
                 if stripped.startswith("#"):
                     continue
-                ignore_patterns.append(stripped.rstrip())
+                if stripped.endswith("\\ "):
+                    ignore_patterns.append(stripped)
+                else:
+                    ignore_patterns.append(stripped.rstrip())
         logger.info("Using ignore patterns from %s", file_path)
         logger.debug("Read ignore patterns from %s: %s", file_path, ignore_patterns)
     except PermissionError:
@@ -129,16 +132,7 @@ def _aggregate_all_ignore_patterns(root: Path, ignore_filenames: list[str]) -> l
     return out
 
 
-def _transform_anchored_pattern(anchored: str, rel_to_root: str) -> str | None:
-    prefix = rel_to_root + "/"
-    if anchored.startswith(prefix):
-        return "/" + anchored[len(prefix) :]
-    if anchored in {rel_to_root, prefix}:
-        return None
-    return None
-
-
-def _transform_relative_pattern(pat: str, rel_to_root: str) -> str | None:
+def _transform_pattern(pat: str, rel_to_root: str) -> str | None:
     prefix = rel_to_root + "/"
     if pat.startswith(prefix):
         return "/" + pat[len(prefix) :]
@@ -155,12 +149,12 @@ def _transform_parent_pattern(line: str, rel_to_root: str) -> str | None:
     if "**" in pat or "/" not in pat:
         result = pat
     elif pat.startswith("/"):
-        transformed = _transform_anchored_pattern(pat[1:], rel_to_root)
+        transformed = _transform_pattern(pat[1:], rel_to_root)
         if transformed is None:
             return None
         result = transformed
     else:
-        transformed = _transform_relative_pattern(pat, rel_to_root)
+        transformed = _transform_pattern(pat, rel_to_root)
         if transformed is None:
             return None
         result = transformed
@@ -272,8 +266,9 @@ def get_ignore_specs(
 
     if not no_default_ignores:
         patterns.extend(DEFAULT_IGNORE_PATTERNS)
-        patterns.extend(_collect_parent_ignore_patterns(root_dir, [".gitignore"]))
-        patterns.extend(_aggregate_all_ignore_patterns(root_dir, [".gitignore"]))
+
+    patterns.extend(_collect_parent_ignore_patterns(root_dir, [".gitignore"]))
+    patterns.extend(_aggregate_all_ignore_patterns(root_dir, [".gitignore"]))
 
     if custom_ignore_file:
         patterns.extend(read_ignore_file(custom_ignore_file))

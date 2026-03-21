@@ -10,14 +10,7 @@ from ..types import Fragment, FragmentId
 EdgeDict = dict[tuple[FragmentId, FragmentId], float]
 
 
-_STRIP_EXTENSIONS = CODE_EXTENSIONS | frozenset(
-    {
-        ".sc",
-        ".fs",
-        ".fsi",
-        ".fsx",
-    }
-)
+_STRIP_EXTENSIONS = CODE_EXTENSIONS
 
 _INDEX_FILE_STEMS = frozenset({"__init__", "index", "mod"})
 
@@ -104,7 +97,10 @@ def _matches_any_ref(candidate_name: str, candidate_rel: str, refs: set[str]) ->
         ref_lower = ref.lower()
         if len(ref_lower) >= _MIN_REF_LENGTH_FOR_PATH_MATCH and ref_lower in candidate_rel:
             idx = candidate_rel.index(ref_lower)
-            if idx == 0 or candidate_rel[idx - 1] in "/\\":
+            end_idx = idx + len(ref_lower)
+            if (idx == 0 or candidate_rel[idx - 1] in "/\\") and (
+                end_idx == len(candidate_rel) or candidate_rel[end_idx] in "/\\."
+            ):
                 return True
     return False
 

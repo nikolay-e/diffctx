@@ -21,7 +21,6 @@ from .parsers.base import (  # noqa: F401
     GENERIC_MAX_LINES,
     INDENT_EXTENSIONS,
     MIN_FRAGMENT_LINES,
-    MIN_FRAGMENT_WORDS,
     YAML_EXTENSIONS,
 )
 from .parsers.base import compute_bracket_balance as _compute_bracket_balance  # noqa: F401
@@ -38,7 +37,6 @@ _BASE_EXPORTS = [
     "GENERIC_MAX_LINES",
     "INDENT_EXTENSIONS",
     "MIN_FRAGMENT_LINES",
-    "MIN_FRAGMENT_WORDS",
     "YAML_EXTENSIONS",
     "_compute_bracket_balance",
     "_find_balanced_end_line",

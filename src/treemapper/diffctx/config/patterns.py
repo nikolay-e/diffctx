@@ -19,7 +19,7 @@ IMPORT_PATTERNS = {
     "c_include": re.compile(r'^\s*#include\s*[<"]([^>"]+)[>"]', re.MULTILINE),
     "ruby_require": re.compile(r"""^\s*require(?:_relative)?\s+['"]([^'"]+)['"]""", re.MULTILINE),
     "php_use": re.compile(r"^\s*use\s+([A-Z][\w\\]*)", re.MULTILINE),
-    "shell_source": re.compile(r"""^\s*(?:source|\\.)\s+['"]?([^'"\s]+)['"]?""", re.MULTILINE),
+    "shell_source": re.compile(r"""^\s*(?:source|\.)\s+['"]?([^'"\s]+)['"]?""", re.MULTILINE),
     "swift_import": re.compile(r"^\s*import\s+([A-Za-z_]\w*)", re.MULTILINE),
 }
 

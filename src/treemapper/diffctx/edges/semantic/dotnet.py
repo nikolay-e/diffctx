@@ -25,12 +25,6 @@ _CS_INHERIT_RE = re.compile(
     r"(?:class|struct|record)\s+\w+[^{]{0,300}?:\s*((?:[A-Z]\w*(?:\s*,\s*)?)+)",
     re.DOTALL,
 )
-_CS_GENERIC_RE = re.compile(r"<([A-Z]\w*(?:\s*,\s*[A-Z]\w*)*)>")
-_CS_METHOD_RE = re.compile(
-    r"^\s*(?:public |private |protected |internal )?(?:\w+ )?[A-Z]\w*(?:<[^>]+>)? ([A-Z]\w*)\s*\(",
-    re.MULTILINE,
-)
-
 _FS_OPEN_RE = re.compile(r"^\s*open\s+([A-Z][a-zA-Z0-9_.]*)", re.MULTILINE)
 _FS_MODULE_RE = re.compile(r"^\s*module\s+(?:rec\s+)?([A-Z][a-zA-Z0-9_.]*)", re.MULTILINE)
 _FS_NAMESPACE_RE = re.compile(r"^\s*namespace\s+(?:rec\s+)?([A-Z][a-zA-Z0-9_.]*)", re.MULTILINE)

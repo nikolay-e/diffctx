@@ -10,8 +10,8 @@ from ..types import Fragment, FragmentId, extract_identifiers
 _MIN_FRAGMENT_LINES = 1
 MIN_FRAGMENT_LINES = _MIN_FRAGMENT_LINES
 _GENERIC_MAX_LINES = 200
+GENERIC_MAX_LINES = _GENERIC_MAX_LINES
 _GENERIC_MAX_EXTENSION = 100
-_MIN_FRAGMENT_WORDS = 10
 
 _BRACKET_PAIRS = {"{": "}", "[": "]", "(": ")"}
 
@@ -45,20 +45,40 @@ def _process_char_outside_string(char: str, stack: list[str]) -> tuple[bool, str
     return False, ""
 
 
+class _BracketState:
+    __slots__ = ("escape_count", "in_string", "stack", "string_char")
+
+    def __init__(self) -> None:
+        self.stack: list[str] = []
+        self.in_string = False
+        self.string_char = ""
+        self.escape_count = 0
+
+    @property
+    def depth(self) -> int:
+        return len(self.stack)
+
+    def feed(self, text: str) -> None:
+        for char in text:
+            if self.in_string:
+                self.in_string, self.escape_count = _process_char_in_string(char, self.string_char, self.escape_count)
+            else:
+                self.in_string, self.string_char = _process_char_outside_string(char, self.stack)
+                self.escape_count = 0
+
+    def copy(self) -> _BracketState:
+        clone = _BracketState()
+        clone.stack = self.stack.copy()
+        clone.in_string = self.in_string
+        clone.string_char = self.string_char
+        clone.escape_count = self.escape_count
+        return clone
+
+
 def compute_bracket_balance(text: str) -> int:
-    stack: list[str] = []
-    in_string = False
-    string_char = ""
-    escape_count = 0
-
-    for char in text:
-        if in_string:
-            in_string, escape_count = _process_char_in_string(char, string_char, escape_count)
-        else:
-            in_string, string_char = _process_char_outside_string(char, stack)
-            escape_count = 0
-
-    return len(stack)
+    state = _BracketState()
+    state.feed(text)
+    return state.depth
 
 
 def _is_comment_or_blank(line: str) -> bool:
@@ -69,17 +89,47 @@ def _is_comment_or_blank(line: str) -> bool:
 
 
 def _is_top_level_close(line: str) -> bool:
-    stripped = line.strip()
-    return stripped == "}" or stripped == "};" or stripped.startswith("}")
+    return line.strip().startswith("}")
 
 
 def _find_first_balanced_point(lines: list[str], start_idx: int, target_end_idx: int) -> int | None:
+    state = _BracketState()
     for end_idx in range(start_idx, target_end_idx + 1):
-        text = "\n".join(lines[start_idx : end_idx + 1])
-        if compute_bracket_balance(text) == 0 and _is_top_level_close(lines[end_idx]):
+        if end_idx > start_idx:
+            state.feed("\n")
+        state.feed(lines[end_idx])
+        if state.depth == 0 and _is_top_level_close(lines[end_idx]):
             if end_idx + 1 > target_end_idx or _is_comment_or_blank(lines[end_idx + 1]):
                 return end_idx
     return None
+
+
+def _feed_lines(state: _BracketState, lines: list[str], start_idx: int, end_idx: int) -> None:
+    for idx in range(start_idx, end_idx + 1):
+        if idx > start_idx:
+            state.feed("\n")
+        state.feed(lines[idx])
+
+
+def _scan_forward_for_balance(state: _BracketState, lines: list[str], start: int, end: int) -> int | None:
+    for end_idx in range(start, end + 1):
+        state.feed("\n")
+        state.feed(lines[end_idx])
+        if state.depth == 0:
+            return end_idx
+    return None
+
+
+def _scan_backward_for_balance(lines: list[str], start_idx: int, target_end_idx: int) -> int | None:
+    state = _BracketState()
+    last_balanced_idx = None
+    for idx in range(start_idx, target_end_idx):
+        if idx > start_idx:
+            state.feed("\n")
+        state.feed(lines[idx])
+        if state.depth == 0:
+            last_balanced_idx = idx
+    return last_balanced_idx
 
 
 def find_balanced_end_line(
@@ -88,26 +138,21 @@ def find_balanced_end_line(
     if target_end_idx >= len(lines):
         target_end_idx = len(lines) - 1
 
-    text_to_target = "\n".join(lines[start_idx : target_end_idx + 1])
-    if compute_bracket_balance(text_to_target) == 0:
+    target_state = _BracketState()
+    _feed_lines(target_state, lines, start_idx, target_end_idx)
+
+    if target_state.depth == 0:
         first_balanced = _find_first_balanced_point(lines, start_idx, target_end_idx)
         if first_balanced is not None and first_balanced < target_end_idx:
             return first_balanced
         return target_end_idx
 
     max_end = min(len(lines) - 1, target_end_idx + max_extension)
+    forward = _scan_forward_for_balance(target_state.copy(), lines, target_end_idx + 1, max_end)
+    if forward is not None:
+        return forward
 
-    for end_idx in range(target_end_idx + 1, max_end + 1):
-        text = "\n".join(lines[start_idx : end_idx + 1])
-        if compute_bracket_balance(text) == 0:
-            return end_idx
-
-    for end_idx in range(target_end_idx - 1, start_idx - 1, -1):
-        text = "\n".join(lines[start_idx : end_idx + 1])
-        if compute_bracket_balance(text) == 0:
-            return end_idx
-
-    return target_end_idx
+    return _scan_backward_for_balance(lines, start_idx, target_end_idx) or target_end_idx
 
 
 _SENTENCE_ENDINGS = (".", "?", "!", '."', '?"', '!"', ".'", "?'", "!'")
@@ -272,11 +317,6 @@ def create_code_gap_fragments(path: Path, lines: list[str], covered: list[tuple[
             fragments.append(frag)
 
     return fragments
-
-
-MIN_FRAGMENT_LINES = _MIN_FRAGMENT_LINES
-GENERIC_MAX_LINES = _GENERIC_MAX_LINES
-MIN_FRAGMENT_WORDS = _MIN_FRAGMENT_WORDS
 
 
 def check_library_available(import_fn: Callable[[], None]) -> bool:

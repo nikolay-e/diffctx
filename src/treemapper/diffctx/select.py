@@ -224,7 +224,7 @@ def _find_best_singleton(
 def _compute_r_cap(rel: dict[FragmentId, float]) -> float:
     values = [v for v in rel.values() if v > 0]
     if len(values) < 2:
-        return max(values[0], 1e-9) if values else 1.0
+        return max(values[0], 0.01) if values else 1.0
     med = statistics.median(values)
     std = statistics.stdev(values)
     return max(med + UTILITY.r_cap_sigma * std, 1e-9)

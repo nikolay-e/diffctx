@@ -596,59 +596,6 @@ GARBAGE_MARKERS = [
 ]
 
 
-@pytest.fixture
-def git_with_commits(git_repo):
-    """Helper for creating git repos with commits.
-
-    Automatically adds garbage files on first commit for negative testing.
-    """
-
-    class GitHelper:
-        def __init__(self, repo_path: Path):
-            self.repo = repo_path
-            self._garbage_added = False
-
-        def add_file(self, path: str, content: str) -> Path:
-            file_path = self.repo / path
-            file_path.parent.mkdir(parents=True, exist_ok=True)
-            file_path.write_text(content, encoding="utf-8")
-            return file_path
-
-        def _add_garbage_files(self) -> None:
-            if self._garbage_added:
-                return
-            for filename, content in GARBAGE_FILES.items():
-                garbage_path = self.repo / filename
-                garbage_path.parent.mkdir(parents=True, exist_ok=True)
-                garbage_path.write_text(content, encoding="utf-8")
-            self._garbage_added = True
-
-        def commit(self, message: str) -> str:
-            self._add_garbage_files()
-            subprocess.run(["git", "add", "-A"], cwd=self.repo, capture_output=True, check=True)
-            subprocess.run(["git", "commit", "-m", message], cwd=self.repo, capture_output=True, check=True)
-            result = subprocess.run(
-                ["git", "rev-parse", "HEAD"],
-                cwd=self.repo,
-                capture_output=True,
-                text=True,
-                check=True,
-            )
-            return result.stdout.strip()
-
-        def get_head_sha(self) -> str:
-            result = subprocess.run(
-                ["git", "rev-parse", "HEAD"],
-                cwd=self.repo,
-                capture_output=True,
-                text=True,
-                check=True,
-            )
-            return result.stdout.strip()
-
-    return GitHelper(git_repo)
-
-
 MINIMUM_AVERAGE_SCORE = 87.0
 
 

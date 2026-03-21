@@ -65,4 +65,20 @@ class PythonAstStrategy:
         range_ = self._get_node_range(node)
         if not range_:
             return None
-        return create_fragment_from_lines(path, lines, range_[0], range_[1], "class", symbol_name=node.name)
+        start, end = range_
+        first_child_line = self._first_child_def_line(node)
+        if first_child_line is not None and first_child_line > start:
+            end = first_child_line - 1
+        return create_fragment_from_lines(path, lines, start, end, "class", symbol_name=node.name)
+
+    @staticmethod
+    def _first_child_def_line(node: ast.ClassDef) -> int | None:
+        for child in node.body:
+            if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                child_line = child.lineno
+                for dec in getattr(child, "decorator_list", []) or []:
+                    dec_line = getattr(dec, "lineno", None)
+                    if isinstance(dec_line, int):
+                        child_line = min(child_line, dec_line)
+                return child_line
+        return None

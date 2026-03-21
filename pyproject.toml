@@ -52,22 +52,18 @@ classifiers = [
 ]
 dynamic = [ "version" ]  # Version is still managed in version.py
 dependencies = [
-  "lxml>=5.0,<7.0",
-  "mistune>=3.0,<4.0",
   "pathspec>=0.11,<2.0",
-  "pyyaml>=6.0.2,<8.0",
-  "ruamel-yaml>=0.18,<1.0",
   "tiktoken>=0.7,<1.0",
 ]
 optional-dependencies.dev = [
-  "autoflake>=2.0,<3.0",
   "black>=23.0.0,<27.0",
   # Build and release
   "build>=0.10,<2.0",
   "coverage>=7.0,<8.0",
   "hypothesis>=6.0,<7.0",
   "import-linter>=2.0,<3.0",
-  "isort>=5.12,<9.0",
+  "lxml>=5.0,<7.0",
+  "mistune>=3.0,<4.0",
   "mutmut>=3.5,<4.0",
   "mypy>=1.0,<2.0",
   "pre-commit>=3.0,<5.0",
@@ -75,22 +71,24 @@ optional-dependencies.dev = [
   "pytest>=7.0,<10.0",
   "pytest-cov>=3.0,<8.0",
   "pytest-xdist>=3.0,<4.0",
+  "pyyaml>=6.0.2,<8.0",
   "radon>=6.0,<7.0",
+  "ruamel-yaml>=0.18,<1.0",
   # Quality checks
   "ruff>=0.4,<1.0",
   "treemapper[tree-sitter]",
-  "twine>=4.0,<7.0",
   # Type stubs
   "types-pyyaml>=6.0,<7.0",
-  # Security fixes
-  "urllib3>=2.6.0",
 ]
 optional-dependencies.embeddings = [
   # Semantic code embeddings for diffctx
   "sentence-transformers>=3.0,<6.0",
 ]
 optional-dependencies.full = [
+  "lxml>=5.0,<7.0",
+  "mistune>=3.0,<4.0",
   "pysbd>=0.3,<1.0",
+  "ruamel-yaml>=0.18,<1.0",
   "treemapper[tree-sitter]",
 ]
 optional-dependencies.nlp = [
@@ -132,10 +130,6 @@ lint.select = [ "C901", "E", "F", "I", "N", "RUF", "UP", "W" ]
 lint.ignore = [ "E501" ]  # Line length handled by black
 lint.per-file-ignores."whitelist_vulture.py" = [ "F401", "F821" ]
 lint.mccabe.max-complexity = 15
-
-[tool.isort]
-profile = "black"
-line_length = 130
 
 [tool.pyproject-fmt]
 column_width = 130

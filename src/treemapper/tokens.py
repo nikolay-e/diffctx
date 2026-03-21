@@ -3,7 +3,6 @@ from __future__ import annotations
 import logging
 import sys
 from dataclasses import dataclass
-from functools import lru_cache
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -21,12 +20,18 @@ class TokenCountResult:
     encoding: str
 
 
-@lru_cache(maxsize=4)
+_encoder_cache: dict[str, Any] = {}
+
+
 def _get_encoder(encoding: str) -> Any | None:
+    if encoding in _encoder_cache:
+        return _encoder_cache[encoding]
     try:
         import tiktoken
 
-        return tiktoken.get_encoding(encoding)
+        enc = tiktoken.get_encoding(encoding)
+        _encoder_cache[encoding] = enc
+        return enc
     except Exception:
         return None
 
@@ -86,7 +91,14 @@ def _format_size(byte_size: int) -> str:
 
 def print_token_summary(text: str, encoding: str = "o200k_base") -> None:
     result = count_tokens(text, encoding)
-    size = _format_size(len(text.encode("utf-8")))
+    text_len = len(text)
+    if text_len > 10_000_000:
+        sample = text[:100_000]
+        ratio = len(sample.encode("utf-8")) / len(sample)
+        byte_size = int(text_len * ratio)
+    else:
+        byte_size = len(text.encode("utf-8"))
+    size = _format_size(byte_size)
     if result.is_exact:
         print(f"{result.count:,} tokens ({result.encoding}), {size}", file=sys.stderr)
     else:

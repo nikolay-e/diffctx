@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from .containment import ContainmentEdgeBuilder
 from .sibling import SiblingEdgeBuilder
-from .test import TestEdgeBuilder
+from .testing import TestEdgeBuilder
 
 
 def get_structural_builders() -> list[type]:

@@ -4,23 +4,11 @@ import pytest
 
 from tests.framework import load_test_cases_from_dir
 from tests.framework.runner import YamlTestRunner
-from tests.framework.scoring import ScoreBreakdown
 from tests.framework.types import YamlTestCase
 
 CASES_DIR = Path(__file__).parent / "cases" / "diff"
 
 ALL_CASES = load_test_cases_from_dir(CASES_DIR) if CASES_DIR.exists() else []
-
-
-_score_results: list[tuple[str, ScoreBreakdown]] = []
-
-
-def _collect_score(case_id: str, breakdown: ScoreBreakdown) -> None:
-    _score_results.append((case_id, breakdown))
-
-
-def get_score_results() -> list[tuple[str, ScoreBreakdown]]:
-    return _score_results
 
 
 @pytest.fixture
@@ -33,11 +21,13 @@ def test_cases_loaded():
     assert len(ALL_CASES) > 0, "No test cases loaded from cases directory"
 
 
+MIN_INDIVIDUAL_SCORE = 10.0
+
+
 @pytest.mark.parametrize("case", ALL_CASES, ids=lambda c: c.id)
 def test_diff_yaml(yaml_test_runner: YamlTestRunner, case: YamlTestCase, record_property):
     context = yaml_test_runner.run_test_case(case)
     breakdown = yaml_test_runner.score_test_case(context, case)
-    _collect_score(case.id, breakdown)
 
     record_property("score", breakdown.score)
     record_property("recall", round(breakdown.recall * 100, 1))
@@ -47,6 +37,12 @@ def test_diff_yaml(yaml_test_runner: YamlTestRunner, case: YamlTestCase, record_
     record_property("enrichment", round(breakdown.enrichment * 100))
     record_property("diff_tokens", breakdown.diff_tokens)
     record_property("context_tokens", breakdown.context_tokens)
+
+    assert (
+        breakdown.score >= MIN_INDIVIDUAL_SCORE
+    ), f"[{case.id}] score {breakdown.score:.1f}% below minimum {MIN_INDIVIDUAL_SCORE}%"
+    if case.must_include_files:
+        assert breakdown.diff_covered, f"[{case.id}] diff lines not covered by context"
 
 
 @pytest.mark.parametrize(

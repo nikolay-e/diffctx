@@ -90,6 +90,14 @@ LANG_WEIGHTS: dict[str, LangWeights] = {
     "kotlin": LangWeights(0.80, 0.85, 0.75, 0.12, 0.18),
     "scala": LangWeights(0.80, 0.85, 0.75, 0.12, 0.18),
     "go": LangWeights(0.80, 0.85, 0.75, 0.12, 0.20),
+    "c": LangWeights(0.60, 0.65, 0.55, 0.15, 0.25),
+    "cpp": LangWeights(0.65, 0.70, 0.60, 0.15, 0.25),
+    "csharp": LangWeights(0.75, 0.80, 0.70, 0.12, 0.20),
+    "fsharp": LangWeights(0.70, 0.75, 0.65, 0.12, 0.20),
+    "ruby": LangWeights(0.60, 0.65, 0.55, 0.15, 0.25),
+    "php": LangWeights(0.60, 0.65, 0.55, 0.15, 0.25),
+    "shell": LangWeights(0.40, 0.45, 0.35, 0.20, 0.30),
+    "swift": LangWeights(0.75, 0.80, 0.70, 0.12, 0.20),
 }
 
 DEFAULT_LANG_WEIGHTS = LangWeights(0.55, 0.60, 0.50, 0.15, 0.25)

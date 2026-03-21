@@ -13,7 +13,7 @@ from .languages import get_language_for_file
 
 logger = logging.getLogger(__name__)
 
-YAML_PROBLEMATIC_CHARS = frozenset({"\r", "\x00", "\x85", "\u2028", "\u2029"})
+_YAML_PROBLEMATIC_RE = re.compile(r"[\r\x00\x85\u2028\u2029]")
 
 _YAML_STRING_ESCAPE_PATTERN = re.compile(r'[\\"\n\r\x00\x85\u2028\u2029]')
 _YAML_STRING_ESCAPE_MAP = {
@@ -45,13 +45,6 @@ _MD_SPECIAL_CHARS = re.compile(r"([\\`*_\[\]()#>+\-~|{}!])")
 
 _MAX_MARKDOWN_HEADING_DEPTH = 5  # depth 0-5 → ## to ###### (6 levels), deeper uses list items
 
-_FORMAT_ALIASES = {
-    "yaml": "yaml",
-    "json": "json",
-    "txt": "txt",
-    "md": "md",
-}
-
 PLACEHOLDER_PATTERNS = [
     "<unreadable content>",
     "<unreadable content: not utf-8>",
@@ -71,7 +64,7 @@ def _escape_yaml_content(s: str) -> str:
 
 
 def _has_problematic_chars(s: str) -> bool:
-    return any(c in s for c in YAML_PROBLEMATIC_CHARS)
+    return _YAML_PROBLEMATIC_RE.search(s) is not None
 
 
 def _escape_markdown(s: str) -> str:
@@ -326,13 +319,12 @@ def write_tree_markdown(file: TextIO, tree: dict[str, Any]) -> None:
 
 
 def tree_to_string(tree: dict[str, Any], output_format: str = "yaml") -> str:
-    canonical = _FORMAT_ALIASES.get(output_format, output_format)
     buf = io.StringIO()
-    if canonical == "json":
+    if output_format == "json":
         write_tree_json(buf, tree)
-    elif canonical == "txt":
+    elif output_format == "txt":
         write_tree_text(buf, tree)
-    elif canonical == "md":
+    elif output_format == "md":
         write_tree_markdown(buf, tree)
     else:
         write_tree_yaml(buf, tree)
@@ -347,12 +339,14 @@ def _write_to_stdout_with_wrapper(writer: Callable[[TextIO], None]) -> bool:
 
     try:
         if buf:
+            original_encoding = sys.stdout.encoding or sys.getdefaultencoding()
             utf8_stdout = io.TextIOWrapper(buf, encoding="utf-8", newline="")
             try:
                 writer(utf8_stdout)
                 utf8_stdout.flush()
             finally:
                 utf8_stdout.detach()
+                sys.stdout = io.TextIOWrapper(buf, encoding=original_encoding)
         else:
             writer(sys.stdout)
             sys.stdout.flush()

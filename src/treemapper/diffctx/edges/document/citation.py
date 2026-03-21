@@ -26,7 +26,7 @@ class CitationEdgeBuilder(EdgeBuilder):
                 continue
             hub = frag_ids[0]
             for other in frag_ids[1:]:
-                edges[(hub, other)] = self.weight
-                edges[(other, hub)] = self.weight
+                edges[(hub, other)] = max(edges.get((hub, other), 0.0), self.weight)
+                edges[(other, hub)] = max(edges.get((other, hub), 0.0), self.weight)
 
         return edges

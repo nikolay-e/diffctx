@@ -57,5 +57,5 @@ class SiblingEdgeBuilder(EdgeBuilder):
                 f1_id = file_to_rep.get(f1_path)
                 f2_id = file_to_rep.get(f2_path)
                 if f1_id and f2_id:
-                    edges[(f1_id, f2_id)] = self.weight
-                    edges[(f2_id, f1_id)] = self.weight
+                    edges[(f1_id, f2_id)] = max(edges.get((f1_id, f2_id), 0.0), self.weight)
+                    edges[(f2_id, f1_id)] = max(edges.get((f2_id, f1_id), 0.0), self.weight)

@@ -65,7 +65,7 @@ def test_text_file_not_detected_as_binary(data):
 @settings(max_examples=100)
 def test_ignore_patterns_roundtrip(patterns):
     with tempfile.TemporaryDirectory() as tmp_dir:
-        valid = [p.rstrip() for p in patterns if p.strip() and not p.startswith("#")]
+        valid = [p if p.rstrip("\n\r").endswith("\\ ") else p.rstrip() for p in patterns if p.strip() and not p.startswith("#")]
         f = Path(tmp_dir) / ".gitignore"
         f.write_text("\n".join(patterns), encoding="utf-8")
         result = read_ignore_file(f)

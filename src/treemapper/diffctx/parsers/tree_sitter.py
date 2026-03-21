@@ -8,8 +8,6 @@ from ..languages import TREE_SITTER_LANGUAGES
 from ..types import Fragment, FragmentId, extract_identifiers
 from .base import MIN_FRAGMENT_LINES, create_code_gap_fragments, create_snippet
 
-_TREE_SITTER_LANGS = TREE_SITTER_LANGUAGES
-
 _DEFINITION_NODE_TYPES = {
     "python": {"function_definition", "class_definition", "decorated_definition"},
     "javascript": {"function_declaration", "class_declaration", "method_definition", "arrow_function", "variable_declarator"},
@@ -34,9 +32,20 @@ _DEFINITION_NODE_TYPES = {
         "enum_declaration",
         "variable_declarator",
     },
-    "go": {"function_declaration", "method_declaration", "type_declaration"},
-    "rust": {"function_item", "impl_item", "struct_item", "enum_item", "trait_item"},
-    "java": {"method_declaration", "class_declaration", "interface_declaration", "enum_declaration"},
+    "go": {"function_declaration", "method_declaration", "type_declaration", "const_declaration", "var_declaration"},
+    "rust": {
+        "function_item",
+        "impl_item",
+        "struct_item",
+        "enum_item",
+        "trait_item",
+        "mod_item",
+        "const_item",
+        "static_item",
+        "macro_definition",
+        "type_item",
+    },
+    "java": {"method_declaration", "class_declaration", "interface_declaration", "enum_declaration", "constructor_declaration"},
     "c": {"function_definition", "struct_specifier", "enum_specifier", "declaration", "type_definition"},
     "cpp": {
         "function_definition",
@@ -48,7 +57,7 @@ _DEFINITION_NODE_TYPES = {
         "using_declaration",
         "alias_declaration",
     },
-    "ruby": {"method", "class", "module"},
+    "ruby": {"method", "class", "module", "singleton_method"},
     "c_sharp": {
         "method_declaration",
         "class_declaration",
@@ -57,6 +66,7 @@ _DEFINITION_NODE_TYPES = {
         "enum_declaration",
         "record_declaration",
         "property_declaration",
+        "constructor_declaration",
     },
 }
 
@@ -75,7 +85,7 @@ _NODE_TYPE_KEYWORDS = [
     (("declaration", "using_declaration"), "declaration"),
 ]
 
-_CONTAINER_KINDS = frozenset({"class", "interface", "struct"})
+_CONTAINER_KINDS = frozenset({"class", "interface", "struct", "impl"})
 
 _MAX_RECURSION_DEPTH = 500
 
@@ -132,11 +142,11 @@ class TreeSitterStrategy:
 
     def can_handle(self, path: Path, _content: str) -> bool:
         suffix = path.suffix.lower()
-        return suffix in _TREE_SITTER_LANGS
+        return suffix in TREE_SITTER_LANGUAGES
 
     def fragment(self, path: Path, content: str) -> list[Fragment]:
         suffix = path.suffix.lower()
-        lang = _TREE_SITTER_LANGS[suffix]
+        lang = TREE_SITTER_LANGUAGES[suffix]
         parser = self._get_parser(lang)
 
         code_bytes = content.encode("utf-8")
@@ -152,7 +162,7 @@ class TreeSitterStrategy:
         gap_frags = create_code_gap_fragments(path, lines, list(covered))
         fragments.extend(gap_frags)
 
-        return fragments if fragments else []
+        return fragments
 
     def _extract_definitions(
         self,
@@ -210,6 +220,8 @@ class TreeSitterStrategy:
             return
 
         self._add_leaf_definition(path, lines, start, end, kind, sym_name, fragments, covered, added_ends)
+        if node.type == "variable_declarator" and self._has_function_child(node):
+            return
         self._recurse_children(node, code_bytes, path, lines, definition_types, fragments, covered, added_ends, depth)
 
     def _try_container_split(
@@ -320,12 +332,21 @@ class TreeSitterStrategy:
                 return "class"
         return "function"
 
+    _FUNCTION_CHILD_TYPES = frozenset({"arrow_function", "function", "generator_function"})
+
+    @staticmethod
+    def _has_function_child(node: Node) -> bool:
+        for child in node.children:
+            if child.type in TreeSitterStrategy._FUNCTION_CHILD_TYPES:
+                return True
+        return False
+
     @staticmethod
     def _unwrap_decorated(node: Node) -> Node:
         if node.type != "decorated_definition":
             return node
         for child in node.children:
-            if child.type in {"function_definition", "class_definition"}:
+            if child.type in {"function_definition", "class_definition", "async_function_definition"}:
                 return child
         return node
 
@@ -341,7 +362,7 @@ class TreeSitterStrategy:
     @classmethod
     def _extract_symbol_name(cls, node: Node) -> str | None:
         node = cls._unwrap_decorated(node)
-        for field_name in ("name", "declarator"):
+        for field_name in ("name", "declarator", "type"):
             name_node = node.child_by_field_name(field_name)
             if name_node is None:
                 continue

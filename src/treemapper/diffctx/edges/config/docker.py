@@ -17,8 +17,6 @@ _DOCKERFILE_ARG_RE = re.compile(r"^ARG\s+(\w+)", re.MULTILINE | re.IGNORECASE)
 _COMPOSE_BUILD_RE = re.compile(r"^\s+build:\s*['\"]?([^'\"#\n]+)", re.MULTILINE)
 _COMPOSE_CONTEXT_RE = re.compile(r"^\s+context:\s*['\"]?([^'\"#\n]+)", re.MULTILINE)
 _COMPOSE_DOCKERFILE_RE = re.compile(r"^\s+dockerfile:\s*['\"]?([^'\"#\n]+)", re.MULTILINE)
-_COMPOSE_DEPENDS_RE = re.compile(r"depends_on:\s*\n((?:\s+-\s*\w+\s*\n)+)", re.MULTILINE)
-_COMPOSE_SERVICE_RE = re.compile(r"^(\w+):\s*$", re.MULTILINE)
 _COMPOSE_VOLUME_RE = re.compile(r"^\s+-\s*['\"]?([./][^:'\"\n]+):", re.MULTILINE)
 
 
@@ -41,9 +39,16 @@ def _resolve_docker_path(base_dir: Path, rel_path: str) -> Path:
     rel_path = rel_path.strip().strip("'\"")
     rel_path = _strip_dot_slash(rel_path)
     normalized = base_dir / rel_path
-    if ".." in normalized.parts:
-        return base_dir
-    return normalized
+    if ".." not in normalized.parts:
+        return normalized
+    try:
+        resolved = normalized.resolve()
+        base_resolved = base_dir.resolve()
+        if resolved.is_relative_to(base_resolved):
+            return resolved
+    except (OSError, ValueError):
+        pass
+    return base_dir
 
 
 def _collect_docker_refs(docker_files: list[Path]) -> set[str]:

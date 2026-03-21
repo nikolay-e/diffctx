@@ -13,7 +13,7 @@ _ALL_SHELL = _SHELL_EXTS | _POWERSHELL_EXTS
 
 _SOURCE_RE = re.compile(r"^\s{0,20}(?:source|\.)\s{1,10}['\"]?([^'\"#\s]{1,300})", re.MULTILINE)
 
-_SCRIPT_CALL_RE = re.compile(r"(?:bash|sh|zsh|python|python3|node|ruby|perl)\s{1,10}['\"]?([^\s'\"]{1,300})", re.MULTILINE)
+_SCRIPT_CALL_RE = re.compile(r"\b(?:bash|sh|zsh|python|python3|node|ruby|perl)\s{1,10}['\"]?([^\s'\"]{1,300})", re.MULTILINE)
 _EXEC_CALL_RE = re.compile(r"(?:\./|scripts/|bin/)([a-zA-Z0-9_.-]{1,100}(?:\.(?:sh|py|rb|pl))?)", re.MULTILINE)
 _ENV_FILE_RE = re.compile(r"^\s{0,20}(?:source|\.)\s{1,10}[^\n]{0,500}\.env", re.MULTILINE)
 
@@ -34,7 +34,7 @@ def _is_powershell(path: Path) -> bool:
 
 def _has_shebang(content: str) -> bool:
     first_line = content.split("\n")[0] if content else ""
-    return first_line.startswith("#!") and any(sh in first_line for sh in ["bash", "sh", "zsh", "fish", "python", "ruby", "perl"])
+    return first_line.startswith("#!") and any(sh in first_line for sh in ["bash", "sh", "zsh", "fish"])
 
 
 def _extract_bash_refs(content: str) -> tuple[set[str], set[str]]:
@@ -168,7 +168,9 @@ class ShellEdgeBuilder(EdgeBuilder):
         ref_base = ref_name.split(".")[0] if ref_name else ""
         found = False
         for name, frag_ids in idx.by_name.items():
-            if name == ref_name or (ref_base and name.startswith(ref_base)):
+            if name == ref_name or (
+                ref_base and (name == ref_base or name.startswith(ref_base + ".") or name.startswith(ref_base + "_"))
+            ):
                 for fid in frag_ids:
                     if fid != src_id:
                         self.add_edge(edges, src_id, fid, weight)

@@ -1,40 +1,327 @@
+name: markdown_heading_hierarchy_cross_references
+
 initial:
-  hierarchy.md: |
-    # Level 1
+  docs/protocol.md: |
+    # Wire Protocol
 
-    Content under level 1.
+    This document specifies the binary wire protocol used for
+    inter-service communication. All messages are processed by
+    the `FrameParser` class defined in `src/framing.py`.
 
-    ## Level 2
+    ## Message Framing
 
-    Content under level 2.
+    Each message consists of a fixed-size header followed by a
+    variable-length payload. The `FrameParser` reads the header,
+    validates length fields, and extracts the payload bytes.
 
-    ### Level 3
+    ### Header Layout
 
-    Content under level 3.
+    The header is 12 bytes:
+    - Bytes 0-3: magic number (`0xDEADBEEF`)
+    - Bytes 4-7: payload length (uint32, big-endian)
+    - Bytes 8-11: sequence number (uint32, big-endian)
 
-    ## Another Level 2
+    ### Checksum Validation
 
-    More content.
+    After reading the full frame, the receiver must validate
+    the trailing 4-byte checksum. Currently uses Adler-32
+    via `verify_checksum` in `src/framing.py`.
+
+    ## Session Management
+
+    Long-lived connections are tracked by `SessionStore` in
+    `src/session.py`. Each session has a unique 128-bit
+    identifier and an associated state machine.
+
+    ### Handshake Sequence
+
+    The three-way handshake establishes a session. Both
+    peers exchange version vectors before data transfer
+    begins. See [Checksum Validation](#checksum-validation)
+    for integrity guarantees during handshake.
+
+    ### Keepalive Mechanism
+
+    Idle connections send a `PING` frame every 30 seconds.
+    The `SessionStore` evicts sessions that miss three
+    consecutive keepalive windows.
+
+    ## Error Handling
+
+    Protocol errors trigger a `RESET` frame with an error
+    code from `ErrorRegistry`. The peer must acknowledge
+    the reset before initiating a new session.
+
+  src/framing.py: |
+    import struct
+    import zlib
+
+    MAGIC = 0xDEADBEEF
+    HEADER_SIZE = 12
+
+    class FrameParser:
+        def __init__(self):
+            self._buffer = bytearray()
+
+        def feed(self, data: bytes) -> list[bytes]:
+            self._buffer.extend(data)
+            frames = []
+            while len(self._buffer) >= HEADER_SIZE:
+                magic, length, seq = struct.unpack(
+                    ">III", self._buffer[:HEADER_SIZE]
+                )
+                if magic != MAGIC:
+                    raise ProtocolError("Invalid magic number")
+                total = HEADER_SIZE + length + 4
+                if len(self._buffer) < total:
+                    break
+                payload = bytes(self._buffer[HEADER_SIZE:HEADER_SIZE + length])
+                checksum = struct.unpack(">I", self._buffer[HEADER_SIZE + length:total])[0]
+                if not verify_checksum(payload, checksum):
+                    raise ProtocolError("Checksum mismatch")
+                frames.append(payload)
+                self._buffer = self._buffer[total:]
+            return frames
+
+    def verify_checksum(payload: bytes, expected: int) -> bool:
+        return zlib.adler32(payload) & 0xFFFFFFFF == expected
+
+    def compute_checksum(payload: bytes) -> int:
+        return zlib.adler32(payload) & 0xFFFFFFFF
+
+    class ProtocolError(Exception):
+        pass
+
+  src/session.py: |
+    import uuid
+    import time
+    from enum import Enum
+
+    class SessionState(Enum):
+        INIT = "init"
+        HANDSHAKE = "handshake"
+        ACTIVE = "active"
+        CLOSING = "closing"
+        CLOSED = "closed"
+
+    class SessionStore:
+        KEEPALIVE_INTERVAL = 30
+        MAX_MISSED_KEEPALIVES = 3
+
+        def __init__(self):
+            self._sessions = {}
+
+        def create(self) -> str:
+            session_id = uuid.uuid4().hex
+            self._sessions[session_id] = {
+                "state": SessionState.INIT,
+                "created_at": time.time(),
+                "last_keepalive": time.time(),
+            }
+            return session_id
+
+        def transition(self, session_id: str, new_state: SessionState) -> None:
+            session = self._sessions.get(session_id)
+            if session is None:
+                raise KeyError(f"Unknown session: {session_id}")
+            session["state"] = new_state
+
+        def record_keepalive(self, session_id: str) -> None:
+            session = self._sessions.get(session_id)
+            if session:
+                session["last_keepalive"] = time.time()
+
+        def evict_stale(self) -> list[str]:
+            now = time.time()
+            threshold = self.KEEPALIVE_INTERVAL * self.MAX_MISSED_KEEPALIVES
+            stale = [
+                sid for sid, s in self._sessions.items()
+                if now - s["last_keepalive"] > threshold
+            ]
+            for sid in stale:
+                del self._sessions[sid]
+            return stale
+
+  src/metrics_exporter.py: |
+    import time
+    from collections import defaultdict
+
+    class MetricsExporter:
+        def __init__(self, endpoint: str):
+            self.endpoint = endpoint
+            self._counters = defaultdict(int)
+            self._gauges = defaultdict(float)
+
+        def increment(self, metric_name: str, value: int = 1) -> None:
+            self._counters[metric_name] += value
+
+        def set_gauge(self, metric_name: str, value: float) -> None:
+            self._gauges[metric_name] = value
+
+        def flush(self) -> dict:
+            snapshot = {
+                "timestamp": time.time(),
+                "counters": dict(self._counters),
+                "gauges": dict(self._gauges),
+            }
+            self._counters.clear()
+            self._gauges.clear()
+            return snapshot
+
+  docs/runbook.md: |
+    # Operations Runbook
+
+    ## Deployment Checklist
+
+    Before each release, verify the following:
+    - All integration tests pass on staging
+    - Database migrations have been reviewed
+    - Rollback plan is documented
+
+    ## Incident Response
+
+    When an alert fires, follow the escalation matrix
+    in the shared drive. Page the on-call engineer via
+    PagerDuty within 5 minutes.
+
+    ### Severity Levels
+
+    P0: Complete service outage. All hands on deck.
+    P1: Degraded performance affecting >10% of users.
+    P2: Minor issue with workaround available.
+
 changed:
-  hierarchy.md: |
-    # Level 1
+  docs/protocol.md: |
+    # Wire Protocol
 
-    Updated content under level 1.
+    This document specifies the binary wire protocol used for
+    inter-service communication. All messages are processed by
+    the `FrameParser` class defined in `src/framing.py`.
 
-    ## Level 2
+    ## Message Framing
 
-    Updated content under level 2.
+    Each message consists of a fixed-size header followed by a
+    variable-length payload. The `FrameParser` reads the header,
+    validates length fields, and extracts the payload bytes.
 
-    ### Level 3
+    ### Header Layout
 
-    Content under level 3.
+    The header is 12 bytes:
+    - Bytes 0-3: magic number (`0xDEADBEEF`)
+    - Bytes 4-7: payload length (uint32, big-endian)
+    - Bytes 8-11: sequence number (uint32, big-endian)
 
-    ## Another Level 2
+    ### Checksum Validation
 
-    More content.
+    After reading the full frame, the receiver must validate
+    the trailing checksum. Upgraded from Adler-32 to CRC-32C
+    for stronger error detection. The `compute_crc32c` function
+    in `src/framing.py` handles computation, while
+    `verify_crc32c` performs validation with constant-time
+    comparison to prevent timing side-channels.
+
+    ## Session Management
+
+    Long-lived connections are tracked by `SessionStore` in
+    `src/session.py`. Each session has a unique 128-bit
+    identifier and an associated state machine.
+
+    ### Handshake Sequence
+
+    The three-way handshake establishes a session. Both
+    peers exchange version vectors before data transfer
+    begins. See [Checksum Validation](#checksum-validation)
+    for integrity guarantees during handshake.
+
+    ### Keepalive Mechanism
+
+    Idle connections send a `PING` frame every 30 seconds.
+    The `SessionStore` evicts sessions that miss three
+    consecutive keepalive windows.
+
+    ## Error Handling
+
+    Protocol errors trigger a `RESET` frame with an error
+    code from `ErrorRegistry`. The peer must acknowledge
+    the reset before initiating a new session.
+
+  src/framing.py: |
+    import struct
+    import zlib
+
+    MAGIC = 0xDEADBEEF
+    HEADER_SIZE = 12
+
+    class FrameParser:
+        def __init__(self):
+            self._buffer = bytearray()
+
+        def feed(self, data: bytes) -> list[bytes]:
+            self._buffer.extend(data)
+            frames = []
+            while len(self._buffer) >= HEADER_SIZE:
+                magic, length, seq = struct.unpack(
+                    ">III", self._buffer[:HEADER_SIZE]
+                )
+                if magic != MAGIC:
+                    raise ProtocolError("Invalid magic number")
+                total = HEADER_SIZE + length + 4
+                if len(self._buffer) < total:
+                    break
+                payload = bytes(self._buffer[HEADER_SIZE:HEADER_SIZE + length])
+                checksum = struct.unpack(">I", self._buffer[HEADER_SIZE + length:total])[0]
+                if not verify_crc32c(payload, checksum):
+                    raise ProtocolError("Checksum mismatch")
+                frames.append(payload)
+                self._buffer = self._buffer[total:]
+            return frames
+
+    def compute_crc32c(payload: bytes) -> int:
+        crc = 0xFFFFFFFF
+        for byte in payload:
+            crc ^= byte
+            for _ in range(8):
+                if crc & 1:
+                    crc = (crc >> 1) ^ 0x82F63B78
+                else:
+                    crc >>= 1
+        return crc ^ 0xFFFFFFFF
+
+    def verify_crc32c(payload: bytes, expected: int) -> bool:
+        computed = compute_crc32c(payload)
+        # Constant-time comparison to prevent timing attacks
+        return (computed ^ expected) == 0
+
+    def compute_checksum(payload: bytes) -> int:
+        return compute_crc32c(payload)
+
+    class ProtocolError(Exception):
+        pass
+
+# ---- Assertions ----
+
 must_include_files:
-- hierarchy.md
+  - docs/protocol.md
+  - src/framing.py
+
 must_include_content:
-- Updated content under level 2.
-add_garbage_files: false
-skip_garbage_check: true
+  - compute_crc32c
+  - verify_crc32c
+  - FrameParser
+
+must_include_content_from:
+  src/framing.py:
+    - "def compute_crc32c"
+    - "def verify_crc32c"
+  docs/protocol.md:
+    - "CRC-32C"
+
+must_not_include_files:
+  - docs/runbook.md
+  - src/metrics_exporter.py
+
+must_not_include:
+  - Operations Runbook
+  - MetricsExporter
+  - PagerDuty
+  - Incident Response

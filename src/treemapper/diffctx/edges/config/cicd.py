@@ -11,6 +11,7 @@ from ..base import EdgeBuilder, EdgeDict, FragmentIndex, discover_files_by_refs
 logger = logging.getLogger(__name__)
 
 _GHA_RUN_RE = re.compile(r"^\s{0,20}-?\s{0,5}run:\s{0,5}[|>]?\s{0,5}([^\n]{1,500})", re.MULTILINE)
+_GHA_RUN_BLOCK_RE = re.compile(r"run:\s*[|>]-?\s*\n((?:\s{2,}[^\n]*\n?)+)", re.MULTILINE)
 
 _GITLAB_SCRIPT_RE = re.compile(
     r"^\s{0,20}(?:script|before_script|after_script):\s?\n((?:\s{1,20}-\s{0,5}[^\n]{1,500}\n){1,100})", re.MULTILINE
@@ -47,7 +48,7 @@ _SCRIPT_CALL_TOOLS = frozenset(
         "flake8",
     }
 )
-_SCRIPT_CALL_RE = re.compile(r"(?:" + "|".join(sorted(_SCRIPT_CALL_TOOLS, key=len, reverse=True)) + r")\s+([^\s;&|]+)")
+_SCRIPT_CALL_RE = re.compile(r"\b(?:" + "|".join(sorted(_SCRIPT_CALL_TOOLS, key=len, reverse=True)) + r")\s+([^\s;&|]+)")
 _PKG_MANAGER_SUBCOMMANDS = frozenset(
     {
         "run",
@@ -157,6 +158,10 @@ def _extract_gha_refs(content: str) -> set[str]:
     for match in _GHA_RUN_RE.finditer(content):
         run_content = match.group(1)
         refs.update(_extract_script_refs(run_content))
+
+    for match in _GHA_RUN_BLOCK_RE.finditer(content):
+        block_content = match.group(1)
+        refs.update(_extract_script_refs(block_content))
 
     return refs
 

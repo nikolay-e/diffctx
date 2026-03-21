@@ -153,5 +153,7 @@ class TestEdgeBuilder(EdgeBuilder):
 
     def _add_test_source_edge(self, edges: EdgeDict, test_frag: Fragment, src_frag: Fragment, repo_root: Path | None) -> None:
         weight = self.weight_direct if _has_direct_import(test_frag, src_frag, repo_root) else self.weight_naming
-        edges[(test_frag.id, src_frag.id)] = weight
-        edges[(src_frag.id, test_frag.id)] = EDGE_WEIGHTS["test_reverse"].forward
+        edges[(test_frag.id, src_frag.id)] = max(edges.get((test_frag.id, src_frag.id), 0.0), weight)
+        edges[(src_frag.id, test_frag.id)] = max(
+            edges.get((src_frag.id, test_frag.id), 0.0), EDGE_WEIGHTS["test_reverse"].forward
+        )

@@ -49,7 +49,7 @@ def _propagate_residual(
     restart: float,
     push_threshold: float,
     queue: deque[FragmentId],
-    visited: set[FragmentId],
+    in_queue: set[FragmentId],
 ) -> None:
     r_u = residual.get(u, 0.0)
     if r_u < push_threshold:
@@ -68,9 +68,9 @@ def _propagate_residual(
         delta = push_mass * (w / total_weight)
         old_r = residual.get(v, 0.0)
         residual[v] = old_r + delta
-        if v not in visited and old_r + delta >= push_threshold:
+        if v not in in_queue and old_r + delta >= push_threshold:
             queue.append(v)
-            visited.add(v)
+            in_queue.add(v)
 
 
 def _personalized_pagerank_sparse(
@@ -91,14 +91,14 @@ def _personalized_pagerank_sparse(
     estimate: dict[FragmentId, float] = {}
 
     queue: deque[FragmentId] = deque(residual.keys())
-    visited: set[FragmentId] = set(queue)
+    in_queue: set[FragmentId] = set(queue)
 
     pushes = 0
-    max_pushes = min(n * 50, 500_000)
+    max_pushes = min(n * 100, 2_000_000)
     while queue and pushes < max_pushes:
         u = queue.popleft()
-        visited.discard(u)
-        _propagate_residual(u, residual, estimate, graph, alpha, restart, push_threshold, queue, visited)
+        in_queue.discard(u)
+        _propagate_residual(u, residual, estimate, graph, alpha, restart, push_threshold, queue, in_queue)
         pushes += 1
 
     return estimate

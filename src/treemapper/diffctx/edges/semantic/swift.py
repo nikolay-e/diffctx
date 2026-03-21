@@ -26,6 +26,39 @@ _SWIFT_FUNC_CALL_RE = re.compile(r"(?<!\w)([a-z]\w{0,100})\s{0,10}\(")
 _SWIFT_DOT_CALL_RE = re.compile(r"(\w+)\.([a-z][a-zA-Z0-9]*)\s*\(")
 
 
+_SWIFT_SYSTEM_FRAMEWORKS = frozenset(
+    f.lower()
+    for f in {
+        "Foundation",
+        "UIKit",
+        "SwiftUI",
+        "Combine",
+        "CoreData",
+        "CoreGraphics",
+        "CoreLocation",
+        "MapKit",
+        "AVFoundation",
+        "ARKit",
+        "SceneKit",
+        "SpriteKit",
+        "GameplayKit",
+        "Metal",
+        "MetalKit",
+        "CloudKit",
+        "StoreKit",
+        "HealthKit",
+        "HomeKit",
+        "WatchKit",
+        "XCTest",
+        "os",
+        "Darwin",
+        "Dispatch",
+        "ObjectiveC",
+        "Swift",
+    }
+)
+
+
 def _is_swift_file(path: Path) -> bool:
     return path.suffix.lower() == ".swift"
 
@@ -219,6 +252,8 @@ class SwiftEdgeBuilder(EdgeBuilder):
 
     def _add_import_edges(self, sf_id: FragmentId, imports: set[str], idx: _SwiftIndex, edges: EdgeDict) -> None:
         for imp in imports:
+            if imp.lower() in _SWIFT_SYSTEM_FRAMEWORKS:
+                continue
             for fid in idx.module_to_frags.get(imp.lower(), []):
                 if fid != sf_id:
                     self.add_edge(edges, sf_id, fid, self.import_weight)

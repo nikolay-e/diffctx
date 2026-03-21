@@ -16,10 +16,19 @@ from ...stopwords import TokenProfile, filter_idents
 from ...types import Fragment, FragmentId, extract_identifier_list
 from ..base import EdgeBuilder, EdgeDict
 
+_LANG_ALIAS: dict[str, str] = {
+    "bash": "shell",
+    "zsh": "shell",
+    "fish": "shell",
+    "powershell": "shell",
+}
+
 
 def _get_lang_weights(path: Path) -> LangWeights:
     suffix = path.suffix.lower()
     lang = EXTENSION_TO_LANGUAGE.get(suffix)
+    if lang:
+        lang = _LANG_ALIAS.get(lang, lang)
     return LANG_WEIGHTS.get(lang, DEFAULT_LANG_WEIGHTS) if lang else DEFAULT_LANG_WEIGHTS
 
 

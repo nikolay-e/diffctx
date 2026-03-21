@@ -44,7 +44,6 @@ OTHER_CODE_EXTENSIONS = frozenset(
     {
         ".lua",
         ".r",
-        ".R",
         ".jl",
         ".pl",
         ".pm",

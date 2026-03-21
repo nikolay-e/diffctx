@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from .config.limits import UTILITY
-from .edges.structural.test import _is_test_file
+from .edges.structural.testing import _is_test_file
 from .stopwords import CODE_STOPWORDS
 from .tokenizer import extract_tokens
 from .types import Fragment, FragmentId
@@ -180,7 +180,7 @@ _LANGUAGE_BUILTINS: frozenset[str] = frozenset(
 _CLOSURE_MIN_EDGE_WEIGHT = 0.5
 _INVARIANT_RE = re.compile(r"\b(?:assert|require|ensure|precondition|postcondition|invariant)\s*\(\s*(\w+)", re.IGNORECASE)
 
-_COMMENT_PREFIXES = ("#", "//", "*", "/*", "--", '"""', "'''", "<!--")
+_COMMENT_PREFIXES = ("#", "//", "* ", "/*", "--", '"""', "'''", "<!--")
 
 _JS_IMPORT_RE = re.compile(r"""import\s+\{([^}]+)\}\s+from\s+['"]([^'"]+)['"]""")
 _PY_IMPORT_RE = re.compile(r"""from\s+(\S+)\s+import\s+(.+)""")
@@ -195,9 +195,9 @@ def _parse_import_names(names_str: str) -> set[str]:
     return result
 
 
-def _collect_external_symbols(diff_text: str) -> frozenset[str]:
+def _collect_external_symbols_from_lines(changed_lines: list[str]) -> frozenset[str]:
     symbols: set[str] = set()
-    for line in _extract_changed_lines(diff_text):
+    for line in changed_lines:
         for m in _JS_IMPORT_RE.finditer(line):
             js_names, js_source = m.group(1), m.group(2)
             if not js_source.startswith("."):
@@ -243,7 +243,7 @@ def _match_strength_typed(frag: Fragment, need: InformationNeed) -> float:
     nt = need.need_type
 
     if nt == "impact" and scope_match:
-        return 0.0
+        return 0.15
     if defines and "_signature" not in frag.kind:
         return _defines_strength(scope_match, need.scope is not None)
     if nt == "impact" and mentions and not defines:
@@ -265,14 +265,25 @@ def _extract_changed_lines(diff_text: str) -> list[str]:
     return result
 
 
-def concepts_from_diff_text(diff_text: str, profile: str = "code", *, use_nlp: bool = False) -> frozenset[str]:
-    text = "\n".join(_extract_changed_lines(diff_text))
+def concepts_from_diff_text(
+    diff_text: str, profile: str = "code", *, use_nlp: bool = False, changed_lines: list[str] | None = None
+) -> frozenset[str]:
+    if changed_lines is None:
+        changed_lines = _extract_changed_lines(diff_text)
+    text = "\n".join(changed_lines)
 
     if use_nlp and profile != "code":
         return extract_tokens(text, profile=profile, use_nlp=True)
 
     raw = _CONCEPT_RE.findall(text)
-    return frozenset(ident.lower() for ident in raw if len(ident) >= 3 and ident.lower() not in CODE_STOPWORDS)
+    result: set[str] = set()
+    for ident in raw:
+        if len(ident) < 3:
+            continue
+        low = ident.lower()
+        if low not in CODE_STOPWORDS and low not in _LANGUAGE_BUILTINS:
+            result.add(low)
+    return frozenset(result)
 
 
 _CLOSURE_EDGE_CATEGORIES = frozenset({"structural", "semantic"})
@@ -374,9 +385,12 @@ def _process_line_for_needs(
 def _collect_diff_line_needs(
     diff_text: str,
     needs: dict[tuple[str, str], InformationNeed],
+    changed_lines: list[str] | None = None,
 ) -> None:
-    external_syms = _collect_external_symbols(diff_text)
-    for line in _extract_changed_lines(diff_text):
+    if changed_lines is None:
+        changed_lines = _extract_changed_lines(diff_text)
+    external_syms = _collect_external_symbols_from_lines(changed_lines)
+    for line in changed_lines:
         if not _is_comment_line(line):
             _process_line_for_needs(line, external_syms, needs)
 
@@ -399,8 +413,11 @@ def _collect_test_needs(
 def _collect_invariant_needs(
     diff_text: str,
     needs: dict[tuple[str, str], InformationNeed],
+    changed_lines: list[str] | None = None,
 ) -> None:
-    for line in _extract_changed_lines(diff_text):
+    if changed_lines is None:
+        changed_lines = _extract_changed_lines(diff_text)
+    for line in changed_lines:
         for m in _INVARIANT_RE.finditer(line):
             sym = m.group(1).lower()
             if len(sym) >= 3 and sym not in CODE_STOPWORDS:
@@ -435,8 +452,11 @@ def _collect_config_context_needs(
 def _collect_terraform_needs(
     diff_text: str,
     needs: dict[tuple[str, str], InformationNeed],
+    changed_lines: list[str] | None = None,
 ) -> None:
-    for line in _extract_changed_lines(diff_text):
+    if changed_lines is None:
+        changed_lines = _extract_changed_lines(diff_text)
+    for line in changed_lines:
         for m in _TF_VAR_NEED_RE.finditer(line):
             sym = m.group(1).lower()
             if len(sym) >= 3 and sym not in CODE_STOPWORDS:
@@ -457,13 +477,14 @@ def needs_from_diff(
     closure_depth: int = 1,
 ) -> tuple[InformationNeed, ...]:
     needs: dict[tuple[str, str], InformationNeed] = {}
+    changed_lines = _extract_changed_lines(diff_text)
 
     core_symbol_names = _collect_core_needs(all_fragments, core_ids, needs)
-    _collect_diff_line_needs(diff_text, needs)
-    _collect_invariant_needs(diff_text, needs)
+    _collect_diff_line_needs(diff_text, needs, changed_lines)
+    _collect_invariant_needs(diff_text, needs, changed_lines)
     _collect_test_needs(all_fragments, core_symbol_names, needs)
     if _is_terraform_diff(all_fragments, core_ids):
-        _collect_terraform_needs(diff_text, needs)
+        _collect_terraform_needs(diff_text, needs, changed_lines)
     if _is_config_only_diff(all_fragments, core_ids):
         _collect_config_context_needs(all_fragments, core_ids, needs)
 
@@ -475,11 +496,11 @@ def needs_from_diff(
             needs[key] = InformationNeed("definition", sym, None, 0.5)
 
     if not needs:
-        fallback = concepts_from_diff_text(diff_text)
+        fallback = concepts_from_diff_text(diff_text, changed_lines=changed_lines)
         return tuple(InformationNeed("definition", c, None, 0.5) for c in fallback)
 
     covered_symbols = {n.symbol for n in needs.values()}
-    for c in concepts_from_diff_text(diff_text):
+    for c in concepts_from_diff_text(diff_text, changed_lines=changed_lines):
         if c not in covered_symbols:
             key = ("background", c)
             if key not in needs:
@@ -510,7 +531,7 @@ class UtilityState:
             r_cap=self.r_cap,
             changed_dirs=self.changed_dirs,
             proximity_decay=self.proximity_decay,
-            file_importance=self.file_importance,
+            file_importance=dict(self.file_importance),
         )
 
 
@@ -586,6 +607,7 @@ def apply_fragment(
 ) -> None:
     effective = needs if needs else _needs_from_identifiers(frag)
     has_match = False
+    gain = 0.0
     for need in effective:
         m = _match_strength_typed(frag, need)
         if m <= 0.0:
@@ -596,8 +618,18 @@ def apply_fragment(
         a_fz = _augmented_score(m, rel_score, state)
         nkey = (need.need_type, need.symbol)
         old_max = state.max_rel.get(nkey, 0.0)
-        state.max_rel[nkey] = max(old_max, a_fz)
+        new_max = max(old_max, a_fz)
+        gain += state.priorities.get(nkey, need.priority) * (_phi(new_max) - _phi(old_max))
+        state.max_rel[nkey] = new_max
         state.priorities[nkey] = max(state.priorities.get(nkey, 0.0), need.priority)
+
+    if needs and rel_score >= _MIN_REL_FOR_BONUS and (gain > 0 or rel_score >= _STRONG_REL_THRESHOLD):
+        total_covered = sum(min(state.max_rel.get((n.need_type, n.symbol), 0.0), 1.0) for n in needs)
+        unsatisfied = max(0.0, 1.0 - total_covered / max(1, len(needs)))
+        floor = rel_score * _RELATEDNESS_BONUS * unsatisfied
+        if floor > gain:
+            state.structural_sum += floor - gain
+
     if has_match:
         r_norm = min(rel_score / state.r_cap, 1.0) if state.r_cap > 0 else 0.0
         state.structural_sum += state.gamma * r_norm

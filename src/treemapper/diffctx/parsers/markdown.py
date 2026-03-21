@@ -57,7 +57,7 @@ class MistuneMarkdownStrategy:
                 if frag:
                     fragments.append(frag)
 
-        return fragments if fragments else []
+        return fragments
 
     def _find_all_headings(self, lines: list[str]) -> list[tuple[int, int]]:
         headings: list[tuple[int, int]] = []

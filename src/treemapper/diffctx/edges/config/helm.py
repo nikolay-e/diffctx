@@ -10,9 +10,6 @@ from ..base import EdgeBuilder, EdgeDict
 _HELM_VALUES_RE = re.compile(r"\{\{-?\s*\.Values\.([a-zA-Z0-9_.]+)")
 _HELM_INCLUDE_RE = re.compile(r'\{\{\s*(?:include|template)\s+"([^"]+)"')
 _HELM_DEFINE_RE = re.compile(r'\{\{-?\s*define\s+"([^"]+)"')
-_HELM_RELEASE_RE = re.compile(r"\{\{\s*\.Release\.(\w+)\s*\}\}")
-_HELM_CHART_RE = re.compile(r"\{\{\s*\.Chart\.(\w+)\s*\}\}")
-_HELM_FILES_RE = re.compile(r'\{\{\s*\.Files\.(?:Get|Glob)\s+"([^"]+)"')
 
 _YAML_KEY_PATH_RE = re.compile(r"^(\s*)([a-zA-Z_][a-zA-Z0-9_-]*):", re.MULTILINE)
 

@@ -1,9 +1,22 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from lxml.html import HtmlElement
 
 from ..types import Fragment, FragmentId, extract_identifiers
 from .base import MIN_FRAGMENT_LINES, check_library_available, create_snippet
+
+
+def _element_end_line(elem: HtmlElement, file_line_count: int) -> int:
+    max_line = getattr(elem, "sourceline", None) or 1
+    for desc in elem.iterdescendants():
+        sl = getattr(desc, "sourceline", None)
+        if sl is not None and sl > max_line:
+            max_line = sl
+    return min(max_line, file_line_count)
 
 
 def _import_lxml() -> None:
@@ -60,9 +73,7 @@ class HTMLStrategy:
             if source_line is None:
                 continue
 
-            elem_html: str = html.tostring(elem, encoding="unicode")  # pyright: ignore[reportAssignmentType]
-            elem_lines = elem_html.count("\n") + 1
-            end_line = min(source_line + elem_lines - 1, len(lines))
+            end_line = _element_end_line(elem, len(lines))
 
             if end_line - source_line + 1 < MIN_FRAGMENT_LINES:
                 continue
