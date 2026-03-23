@@ -1,0 +1,226 @@
+# Test: Neovim plugin adds keybinding using helper from keymap module
+#
+# Scenario: plugin/lsp.lua adds a new keybinding for code actions that
+# calls keymap.buf_map from lua/keymap.lua. The keymap helper module
+# is UNCHANGED. init.lua requires both and is UNCHANGED.
+#
+# Reviewer questions:
+#   Q1: "What does buf_map do — does it support opts merging?"
+#       -> lua/keymap.lua (UNCHANGED) defines buf_map(bufnr, mode, lhs, rhs, opts)
+#   Q2: "How does the helper normalize keybinding options?"
+#       -> lua/keymap.lua defines merge_opts that defaults noremap and silent
+#
+# Trap files:
+#   - plugin/treesitter.lua: another plugin config — same directory, both
+#     use vim.api but different functionality
+#   - plugin/completion.lua: completion setup — similar LSP-adjacent
+#     domain but independent config with no cross-dependency
+
+initial:
+  init.lua: |
+    require("plugin.lsp")
+    require("plugin.treesitter")
+    require("plugin.completion")
+  lua/keymap.lua: |
+    local M = {}
+
+    local default_opts = { noremap = true, silent = true }
+
+    function M.merge_opts(user_opts)
+        local opts = vim.tbl_extend("force", default_opts, user_opts or {})
+        return opts
+    end
+
+    function M.map(mode, lhs, rhs, opts)
+        vim.keymap.set(mode, lhs, rhs, M.merge_opts(opts))
+    end
+
+    function M.buf_map(bufnr, mode, lhs, rhs, opts)
+        local merged = M.merge_opts(opts)
+        merged.buffer = bufnr
+        vim.keymap.set(mode, lhs, rhs, merged)
+    end
+
+    function M.leader_map(lhs, rhs, opts)
+        M.map("n", "<leader>" .. lhs, rhs, opts)
+    end
+
+    return M
+  plugin/lsp.lua: |
+    local keymap = require("lua.keymap")
+
+    local on_attach = function(client, bufnr)
+        keymap.buf_map(bufnr, "n", "gd", vim.lsp.buf.definition)
+        keymap.buf_map(bufnr, "n", "K", vim.lsp.buf.hover)
+    end
+
+    vim.lsp.config("lua_ls", {
+        on_attach = on_attach,
+        settings = {
+            Lua = {
+                runtime = { version = "LuaJIT" },
+                diagnostics = { globals = { "vim" } },
+            },
+        },
+    })
+  plugin/treesitter.lua: |
+    local GARBAGE_LUA_002_A = "noise_marker_treesitter"
+
+    require("nvim-treesitter.configs").setup({
+        ensure_installed = { "lua", "python", "javascript" },
+        highlight = { enable = true },
+        indent = { enable = true },
+        incremental_selection = {
+            enable = true,
+            keymaps = {
+                init_selection = "<CR>",
+                node_incremental = "<CR>",
+                scope_incremental = "<Tab>",
+                node_decremental = "<BS>",
+            },
+        },
+    })
+  plugin/completion.lua: |
+    local GARBAGE_LUA_002_B = "noise_marker_completion"
+
+    local cmp = require("cmp")
+
+    cmp.setup({
+        snippet = {
+            expand = function(args)
+                vim.snippet.expand(args.body)
+            end,
+        },
+        mapping = cmp.mapping.preset.insert({
+            ["<C-b>"] = cmp.mapping.scroll_docs(-4),
+            ["<C-f>"] = cmp.mapping.scroll_docs(4),
+            ["<C-Space>"] = cmp.mapping.complete(),
+            ["<CR>"] = cmp.mapping.confirm({ select = true }),
+        }),
+        sources = cmp.config.sources({
+            { name = "nvim_lsp" },
+            { name = "buffer" },
+        }),
+    })
+
+changed:
+  init.lua: |
+    require("plugin.lsp")
+    require("plugin.treesitter")
+    require("plugin.completion")
+  lua/keymap.lua: |
+    local M = {}
+
+    local default_opts = { noremap = true, silent = true }
+
+    function M.merge_opts(user_opts)
+        local opts = vim.tbl_extend("force", default_opts, user_opts or {})
+        return opts
+    end
+
+    function M.map(mode, lhs, rhs, opts)
+        vim.keymap.set(mode, lhs, rhs, M.merge_opts(opts))
+    end
+
+    function M.buf_map(bufnr, mode, lhs, rhs, opts)
+        local merged = M.merge_opts(opts)
+        merged.buffer = bufnr
+        vim.keymap.set(mode, lhs, rhs, merged)
+    end
+
+    function M.leader_map(lhs, rhs, opts)
+        M.map("n", "<leader>" .. lhs, rhs, opts)
+    end
+
+    return M
+  plugin/lsp.lua: |
+    local keymap = require("lua.keymap")
+
+    local on_attach = function(client, bufnr)
+        keymap.buf_map(bufnr, "n", "gd", vim.lsp.buf.definition)
+        keymap.buf_map(bufnr, "n", "K", vim.lsp.buf.hover)
+        keymap.buf_map(bufnr, "n", "<leader>ca", vim.lsp.buf.code_action,
+            { desc = "Code actions" })
+        keymap.buf_map(bufnr, "n", "<leader>rn", vim.lsp.buf.rename,
+            { desc = "Rename symbol" })
+    end
+
+    vim.lsp.config("lua_ls", {
+        on_attach = on_attach,
+        settings = {
+            Lua = {
+                runtime = { version = "LuaJIT" },
+                diagnostics = { globals = { "vim" } },
+            },
+        },
+    })
+  plugin/treesitter.lua: |
+    local GARBAGE_LUA_002_A = "noise_marker_treesitter"
+
+    require("nvim-treesitter.configs").setup({
+        ensure_installed = { "lua", "python", "javascript" },
+        highlight = { enable = true },
+        indent = { enable = true },
+        incremental_selection = {
+            enable = true,
+            keymaps = {
+                init_selection = "<CR>",
+                node_incremental = "<CR>",
+                scope_incremental = "<Tab>",
+                node_decremental = "<BS>",
+            },
+        },
+    })
+  plugin/completion.lua: |
+    local GARBAGE_LUA_002_B = "noise_marker_completion"
+
+    local cmp = require("cmp")
+
+    cmp.setup({
+        snippet = {
+            expand = function(args)
+                vim.snippet.expand(args.body)
+            end,
+        },
+        mapping = cmp.mapping.preset.insert({
+            ["<C-b>"] = cmp.mapping.scroll_docs(-4),
+            ["<C-f>"] = cmp.mapping.scroll_docs(4),
+            ["<C-Space>"] = cmp.mapping.complete(),
+            ["<CR>"] = cmp.mapping.confirm({ select = true }),
+        }),
+        sources = cmp.config.sources({
+            { name = "nvim_lsp" },
+            { name = "buffer" },
+        }),
+    })
+
+must_include_files:
+  - plugin/lsp.lua
+  # Q1+Q2: keymap.lua defines buf_map and merge_opts called by lsp.lua
+  - lua/keymap.lua
+must_include_content_from:
+  plugin/lsp.lua:
+    - "keymap.buf_map"
+    - "vim.lsp.buf.code_action"
+    - "vim.lsp.buf.rename"
+  lua/keymap.lua:
+    - "function M.buf_map(bufnr, mode, lhs, rhs, opts)"
+    - "function M.merge_opts(user_opts)"
+must_not_include:
+  # plugin/treesitter.lua: treesitter config — different plugin domain
+  - GARBAGE_LUA_002_A
+  - "nvim-treesitter.configs"
+  - "ensure_installed"
+  - "incremental_selection"
+  # plugin/completion.lua: completion setup — LSP-adjacent but independent
+  - GARBAGE_LUA_002_B
+  - "cmp.setup"
+  - "scroll_docs"
+  - "cmp.mapping.complete"
+must_not_include_files:
+  - plugin/treesitter.lua
+  - plugin/completion.lua
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

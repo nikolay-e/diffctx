@@ -74,10 +74,17 @@ def _parse_yaml_test(data: dict, source_file: Path | None = None) -> YamlTestCas
         must_not_include_files=must_not_include_files,
         max_fragments=options.get("max_fragments", data.get("max_fragments")),
         max_files=options.get("max_files", data.get("max_files")),
+        max_fragments_per_file=options.get("max_fragments_per_file", data.get("max_fragments_per_file")),
+        max_enrichment=options.get("max_enrichment", data.get("max_enrichment")),
+        min_recall=options.get("min_recall", data.get("min_recall")),
+        max_noise_rate=options.get("max_noise_rate", data.get("max_noise_rate")),
+        max_context_tokens=options.get("max_context_tokens", data.get("max_context_tokens")),
         commit_message=options.get("commit_message", data.get("commit_message", "Update files")),
         min_budget=options.get("min_budget", data.get("min_budget")),
         add_garbage_files=options.get("add_garbage", data.get("add_garbage_files", True)),
         skip_garbage_check=options.get("skip_garbage_check", data.get("skip_garbage_check", False)),
+        xfail=data.get("xfail"),
+        min_score=options.get("min_score", data.get("min_score")),
         source_file=source_file,
     )
 

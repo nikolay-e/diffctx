@@ -1,0 +1,213 @@
+# Scenario: A Dart library adds a new `part` directive to split implementation
+# across files. The library file (auth_library.dart) gains `part 'src/token_store.dart';`
+# and the new part file uses `part of '../auth_library.dart';`.
+#
+# Diff: lib/auth_library.dart adds a new part directive and a public method
+# that delegates to the new part. The new part file (token_store.dart) is created.
+#
+# Reviewer questions:
+#   Q1: "What does the new part file provide?"
+#       -> lib/src/token_store.dart: TokenStore mixin with save/load/clear methods.
+#
+#   Q2: "Does the existing part (session_manager.dart) conflict with the new part?"
+#       -> lib/src/session_manager.dart (UNCHANGED): manages sessions, no overlap
+#          with token storage. Reviewer needs to see it to confirm no name collisions.
+#
+# Not needed for comprehension:
+#   - lib/src/encryption_helper.dart: Helper in same src/ directory.
+#     STRUCTURAL TRAP: same directory, but standalone file, not a part directive.
+#
+#   - lib/http_client.dart: Sibling library file.
+#     No part/part-of relationship to auth_library.
+
+initial:
+  lib/auth_library.dart: |
+    library auth_library;
+
+    part 'src/session_manager.dart';
+
+    class AuthLibrary with SessionManager {
+      final String baseUrl;
+
+      AuthLibrary({required this.baseUrl});
+
+      Future<bool> authenticate(String username, String password) async {
+        final session = await createSession(username, password);
+        return session != null;
+      }
+    }
+  lib/src/session_manager.dart: |
+    part of '../auth_library.dart';
+
+    mixin SessionManager {
+      Future<String?> createSession(String username, String password) async {
+        if (username.isNotEmpty && password.length >= 8) {
+          return 'session_${DateTime.now().millisecondsSinceEpoch}';
+        }
+        return null;
+      }
+
+      void destroySession(String sessionId) {
+        // Session cleanup logic
+      }
+    }
+  lib/src/encryption_helper.dart: |
+    class EncryptionHelper {
+      static String encrypt(String plaintext, String key) {
+        return plaintext.split('').reversed.join();
+      }
+
+      static String decrypt(String ciphertext, String key) {
+        return ciphertext.split('').reversed.join();
+      }
+
+      static String get GARBAGE_DART_002_A_ALGO => 'rot13';
+      static int get GARBAGE_DART_002_B_KEY_LEN => 256;
+    }
+  lib/http_client.dart: |
+    import 'dart:convert';
+
+    class HttpClient {
+      final String baseUrl;
+
+      HttpClient({required this.baseUrl});
+
+      Future<Map<String, dynamic>> get(String path) async {
+        return {'status': 'ok', 'path': path};
+      }
+
+      Future<Map<String, dynamic>> post(String path, Map<String, dynamic> body) async {
+        return {'status': 'created', 'data': jsonEncode(body)};
+      }
+
+      String get GARBAGE_DART_002_C_CLIENT_ID => 'http_v1';
+      int get GARBAGE_DART_002_D_TIMEOUT => 30;
+    }
+
+changed:
+  lib/auth_library.dart: |
+    library auth_library;
+
+    part 'src/session_manager.dart';
+    part 'src/token_store.dart';
+
+    class AuthLibrary with SessionManager, TokenStore {
+      final String baseUrl;
+
+      AuthLibrary({required this.baseUrl});
+
+      Future<bool> authenticate(String username, String password) async {
+        final session = await createSession(username, password);
+        if (session != null) {
+          await saveToken(session);
+          return true;
+        }
+        return false;
+      }
+
+      Future<void> logout() async {
+        final token = await loadToken();
+        if (token != null) {
+          destroySession(token);
+          await clearToken();
+        }
+      }
+    }
+  lib/src/session_manager.dart: |
+    part of '../auth_library.dart';
+
+    mixin SessionManager {
+      Future<String?> createSession(String username, String password) async {
+        if (username.isNotEmpty && password.length >= 8) {
+          return 'session_${DateTime.now().millisecondsSinceEpoch}';
+        }
+        return null;
+      }
+
+      void destroySession(String sessionId) {
+        // Session cleanup logic
+      }
+    }
+  lib/src/token_store.dart: |
+    part of '../auth_library.dart';
+
+    mixin TokenStore {
+      String? _cachedToken;
+
+      Future<void> saveToken(String token) async {
+        _cachedToken = token;
+      }
+
+      Future<String?> loadToken() async {
+        return _cachedToken;
+      }
+
+      Future<void> clearToken() async {
+        _cachedToken = null;
+      }
+    }
+  lib/src/encryption_helper.dart: |
+    class EncryptionHelper {
+      static String encrypt(String plaintext, String key) {
+        return plaintext.split('').reversed.join();
+      }
+
+      static String decrypt(String ciphertext, String key) {
+        return ciphertext.split('').reversed.join();
+      }
+
+      static String get GARBAGE_DART_002_A_ALGO => 'rot13';
+      static int get GARBAGE_DART_002_B_KEY_LEN => 256;
+    }
+  lib/http_client.dart: |
+    import 'dart:convert';
+
+    class HttpClient {
+      final String baseUrl;
+
+      HttpClient({required this.baseUrl});
+
+      Future<Map<String, dynamic>> get(String path) async {
+        return {'status': 'ok', 'path': path};
+      }
+
+      Future<Map<String, dynamic>> post(String path, Map<String, dynamic> body) async {
+        return {'status': 'created', 'data': jsonEncode(body)};
+      }
+
+      String get GARBAGE_DART_002_C_CLIENT_ID => 'http_v1';
+      int get GARBAGE_DART_002_D_TIMEOUT => 30;
+    }
+
+must_include_files:
+  - lib/auth_library.dart
+  - lib/src/token_store.dart
+
+must_include_content_from:
+  lib/auth_library.dart:
+    - "part 'src/token_store.dart'"
+    - "with SessionManager, TokenStore"
+    - "await saveToken(session)"
+  lib/src/token_store.dart:
+    - "part of '../auth_library.dart'"
+    - "mixin TokenStore"
+    - "Future<void> saveToken(String token)"
+
+must_not_include:
+  # --- encryption_helper.dart: standalone file in src/, not a part ---
+  - GARBAGE_DART_002_A_ALGO
+  - GARBAGE_DART_002_B_KEY_LEN
+  - EncryptionHelper
+  # --- http_client.dart: sibling library, no part relationship ---
+  - GARBAGE_DART_002_C_CLIENT_ID
+  - GARBAGE_DART_002_D_TIMEOUT
+  - HttpClient
+
+must_not_include_files:
+  - lib/src/encryption_helper.dart
+  - lib/http_client.dart
+
+max_fragments: 8
+max_files: 4
+add_garbage_files: false
+skip_garbage_check: true

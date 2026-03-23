@@ -1,0 +1,247 @@
+# Zig error sets: module defines an error set, another module handles the
+# errors. A new error variant is added. Context must include the consumer
+# module handling the error. Noise: other modules.
+
+initial:
+  src/errors.zig: |
+    pub const FileError = error{
+        NotFound,
+        PermissionDenied,
+        IoError,
+    };
+
+    pub const ParseError = error{
+        InvalidSyntax,
+        UnexpectedToken,
+    };
+
+  src/reader.zig: |
+    const std = @import("std");
+    const errors = @import("errors.zig");
+
+    pub fn readConfig(path: []const u8) errors.FileError![]const u8 {
+        const file = std.fs.openFileAbsolute(path, .{}) catch |err| switch (err) {
+            error.FileNotFound => return errors.FileError.NotFound,
+            error.AccessDenied => return errors.FileError.PermissionDenied,
+            else => return errors.FileError.IoError,
+        };
+        defer file.close();
+        return file.readToEndAlloc(std.heap.page_allocator, 1024 * 1024);
+    }
+
+  src/handler.zig: |
+    const std = @import("std");
+    const errors = @import("errors.zig");
+    const reader = @import("reader.zig");
+
+    pub fn loadAndProcess(path: []const u8) void {
+        const content = reader.readConfig(path) catch |err| switch (err) {
+            errors.FileError.NotFound => {
+                std.debug.print("File not found: {s}\n", .{path});
+                return;
+            },
+            errors.FileError.PermissionDenied => {
+                std.debug.print("Permission denied: {s}\n", .{path});
+                return;
+            },
+            errors.FileError.IoError => {
+                std.debug.print("IO error reading: {s}\n", .{path});
+                return;
+            },
+        };
+        std.debug.print("Loaded {d} bytes\n", .{content.len});
+    }
+
+  # --- Tricky garbage: also imports errors.zig ---
+  src/writer.zig: |
+    const std = @import("std");
+    const errors = @import("errors.zig");
+
+    const GARBAGE_ZIG_003_WRITER_MARKER_A: []const u8 = "writer";
+    const GARBAGE_ZIG_003_WRITE_FLAG_B: bool = true;
+
+    pub fn writeOutput(path: []const u8, data: []const u8) errors.FileError!void {
+        const file = std.fs.createFileAbsolute(path, .{}) catch |err| switch (err) {
+            error.AccessDenied => return errors.FileError.PermissionDenied,
+            else => return errors.FileError.IoError,
+        };
+        defer file.close();
+        try file.writeAll(data);
+    }
+
+  # --- Tricky garbage: also defines error types ---
+  src/network_errors.zig: |
+    const GARBAGE_ZIG_003_NET_ERR_MARKER_C: []const u8 = "network_errors";
+    const GARBAGE_ZIG_003_TIMEOUT_VAL_D: u64 = 30000;
+
+    pub const NetworkError = error{
+        ConnectionRefused,
+        Timeout,
+        DnsResolutionFailed,
+    };
+
+  # --- Tricky garbage: also uses switch on errors ---
+  src/parser.zig: |
+    const std = @import("std");
+    const errors = @import("errors.zig");
+
+    const GARBAGE_ZIG_003_PARSER_MARKER_E: []const u8 = "parser";
+    const GARBAGE_ZIG_003_TOKEN_FLAG_F: bool = true;
+
+    pub fn parseContent(content: []const u8) errors.ParseError!void {
+        if (content.len == 0) return errors.ParseError.InvalidSyntax;
+        if (content[0] != '{') return errors.ParseError.UnexpectedToken;
+    }
+
+  # --- Plain garbage ---
+  src/utils.zig: |
+    const GARBAGE_ZIG_003_UTILS_MARKER_G: []const u8 = "utils";
+    const GARBAGE_ZIG_003_HELPER_H: bool = true;
+
+    pub fn trimWhitespace(input: []const u8) []const u8 {
+        var start: usize = 0;
+        while (start < input.len and input[start] == ' ') : (start += 1) {}
+        return input[start..];
+    }
+
+changed:
+  src/errors.zig: |
+    pub const FileError = error{
+        NotFound,
+        PermissionDenied,
+        IoError,
+        FileLocked,
+    };
+
+    pub const ParseError = error{
+        InvalidSyntax,
+        UnexpectedToken,
+    };
+
+  src/reader.zig: |
+    const std = @import("std");
+    const errors = @import("errors.zig");
+
+    pub fn readConfig(path: []const u8) errors.FileError![]const u8 {
+        const file = std.fs.openFileAbsolute(path, .{}) catch |err| switch (err) {
+            error.FileNotFound => return errors.FileError.NotFound,
+            error.AccessDenied => return errors.FileError.PermissionDenied,
+            error.FileBusy => return errors.FileError.FileLocked,
+            else => return errors.FileError.IoError,
+        };
+        defer file.close();
+        return file.readToEndAlloc(std.heap.page_allocator, 1024 * 1024);
+    }
+
+  src/handler.zig: |
+    const std = @import("std");
+    const errors = @import("errors.zig");
+    const reader = @import("reader.zig");
+
+    pub fn loadAndProcess(path: []const u8) void {
+        const content = reader.readConfig(path) catch |err| switch (err) {
+            errors.FileError.NotFound => {
+                std.debug.print("File not found: {s}\n", .{path});
+                return;
+            },
+            errors.FileError.PermissionDenied => {
+                std.debug.print("Permission denied: {s}\n", .{path});
+                return;
+            },
+            errors.FileError.IoError => {
+                std.debug.print("IO error reading: {s}\n", .{path});
+                return;
+            },
+            errors.FileError.FileLocked => {
+                std.debug.print("File is locked: {s}\n", .{path});
+                return;
+            },
+        };
+        std.debug.print("Loaded {d} bytes\n", .{content.len});
+    }
+
+  src/writer.zig: |
+    const std = @import("std");
+    const errors = @import("errors.zig");
+
+    const GARBAGE_ZIG_003_WRITER_MARKER_A: []const u8 = "writer";
+    const GARBAGE_ZIG_003_WRITE_FLAG_B: bool = true;
+
+    pub fn writeOutput(path: []const u8, data: []const u8) errors.FileError!void {
+        const file = std.fs.createFileAbsolute(path, .{}) catch |err| switch (err) {
+            error.AccessDenied => return errors.FileError.PermissionDenied,
+            else => return errors.FileError.IoError,
+        };
+        defer file.close();
+        try file.writeAll(data);
+    }
+
+  src/network_errors.zig: |
+    const GARBAGE_ZIG_003_NET_ERR_MARKER_C: []const u8 = "network_errors";
+    const GARBAGE_ZIG_003_TIMEOUT_VAL_D: u64 = 30000;
+
+    pub const NetworkError = error{
+        ConnectionRefused,
+        Timeout,
+        DnsResolutionFailed,
+    };
+
+  src/parser.zig: |
+    const std = @import("std");
+    const errors = @import("errors.zig");
+
+    const GARBAGE_ZIG_003_PARSER_MARKER_E: []const u8 = "parser";
+    const GARBAGE_ZIG_003_TOKEN_FLAG_F: bool = true;
+
+    pub fn parseContent(content: []const u8) errors.ParseError!void {
+        if (content.len == 0) return errors.ParseError.InvalidSyntax;
+        if (content[0] != '{') return errors.ParseError.UnexpectedToken;
+    }
+
+  src/utils.zig: |
+    const GARBAGE_ZIG_003_UTILS_MARKER_G: []const u8 = "utils";
+    const GARBAGE_ZIG_003_HELPER_H: bool = true;
+
+    pub fn trimWhitespace(input: []const u8) []const u8 {
+        var start: usize = 0;
+        while (start < input.len and input[start] == ' ') : (start += 1) {}
+        return input[start..];
+    }
+
+# === Assertions ===
+
+must_include_files:
+- src/errors.zig
+- src/handler.zig
+
+must_include_content_from:
+  src/errors.zig:
+    - FileLocked
+  src/handler.zig:
+    - errors.FileError.FileLocked
+    - File is locked
+
+must_not_include:
+# Tricky: also imports errors.zig
+- GARBAGE_ZIG_003_WRITER_MARKER_A
+- GARBAGE_ZIG_003_WRITE_FLAG_B
+# Tricky: also defines error types
+- GARBAGE_ZIG_003_NET_ERR_MARKER_C
+- GARBAGE_ZIG_003_TIMEOUT_VAL_D
+# Tricky: also uses switch on errors
+- GARBAGE_ZIG_003_PARSER_MARKER_E
+- GARBAGE_ZIG_003_TOKEN_FLAG_F
+# Plain garbage
+- GARBAGE_ZIG_003_UTILS_MARKER_G
+- GARBAGE_ZIG_003_HELPER_H
+
+must_not_include_files:
+- src/writer.zig
+- src/network_errors.zig
+- src/parser.zig
+- src/utils.zig
+
+max_fragments: 8
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

@@ -1,0 +1,277 @@
+# Scenario: A Phoenix router adds a new route pointing to an existing controller
+# action. The reviewer needs the controller to verify the action function exists
+# and handles the expected parameters.
+#
+# Diff: lib/myapp_web/router.ex adds `post "/products/:id/reviews", ProductController, :create_review`
+# inside the existing "/api" scope.
+#
+# Reviewer questions:
+#   Q1: "Does ProductController have a :create_review action?"
+#       -> lib/myapp_web/controllers/product_controller.ex (UNCHANGED):
+#          defines create_review/2 that accepts conn and params.
+#
+#   Q2: "What does create_review expect in params — does it match
+#        the POST body shape the route implies?"
+#       -> lib/myapp_web/controllers/product_controller.ex: action extracts
+#          "product_id" from params and "review" nested map.
+#
+# Not needed for comprehension:
+#   - lib/myapp_web/controllers/user_controller.ex: Another controller.
+#     STRUCTURAL TRAP: same controller pattern, same directory.
+#
+#   - lib/myapp_web/plugs/auth_plug.ex: Plug used in the pipeline.
+#     Referenced in router pipeline but not relevant to understanding
+#     what the new route does.
+#
+#   - lib/myapp_web/views/product_view.ex: View module for products.
+#     Renders responses but the reviewer needs to verify the action
+#     exists, not the response format.
+
+initial:
+  lib/myapp_web/router.ex: |
+    defmodule MyAppWeb.Router do
+      use MyAppWeb, :router
+
+      pipeline :api do
+        plug :accepts, ["json"]
+        plug MyAppWeb.Plugs.AuthPlug
+      end
+
+      scope "/api", MyAppWeb.Controllers do
+        pipe_through :api
+
+        get "/products", ProductController, :index
+        get "/products/:id", ProductController, :show
+        post "/products", ProductController, :create
+
+        get "/users/me", UserController, :current
+        put "/users/me", UserController, :update
+      end
+    end
+  lib/myapp_web/controllers/product_controller.ex: |
+    defmodule MyAppWeb.Controllers.ProductController do
+      use MyAppWeb, :controller
+
+      def index(conn, params) do
+        page = Map.get(params, "page", "1") |> String.to_integer()
+        products = list_products(page)
+        json(conn, %{data: products, page: page})
+      end
+
+      def show(conn, %{"id" => id}) do
+        case get_product(id) do
+          nil -> conn |> put_status(:not_found) |> json(%{error: "not found"})
+          product -> json(conn, %{data: product})
+        end
+      end
+
+      def create(conn, %{"product" => product_params}) do
+        product = Map.put(product_params, "id", generate_id())
+        conn |> put_status(:created) |> json(%{data: product})
+      end
+
+      def create_review(conn, %{"id" => product_id, "review" => review_params}) do
+        review = Map.merge(review_params, %{
+          "product_id" => product_id,
+          "id" => generate_id(),
+          "created_at" => DateTime.utc_now()
+        })
+        conn |> put_status(:created) |> json(%{data: review})
+      end
+
+      defp list_products(_page), do: []
+      defp get_product(_id), do: %{id: "1", name: "Widget"}
+      defp generate_id, do: :crypto.strong_rand_bytes(8) |> Base.encode16(case: :lower)
+    end
+  lib/myapp_web/controllers/user_controller.ex: |
+    defmodule MyAppWeb.Controllers.UserController do
+      use MyAppWeb, :controller
+
+      def current(conn, _params) do
+        user = conn.assigns[:current_user]
+        json(conn, %{data: user})
+      end
+
+      def update(conn, %{"user" => user_params}) do
+        json(conn, %{data: user_params})
+      end
+
+      def garbage_marker_a, do: "GARBAGE_ELIXIR_004_A_USER_CTRL"
+      def garbage_marker_b, do: "GARBAGE_ELIXIR_004_B_PROFILE"
+    end
+  lib/myapp_web/plugs/auth_plug.ex: |
+    defmodule MyAppWeb.Plugs.AuthPlug do
+      import Plug.Conn
+
+      def init(opts), do: opts
+
+      def call(conn, _opts) do
+        case get_req_header(conn, "authorization") do
+          ["Bearer " <> token] ->
+            conn |> assign(:current_user, %{id: "1", token: token})
+          _ ->
+            conn |> put_status(:unauthorized) |> halt()
+        end
+      end
+
+      def garbage_marker_c, do: "GARBAGE_ELIXIR_004_C_JWT"
+      def garbage_marker_d, do: "GARBAGE_ELIXIR_004_D_HMAC"
+    end
+  lib/myapp_web/views/product_view.ex: |
+    defmodule MyAppWeb.Views.ProductView do
+      def render("index.json", %{products: products}) do
+        %{data: Enum.map(products, &render_product/1)}
+      end
+
+      def render("show.json", %{product: product}) do
+        %{data: render_product(product)}
+      end
+
+      defp render_product(product) do
+        Map.take(product, [:id, :name, :price])
+      end
+
+      def garbage_marker_e, do: "GARBAGE_ELIXIR_004_E_TEMPLATE"
+    end
+
+changed:
+  lib/myapp_web/router.ex: |
+    defmodule MyAppWeb.Router do
+      use MyAppWeb, :router
+
+      pipeline :api do
+        plug :accepts, ["json"]
+        plug MyAppWeb.Plugs.AuthPlug
+      end
+
+      scope "/api", MyAppWeb.Controllers do
+        pipe_through :api
+
+        get "/products", ProductController, :index
+        get "/products/:id", ProductController, :show
+        post "/products", ProductController, :create
+        post "/products/:id/reviews", ProductController, :create_review
+
+        get "/users/me", UserController, :current
+        put "/users/me", UserController, :update
+      end
+    end
+  lib/myapp_web/controllers/product_controller.ex: |
+    defmodule MyAppWeb.Controllers.ProductController do
+      use MyAppWeb, :controller
+
+      def index(conn, params) do
+        page = Map.get(params, "page", "1") |> String.to_integer()
+        products = list_products(page)
+        json(conn, %{data: products, page: page})
+      end
+
+      def show(conn, %{"id" => id}) do
+        case get_product(id) do
+          nil -> conn |> put_status(:not_found) |> json(%{error: "not found"})
+          product -> json(conn, %{data: product})
+        end
+      end
+
+      def create(conn, %{"product" => product_params}) do
+        product = Map.put(product_params, "id", generate_id())
+        conn |> put_status(:created) |> json(%{data: product})
+      end
+
+      def create_review(conn, %{"id" => product_id, "review" => review_params}) do
+        review = Map.merge(review_params, %{
+          "product_id" => product_id,
+          "id" => generate_id(),
+          "created_at" => DateTime.utc_now()
+        })
+        conn |> put_status(:created) |> json(%{data: review})
+      end
+
+      defp list_products(_page), do: []
+      defp get_product(_id), do: %{id: "1", name: "Widget"}
+      defp generate_id, do: :crypto.strong_rand_bytes(8) |> Base.encode16(case: :lower)
+    end
+  lib/myapp_web/controllers/user_controller.ex: |
+    defmodule MyAppWeb.Controllers.UserController do
+      use MyAppWeb, :controller
+
+      def current(conn, _params) do
+        user = conn.assigns[:current_user]
+        json(conn, %{data: user})
+      end
+
+      def update(conn, %{"user" => user_params}) do
+        json(conn, %{data: user_params})
+      end
+
+      def garbage_marker_a, do: "GARBAGE_ELIXIR_004_A_USER_CTRL"
+      def garbage_marker_b, do: "GARBAGE_ELIXIR_004_B_PROFILE"
+    end
+  lib/myapp_web/plugs/auth_plug.ex: |
+    defmodule MyAppWeb.Plugs.AuthPlug do
+      import Plug.Conn
+
+      def init(opts), do: opts
+
+      def call(conn, _opts) do
+        case get_req_header(conn, "authorization") do
+          ["Bearer " <> token] ->
+            conn |> assign(:current_user, %{id: "1", token: token})
+          _ ->
+            conn |> put_status(:unauthorized) |> halt()
+        end
+      end
+
+      def garbage_marker_c, do: "GARBAGE_ELIXIR_004_C_JWT"
+      def garbage_marker_d, do: "GARBAGE_ELIXIR_004_D_HMAC"
+    end
+  lib/myapp_web/views/product_view.ex: |
+    defmodule MyAppWeb.Views.ProductView do
+      def render("index.json", %{products: products}) do
+        %{data: Enum.map(products, &render_product/1)}
+      end
+
+      def render("show.json", %{product: product}) do
+        %{data: render_product(product)}
+      end
+
+      defp render_product(product) do
+        Map.take(product, [:id, :name, :price])
+      end
+
+      def garbage_marker_e, do: "GARBAGE_ELIXIR_004_E_TEMPLATE"
+    end
+
+must_include_files:
+  - lib/myapp_web/router.ex
+  - lib/myapp_web/controllers/product_controller.ex
+
+must_include_content_from:
+  lib/myapp_web/router.ex:
+    - "post \"/products/:id/reviews\", ProductController, :create_review"
+  lib/myapp_web/controllers/product_controller.ex:
+    - "def create_review(conn"
+    - "\"product_id\" => product_id"
+
+must_not_include:
+  # --- user_controller.ex: another controller, not routed to ---
+  - GARBAGE_ELIXIR_004_A_USER_CTRL
+  - GARBAGE_ELIXIR_004_B_PROFILE
+  - UserController
+  # --- auth_plug.ex: pipeline plug, not the route target ---
+  - GARBAGE_ELIXIR_004_C_JWT
+  - GARBAGE_ELIXIR_004_D_HMAC
+  - AuthPlug
+  # --- product_view.ex: response rendering, not route/action verification ---
+  - GARBAGE_ELIXIR_004_E_TEMPLATE
+  - render_product
+
+must_not_include_files:
+  - lib/myapp_web/controllers/user_controller.ex
+  - lib/myapp_web/plugs/auth_plug.ex
+  - lib/myapp_web/views/product_view.ex
+
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

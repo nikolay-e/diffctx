@@ -1,0 +1,283 @@
+# Prisma enum: an enum in schema.prisma gets a new value and a
+# TypeScript file that validates against the enum must appear
+# in context so a reviewer sees both the definition and usage.
+
+initial:
+  prisma/schema.prisma: |
+    generator client {
+      provider = "prisma-client-js"
+    }
+
+    datasource db {
+      provider = "postgresql"
+      url      = env("DATABASE_URL")
+    }
+
+    model Ticket {
+      id          Int          @id @default(autoincrement())
+      title       String
+      description String?
+      priority    Priority     @default(MEDIUM)
+      status      TicketStatus @default(OPEN)
+      assigneeId  Int?
+      createdAt   DateTime     @default(now())
+      updatedAt   DateTime     @updatedAt
+    }
+
+    enum Priority {
+      LOW
+      MEDIUM
+      HIGH
+      CRITICAL
+    }
+
+    enum TicketStatus {
+      OPEN
+      IN_PROGRESS
+      RESOLVED
+      CLOSED
+    }
+
+  src/services/ticket.service.ts: |
+    import { PrismaClient, Priority, TicketStatus } from '@prisma/client';
+
+    const prisma = new PrismaClient();
+
+    const VALID_PRIORITIES: Priority[] = [
+      'LOW', 'MEDIUM', 'HIGH', 'CRITICAL',
+    ];
+
+    const VALID_STATUSES: TicketStatus[] = [
+      'OPEN', 'IN_PROGRESS', 'RESOLVED', 'CLOSED',
+    ];
+
+    export function isValidPriority(value: string): value is Priority {
+      return VALID_PRIORITIES.includes(value as Priority);
+    }
+
+    export function isValidStatus(value: string): value is TicketStatus {
+      return VALID_STATUSES.includes(value as TicketStatus);
+    }
+
+    export async function createTicket(
+      title: string,
+      priority: Priority,
+      assigneeId?: number,
+    ) {
+      return prisma.ticket.create({
+        data: { title, priority, assigneeId },
+      });
+    }
+
+    export async function updateTicketStatus(
+      id: number,
+      status: TicketStatus,
+    ) {
+      return prisma.ticket.update({
+        where: { id },
+        data: { status },
+      });
+    }
+
+  src/services/user.service.ts: |
+    // GARBAGE_PRISMA_004_A: user_service_marker
+    import { PrismaClient } from '@prisma/client';
+
+    const prisma = new PrismaClient();
+
+    export async function getUsers() {
+      return prisma.user.findMany();
+    }
+
+  src/routes/ticket.routes.ts: |
+    // GARBAGE_PRISMA_004_B: ticket_routes_marker
+    import { Router } from 'express';
+    import { createTicket, isValidPriority } from '../services/ticket.service';
+
+    const router = Router();
+
+    router.post('/', async (req, res) => {
+      const { title, priority } = req.body;
+      if (!isValidPriority(priority)) {
+        return res.status(400).json({ error: 'Invalid priority' });
+      }
+      const ticket = await createTicket(title, priority);
+      res.status(201).json(ticket);
+    });
+
+    export default router;
+
+  src/utils/constants.ts: |
+    // GARBAGE_PRISMA_004_C: constants_marker
+    export const MAX_TITLE_LENGTH = 200;
+    export const MAX_DESCRIPTION_LENGTH = 5000;
+    export const DEFAULT_PAGE_SIZE = 25;
+
+  src/services/notification.service.ts: |
+    // GARBAGE_PRISMA_004_D: notification_service_marker
+    import { PrismaClient } from '@prisma/client';
+
+    const prisma = new PrismaClient();
+
+    export async function sendNotification(userId: number, message: string) {
+      console.log(`Notification to ${userId}: ${message}`);
+    }
+
+changed:
+  prisma/schema.prisma: |
+    generator client {
+      provider = "prisma-client-js"
+    }
+
+    datasource db {
+      provider = "postgresql"
+      url      = env("DATABASE_URL")
+    }
+
+    model Ticket {
+      id          Int          @id @default(autoincrement())
+      title       String
+      description String?
+      priority    Priority     @default(MEDIUM)
+      status      TicketStatus @default(OPEN)
+      assigneeId  Int?
+      createdAt   DateTime     @default(now())
+      updatedAt   DateTime     @updatedAt
+    }
+
+    enum Priority {
+      LOW
+      MEDIUM
+      HIGH
+      CRITICAL
+      BLOCKER
+    }
+
+    enum TicketStatus {
+      OPEN
+      IN_PROGRESS
+      RESOLVED
+      CLOSED
+    }
+
+  src/services/ticket.service.ts: |
+    import { PrismaClient, Priority, TicketStatus } from '@prisma/client';
+
+    const prisma = new PrismaClient();
+
+    const VALID_PRIORITIES: Priority[] = [
+      'LOW', 'MEDIUM', 'HIGH', 'CRITICAL', 'BLOCKER',
+    ];
+
+    const VALID_STATUSES: TicketStatus[] = [
+      'OPEN', 'IN_PROGRESS', 'RESOLVED', 'CLOSED',
+    ];
+
+    export function isValidPriority(value: string): value is Priority {
+      return VALID_PRIORITIES.includes(value as Priority);
+    }
+
+    export function isValidStatus(value: string): value is TicketStatus {
+      return VALID_STATUSES.includes(value as TicketStatus);
+    }
+
+    export async function createTicket(
+      title: string,
+      priority: Priority,
+      assigneeId?: number,
+    ) {
+      return prisma.ticket.create({
+        data: { title, priority, assigneeId },
+      });
+    }
+
+    export async function updateTicketStatus(
+      id: number,
+      status: TicketStatus,
+    ) {
+      return prisma.ticket.update({
+        where: { id },
+        data: { status },
+      });
+    }
+
+    export async function getBlockerTickets() {
+      return prisma.ticket.findMany({
+        where: { priority: 'BLOCKER', status: { not: 'CLOSED' } },
+        orderBy: { createdAt: 'desc' },
+      });
+    }
+
+  src/services/user.service.ts: |
+    // GARBAGE_PRISMA_004_A: user_service_marker
+    import { PrismaClient } from '@prisma/client';
+
+    const prisma = new PrismaClient();
+
+    export async function getUsers() {
+      return prisma.user.findMany();
+    }
+
+  src/routes/ticket.routes.ts: |
+    // GARBAGE_PRISMA_004_B: ticket_routes_marker
+    import { Router } from 'express';
+    import { createTicket, isValidPriority } from '../services/ticket.service';
+
+    const router = Router();
+
+    router.post('/', async (req, res) => {
+      const { title, priority } = req.body;
+      if (!isValidPriority(priority)) {
+        return res.status(400).json({ error: 'Invalid priority' });
+      }
+      const ticket = await createTicket(title, priority);
+      res.status(201).json(ticket);
+    });
+
+    export default router;
+
+  src/utils/constants.ts: |
+    // GARBAGE_PRISMA_004_C: constants_marker
+    export const MAX_TITLE_LENGTH = 200;
+    export const MAX_DESCRIPTION_LENGTH = 5000;
+    export const DEFAULT_PAGE_SIZE = 25;
+
+  src/services/notification.service.ts: |
+    // GARBAGE_PRISMA_004_D: notification_service_marker
+    import { PrismaClient } from '@prisma/client';
+
+    const prisma = new PrismaClient();
+
+    export async function sendNotification(userId: number, message: string) {
+      console.log(`Notification to ${userId}: ${message}`);
+    }
+
+# === Assertions ===
+
+must_include_files:
+- prisma/schema.prisma
+- src/services/ticket.service.ts
+
+must_include_content_from:
+  prisma/schema.prisma:
+    - "BLOCKER"
+    - "enum Priority"
+  src/services/ticket.service.ts:
+    - "BLOCKER"
+    - "getBlockerTickets"
+
+must_not_include:
+- GARBAGE_PRISMA_004_A
+- GARBAGE_PRISMA_004_B
+- GARBAGE_PRISMA_004_C
+- GARBAGE_PRISMA_004_D
+
+must_not_include_files:
+- src/services/user.service.ts
+- src/routes/ticket.routes.ts
+- src/utils/constants.ts
+- src/services/notification.service.ts
+
+max_files: 4
+add_garbage_files: false
+skip_garbage_check: true

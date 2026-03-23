@@ -1,0 +1,349 @@
+# Scenario: Julia's multiple dispatch allows defining methods for the same function
+# name with different type signatures. A new method is added for a type defined
+# in types.jl, and the reviewer needs to see that type definition.
+#
+# Diff: src/formatter.jl adds a new method `format_value(val::Quaternion)` for
+# the Quaternion type defined in src/types.jl. The existing format_value methods
+# handle Scalar, Vector2D, and Vector3D.
+#
+# Reviewer questions:
+#   Q1: "What is the Quaternion type and what fields does it have?"
+#       -> src/types.jl (UNCHANGED): struct Quaternion with w, x, y, z fields.
+#          Reviewer verifies the formatter accesses the correct fields.
+#
+#   Q2: "Are there other format_value methods that might conflict?"
+#       -> src/formatter.jl: existing methods handle Scalar, Vector2D, Vector3D.
+#          No conflict since Quaternion is a different type.
+#
+# Not needed for comprehension:
+#   - src/operations.jl: Module with arithmetic operations for the same types.
+#     HARDEST TRAP: also has multiple dispatch methods for Quaternion
+#     (add, multiply, conjugate), same type, same dispatch pattern.
+#
+#   - src/parser.jl: Module that parses string representations.
+#     Also has methods dispatching on the same types but for parsing.
+#
+#   - src/serializer.jl: Module that serializes to JSON.
+#     Same types, same multi-dispatch pattern, different concern.
+
+initial:
+  src/types.jl: |
+    struct Scalar
+        value::Float64
+    end
+
+    struct Vector2D
+        x::Float64
+        y::Float64
+    end
+
+    struct Vector3D
+        x::Float64
+        y::Float64
+        z::Float64
+    end
+
+    struct Quaternion
+        w::Float64
+        x::Float64
+        y::Float64
+        z::Float64
+    end
+
+    function magnitude(v::Vector2D)::Float64
+        return sqrt(v.x^2 + v.y^2)
+    end
+
+    function magnitude(v::Vector3D)::Float64
+        return sqrt(v.x^2 + v.y^2 + v.z^2)
+    end
+
+    function magnitude(q::Quaternion)::Float64
+        return sqrt(q.w^2 + q.x^2 + q.y^2 + q.z^2)
+    end
+
+  src/formatter.jl: |
+    function format_value(val::Scalar)::String
+        return "$(round(val.value, digits=4))"
+    end
+
+    function format_value(val::Vector2D)::String
+        return "($(round(val.x, digits=4)), $(round(val.y, digits=4)))"
+    end
+
+    function format_value(val::Vector3D)::String
+        return "($(round(val.x, digits=4)), $(round(val.y, digits=4)), $(round(val.z, digits=4)))"
+    end
+
+    function format_table(values::Vector)::String
+        lines = [format_value(v) for v in values]
+        return join(lines, "\n")
+    end
+
+  src/operations.jl: |
+    GARBAGE_JULIA_004_A = "ops_marker"
+    GARBAGE_JULIA_004_B = "math_marker"
+
+    function add(a::Vector3D, b::Vector3D)::Vector3D
+        return Vector3D(a.x + b.x, a.y + b.y, a.z + b.z)
+    end
+
+    function add(a::Quaternion, b::Quaternion)::Quaternion
+        return Quaternion(a.w + b.w, a.x + b.x, a.y + b.y, a.z + b.z)
+    end
+
+    function multiply(a::Quaternion, b::Quaternion)::Quaternion
+        return Quaternion(
+            a.w*b.w - a.x*b.x - a.y*b.y - a.z*b.z,
+            a.w*b.x + a.x*b.w + a.y*b.z - a.z*b.y,
+            a.w*b.y - a.x*b.z + a.y*b.w + a.z*b.x,
+            a.w*b.z + a.x*b.y - a.y*b.x + a.z*b.w
+        )
+    end
+
+    function conjugate(q::Quaternion)::Quaternion
+        return Quaternion(q.w, -q.x, -q.y, -q.z)
+    end
+
+    function dot(a::Vector3D, b::Vector3D)::Float64
+        return a.x*b.x + a.y*b.y + a.z*b.z
+    end
+
+  src/parser.jl: |
+    GARBAGE_JULIA_004_C = "parser_marker"
+    GARBAGE_JULIA_004_D = "parse_marker"
+
+    function parse_value(s::String, ::Type{Scalar})::Scalar
+        return Scalar(parse(Float64, strip(s)))
+    end
+
+    function parse_value(s::String, ::Type{Vector2D})::Vector2D
+        parts = split(strip(s, ['(', ')']), ",")
+        return Vector2D(parse(Float64, parts[1]), parse(Float64, parts[2]))
+    end
+
+    function parse_value(s::String, ::Type{Vector3D})::Vector3D
+        parts = split(strip(s, ['(', ')']), ",")
+        return Vector3D(
+            parse(Float64, parts[1]),
+            parse(Float64, parts[2]),
+            parse(Float64, parts[3])
+        )
+    end
+
+    function parse_value(s::String, ::Type{Quaternion})::Quaternion
+        parts = split(strip(s, ['(', ')']), ",")
+        return Quaternion(
+            parse(Float64, parts[1]),
+            parse(Float64, parts[2]),
+            parse(Float64, parts[3]),
+            parse(Float64, parts[4])
+        )
+    end
+
+  src/serializer.jl: |
+    using JSON
+
+    GARBAGE_JULIA_004_E = "serial_marker"
+    GARBAGE_JULIA_004_F = "json_marker"
+
+    function to_json(val::Scalar)::String
+        return JSON.json(Dict("type" => "scalar", "value" => val.value))
+    end
+
+    function to_json(val::Vector3D)::String
+        return JSON.json(Dict("type" => "vector3d", "x" => val.x, "y" => val.y, "z" => val.z))
+    end
+
+    function to_json(val::Quaternion)::String
+        return JSON.json(Dict(
+            "type" => "quaternion",
+            "w" => val.w, "x" => val.x, "y" => val.y, "z" => val.z
+        ))
+    end
+
+changed:
+  src/types.jl: |
+    struct Scalar
+        value::Float64
+    end
+
+    struct Vector2D
+        x::Float64
+        y::Float64
+    end
+
+    struct Vector3D
+        x::Float64
+        y::Float64
+        z::Float64
+    end
+
+    struct Quaternion
+        w::Float64
+        x::Float64
+        y::Float64
+        z::Float64
+    end
+
+    function magnitude(v::Vector2D)::Float64
+        return sqrt(v.x^2 + v.y^2)
+    end
+
+    function magnitude(v::Vector3D)::Float64
+        return sqrt(v.x^2 + v.y^2 + v.z^2)
+    end
+
+    function magnitude(q::Quaternion)::Float64
+        return sqrt(q.w^2 + q.x^2 + q.y^2 + q.z^2)
+    end
+
+  src/formatter.jl: |
+    function format_value(val::Scalar)::String
+        return "$(round(val.value, digits=4))"
+    end
+
+    function format_value(val::Vector2D)::String
+        return "($(round(val.x, digits=4)), $(round(val.y, digits=4)))"
+    end
+
+    function format_value(val::Vector3D)::String
+        return "($(round(val.x, digits=4)), $(round(val.y, digits=4)), $(round(val.z, digits=4)))"
+    end
+
+    function format_value(val::Quaternion)::String
+        return "[$(round(val.w, digits=4)) + $(round(val.x, digits=4))i + $(round(val.y, digits=4))j + $(round(val.z, digits=4))k]"
+    end
+
+    function format_table(values::Vector)::String
+        lines = [format_value(v) for v in values]
+        return join(lines, "\n")
+    end
+
+    function format_with_label(label::String, val)::String
+        return "$label: $(format_value(val))"
+    end
+
+  src/operations.jl: |
+    GARBAGE_JULIA_004_A = "ops_marker"
+    GARBAGE_JULIA_004_B = "math_marker"
+
+    function add(a::Vector3D, b::Vector3D)::Vector3D
+        return Vector3D(a.x + b.x, a.y + b.y, a.z + b.z)
+    end
+
+    function add(a::Quaternion, b::Quaternion)::Quaternion
+        return Quaternion(a.w + b.w, a.x + b.x, a.y + b.y, a.z + b.z)
+    end
+
+    function multiply(a::Quaternion, b::Quaternion)::Quaternion
+        return Quaternion(
+            a.w*b.w - a.x*b.x - a.y*b.y - a.z*b.z,
+            a.w*b.x + a.x*b.w + a.y*b.z - a.z*b.y,
+            a.w*b.y - a.x*b.z + a.y*b.w + a.z*b.x,
+            a.w*b.z + a.x*b.y - a.y*b.x + a.z*b.w
+        )
+    end
+
+    function conjugate(q::Quaternion)::Quaternion
+        return Quaternion(q.w, -q.x, -q.y, -q.z)
+    end
+
+    function dot(a::Vector3D, b::Vector3D)::Float64
+        return a.x*b.x + a.y*b.y + a.z*b.z
+    end
+
+  src/parser.jl: |
+    GARBAGE_JULIA_004_C = "parser_marker"
+    GARBAGE_JULIA_004_D = "parse_marker"
+
+    function parse_value(s::String, ::Type{Scalar})::Scalar
+        return Scalar(parse(Float64, strip(s)))
+    end
+
+    function parse_value(s::String, ::Type{Vector2D})::Vector2D
+        parts = split(strip(s, ['(', ')']), ",")
+        return Vector2D(parse(Float64, parts[1]), parse(Float64, parts[2]))
+    end
+
+    function parse_value(s::String, ::Type{Vector3D})::Vector3D
+        parts = split(strip(s, ['(', ')']), ",")
+        return Vector3D(
+            parse(Float64, parts[1]),
+            parse(Float64, parts[2]),
+            parse(Float64, parts[3])
+        )
+    end
+
+    function parse_value(s::String, ::Type{Quaternion})::Quaternion
+        parts = split(strip(s, ['(', ')']), ",")
+        return Quaternion(
+            parse(Float64, parts[1]),
+            parse(Float64, parts[2]),
+            parse(Float64, parts[3]),
+            parse(Float64, parts[4])
+        )
+    end
+
+  src/serializer.jl: |
+    using JSON
+
+    GARBAGE_JULIA_004_E = "serial_marker"
+    GARBAGE_JULIA_004_F = "json_marker"
+
+    function to_json(val::Scalar)::String
+        return JSON.json(Dict("type" => "scalar", "value" => val.value))
+    end
+
+    function to_json(val::Vector3D)::String
+        return JSON.json(Dict("type" => "vector3d", "x" => val.x, "y" => val.y, "z" => val.z))
+    end
+
+    function to_json(val::Quaternion)::String
+        return JSON.json(Dict(
+            "type" => "quaternion",
+            "w" => val.w, "x" => val.x, "y" => val.y, "z" => val.z
+        ))
+    end
+
+must_include_files:
+  - src/formatter.jl
+
+must_include_content_from:
+  src/formatter.jl:
+    - "function format_value(val::Quaternion)::String"
+    - "val.w"
+    - "val.x"
+    - "function format_with_label"
+  src/types.jl:
+    - "struct Quaternion"
+    - "w::Float64"
+    - "x::Float64"
+    - "y::Float64"
+    - "z::Float64"
+
+must_not_include:
+  # operations.jl: HARDEST TRAP, multi-dispatch on same types including Quaternion
+  - GARBAGE_JULIA_004_A
+  - GARBAGE_JULIA_004_B
+  - "function add(a::Quaternion"
+  - "function multiply(a::Quaternion"
+  - conjugate
+  # parser.jl: multi-dispatch on same types for parsing
+  - GARBAGE_JULIA_004_C
+  - GARBAGE_JULIA_004_D
+  - "parse_value"
+  # serializer.jl: multi-dispatch on same types for JSON
+  - GARBAGE_JULIA_004_E
+  - GARBAGE_JULIA_004_F
+  - "to_json"
+
+must_not_include_files:
+  - src/operations.jl
+  - src/parser.jl
+  - src/serializer.jl
+
+max_fragments: 8
+max_files: 2
+add_garbage_files: false
+skip_garbage_check: true

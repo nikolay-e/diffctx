@@ -135,6 +135,17 @@ EXTENSION_TO_LANGUAGE: dict[str, str] = {
     ".patch": "diff",
     ".vue": "vue",
     ".svelte": "svelte",
+    ".sty": "latex",
+    ".cls": "latex",
+    ".bst": "latex",
+    ".dtx": "latex",
+    ".bib": "bibtex",
+    ".nix": "nix",
+    ".prisma": "prisma",
+    ".bzl": "bazel",
+    ".j2": "jinja",
+    ".jinja": "jinja",
+    ".jinja2": "jinja",
 }
 
 FILENAME_TO_LANGUAGE: dict[str, str] = {
@@ -177,6 +188,11 @@ FILENAME_TO_LANGUAGE: dict[str, str] = {
     "pipfile": "toml",
     "procfile": "text",
     "jenkinsfile": "groovy",
+    "build": "bazel",
+    "build.bazel": "bazel",
+    "workspace": "bazel",
+    "workspace.bazel": "bazel",
+    "flake.lock": "json",
 }
 
 # Tree-sitter specific language codes (some differ from display names)

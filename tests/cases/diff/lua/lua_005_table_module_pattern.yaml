@@ -1,0 +1,253 @@
+# Test: Module returns table with methods, consumer calls new method
+#
+# Scenario: lib/validator.lua exposes a table of validation functions.
+# app/handler.lua requires it and gains a call to validator.validate_email.
+# The validator module is UNCHANGED — it already had validate_email.
+#
+# Reviewer questions:
+#   Q1: "What regex does validate_email use — is it RFC-compliant?"
+#       -> lib/validator.lua (UNCHANGED) defines validate_email with Lua pattern
+#   Q2: "What does validate_email return on failure?"
+#       -> lib/validator.lua returns false plus error message string
+#
+# Trap files:
+#   - lib/sanitizer.lua: input sanitization — same domain (input handling)
+#     but handler.lua doesn't require it
+#   - app/admin_handler.lua: another handler — same app/ dir, also uses
+#     validation but different handler with independent requirements
+
+initial:
+  lib/validator.lua: |
+    local M = {}
+
+    function M.validate_email(email)
+        if type(email) ~= "string" then
+            return false, "email must be a string"
+        end
+        if not email:match("^[%w%.%-]+@[%w%.%-]+%.%w+$") then
+            return false, "invalid email format"
+        end
+        return true, nil
+    end
+
+    function M.validate_length(value, min_len, max_len)
+        if type(value) ~= "string" then
+            return false, "value must be a string"
+        end
+        local len = #value
+        if len < min_len then
+            return false, "too short (min " .. min_len .. ")"
+        end
+        if len > max_len then
+            return false, "too long (max " .. max_len .. ")"
+        end
+        return true, nil
+    end
+
+    function M.validate_number_range(value, min_val, max_val)
+        if type(value) ~= "number" then
+            return false, "value must be a number"
+        end
+        if value < min_val or value > max_val then
+            return false, "out of range [" .. min_val .. ", " .. max_val .. "]"
+        end
+        return true, nil
+    end
+
+    return M
+  app/handler.lua: |
+    local validator = require("lib.validator")
+
+    local M = {}
+
+    function M.handle_create_user(request)
+        local name = request.name
+        local ok, err = validator.validate_length(name, 2, 50)
+        if not ok then
+            return { status = 400, body = err }
+        end
+        return { status = 201, body = "User created: " .. name }
+    end
+
+    return M
+  lib/sanitizer.lua: |
+    local GARBAGE_LUA_005_A = "noise_marker_sanitizer"
+
+    local M = {}
+
+    function M.escape_html(s)
+        s = s:gsub("&", "&amp;")
+        s = s:gsub("<", "&lt;")
+        s = s:gsub(">", "&gt;")
+        s = s:gsub('"', "&quot;")
+        s = s:gsub("'", "&#39;")
+        return s
+    end
+
+    function M.strip_tags(s)
+        return s:gsub("<[^>]+>", "")
+    end
+
+    function M.normalize_whitespace(s)
+        return s:gsub("%s+", " "):match("^%s*(.-)%s*$")
+    end
+
+    return M
+  app/admin_handler.lua: |
+    local GARBAGE_LUA_005_B = "noise_marker_admin"
+
+    local validator = require("lib.validator")
+
+    local M = {}
+
+    function M.handle_update_config(request)
+        local timeout = request.timeout
+        local ok, err = validator.validate_number_range(timeout, 1, 3600)
+        if not ok then
+            return { status = 400, body = err }
+        end
+        return { status = 200, body = "Config updated" }
+    end
+
+    function M.handle_delete_user(request)
+        return { status = 200, body = "User deleted: " .. request.user_id }
+    end
+
+    return M
+
+changed:
+  lib/validator.lua: |
+    local M = {}
+
+    function M.validate_email(email)
+        if type(email) ~= "string" then
+            return false, "email must be a string"
+        end
+        if not email:match("^[%w%.%-]+@[%w%.%-]+%.%w+$") then
+            return false, "invalid email format"
+        end
+        return true, nil
+    end
+
+    function M.validate_length(value, min_len, max_len)
+        if type(value) ~= "string" then
+            return false, "value must be a string"
+        end
+        local len = #value
+        if len < min_len then
+            return false, "too short (min " .. min_len .. ")"
+        end
+        if len > max_len then
+            return false, "too long (max " .. max_len .. ")"
+        end
+        return true, nil
+    end
+
+    function M.validate_number_range(value, min_val, max_val)
+        if type(value) ~= "number" then
+            return false, "value must be a number"
+        end
+        if value < min_val or value > max_val then
+            return false, "out of range [" .. min_val .. ", " .. max_val .. "]"
+        end
+        return true, nil
+    end
+
+    return M
+  app/handler.lua: |
+    local validator = require("lib.validator")
+
+    local M = {}
+
+    function M.handle_create_user(request)
+        local name = request.name
+        local email = request.email
+
+        local ok, err = validator.validate_length(name, 2, 50)
+        if not ok then
+            return { status = 400, body = "name: " .. err }
+        end
+
+        ok, err = validator.validate_email(email)
+        if not ok then
+            return { status = 400, body = "email: " .. err }
+        end
+
+        return { status = 201, body = "User created: " .. name .. " <" .. email .. ">" }
+    end
+
+    return M
+  lib/sanitizer.lua: |
+    local GARBAGE_LUA_005_A = "noise_marker_sanitizer"
+
+    local M = {}
+
+    function M.escape_html(s)
+        s = s:gsub("&", "&amp;")
+        s = s:gsub("<", "&lt;")
+        s = s:gsub(">", "&gt;")
+        s = s:gsub('"', "&quot;")
+        s = s:gsub("'", "&#39;")
+        return s
+    end
+
+    function M.strip_tags(s)
+        return s:gsub("<[^>]+>", "")
+    end
+
+    function M.normalize_whitespace(s)
+        return s:gsub("%s+", " "):match("^%s*(.-)%s*$")
+    end
+
+    return M
+  app/admin_handler.lua: |
+    local GARBAGE_LUA_005_B = "noise_marker_admin"
+
+    local validator = require("lib.validator")
+
+    local M = {}
+
+    function M.handle_update_config(request)
+        local timeout = request.timeout
+        local ok, err = validator.validate_number_range(timeout, 1, 3600)
+        if not ok then
+            return { status = 400, body = err }
+        end
+        return { status = 200, body = "Config updated" }
+    end
+
+    function M.handle_delete_user(request)
+        return { status = 200, body = "User deleted: " .. request.user_id }
+    end
+
+    return M
+
+must_include_files:
+  - app/handler.lua
+  # Q1+Q2: validator.lua defines validate_email called by handler.lua
+  - lib/validator.lua
+must_include_content_from:
+  app/handler.lua:
+    - "validator.validate_email"
+    - 'require("lib.validator")'
+  lib/validator.lua:
+    - "function M.validate_email(email)"
+    - "invalid email format"
+must_not_include:
+  # lib/sanitizer.lua: input sanitization — similar domain but not required
+  - GARBAGE_LUA_005_A
+  - "M.escape_html"
+  - "M.strip_tags"
+  - "M.normalize_whitespace"
+  # app/admin_handler.lua: different handler — uses validator too but
+  # reviewing its code doesn't help understand handler.lua's change
+  - GARBAGE_LUA_005_B
+  - "handle_update_config"
+  - "handle_delete_user"
+must_not_include_files:
+  - lib/sanitizer.lua
+  - app/admin_handler.lua
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

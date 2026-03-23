@@ -1,0 +1,234 @@
+# Scenario: A dbt model adds a new {{ ref('stg_products') }} call to join product data.
+# The reviewer needs the referenced staging model to understand the join semantics.
+#
+# Reviewer questions:
+#   Q1: "What columns does stg_products provide for the join?"
+#       -> models/staging/stg_products.sql: product_id, product_name, category, price
+#   Q2: "How is the new ref integrated into the existing model?"
+#       -> models/marts/order_summary.sql: LEFT JOIN with stg_products on product_id
+#
+# Not needed:
+#   - models/staging/stg_customers.sql: existing ref, not changed
+#   - models/staging/stg_payments.sql: unrelated staging model
+#   - models/marts/revenue_report.sql: sibling mart model, different query
+
+initial:
+  models/marts/order_summary.sql: |
+    WITH orders AS (
+        SELECT * FROM {{ ref('stg_orders') }}
+    ),
+
+    customers AS (
+        SELECT * FROM {{ ref('stg_customers') }}
+    )
+
+    SELECT
+        orders.order_id,
+        orders.order_date,
+        orders.amount,
+        orders.product_id,
+        customers.customer_name,
+        customers.email
+    FROM orders
+    LEFT JOIN customers ON orders.customer_id = customers.customer_id
+  models/staging/stg_orders.sql: |
+    SELECT
+        id AS order_id,
+        customer_id,
+        product_id,
+        order_date,
+        amount,
+        status
+    FROM {{ source('raw', 'orders') }}
+    WHERE status != 'cancelled'
+  models/staging/stg_customers.sql: |
+    SELECT
+        id AS customer_id,
+        name AS customer_name,
+        email,
+        created_at
+    FROM {{ source('raw', 'customers') }}
+  models/staging/stg_products.sql: |
+    SELECT
+        id AS product_id,
+        name AS product_name,
+        category,
+        price,
+        created_at
+    FROM {{ source('raw', 'products') }}
+    WHERE is_active = true
+
+  # Trap: unrelated staging model
+  models/staging/stg_payments.sql: |
+    -- GARBAGE_DBT_001_A: noise_payments_staging
+    SELECT
+        id AS payment_id,
+        order_id,
+        payment_method,
+        amount AS payment_amount,
+        paid_at
+    FROM {{ source('raw', 'payments') }}
+
+  # Trap: sibling mart that also refs stg_orders
+  models/marts/revenue_report.sql: |
+    -- GARBAGE_DBT_001_B: noise_revenue_report
+    WITH orders AS (
+        SELECT * FROM {{ ref('stg_orders') }}
+    ),
+
+    payments AS (
+        SELECT * FROM {{ ref('stg_payments') }}
+    )
+
+    SELECT
+        DATE_TRUNC('month', orders.order_date) AS revenue_month,
+        SUM(payments.payment_amount) AS total_revenue,
+        COUNT(DISTINCT orders.order_id) AS order_count
+    FROM orders
+    INNER JOIN payments ON orders.order_id = payments.order_id
+    GROUP BY 1
+
+  # Trap: another mart model
+  models/marts/customer_lifetime.sql: |
+    -- GARBAGE_DBT_001_C: noise_customer_lifetime
+    WITH customers AS (
+        SELECT * FROM {{ ref('stg_customers') }}
+    ),
+
+    orders AS (
+        SELECT * FROM {{ ref('stg_orders') }}
+    )
+
+    SELECT
+        customers.customer_id,
+        customers.customer_name,
+        COUNT(orders.order_id) AS total_orders,
+        SUM(orders.amount) AS lifetime_value
+    FROM customers
+    LEFT JOIN orders ON customers.customer_id = orders.customer_id
+    GROUP BY 1, 2
+
+changed:
+  models/marts/order_summary.sql: |
+    WITH orders AS (
+        SELECT * FROM {{ ref('stg_orders') }}
+    ),
+
+    customers AS (
+        SELECT * FROM {{ ref('stg_customers') }}
+    ),
+
+    products AS (
+        SELECT * FROM {{ ref('stg_products') }}
+    )
+
+    SELECT
+        orders.order_id,
+        orders.order_date,
+        orders.amount,
+        customers.customer_name,
+        customers.email,
+        products.product_name,
+        products.category,
+        products.price AS unit_price
+    FROM orders
+    LEFT JOIN customers ON orders.customer_id = customers.customer_id
+    LEFT JOIN products ON orders.product_id = products.product_id
+  models/staging/stg_orders.sql: |
+    SELECT
+        id AS order_id,
+        customer_id,
+        product_id,
+        order_date,
+        amount,
+        status
+    FROM {{ source('raw', 'orders') }}
+    WHERE status != 'cancelled'
+  models/staging/stg_customers.sql: |
+    SELECT
+        id AS customer_id,
+        name AS customer_name,
+        email,
+        created_at
+    FROM {{ source('raw', 'customers') }}
+  models/staging/stg_products.sql: |
+    SELECT
+        id AS product_id,
+        name AS product_name,
+        category,
+        price,
+        created_at
+    FROM {{ source('raw', 'products') }}
+    WHERE is_active = true
+  models/staging/stg_payments.sql: |
+    -- GARBAGE_DBT_001_A: noise_payments_staging
+    SELECT
+        id AS payment_id,
+        order_id,
+        payment_method,
+        amount AS payment_amount,
+        paid_at
+    FROM {{ source('raw', 'payments') }}
+  models/marts/revenue_report.sql: |
+    -- GARBAGE_DBT_001_B: noise_revenue_report
+    WITH orders AS (
+        SELECT * FROM {{ ref('stg_orders') }}
+    ),
+
+    payments AS (
+        SELECT * FROM {{ ref('stg_payments') }}
+    )
+
+    SELECT
+        DATE_TRUNC('month', orders.order_date) AS revenue_month,
+        SUM(payments.payment_amount) AS total_revenue,
+        COUNT(DISTINCT orders.order_id) AS order_count
+    FROM orders
+    INNER JOIN payments ON orders.order_id = payments.order_id
+    GROUP BY 1
+  models/marts/customer_lifetime.sql: |
+    -- GARBAGE_DBT_001_C: noise_customer_lifetime
+    WITH customers AS (
+        SELECT * FROM {{ ref('stg_customers') }}
+    ),
+
+    orders AS (
+        SELECT * FROM {{ ref('stg_orders') }}
+    )
+
+    SELECT
+        customers.customer_id,
+        customers.customer_name,
+        COUNT(orders.order_id) AS total_orders,
+        SUM(orders.amount) AS lifetime_value
+    FROM customers
+    LEFT JOIN orders ON customers.customer_id = orders.customer_id
+    GROUP BY 1, 2
+
+must_include_files:
+- models/marts/order_summary.sql
+- models/staging/stg_products.sql
+
+must_include_content_from:
+  models/marts/order_summary.sql:
+    - ref('stg_products')
+    - products.product_name
+    - products.category
+  models/staging/stg_products.sql:
+    - product_id
+    - product_name
+    - category
+
+must_not_include:
+- GARBAGE_DBT_001_A
+- GARBAGE_DBT_001_B
+- GARBAGE_DBT_001_C
+
+must_not_include_files:
+- models/staging/stg_payments.sql
+- models/marts/revenue_report.sql
+- models/marts/customer_lifetime.sql
+
+max_files: 4
+add_garbage_files: false
+skip_garbage_check: true

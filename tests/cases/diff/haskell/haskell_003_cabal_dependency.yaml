@@ -1,0 +1,226 @@
+# Haskell cabal dependency: new library added to .cabal file and imported
+# in a module. Context must include both the cabal file and the module
+# using the new import. Noise: other modules not using the new dependency.
+
+initial:
+  myapp.cabal: |
+    cabal-version: 2.4
+    name:          myapp
+    version:       0.1.0.0
+    build-type:    Simple
+
+    executable myapp
+      main-is:       Main.hs
+      hs-source-dirs: src
+      build-depends:
+        base       >= 4.14 && < 5
+        , text     >= 1.2
+        , containers >= 0.6
+      default-language: Haskell2010
+
+  src/Main.hs: |
+    module Main where
+
+    import Data.Text (Text, pack)
+    import qualified Data.Map as Map
+
+    main :: IO ()
+    main = do
+      let greeting = pack "Hello, World!"
+      putStrLn (show greeting)
+
+  src/Database.hs: |
+    module Database
+      ( connect
+      , query
+      ) where
+
+    import Data.Text (Text)
+
+    connect :: Text -> IO ()
+    connect host = putStrLn ("Connecting to " ++ show host)
+
+    query :: Text -> IO [Text]
+    query sql = return []
+
+  # --- Tricky garbage: also has build-depends-like structure ---
+  stack.yaml: |
+    resolver: lts-20.0
+    packages:
+      - .
+    GARBAGE_HS_003_STACK_MARKER_A: true
+    GARBAGE_HS_003_RESOLVER_MARKER_B: "lts"
+
+  # --- Tricky garbage: uses Data.Text (same as changed module) ---
+  src/Formatter.hs: |
+    module Formatter
+      ( formatOutput
+      ) where
+
+    import Data.Text (Text, pack, unpack, toUpper)
+    GARBAGE_HS_003_FORMATTER_MARKER_C = "formatter"
+    GARBAGE_HS_003_FORMAT_OUT_D = True
+
+    formatOutput :: Text -> Text
+    formatOutput = toUpper
+
+  # --- Tricky garbage: also imports containers ---
+  src/Registry.hs: |
+    module Registry
+      ( registerItem
+      ) where
+
+    import qualified Data.Map as Map
+    GARBAGE_HS_003_REGISTRY_MARKER_E = "registry"
+    GARBAGE_HS_003_STORE_MARKER_F = True
+
+    type Registry = Map.Map String Int
+
+    registerItem :: Registry -> String -> Int -> Registry
+    registerItem reg k v = Map.insert k v reg
+
+  # --- Plain garbage ---
+  src/Constants.hs: |
+    module Constants where
+
+    GARBAGE_HS_003_CONST_MARKER_G = "constants"
+    GARBAGE_HS_003_VERSION_MARKER_H = "0.1.0"
+
+    defaultPort :: Int
+    defaultPort = 8080
+
+    maxRetries :: Int
+    maxRetries = 3
+
+changed:
+  myapp.cabal: |
+    cabal-version: 2.4
+    name:          myapp
+    version:       0.1.0.0
+    build-type:    Simple
+
+    executable myapp
+      main-is:       Main.hs
+      hs-source-dirs: src
+      build-depends:
+        base       >= 4.14 && < 5
+        , text     >= 1.2
+        , containers >= 0.6
+        , aeson    >= 2.0
+      default-language: Haskell2010
+
+  src/Main.hs: |
+    module Main where
+
+    import Data.Text (Text, pack)
+    import qualified Data.Map as Map
+
+    main :: IO ()
+    main = do
+      let greeting = pack "Hello, World!"
+      putStrLn (show greeting)
+
+  src/Database.hs: |
+    module Database
+      ( connect
+      , query
+      , queryJson
+      ) where
+
+    import Data.Text (Text)
+    import Data.Aeson (Value, decode)
+    import qualified Data.ByteString.Lazy as BL
+
+    connect :: Text -> IO ()
+    connect host = putStrLn ("Connecting to " ++ show host)
+
+    query :: Text -> IO [Text]
+    query sql = return []
+
+    queryJson :: Text -> IO (Maybe Value)
+    queryJson sql = do
+      let raw = BL.empty
+      return (decode raw)
+
+  stack.yaml: |
+    resolver: lts-20.0
+    packages:
+      - .
+    GARBAGE_HS_003_STACK_MARKER_A: true
+    GARBAGE_HS_003_RESOLVER_MARKER_B: "lts"
+
+  src/Formatter.hs: |
+    module Formatter
+      ( formatOutput
+      ) where
+
+    import Data.Text (Text, pack, unpack, toUpper)
+    GARBAGE_HS_003_FORMATTER_MARKER_C = "formatter"
+    GARBAGE_HS_003_FORMAT_OUT_D = True
+
+    formatOutput :: Text -> Text
+    formatOutput = toUpper
+
+  src/Registry.hs: |
+    module Registry
+      ( registerItem
+      ) where
+
+    import qualified Data.Map as Map
+    GARBAGE_HS_003_REGISTRY_MARKER_E = "registry"
+    GARBAGE_HS_003_STORE_MARKER_F = True
+
+    type Registry = Map.Map String Int
+
+    registerItem :: Registry -> String -> Int -> Registry
+    registerItem reg k v = Map.insert k v reg
+
+  src/Constants.hs: |
+    module Constants where
+
+    GARBAGE_HS_003_CONST_MARKER_G = "constants"
+    GARBAGE_HS_003_VERSION_MARKER_H = "0.1.0"
+
+    defaultPort :: Int
+    defaultPort = 8080
+
+    maxRetries :: Int
+    maxRetries = 3
+
+# === Assertions ===
+
+must_include_files:
+- myapp.cabal
+- src/Database.hs
+
+must_include_content_from:
+  myapp.cabal:
+    - ", aeson    >= 2.0"
+  src/Database.hs:
+    - import Data.Aeson (Value, decode)
+    - queryJson :: Text -> IO (Maybe Value)
+
+must_not_include:
+# Tricky: stack.yaml with dependency-like structure
+- GARBAGE_HS_003_STACK_MARKER_A
+- GARBAGE_HS_003_RESOLVER_MARKER_B
+# Tricky: also imports Data.Text
+- GARBAGE_HS_003_FORMATTER_MARKER_C
+- GARBAGE_HS_003_FORMAT_OUT_D
+# Tricky: also imports containers
+- GARBAGE_HS_003_REGISTRY_MARKER_E
+- GARBAGE_HS_003_STORE_MARKER_F
+# Plain garbage
+- GARBAGE_HS_003_CONST_MARKER_G
+- GARBAGE_HS_003_VERSION_MARKER_H
+
+must_not_include_files:
+- stack.yaml
+- src/Formatter.hs
+- src/Registry.hs
+- src/Constants.hs
+
+max_fragments: 8
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

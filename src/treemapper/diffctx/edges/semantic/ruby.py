@@ -6,7 +6,7 @@ from pathlib import Path
 
 from ...config.weights import EDGE_WEIGHTS
 from ...types import Fragment, FragmentId
-from ..base import EdgeBuilder, EdgeDict
+from ..base import EdgeBuilder, EdgeDict, discover_files_by_refs
 
 _RUBY_EXTS = {".rb", ".rake", ".gemspec"}
 _RUBY_FILES = {"rakefile", "gemfile", "guardfile", "vagrantfile", "capfile", "podfile"}
@@ -98,6 +98,33 @@ class RubyEdgeBuilder(EdgeBuilder):
     const_weight = EDGE_WEIGHTS["ruby_const"].forward
     same_dir_weight = EDGE_WEIGHTS["ruby_same_dir"].forward
     reverse_weight_factor = EDGE_WEIGHTS["ruby_require"].reverse_factor
+
+    def discover_related_files(
+        self,
+        changed_files: list[Path],
+        all_candidate_files: list[Path],
+        repo_root: Path | None = None,
+    ) -> list[Path]:
+        ruby_changed = [f for f in changed_files if _is_ruby_file(f)]
+        if not ruby_changed:
+            return []
+
+        refs: set[str] = set()
+        for f in ruby_changed:
+            try:
+                content = f.read_text(encoding="utf-8")
+                requires, relative_requires = _extract_requires(content)
+                for req in requires | relative_requires:
+                    refs.add(req.split("/")[-1].lower())
+                    refs.add(req.lower())
+                classes, modules, _ = _extract_definitions(content)
+                for name in classes | modules:
+                    underscore_path = re.sub(r"(?<=[a-z])(?=[A-Z])", "_", name).lower()
+                    refs.add(underscore_path)
+            except (OSError, UnicodeDecodeError):
+                continue
+
+        return discover_files_by_refs(refs, changed_files, all_candidate_files, repo_root)
 
     def build(self, fragments: list[Fragment], repo_root: Path | None = None) -> EdgeDict:
         ruby_frags = [f for f in fragments if _is_ruby_file(f.path)]

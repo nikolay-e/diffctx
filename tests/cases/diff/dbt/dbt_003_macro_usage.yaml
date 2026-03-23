@@ -1,0 +1,194 @@
+# Scenario: A dbt macro definition is updated to accept a new parameter.
+# Models that call this macro need context for the reviewer to understand impact.
+#
+# Reviewer questions:
+#   Q1: "Which models invoke the updated macro?"
+#       -> models/marts/order_summary.sql: calls cents_to_dollars
+#       -> models/marts/monthly_revenue.sql: also calls cents_to_dollars
+#   Q2: "What changed in the macro signature and behavior?"
+#       -> macros/currency.sql: new 'round_digits' parameter with default 2
+#
+# Not needed:
+#   - macros/date_utils.sql: different macro entirely
+#   - models/staging/stg_orders.sql: doesn't use the macro
+#   - models/marts/user_retention.sql: uses a different macro
+
+initial:
+  macros/currency.sql: |
+    {% macro cents_to_dollars(column_name) %}
+        ({{ column_name }} / 100.0)
+    {% endmacro %}
+
+    {% macro format_currency(column_name) %}
+        CONCAT('$', CAST({{ column_name }} AS VARCHAR))
+    {% endmacro %}
+  models/marts/order_summary.sql: |
+    WITH orders AS (
+        SELECT * FROM {{ ref('stg_orders') }}
+    )
+
+    SELECT
+        order_id,
+        order_date,
+        customer_id,
+        {{ cents_to_dollars('amount_cents') }} AS amount_dollars,
+        {{ cents_to_dollars('tax_cents') }} AS tax_dollars,
+        {{ cents_to_dollars('amount_cents + tax_cents') }} AS total_dollars
+    FROM orders
+  models/marts/monthly_revenue.sql: |
+    WITH orders AS (
+        SELECT * FROM {{ ref('stg_orders') }}
+    )
+
+    SELECT
+        DATE_TRUNC('month', order_date) AS revenue_month,
+        COUNT(*) AS order_count,
+        SUM({{ cents_to_dollars('amount_cents') }}) AS total_revenue,
+        AVG({{ cents_to_dollars('amount_cents') }}) AS avg_order_value
+    FROM orders
+    GROUP BY 1
+
+  # Trap: different macro file
+  macros/date_utils.sql: |
+    -- GARBAGE_DBT_003_A: noise_date_utils_macro
+    {% macro fiscal_quarter(date_column) %}
+        CASE
+            WHEN EXTRACT(MONTH FROM {{ date_column }}) <= 3 THEN 'Q1'
+            WHEN EXTRACT(MONTH FROM {{ date_column }}) <= 6 THEN 'Q2'
+            WHEN EXTRACT(MONTH FROM {{ date_column }}) <= 9 THEN 'Q3'
+            ELSE 'Q4'
+        END
+    {% endmacro %}
+
+  # Trap: staging model that doesn't use the macro
+  models/staging/stg_orders.sql: |
+    -- GARBAGE_DBT_003_B: noise_stg_orders
+    SELECT
+        id AS order_id,
+        customer_id,
+        amount AS amount_cents,
+        tax AS tax_cents,
+        order_date,
+        status
+    FROM {{ source('raw', 'orders') }}
+
+  # Trap: mart that uses a different macro (fiscal_quarter, not cents_to_dollars)
+  models/marts/user_retention.sql: |
+    -- GARBAGE_DBT_003_C: noise_user_retention
+    WITH users AS (
+        SELECT * FROM {{ ref('stg_users') }}
+    )
+
+    SELECT
+        user_id,
+        signup_date,
+        {{ fiscal_quarter('signup_date') }} AS signup_quarter,
+        last_active_date
+    FROM users
+
+  # Trap: another macro file
+  macros/string_utils.sql: |
+    -- GARBAGE_DBT_003_D: noise_string_utils_macro
+    {% macro clean_string(column_name) %}
+        TRIM(LOWER({{ column_name }}))
+    {% endmacro %}
+
+changed:
+  macros/currency.sql: |
+    {% macro cents_to_dollars(column_name, round_digits=2) %}
+        ROUND(({{ column_name }} / 100.0), {{ round_digits }})
+    {% endmacro %}
+
+    {% macro format_currency(column_name) %}
+        CONCAT('$', CAST({{ column_name }} AS VARCHAR))
+    {% endmacro %}
+  models/marts/order_summary.sql: |
+    WITH orders AS (
+        SELECT * FROM {{ ref('stg_orders') }}
+    )
+
+    SELECT
+        order_id,
+        order_date,
+        customer_id,
+        {{ cents_to_dollars('amount_cents') }} AS amount_dollars,
+        {{ cents_to_dollars('tax_cents') }} AS tax_dollars,
+        {{ cents_to_dollars('amount_cents + tax_cents') }} AS total_dollars
+    FROM orders
+  models/marts/monthly_revenue.sql: |
+    WITH orders AS (
+        SELECT * FROM {{ ref('stg_orders') }}
+    )
+
+    SELECT
+        DATE_TRUNC('month', order_date) AS revenue_month,
+        COUNT(*) AS order_count,
+        SUM({{ cents_to_dollars('amount_cents') }}) AS total_revenue,
+        AVG({{ cents_to_dollars('amount_cents') }}) AS avg_order_value
+    FROM orders
+    GROUP BY 1
+  macros/date_utils.sql: |
+    -- GARBAGE_DBT_003_A: noise_date_utils_macro
+    {% macro fiscal_quarter(date_column) %}
+        CASE
+            WHEN EXTRACT(MONTH FROM {{ date_column }}) <= 3 THEN 'Q1'
+            WHEN EXTRACT(MONTH FROM {{ date_column }}) <= 6 THEN 'Q2'
+            WHEN EXTRACT(MONTH FROM {{ date_column }}) <= 9 THEN 'Q3'
+            ELSE 'Q4'
+        END
+    {% endmacro %}
+  models/staging/stg_orders.sql: |
+    -- GARBAGE_DBT_003_B: noise_stg_orders
+    SELECT
+        id AS order_id,
+        customer_id,
+        amount AS amount_cents,
+        tax AS tax_cents,
+        order_date,
+        status
+    FROM {{ source('raw', 'orders') }}
+  models/marts/user_retention.sql: |
+    -- GARBAGE_DBT_003_C: noise_user_retention
+    WITH users AS (
+        SELECT * FROM {{ ref('stg_users') }}
+    )
+
+    SELECT
+        user_id,
+        signup_date,
+        {{ fiscal_quarter('signup_date') }} AS signup_quarter,
+        last_active_date
+    FROM users
+  macros/string_utils.sql: |
+    -- GARBAGE_DBT_003_D: noise_string_utils_macro
+    {% macro clean_string(column_name) %}
+        TRIM(LOWER({{ column_name }}))
+    {% endmacro %}
+
+must_include_files:
+- macros/currency.sql
+
+must_include_content_from:
+  macros/currency.sql:
+    - round_digits
+    - ROUND
+  models/marts/order_summary.sql:
+    - cents_to_dollars
+  models/marts/monthly_revenue.sql:
+    - cents_to_dollars
+
+must_not_include:
+- GARBAGE_DBT_003_A
+- GARBAGE_DBT_003_B
+- GARBAGE_DBT_003_C
+- GARBAGE_DBT_003_D
+
+must_not_include_files:
+- macros/date_utils.sql
+- models/staging/stg_orders.sql
+- models/marts/user_retention.sql
+- macros/string_utils.sql
+
+max_files: 4
+add_garbage_files: false
+skip_garbage_check: true

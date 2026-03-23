@@ -1,0 +1,265 @@
+# Test: R analysis script adds new transformation using local module function
+#
+# Scenario: scripts/transform.R adds a new data pipeline step that calls
+# compute_moving_average from R/timeseries.R. The timeseries module is
+# UNCHANGED. Both library(dplyr) and local source are already present.
+#
+# Reviewer questions:
+#   Q1: "What window size does compute_moving_average default to?"
+#       -> R/timeseries.R (UNCHANGED) defaults window_size to 7
+#   Q2: "Does it handle NA values in the time series?"
+#       -> R/timeseries.R uses na.rm = TRUE in the rolling mean
+#
+# Trap files:
+#   - scripts/visualize.R: visualization script — same scripts/ dir,
+#     also uses timeseries data but for plotting
+#   - R/regression.R: statistical modeling — same R/ dir, similar
+#     analysis domain but not sourced by transform.R
+
+initial:
+  R/timeseries.R: |
+    compute_moving_average <- function(x, window_size = 7) {
+      n <- length(x)
+      result <- rep(NA, n)
+      for (i in window_size:n) {
+        result[i] <- mean(x[(i - window_size + 1):i], na.rm = TRUE)
+      }
+      result
+    }
+
+    compute_exponential_smooth <- function(x, alpha = 0.3) {
+      n <- length(x)
+      result <- numeric(n)
+      result[1] <- x[1]
+      for (i in 2:n) {
+        val <- if (is.na(x[i])) result[i - 1] else x[i]
+        result[i] <- alpha * val + (1 - alpha) * result[i - 1]
+      }
+      result
+    }
+
+    detect_trend <- function(x) {
+      n <- length(x)
+      t <- 1:n
+      fit <- lm(x ~ t)
+      slope <- coef(fit)[2]
+      list(slope = slope, direction = ifelse(slope > 0, "up", "down"))
+    }
+
+    compute_seasonality <- function(x, period = 12) {
+      n <- length(x)
+      if (n < 2 * period) return(NULL)
+      seasonal <- tapply(x, rep(1:period, length.out = n), mean, na.rm = TRUE)
+      as.numeric(seasonal)
+    }
+  scripts/transform.R: |
+    library(dplyr)
+    source("R/timeseries.R")
+
+    raw_data <- read.csv("data/sensor_readings.csv")
+
+    cleaned <- raw_data %>%
+      filter(!is.na(value)) %>%
+      arrange(timestamp)
+
+    smoothed <- compute_exponential_smooth(cleaned$value, alpha = 0.2)
+    cleaned$smoothed <- smoothed
+
+    write.csv(cleaned, "output/transformed.csv", row.names = FALSE)
+    cat("Transformation complete:", nrow(cleaned), "rows\n")
+  scripts/visualize.R: |
+    GARBAGE_R_002_A <- "noise_marker_visualize"
+
+    library(ggplot2)
+    source("R/timeseries.R")
+
+    plot_timeseries <- function(data, value_col, date_col) {
+      ggplot(data, aes_string(x = date_col, y = value_col)) +
+        geom_line(color = "steelblue") +
+        theme_minimal() +
+        labs(title = "Time Series Plot", x = "Date", y = "Value")
+    }
+
+    plot_with_trend <- function(data, value_col) {
+      trend <- detect_trend(data[[value_col]])
+      cat("Trend direction:", trend$direction, "\n")
+      cat("Slope:", trend$slope, "\n")
+    }
+
+    save_timeseries_plot <- function(data, filename) {
+      ggsave(filename, width = 10, height = 6)
+    }
+  R/regression.R: |
+    GARBAGE_R_002_B <- "noise_marker_regression"
+
+    fit_linear_model <- function(data, formula_str) {
+      formula <- as.formula(formula_str)
+      model <- lm(formula, data = data)
+      model
+    }
+
+    compute_r_squared <- function(model) {
+      summary(model)$r.squared
+    }
+
+    predict_values <- function(model, new_data) {
+      predict(model, newdata = new_data, interval = "confidence")
+    }
+
+    cross_validate <- function(data, formula_str, k = 5) {
+      n <- nrow(data)
+      folds <- sample(rep(1:k, length.out = n))
+      errors <- numeric(k)
+      for (i in 1:k) {
+        train <- data[folds != i, ]
+        test <- data[folds == i, ]
+        model <- lm(as.formula(formula_str), data = train)
+        preds <- predict(model, newdata = test)
+        errors[i] <- mean((test$value - preds)^2)
+      }
+      mean(errors)
+    }
+
+changed:
+  R/timeseries.R: |
+    compute_moving_average <- function(x, window_size = 7) {
+      n <- length(x)
+      result <- rep(NA, n)
+      for (i in window_size:n) {
+        result[i] <- mean(x[(i - window_size + 1):i], na.rm = TRUE)
+      }
+      result
+    }
+
+    compute_exponential_smooth <- function(x, alpha = 0.3) {
+      n <- length(x)
+      result <- numeric(n)
+      result[1] <- x[1]
+      for (i in 2:n) {
+        val <- if (is.na(x[i])) result[i - 1] else x[i]
+        result[i] <- alpha * val + (1 - alpha) * result[i - 1]
+      }
+      result
+    }
+
+    detect_trend <- function(x) {
+      n <- length(x)
+      t <- 1:n
+      fit <- lm(x ~ t)
+      slope <- coef(fit)[2]
+      list(slope = slope, direction = ifelse(slope > 0, "up", "down"))
+    }
+
+    compute_seasonality <- function(x, period = 12) {
+      n <- length(x)
+      if (n < 2 * period) return(NULL)
+      seasonal <- tapply(x, rep(1:period, length.out = n), mean, na.rm = TRUE)
+      as.numeric(seasonal)
+    }
+  scripts/transform.R: |
+    library(dplyr)
+    source("R/timeseries.R")
+
+    raw_data <- read.csv("data/sensor_readings.csv")
+
+    cleaned <- raw_data %>%
+      filter(!is.na(value)) %>%
+      arrange(timestamp)
+
+    smoothed <- compute_exponential_smooth(cleaned$value, alpha = 0.2)
+    cleaned$smoothed <- smoothed
+
+    ma_7day <- compute_moving_average(cleaned$value, window_size = 7)
+    ma_30day <- compute_moving_average(cleaned$value, window_size = 30)
+    cleaned$ma_7 <- ma_7day
+    cleaned$ma_30 <- ma_30day
+
+    trend_info <- detect_trend(cleaned$value)
+    cat("Trend:", trend_info$direction, "(slope:", trend_info$slope, ")\n")
+
+    write.csv(cleaned, "output/transformed.csv", row.names = FALSE)
+    cat("Transformation complete:", nrow(cleaned), "rows\n")
+  scripts/visualize.R: |
+    GARBAGE_R_002_A <- "noise_marker_visualize"
+
+    library(ggplot2)
+    source("R/timeseries.R")
+
+    plot_timeseries <- function(data, value_col, date_col) {
+      ggplot(data, aes_string(x = date_col, y = value_col)) +
+        geom_line(color = "steelblue") +
+        theme_minimal() +
+        labs(title = "Time Series Plot", x = "Date", y = "Value")
+    }
+
+    plot_with_trend <- function(data, value_col) {
+      trend <- detect_trend(data[[value_col]])
+      cat("Trend direction:", trend$direction, "\n")
+      cat("Slope:", trend$slope, "\n")
+    }
+
+    save_timeseries_plot <- function(data, filename) {
+      ggsave(filename, width = 10, height = 6)
+    }
+  R/regression.R: |
+    GARBAGE_R_002_B <- "noise_marker_regression"
+
+    fit_linear_model <- function(data, formula_str) {
+      formula <- as.formula(formula_str)
+      model <- lm(formula, data = data)
+      model
+    }
+
+    compute_r_squared <- function(model) {
+      summary(model)$r.squared
+    }
+
+    predict_values <- function(model, new_data) {
+      predict(model, newdata = new_data, interval = "confidence")
+    }
+
+    cross_validate <- function(data, formula_str, k = 5) {
+      n <- nrow(data)
+      folds <- sample(rep(1:k, length.out = n))
+      errors <- numeric(k)
+      for (i in 1:k) {
+        train <- data[folds != i, ]
+        test <- data[folds == i, ]
+        model <- lm(as.formula(formula_str), data = train)
+        preds <- predict(model, newdata = test)
+        errors[i] <- mean((test$value - preds)^2)
+      }
+      mean(errors)
+    }
+
+must_include_files:
+  - scripts/transform.R
+  # Q1+Q2: timeseries.R defines compute_moving_average and detect_trend
+  - R/timeseries.R
+must_include_content_from:
+  scripts/transform.R:
+    - "compute_moving_average"
+    - "detect_trend"
+    - 'source("R/timeseries.R")'
+  R/timeseries.R:
+    - "compute_moving_average <- function(x, window_size = 7)"
+    - "na.rm = TRUE"
+    - "detect_trend <- function(x)"
+must_not_include:
+  # scripts/visualize.R: plotting — different concern, not used by transform
+  - GARBAGE_R_002_A
+  - "plot_timeseries"
+  - "save_timeseries_plot"
+  - "ggplot"
+  # R/regression.R: statistical modeling — different analysis, not sourced
+  - GARBAGE_R_002_B
+  - "fit_linear_model"
+  - "compute_r_squared"
+  - "cross_validate"
+must_not_include_files:
+  - scripts/visualize.R
+  - R/regression.R
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

@@ -1,0 +1,162 @@
+# Regression: React-style mixed import `import React, { useState } from 'react'`
+# is the most common mixed import pattern in React codebases.
+# The JS semantic parser must extract the import source from this pattern
+# so that forward dependency edges are built correctly.
+
+initial:
+  src/components/UserProfile.tsx: |
+    import React, { useState, useEffect } from 'react';
+    import { fetchUser } from '../services/userService';
+    import { formatDate } from '../utils/dateUtils';
+
+    interface UserProfileProps {
+      userId: string;
+    }
+
+    export function UserProfile({ userId }: UserProfileProps) {
+      const [user, setUser] = useState(null);
+      const [loading, setLoading] = useState(true);
+
+      useEffect(() => {
+        fetchUser(userId).then(data => {
+          setUser(data);
+          setLoading(false);
+        });
+      }, [userId]);
+
+      if (loading) return <div>Loading...</div>;
+
+      return (
+        <div className="profile">
+          <h1>{user?.name}</h1>
+          <p>Joined: {formatDate(user?.createdAt)}</p>
+        </div>
+      );
+    }
+  src/services/userService.ts: |
+    const API_URL = '/api/users';
+
+    export async function fetchUser(userId: string) {
+      const response = await fetch(`${API_URL}/${userId}`);
+      if (!response.ok) throw new Error('User not found');
+      return response.json();
+    }
+
+    export async function updateUser(userId: string, data: Record<string, unknown>) {
+      const response = await fetch(`${API_URL}/${userId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      return response.json();
+    }
+  src/utils/dateUtils.ts: |
+    export function formatDate(dateStr: string | null): string {
+      if (!dateStr) return 'Unknown';
+      const date = new Date(dateStr);
+      return date.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+      });
+    }
+
+    export function isRecent(dateStr: string, days: number = 7): boolean {
+      const date = new Date(dateStr);
+      const threshold = new Date();
+      threshold.setDate(threshold.getDate() - days);
+      return date > threshold;
+    }
+
+changed:
+  src/components/UserProfile.tsx: |
+    import React, { useState, useEffect, useCallback } from 'react';
+    import { fetchUser, updateUser } from '../services/userService';
+    import { formatDate } from '../utils/dateUtils';
+
+    interface UserProfileProps {
+      userId: string;
+    }
+
+    export function UserProfile({ userId }: UserProfileProps) {
+      const [user, setUser] = useState(null);
+      const [loading, setLoading] = useState(true);
+      const [editing, setEditing] = useState(false);
+
+      useEffect(() => {
+        fetchUser(userId).then(data => {
+          setUser(data);
+          setLoading(false);
+        });
+      }, [userId]);
+
+      const handleSave = useCallback(async (data: Record<string, unknown>) => {
+        const updated = await updateUser(userId, data);
+        setUser(updated);
+        setEditing(false);
+      }, [userId]);
+
+      if (loading) return <div>Loading...</div>;
+
+      return (
+        <div className="profile">
+          <h1>{user?.name}</h1>
+          <p>Joined: {formatDate(user?.createdAt)}</p>
+          <button onClick={() => setEditing(!editing)}>
+            {editing ? 'Cancel' : 'Edit'}
+          </button>
+        </div>
+      );
+    }
+  src/services/userService.ts: |
+    const API_URL = '/api/users';
+
+    export async function fetchUser(userId: string) {
+      const response = await fetch(`${API_URL}/${userId}`);
+      if (!response.ok) throw new Error('User not found');
+      return response.json();
+    }
+
+    export async function updateUser(userId: string, data: Record<string, unknown>) {
+      const response = await fetch(`${API_URL}/${userId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      return response.json();
+    }
+  src/utils/dateUtils.ts: |
+    export function formatDate(dateStr: string | null): string {
+      if (!dateStr) return 'Unknown';
+      const date = new Date(dateStr);
+      return date.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+      });
+    }
+
+    export function isRecent(dateStr: string, days: number = 7): boolean {
+      const date = new Date(dateStr);
+      const threshold = new Date();
+      threshold.setDate(threshold.getDate() - days);
+      return date > threshold;
+    }
+
+must_include_files:
+- src/components/UserProfile.tsx
+- src/services/userService.ts
+
+must_include_content_from:
+  src/components/UserProfile.tsx:
+    - "export function UserProfile"
+    - "const handleSave = useCallback"
+    - "updateUser(userId, data)"
+  src/services/userService.ts:
+    - "export async function fetchUser"
+    - "export async function updateUser"
+
+must_not_include:
+- GARBAGE_REG_002_A
+
+max_files: 4

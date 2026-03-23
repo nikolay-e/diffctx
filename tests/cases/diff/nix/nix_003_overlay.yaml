@@ -1,0 +1,231 @@
+# Scenario: A Nix overlay adds a new custom package derivation,
+# and the configuration.nix enables the package from the overlay.
+# The reviewer needs configuration.nix to understand how the overlay package is consumed.
+#
+# Reviewer questions:
+#   Q1: "What new package does the overlay provide?"
+#       -> overlays/custom-packages.nix: adds myservice derivation
+#   Q2: "How is the overlay package enabled in the system configuration?"
+#       -> configuration.nix: systemd service and environment.systemPackages
+#
+# Not needed:
+#   - overlays/python-overrides.nix: different overlay, unrelated packages
+#   - modules/networking.nix: system module not related to the new package
+
+initial:
+  overlays/custom-packages.nix: |
+    final: prev: {
+      mytool = final.stdenv.mkDerivation {
+        pname = "mytool";
+        version = "2.0.0";
+        src = final.fetchFromGitHub {
+          owner = "example";
+          repo = "mytool";
+          rev = "v2.0.0";
+          sha256 = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+        };
+        buildInputs = [ final.openssl ];
+        installPhase = ''
+          mkdir -p $out/bin
+          cp mytool $out/bin/
+        '';
+      };
+    }
+  configuration.nix: |
+    { config, pkgs, ... }:
+
+    {
+      imports = [
+        ./hardware-configuration.nix
+        ./modules/networking.nix
+        ./modules/users.nix
+      ];
+
+      nixpkgs.overlays = [
+        (import ./overlays/custom-packages.nix)
+      ];
+
+      environment.systemPackages = with pkgs; [
+        vim
+        git
+        htop
+        mytool
+      ];
+
+      services.openssh.enable = true;
+
+      system.stateVersion = "23.11";
+    }
+
+  # Trap: different overlay
+  overlays/python-overrides.nix: |
+    final: prev: {
+      GARBAGE_NIX_003_A = "noise_python_overlay";
+
+      python3 = prev.python3.override {
+        packageOverrides = python-final: python-prev: {
+          requests = python-prev.requests.overridePythonAttrs (old: {
+            version = "2.31.0";
+          });
+        };
+      };
+    }
+
+  # Trap: unrelated module
+  modules/networking.nix: |
+    { config, pkgs, ... }:
+
+    {
+      GARBAGE_NIX_003_B = "noise_networking_module";
+
+      networking.hostName = "myserver";
+      networking.firewall.allowedTCPPorts = [ 22 80 443 ];
+      networking.nameservers = [ "1.1.1.1" "8.8.8.8" ];
+    }
+
+  # Trap: users module
+  modules/users.nix: |
+    { config, pkgs, ... }:
+
+    {
+      GARBAGE_NIX_003_C = "noise_users_module";
+
+      users.users.admin = {
+        isNormalUser = true;
+        extraGroups = [ "wheel" "docker" ];
+        openssh.authorizedKeys.keys = [];
+      };
+    }
+
+changed:
+  overlays/custom-packages.nix: |
+    final: prev: {
+      mytool = final.stdenv.mkDerivation {
+        pname = "mytool";
+        version = "2.0.0";
+        src = final.fetchFromGitHub {
+          owner = "example";
+          repo = "mytool";
+          rev = "v2.0.0";
+          sha256 = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+        };
+        buildInputs = [ final.openssl ];
+        installPhase = ''
+          mkdir -p $out/bin
+          cp mytool $out/bin/
+        '';
+      };
+
+      myservice = final.stdenv.mkDerivation {
+        pname = "myservice";
+        version = "1.0.0";
+        src = final.fetchFromGitHub {
+          owner = "example";
+          repo = "myservice";
+          rev = "v1.0.0";
+          sha256 = "sha256-BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=";
+        };
+        buildInputs = [ final.openssl final.postgresql ];
+        installPhase = ''
+          mkdir -p $out/bin
+          cp myservice $out/bin/
+        '';
+      };
+    }
+  configuration.nix: |
+    { config, pkgs, ... }:
+
+    {
+      imports = [
+        ./hardware-configuration.nix
+        ./modules/networking.nix
+        ./modules/users.nix
+      ];
+
+      nixpkgs.overlays = [
+        (import ./overlays/custom-packages.nix)
+      ];
+
+      environment.systemPackages = with pkgs; [
+        vim
+        git
+        htop
+        mytool
+        myservice
+      ];
+
+      systemd.services.myservice = {
+        description = "My Custom Service";
+        after = [ "network.target" "postgresql.service" ];
+        wantedBy = [ "multi-user.target" ];
+        serviceConfig = {
+          ExecStart = "${pkgs.myservice}/bin/myservice";
+          Restart = "always";
+          User = "myservice";
+        };
+      };
+
+      services.openssh.enable = true;
+
+      system.stateVersion = "23.11";
+    }
+  overlays/python-overrides.nix: |
+    final: prev: {
+      GARBAGE_NIX_003_A = "noise_python_overlay";
+
+      python3 = prev.python3.override {
+        packageOverrides = python-final: python-prev: {
+          requests = python-prev.requests.overridePythonAttrs (old: {
+            version = "2.31.0";
+          });
+        };
+      };
+    }
+  modules/networking.nix: |
+    { config, pkgs, ... }:
+
+    {
+      GARBAGE_NIX_003_B = "noise_networking_module";
+
+      networking.hostName = "myserver";
+      networking.firewall.allowedTCPPorts = [ 22 80 443 ];
+      networking.nameservers = [ "1.1.1.1" "8.8.8.8" ];
+    }
+  modules/users.nix: |
+    { config, pkgs, ... }:
+
+    {
+      GARBAGE_NIX_003_C = "noise_users_module";
+
+      users.users.admin = {
+        isNormalUser = true;
+        extraGroups = [ "wheel" "docker" ];
+        openssh.authorizedKeys.keys = [];
+      };
+    }
+
+must_include_files:
+- overlays/custom-packages.nix
+- configuration.nix
+
+must_include_content_from:
+  overlays/custom-packages.nix:
+    - myservice
+    - final.postgresql
+  configuration.nix:
+    - systemd.services.myservice
+    - pkgs.myservice
+
+must_not_include:
+- GARBAGE_NIX_003_A
+- GARBAGE_NIX_003_B
+- GARBAGE_NIX_003_C
+
+must_not_include_files:
+- overlays/python-overrides.nix
+- modules/networking.nix
+- modules/users.nix
+
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

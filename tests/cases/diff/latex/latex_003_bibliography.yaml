@@ -1,0 +1,202 @@
+# LaTeX bibliography: a paper adds a new \cite reference.
+# The .bib file with the cited entry must appear in context
+# so a reviewer can see what is being referenced.
+
+initial:
+  paper.tex: |
+    \documentclass[11pt]{article}
+    \usepackage[utf8]{inputenc}
+    \usepackage{amsmath}
+    \usepackage{natbib}
+
+    \title{Advances in Neural Architecture Search}
+    \author{Bob Chen}
+
+    \begin{document}
+    \maketitle
+
+    \section{Introduction}
+    Neural architecture search (NAS) has emerged as a powerful
+    approach to automating the design of neural networks.
+    Early work by \citet{zoph2017} demonstrated that reinforcement
+    learning can discover competitive architectures.
+
+    \section{Background}
+    The search space typically includes choices for layer types,
+    connections, and hyperparameters. Efficient NAS methods
+    reduce the computational cost from thousands of GPU-hours
+    to a single GPU-day \citep{liu2019darts}.
+
+    \bibliographystyle{plainnat}
+    \bibliography{references}
+    \end{document}
+
+  references.bib: |
+    @inproceedings{zoph2017,
+      author    = {Zoph, Barret and Le, Quoc V.},
+      title     = {Neural Architecture Search with Reinforcement Learning},
+      booktitle = {ICLR},
+      year      = {2017}
+    }
+
+    @inproceedings{liu2019darts,
+      author    = {Liu, Hanxiao and Simonyan, Karen and Yang, Yiming},
+      title     = {{DARTS}: Differentiable Architecture Search},
+      booktitle = {ICLR},
+      year      = {2019}
+    }
+
+    @article{smith2024,
+      author    = {Smith, John and Doe, Jane},
+      title     = {Weight-Sharing Supernets for Efficient {NAS}},
+      journal   = {NeurIPS},
+      year      = {2024},
+      volume    = {37},
+      pages     = {1234--1245}
+    }
+
+  chapters/experiments.tex: |
+    \section{Experiments}
+    GARBAGE_TEX_003_A: experiments_marker
+
+    We evaluate on CIFAR-10 and ImageNet benchmarks.
+    All experiments use 8 NVIDIA A100 GPUs.
+
+  chapters/related.tex: |
+    \section{Related Work}
+    GARBAGE_TEX_003_B: related_marker
+
+    One-shot NAS methods share weights across candidate
+    architectures to amortize the evaluation cost.
+
+  supplementary.tex: |
+    \documentclass{article}
+    GARBAGE_TEX_003_C: supplementary_marker
+    \begin{document}
+    \section{Additional Results}
+    Extended ablation studies are provided here.
+    \end{document}
+
+  other_references.bib: |
+    @book{goodfellow2016,
+      GARBAGE_TEX_003_D = {other_bib_marker},
+      author    = {Goodfellow, Ian and Bengio, Yoshua and Courville, Aaron},
+      title     = {Deep Learning},
+      publisher = {MIT Press},
+      year      = {2016}
+    }
+
+changed:
+  paper.tex: |
+    \documentclass[11pt]{article}
+    \usepackage[utf8]{inputenc}
+    \usepackage{amsmath}
+    \usepackage{natbib}
+
+    \title{Advances in Neural Architecture Search}
+    \author{Bob Chen}
+
+    \begin{document}
+    \maketitle
+
+    \section{Introduction}
+    Neural architecture search (NAS) has emerged as a powerful
+    approach to automating the design of neural networks.
+    Early work by \citet{zoph2017} demonstrated that reinforcement
+    learning can discover competitive architectures.
+
+    \section{Background}
+    The search space typically includes choices for layer types,
+    connections, and hyperparameters. Efficient NAS methods
+    reduce the computational cost from thousands of GPU-hours
+    to a single GPU-day \citep{liu2019darts}.
+
+    \section{Weight Sharing}
+    Recent work has shown that weight-sharing supernets can
+    reliably rank candidate architectures \citep{smith2024},
+    reducing the search cost by an additional $10\times$.
+
+    \bibliographystyle{plainnat}
+    \bibliography{references}
+    \end{document}
+
+  references.bib: |
+    @inproceedings{zoph2017,
+      author    = {Zoph, Barret and Le, Quoc V.},
+      title     = {Neural Architecture Search with Reinforcement Learning},
+      booktitle = {ICLR},
+      year      = {2017}
+    }
+
+    @inproceedings{liu2019darts,
+      author    = {Liu, Hanxiao and Simonyan, Karen and Yang, Yiming},
+      title     = {{DARTS}: Differentiable Architecture Search},
+      booktitle = {ICLR},
+      year      = {2019}
+    }
+
+    @article{smith2024,
+      author    = {Smith, John and Doe, Jane},
+      title     = {Weight-Sharing Supernets for Efficient {NAS}},
+      journal   = {NeurIPS},
+      year      = {2024},
+      volume    = {37},
+      pages     = {1234--1245}
+    }
+
+  chapters/experiments.tex: |
+    \section{Experiments}
+    GARBAGE_TEX_003_A: experiments_marker
+
+    We evaluate on CIFAR-10 and ImageNet benchmarks.
+    All experiments use 8 NVIDIA A100 GPUs.
+
+  chapters/related.tex: |
+    \section{Related Work}
+    GARBAGE_TEX_003_B: related_marker
+
+    One-shot NAS methods share weights across candidate
+    architectures to amortize the evaluation cost.
+
+  supplementary.tex: |
+    \documentclass{article}
+    GARBAGE_TEX_003_C: supplementary_marker
+    \begin{document}
+    \section{Additional Results}
+    Extended ablation studies are provided here.
+    \end{document}
+
+  other_references.bib: |
+    @book{goodfellow2016,
+      GARBAGE_TEX_003_D = {other_bib_marker},
+      author    = {Goodfellow, Ian and Bengio, Yoshua and Courville, Aaron},
+      title     = {Deep Learning},
+      publisher = {MIT Press},
+      year      = {2016}
+    }
+
+# === Assertions ===
+
+must_include_files:
+- references.bib
+
+must_include_content_from:
+  references.bib:
+    - "smith2024"
+    - "Weight-Sharing Supernets"
+
+must_not_include:
+- GARBAGE_TEX_003_A
+- GARBAGE_TEX_003_B
+- GARBAGE_TEX_003_C
+- GARBAGE_TEX_003_D
+
+must_not_include_files:
+- chapters/experiments.tex
+- chapters/related.tex
+- supplementary.tex
+- other_references.bib
+
+max_files: 4
+add_garbage_files: false
+skip_garbage_check: true

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 from .config import CODE_EXTENSIONS, CONFIG_EXTENSIONS, DOC_EXTENSIONS
 
 __all__ = [
@@ -11,12 +13,13 @@ __all__ = [
 
 
 def expand_config_key(key: str) -> set[str]:
-    if len(key) < 4:
+    if len(key) < 2:
         return set()
     result: set[str] = {key}
-    if "_" in key:
-        result.update(p for p in key.split("_") if len(p) >= 4)
-        joined = key.replace("_", "")
-        if len(joined) >= 5:
+    if "_" in key or "-" in key:
+        parts = re.split(r"[_-]", key)
+        result.update(p for p in parts if len(p) >= 3)
+        joined = key.replace("_", "").replace("-", "")
+        if len(joined) >= 4:
             result.add(joined)
     return result

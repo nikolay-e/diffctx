@@ -1,0 +1,165 @@
+# Ansible Galaxy: requirements.yml adds a new role and a playbook
+# applies it. Both the requirements file and the playbook must
+# appear in context.
+
+initial:
+  requirements.yml: |
+    ---
+    roles:
+      - name: geerlingguy.docker
+        version: "6.1.0"
+      - name: geerlingguy.pip
+        version: "2.2.0"
+
+  playbooks/infrastructure.yml: |
+    ---
+    - hosts: all
+      become: true
+      roles:
+        - geerlingguy.pip
+        - geerlingguy.docker
+      tasks:
+        - name: Verify Docker is running
+          ansible.builtin.systemd:
+            name: docker
+            state: started
+            enabled: true
+
+  playbooks/monitoring.yml: |
+    ---
+    - hosts: monitoring
+      GARBAGE_ANS_005_A: "monitoring_playbook_marker"
+      become: true
+      tasks:
+        - name: Install Prometheus
+          ansible.builtin.apt:
+            name: prometheus
+            state: present
+
+  playbooks/security.yml: |
+    ---
+    - hosts: all
+      GARBAGE_ANS_005_B: "security_playbook_marker"
+      become: true
+      tasks:
+        - name: Configure firewall
+          ansible.builtin.ufw:
+            rule: allow
+            port: "22"
+
+  roles/custom_app/tasks/main.yml: |
+    ---
+    - name: GARBAGE_ANS_005_C deploy custom app
+      ansible.builtin.copy:
+        src: app.jar
+        dest: /opt/app/app.jar
+
+  group_vars/all.yml: |
+    ---
+    GARBAGE_ANS_005_D: "global_vars_marker"
+    ntp_server: pool.ntp.org
+    timezone: UTC
+
+changed:
+  requirements.yml: |
+    ---
+    roles:
+      - name: geerlingguy.docker
+        version: "6.1.0"
+      - name: geerlingguy.pip
+        version: "2.2.0"
+      - name: geerlingguy.certbot
+        version: "5.1.0"
+
+  playbooks/infrastructure.yml: |
+    ---
+    - hosts: all
+      become: true
+      roles:
+        - geerlingguy.pip
+        - geerlingguy.docker
+      tasks:
+        - name: Verify Docker is running
+          ansible.builtin.systemd:
+            name: docker
+            state: started
+            enabled: true
+
+  playbooks/webservers.yml: |
+    ---
+    - hosts: webservers
+      become: true
+      roles:
+        - geerlingguy.certbot
+      vars:
+        certbot_auto_renew: true
+        certbot_auto_renew_hour: "3"
+        certbot_create_if_missing: true
+        certbot_certs:
+          - domains:
+              - example.com
+              - www.example.com
+
+  playbooks/monitoring.yml: |
+    ---
+    - hosts: monitoring
+      GARBAGE_ANS_005_A: "monitoring_playbook_marker"
+      become: true
+      tasks:
+        - name: Install Prometheus
+          ansible.builtin.apt:
+            name: prometheus
+            state: present
+
+  playbooks/security.yml: |
+    ---
+    - hosts: all
+      GARBAGE_ANS_005_B: "security_playbook_marker"
+      become: true
+      tasks:
+        - name: Configure firewall
+          ansible.builtin.ufw:
+            rule: allow
+            port: "22"
+
+  roles/custom_app/tasks/main.yml: |
+    ---
+    - name: GARBAGE_ANS_005_C deploy custom app
+      ansible.builtin.copy:
+        src: app.jar
+        dest: /opt/app/app.jar
+
+  group_vars/all.yml: |
+    ---
+    GARBAGE_ANS_005_D: "global_vars_marker"
+    ntp_server: pool.ntp.org
+    timezone: UTC
+
+# === Assertions ===
+
+must_include_files:
+- requirements.yml
+- playbooks/webservers.yml
+
+must_include_content_from:
+  requirements.yml:
+    - "geerlingguy.certbot"
+  playbooks/webservers.yml:
+    - "geerlingguy.certbot"
+    - "certbot_auto_renew"
+
+must_not_include:
+- GARBAGE_ANS_005_A
+- GARBAGE_ANS_005_B
+- GARBAGE_ANS_005_C
+- GARBAGE_ANS_005_D
+
+must_not_include_files:
+- playbooks/monitoring.yml
+- playbooks/security.yml
+- roles/custom_app/tasks/main.yml
+- group_vars/all.yml
+
+max_files: 4
+add_garbage_files: false
+skip_garbage_check: true

@@ -1,0 +1,55 @@
+# Regression: single-file change should not produce excessive per-file fragments
+# When only one function changes in a file, the file should appear as 1-2 fragments.
+
+initial:
+  src/auth/login.py: |
+    from hashlib import sha256
+
+    def hash_password(password):
+        return sha256(password.encode()).hexdigest()
+
+    def verify_password(password, password_hash):
+        return hash_password(password) == password_hash
+
+    def create_session(user_id):
+        import uuid
+        return str(uuid.uuid4())
+
+    def validate_session(session_id):
+        return len(session_id) == 36
+
+changed:
+  src/auth/login.py: |
+    from hashlib import sha256
+    import secrets
+
+    def hash_password(password, salt=None):
+        if salt is None:
+            salt = secrets.token_hex(16)
+        return f"{salt}:{sha256((salt + password).encode()).hexdigest()}"
+
+    def verify_password(password, password_hash):
+        salt, hashed = password_hash.split(":")
+        return hash_password(password, salt) == password_hash
+
+    def create_session(user_id):
+        import uuid
+        return str(uuid.uuid4())
+
+    def validate_session(session_id):
+        return len(session_id) == 36
+
+assertions:
+  must_include_files:
+  - login.py
+
+  must_include_content:
+  - hash_password
+  - verify_password
+
+  must_not_include:
+  - GARBAGE_REG_009_A
+
+options:
+  max_fragments_per_file: 5
+  min_recall: 1.0

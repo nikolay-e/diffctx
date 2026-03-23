@@ -25,10 +25,17 @@ class YamlTestCase:
     must_not_include_files: list[str] = field(default_factory=list)
     max_fragments: int | None = None
     max_files: int | None = None
+    max_fragments_per_file: int | None = None
+    max_enrichment: float | None = None
+    min_recall: float | None = None
+    max_noise_rate: float | None = None
+    max_context_tokens: int | None = None
     commit_message: str = "Update files"
     min_budget: int | None = None
     add_garbage_files: bool = True
     skip_garbage_check: bool = False
+    xfail: str | None = None
+    min_score: float | None = None
     source_file: Path | None = None
 
     def calculate_budget(self) -> int:

@@ -1,0 +1,242 @@
+# Haskell typeclass instance: a new typeclass instance is added for a data type.
+# Context must include the module defining the typeclass. Noise: other instances
+# and other typeclasses.
+
+initial:
+  src/Serializable.hs: |
+    module Serializable
+      ( Serializable(..)
+      ) where
+
+    import Data.Text (Text, pack, unpack)
+
+    class Serializable a where
+      serialize   :: a -> Text
+      deserialize :: Text -> Maybe a
+
+  src/Models.hs: |
+    module Models
+      ( Color(..)
+      , Shape(..)
+      ) where
+
+    data Color = Red | Green | Blue
+      deriving (Show, Read, Eq)
+
+    data Shape = Circle Double | Rectangle Double Double
+      deriving (Show, Read, Eq)
+
+  src/ColorSerial.hs: |
+    module ColorSerial where
+
+    import Data.Text (Text, pack, unpack)
+    import Serializable (Serializable(..))
+    import Models (Color(..))
+
+    instance Serializable Color where
+      serialize Red   = pack "red"
+      serialize Green = pack "green"
+      serialize Blue  = pack "blue"
+
+      deserialize t = case unpack t of
+        "red"   -> Just Red
+        "green" -> Just Green
+        "blue"  -> Just Blue
+        _       -> Nothing
+
+  # --- Tricky garbage: also defines a typeclass ---
+  src/Printable.hs: |
+    module Printable
+      ( Printable(..)
+      ) where
+
+    GARBAGE_HS_002_PRINTABLE_CLASS_A = "printable"
+    GARBAGE_HS_002_DISPLAY_MARKER_B = True
+
+    class Printable a where
+      prettyPrint :: a -> String
+
+  # --- Tricky garbage: also implements Serializable for different type ---
+  src/StringSerial.hs: |
+    module StringSerial where
+
+    import Data.Text (Text, pack, unpack)
+    import Serializable (Serializable(..))
+    GARBAGE_HS_002_STRING_SERIAL_C = "string-serial"
+    GARBAGE_HS_002_TEXT_CONVERT_D = True
+
+    instance Serializable String where
+      serialize = pack
+      deserialize = Just . unpack
+
+  # --- Tricky garbage: also references Shape type ---
+  src/Drawing.hs: |
+    module Drawing
+      ( draw
+      ) where
+
+    import Models (Shape(..))
+    GARBAGE_HS_002_DRAWING_MARKER_E = "drawing"
+    GARBAGE_HS_002_CANVAS_MARKER_F = "svg"
+
+    draw :: Shape -> String
+    draw (Circle r)      = "circle(" ++ show r ++ ")"
+    draw (Rectangle w h) = "rect(" ++ show w ++ "," ++ show h ++ ")"
+
+  # --- Plain garbage ---
+  src/Utils.hs: |
+    module Utils
+      ( trim
+      ) where
+
+    GARBAGE_HS_002_UTILS_MARKER_G = "utils"
+    GARBAGE_HS_002_HELPER_MARKER_H = True
+
+    trim :: String -> String
+    trim = reverse . dropWhile (== ' ') . reverse . dropWhile (== ' ')
+
+changed:
+  src/Serializable.hs: |
+    module Serializable
+      ( Serializable(..)
+      ) where
+
+    import Data.Text (Text, pack, unpack)
+
+    class Serializable a where
+      serialize   :: a -> Text
+      deserialize :: Text -> Maybe a
+
+  src/Models.hs: |
+    module Models
+      ( Color(..)
+      , Shape(..)
+      ) where
+
+    data Color = Red | Green | Blue
+      deriving (Show, Read, Eq)
+
+    data Shape = Circle Double | Rectangle Double Double
+      deriving (Show, Read, Eq)
+
+  src/ColorSerial.hs: |
+    module ColorSerial where
+
+    import Data.Text (Text, pack, unpack)
+    import Serializable (Serializable(..))
+    import Models (Color(..))
+
+    instance Serializable Color where
+      serialize Red   = pack "red"
+      serialize Green = pack "green"
+      serialize Blue  = pack "blue"
+
+      deserialize t = case unpack t of
+        "red"   -> Just Red
+        "green" -> Just Green
+        "blue"  -> Just Blue
+        _       -> Nothing
+
+  src/ShapeSerial.hs: |
+    module ShapeSerial where
+
+    import Data.Text (Text, pack, unpack)
+    import Serializable (Serializable(..))
+    import Models (Shape(..))
+
+    instance Serializable Shape where
+      serialize (Circle r)      = pack ("circle:" ++ show r)
+      serialize (Rectangle w h) = pack ("rect:" ++ show w ++ ":" ++ show h)
+
+      deserialize t = case break (== ':') (unpack t) of
+        ("circle", ':':r)  -> Just (Circle (read r))
+        ("rect", ':':rest) -> case break (== ':') rest of
+          (w, ':':h) -> Just (Rectangle (read w) (read h))
+          _          -> Nothing
+        _ -> Nothing
+
+  src/Printable.hs: |
+    module Printable
+      ( Printable(..)
+      ) where
+
+    GARBAGE_HS_002_PRINTABLE_CLASS_A = "printable"
+    GARBAGE_HS_002_DISPLAY_MARKER_B = True
+
+    class Printable a where
+      prettyPrint :: a -> String
+
+  src/StringSerial.hs: |
+    module StringSerial where
+
+    import Data.Text (Text, pack, unpack)
+    import Serializable (Serializable(..))
+    GARBAGE_HS_002_STRING_SERIAL_C = "string-serial"
+    GARBAGE_HS_002_TEXT_CONVERT_D = True
+
+    instance Serializable String where
+      serialize = pack
+      deserialize = Just . unpack
+
+  src/Drawing.hs: |
+    module Drawing
+      ( draw
+      ) where
+
+    import Models (Shape(..))
+    GARBAGE_HS_002_DRAWING_MARKER_E = "drawing"
+    GARBAGE_HS_002_CANVAS_MARKER_F = "svg"
+
+    draw :: Shape -> String
+    draw (Circle r)      = "circle(" ++ show r ++ ")"
+    draw (Rectangle w h) = "rect(" ++ show w ++ "," ++ show h ++ ")"
+
+  src/Utils.hs: |
+    module Utils
+      ( trim
+      ) where
+
+    GARBAGE_HS_002_UTILS_MARKER_G = "utils"
+    GARBAGE_HS_002_HELPER_MARKER_H = True
+
+    trim :: String -> String
+    trim = reverse . dropWhile (== ' ') . reverse . dropWhile (== ' ')
+
+# === Assertions ===
+
+must_include_files:
+- src/ShapeSerial.hs
+
+must_include_content_from:
+  src/ShapeSerial.hs:
+    - instance Serializable Shape where
+    - serialize (Circle r)
+    - serialize (Rectangle w h)
+  src/Serializable.hs:
+    - class Serializable a where
+    - serialize   :: a -> Text
+
+must_not_include:
+# Tricky: another typeclass definition
+- GARBAGE_HS_002_PRINTABLE_CLASS_A
+- GARBAGE_HS_002_DISPLAY_MARKER_B
+# Tricky: also implements Serializable
+- GARBAGE_HS_002_STRING_SERIAL_C
+- GARBAGE_HS_002_TEXT_CONVERT_D
+# Tricky: also references Shape type
+- GARBAGE_HS_002_DRAWING_MARKER_E
+- GARBAGE_HS_002_CANVAS_MARKER_F
+# Plain garbage
+- GARBAGE_HS_002_UTILS_MARKER_G
+- GARBAGE_HS_002_HELPER_MARKER_H
+
+must_not_include_files:
+- src/Printable.hs
+- src/StringSerial.hs
+- src/Drawing.hs
+- src/Utils.hs
+
+max_fragments: 8
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

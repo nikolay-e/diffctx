@@ -1,0 +1,209 @@
+# LaTeX custom package: a document starts using a new command
+# defined in a custom .sty file. The .sty file must appear in
+# context so a reviewer can see the command definition.
+
+initial:
+  paper.tex: |
+    \documentclass[11pt,twocolumn]{article}
+    \usepackage[utf8]{inputenc}
+    \usepackage{amsmath}
+    \usepackage{mystyle}
+
+    \title{Efficient Graph Partitioning}
+    \author{Alice Smith}
+
+    \begin{document}
+    \maketitle
+
+    \begin{abstract}
+    We present a novel graph partitioning algorithm that minimizes
+    edge cuts while maintaining balanced partition sizes.
+    \end{abstract}
+
+    \section{Introduction}
+    Graph partitioning is a fundamental problem in parallel
+    computing. Given a graph $G = (V, E)$, the goal is to
+    divide $V$ into $k$ disjoint subsets.
+
+    \section{Algorithm}
+    Let $\bigO{n \log n}$ denote the time complexity.
+    Our algorithm iteratively refines partitions using
+    a multi-level approach.
+
+    \end{document}
+
+  mystyle.sty: |
+    \NeedsTeXFormat{LaTeX2e}
+    \ProvidesPackage{mystyle}[2024/01/15 Custom style]
+
+    \RequirePackage{amsmath}
+    \RequirePackage{amssymb}
+    \RequirePackage{hyperref}
+    \RequirePackage{booktabs}
+
+    % Big-O notation
+    \newcommand{\bigO}[1]{\ensuremath{\mathcal{O}\left(#1\right)}}
+
+    % Probability notation
+    \newcommand{\prob}[1]{\ensuremath{\Pr\left[#1\right]}}
+
+    % Expected value
+    \newcommand{\expect}[1]{\ensuremath{\mathbb{E}\left[#1\right]}}
+
+    % Custom theorem environments
+    \newtheorem{definition}{Definition}
+    \newtheorem{lemma}{Lemma}
+
+  mathnotation.sty: |
+    \NeedsTeXFormat{LaTeX2e}
+    \ProvidesPackage{mathnotation}[2024/01/15 Math notation]
+    GARBAGE_TEX_002_A: "mathnotation_marker"
+
+    \newcommand{\reals}{\ensuremath{\mathbb{R}}}
+    \newcommand{\naturals}{\ensuremath{\mathbb{N}}}
+
+  formatting.sty: |
+    \NeedsTeXFormat{LaTeX2e}
+    \ProvidesPackage{formatting}[2024/01/15 Formatting]
+    GARBAGE_TEX_002_B: "formatting_marker"
+
+    \setlength{\parskip}{0.5em}
+    \setlength{\parindent}{0em}
+
+  bibliography.bib: |
+    @inproceedings{karypis1998,
+      GARBAGE_TEX_002_C = {bib_noise_marker},
+      author = {Karypis, George and Kumar, Vipin},
+      title = {A Fast and High Quality Multilevel Scheme},
+      booktitle = {SC},
+      year = {1998}
+    }
+
+  figures/graph.tex: |
+    % GARBAGE_TEX_002_D: tikz figure marker
+    \begin{tikzpicture}
+    \node[circle,draw] (a) at (0,0) {$v_1$};
+    \node[circle,draw] (b) at (2,0) {$v_2$};
+    \draw (a) -- (b);
+    \end{tikzpicture}
+
+changed:
+  paper.tex: |
+    \documentclass[11pt,twocolumn]{article}
+    \usepackage[utf8]{inputenc}
+    \usepackage{amsmath}
+    \usepackage{mystyle}
+
+    \title{Efficient Graph Partitioning}
+    \author{Alice Smith}
+
+    \begin{document}
+    \maketitle
+
+    \begin{abstract}
+    We present a novel graph partitioning algorithm that minimizes
+    edge cuts while maintaining balanced partition sizes.
+    \end{abstract}
+
+    \section{Introduction}
+    Graph partitioning is a fundamental problem in parallel
+    computing. Given a graph $G = (V, E)$, the goal is to
+    divide $V$ into $k$ disjoint subsets.
+
+    \section{Algorithm}
+    Let $\bigO{n \log n}$ denote the time complexity.
+    Our algorithm iteratively refines partitions using
+    a multi-level approach.
+
+    \section{Analysis}
+    \begin{lemma}
+    The expected number of edge cuts satisfies
+    $\expect{\text{cuts}} \leq \frac{|E|}{k} + \bigO{\sqrt{n}}$.
+    \end{lemma}
+
+    The probability of exceeding this bound is
+    $\prob{\text{cuts} > 2\expect{\text{cuts}}} < e^{-n/k}$.
+
+    \end{document}
+
+  mystyle.sty: |
+    \NeedsTeXFormat{LaTeX2e}
+    \ProvidesPackage{mystyle}[2024/01/15 Custom style]
+
+    \RequirePackage{amsmath}
+    \RequirePackage{amssymb}
+    \RequirePackage{hyperref}
+    \RequirePackage{booktabs}
+
+    % Big-O notation
+    \newcommand{\bigO}[1]{\ensuremath{\mathcal{O}\left(#1\right)}}
+
+    % Probability notation
+    \newcommand{\prob}[1]{\ensuremath{\Pr\left[#1\right]}}
+
+    % Expected value
+    \newcommand{\expect}[1]{\ensuremath{\mathbb{E}\left[#1\right]}}
+
+    % Custom theorem environments
+    \newtheorem{definition}{Definition}
+    \newtheorem{lemma}{Lemma}
+
+  mathnotation.sty: |
+    \NeedsTeXFormat{LaTeX2e}
+    \ProvidesPackage{mathnotation}[2024/01/15 Math notation]
+    GARBAGE_TEX_002_A: "mathnotation_marker"
+
+    \newcommand{\reals}{\ensuremath{\mathbb{R}}}
+    \newcommand{\naturals}{\ensuremath{\mathbb{N}}}
+
+  formatting.sty: |
+    \NeedsTeXFormat{LaTeX2e}
+    \ProvidesPackage{formatting}[2024/01/15 Formatting]
+    GARBAGE_TEX_002_B: "formatting_marker"
+
+    \setlength{\parskip}{0.5em}
+    \setlength{\parindent}{0em}
+
+  bibliography.bib: |
+    @inproceedings{karypis1998,
+      GARBAGE_TEX_002_C = {bib_noise_marker},
+      author = {Karypis, George and Kumar, Vipin},
+      title = {A Fast and High Quality Multilevel Scheme},
+      booktitle = {SC},
+      year = {1998}
+    }
+
+  figures/graph.tex: |
+    % GARBAGE_TEX_002_D: tikz figure marker
+    \begin{tikzpicture}
+    \node[circle,draw] (a) at (0,0) {$v_1$};
+    \node[circle,draw] (b) at (2,0) {$v_2$};
+    \draw (a) -- (b);
+    \end{tikzpicture}
+
+# === Assertions ===
+
+must_include_files:
+- mystyle.sty
+
+must_include_content_from:
+  mystyle.sty:
+    - "\\expect"
+    - "\\prob"
+    - "\\newcommand"
+
+must_not_include:
+- GARBAGE_TEX_002_A
+- GARBAGE_TEX_002_B
+- GARBAGE_TEX_002_C
+- GARBAGE_TEX_002_D
+
+must_not_include_files:
+- mathnotation.sty
+- formatting.sty
+- bibliography.bib
+- figures/graph.tex
+
+max_files: 4
+add_garbage_files: false
+skip_garbage_check: true

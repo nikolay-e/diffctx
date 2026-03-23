@@ -1,0 +1,236 @@
+# Scenario: A Nim application module adds a new proc that uses a type from a
+# locally imported module. The `import mymodule` statement brings in all exported
+# symbols, and the new proc constructs a value of mymodule's UserProfile type.
+#
+# Diff: src/app.nim adds a new proc `createDefaultProfile` that returns a
+# UserProfile from mymodule, using the type's fields directly.
+#
+# Reviewer questions:
+#   Q1: "What is UserProfile and what fields does it have?"
+#       -> src/mymodule.nim (UNCHANGED): defines UserProfile object type with
+#          name, age, and email fields. Reviewer verifies field names match usage.
+#
+#   Q2: "Are strutils/sequtils used correctly in the new proc?"
+#       -> stdlib modules, not local — reviewer doesn't need local context for these.
+#
+# Not needed for comprehension:
+#   - src/database.nim: Another module in the same directory that also defines
+#     object types. STRUCTURAL TRAP: same directory, same `type` definitions,
+#     but completely unrelated to UserProfile.
+#
+#   - src/logging.nim: Utility module imported by many files.
+#     No relationship to UserProfile or the changed proc.
+#
+#   - src/config.nim: Configuration module with its own types.
+#     Same src/ directory, same export pattern, but unrelated.
+
+initial:
+  src/mymodule.nim: |
+    type
+      UserProfile* = object
+        name*: string
+        age*: int
+        email*: string
+
+    proc newUserProfile*(name: string, age: int, email: string): UserProfile =
+      UserProfile(name: name, age: age, email: email)
+
+    proc isAdult*(profile: UserProfile): bool =
+      profile.age >= 18
+
+    proc displayName*(profile: UserProfile): string =
+      profile.name & " <" & profile.email & ">"
+
+  src/app.nim: |
+    import strutils, sequtils
+    import mymodule
+
+    proc listActiveUsers*(profiles: seq[UserProfile]): seq[string] =
+      profiles.filterIt(it.isAdult).mapIt(it.displayName)
+
+  src/database.nim: |
+    type
+      DbConnection* = object
+        host*: string
+        port*: int
+        dbName*: string
+
+      QueryResult* = object
+        rows*: seq[seq[string]]
+        columnCount*: int
+
+    let GARBAGE_NIM_001_A = "db_marker"
+    let GARBAGE_NIM_001_B = "query_marker"
+
+    proc connect*(host: string, port: int, dbName: string): DbConnection =
+      DbConnection(host: host, port: port, dbName: dbName)
+
+    proc execute*(conn: DbConnection, query: string): QueryResult =
+      QueryResult(rows: @[], columnCount: 0)
+
+  src/logging.nim: |
+    import times
+
+    type
+      LogLevel* = enum
+        llDebug, llInfo, llWarn, llError
+
+    let GARBAGE_NIM_001_C = "log_marker"
+    let GARBAGE_NIM_001_D = "level_marker"
+
+    proc log*(level: LogLevel, msg: string) =
+      echo "[" & $level & "] " & $now() & " - " & msg
+
+    proc logInfo*(msg: string) =
+      log(llInfo, msg)
+
+    proc logError*(msg: string) =
+      log(llError, msg)
+
+  src/config.nim: |
+    import parsecfg
+
+    type
+      AppConfig* = object
+        serverHost*: string
+        serverPort*: int
+        debug*: bool
+
+    let GARBAGE_NIM_001_E = "config_marker"
+    let GARBAGE_NIM_001_F = "env_marker"
+
+    proc loadConfig*(filename: string): AppConfig =
+      let dict = loadConfig(filename)
+      AppConfig(
+        serverHost: dict.getSectionValue("server", "host"),
+        serverPort: parseInt(dict.getSectionValue("server", "port")),
+        debug: parseBool(dict.getSectionValue("server", "debug"))
+      )
+
+changed:
+  src/mymodule.nim: |
+    type
+      UserProfile* = object
+        name*: string
+        age*: int
+        email*: string
+
+    proc newUserProfile*(name: string, age: int, email: string): UserProfile =
+      UserProfile(name: name, age: age, email: email)
+
+    proc isAdult*(profile: UserProfile): bool =
+      profile.age >= 18
+
+    proc displayName*(profile: UserProfile): string =
+      profile.name & " <" & profile.email & ">"
+
+  src/app.nim: |
+    import strutils, sequtils
+    import mymodule
+
+    proc listActiveUsers*(profiles: seq[UserProfile]): seq[string] =
+      profiles.filterIt(it.isAdult).mapIt(it.displayName)
+
+    proc createDefaultProfile*(name: string): UserProfile =
+      newUserProfile(name, 0, name.toLowerAscii & "@example.com")
+
+    proc summarizeProfiles*(profiles: seq[UserProfile]): string =
+      let names = profiles.mapIt(it.name).join(", ")
+      let ages = profiles.mapIt($it.age).join(", ")
+      "Users: " & names & " | Ages: " & ages
+
+  src/database.nim: |
+    type
+      DbConnection* = object
+        host*: string
+        port*: int
+        dbName*: string
+
+      QueryResult* = object
+        rows*: seq[seq[string]]
+        columnCount*: int
+
+    let GARBAGE_NIM_001_A = "db_marker"
+    let GARBAGE_NIM_001_B = "query_marker"
+
+    proc connect*(host: string, port: int, dbName: string): DbConnection =
+      DbConnection(host: host, port: port, dbName: dbName)
+
+    proc execute*(conn: DbConnection, query: string): QueryResult =
+      QueryResult(rows: @[], columnCount: 0)
+
+  src/logging.nim: |
+    import times
+
+    type
+      LogLevel* = enum
+        llDebug, llInfo, llWarn, llError
+
+    let GARBAGE_NIM_001_C = "log_marker"
+    let GARBAGE_NIM_001_D = "level_marker"
+
+    proc log*(level: LogLevel, msg: string) =
+      echo "[" & $level & "] " & $now() & " - " & msg
+
+    proc logInfo*(msg: string) =
+      log(llInfo, msg)
+
+    proc logError*(msg: string) =
+      log(llError, msg)
+
+  src/config.nim: |
+    import parsecfg
+
+    type
+      AppConfig* = object
+        serverHost*: string
+        serverPort*: int
+        debug*: bool
+
+    let GARBAGE_NIM_001_E = "config_marker"
+    let GARBAGE_NIM_001_F = "env_marker"
+
+    proc loadConfig*(filename: string): AppConfig =
+      let dict = loadConfig(filename)
+      AppConfig(
+        serverHost: dict.getSectionValue("server", "host"),
+        serverPort: parseInt(dict.getSectionValue("server", "port")),
+        debug: parseBool(dict.getSectionValue("server", "debug"))
+      )
+
+must_include_files:
+  - src/app.nim
+
+must_include_content_from:
+  src/app.nim:
+    - "proc createDefaultProfile*(name: string): UserProfile"
+    - "newUserProfile(name, 0"
+    - "proc summarizeProfiles*(profiles: seq[UserProfile]): string"
+  src/mymodule.nim:
+    - "UserProfile* = object"
+    - "proc newUserProfile*(name: string, age: int, email: string): UserProfile"
+
+must_not_include:
+  # database.nim: unrelated module with its own types
+  - GARBAGE_NIM_001_A
+  - GARBAGE_NIM_001_B
+  - DbConnection
+  - QueryResult
+  # logging.nim: utility module, no UserProfile dependency
+  - GARBAGE_NIM_001_C
+  - GARBAGE_NIM_001_D
+  - LogLevel
+  # config.nim: configuration module, unrelated types
+  - GARBAGE_NIM_001_E
+  - GARBAGE_NIM_001_F
+  - AppConfig
+
+must_not_include_files:
+  - src/database.nim
+  - src/logging.nim
+  - src/config.nim
+
+max_fragments: 8
+max_files: 2
+add_garbage_files: false
+skip_garbage_check: true

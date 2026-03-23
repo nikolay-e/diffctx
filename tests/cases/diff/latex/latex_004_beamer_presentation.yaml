@@ -1,0 +1,282 @@
+# LaTeX Beamer: main presentation file adds \input for a new frame
+# file. The new frame content must appear in context so a reviewer
+# can see what slides are being added.
+
+initial:
+  presentation.tex: |
+    \documentclass[aspectratio=169]{beamer}
+    \usetheme{metropolis}
+    \usepackage[utf8]{inputenc}
+    \usepackage{graphicx}
+    \usepackage{booktabs}
+
+    \title{Scaling Microservices in Production}
+    \subtitle{Lessons from 10,000 Containers}
+    \author{Carol Davis}
+    \institute{Acme Corp}
+    \date{2024}
+
+    \begin{document}
+
+    \begin{frame}
+    \titlepage
+    \end{frame}
+
+    \begin{frame}{Outline}
+    \tableofcontents
+    \end{frame}
+
+    \input{frames/introduction}
+    \input{frames/architecture}
+
+    \begin{frame}{Questions?}
+    \centering
+    \Large Thank you!\\[1em]
+    \normalsize carol@acme.com
+    \end{frame}
+
+    \end{document}
+
+  frames/introduction.tex: |
+    \section{Introduction}
+
+    \begin{frame}{Why Microservices?}
+    \begin{itemize}
+      \item Independent deployment cycles
+      \item Technology diversity per service
+      \item Organizational alignment (Conway's Law)
+      \item Fault isolation boundaries
+    \end{itemize}
+    \end{frame}
+
+    \begin{frame}{Our Scale}
+    \begin{itemize}
+      \item 200+ microservices
+      \item 10,000 container instances
+      \item 50 engineering teams
+      \item 99.99\% uptime SLA
+    \end{itemize}
+    \end{frame}
+
+  frames/architecture.tex: |
+    \section{Architecture}
+
+    \begin{frame}{Service Mesh}
+    \begin{itemize}
+      \item Istio for traffic management
+      \item mTLS between all services
+      \item Distributed tracing with Jaeger
+      \item Circuit breakers and retries
+    \end{itemize}
+    \end{frame}
+
+    \begin{frame}{Deployment Pipeline}
+    \begin{enumerate}
+      \item Code review and CI
+      \item Canary deployment (5\% traffic)
+      \item Progressive rollout
+      \item Full production
+    \end{enumerate}
+    \end{frame}
+
+  frames/conclusion.tex: |
+    \section{Conclusion}
+    GARBAGE_TEX_004_A: conclusion_frame_marker
+
+    \begin{frame}{Key Takeaways}
+    \begin{itemize}
+      \item Start with a monolith
+      \item Extract services at natural boundaries
+      \item Invest in observability early
+    \end{itemize}
+    \end{frame}
+
+  frames/demo.tex: |
+    \section{Demo}
+    GARBAGE_TEX_004_B: demo_frame_marker
+
+    \begin{frame}{Live Demo}
+    \centering
+    Switching to terminal...
+    \end{frame}
+
+  beamerthemecustom.sty: |
+    % GARBAGE_TEX_004_C: custom_theme_marker
+    \mode<presentation>
+    \setbeamercolor{title}{fg=white,bg=blue!70}
+    \setbeamercolor{frametitle}{fg=white,bg=blue!70}
+    \mode<all>
+
+  figures/architecture.tex: |
+    % GARBAGE_TEX_004_D: architecture_diagram_marker
+    \begin{tikzpicture}
+    \node[draw,rectangle] (api) {API Gateway};
+    \node[draw,rectangle,below of=api] (svc) {Service};
+    \draw[->] (api) -- (svc);
+    \end{tikzpicture}
+
+changed:
+  presentation.tex: |
+    \documentclass[aspectratio=169]{beamer}
+    \usetheme{metropolis}
+    \usepackage[utf8]{inputenc}
+    \usepackage{graphicx}
+    \usepackage{booktabs}
+
+    \title{Scaling Microservices in Production}
+    \subtitle{Lessons from 10,000 Containers}
+    \author{Carol Davis}
+    \institute{Acme Corp}
+    \date{2024}
+
+    \begin{document}
+
+    \begin{frame}
+    \titlepage
+    \end{frame}
+
+    \begin{frame}{Outline}
+    \tableofcontents
+    \end{frame}
+
+    \input{frames/introduction}
+    \input{frames/architecture}
+    \input{frames/observability}
+
+    \begin{frame}{Questions?}
+    \centering
+    \Large Thank you!\\[1em]
+    \normalsize carol@acme.com
+    \end{frame}
+
+    \end{document}
+
+  frames/introduction.tex: |
+    \section{Introduction}
+
+    \begin{frame}{Why Microservices?}
+    \begin{itemize}
+      \item Independent deployment cycles
+      \item Technology diversity per service
+      \item Organizational alignment (Conway's Law)
+      \item Fault isolation boundaries
+    \end{itemize}
+    \end{frame}
+
+    \begin{frame}{Our Scale}
+    \begin{itemize}
+      \item 200+ microservices
+      \item 10,000 container instances
+      \item 50 engineering teams
+      \item 99.99\% uptime SLA
+    \end{itemize}
+    \end{frame}
+
+  frames/architecture.tex: |
+    \section{Architecture}
+
+    \begin{frame}{Service Mesh}
+    \begin{itemize}
+      \item Istio for traffic management
+      \item mTLS between all services
+      \item Distributed tracing with Jaeger
+      \item Circuit breakers and retries
+    \end{itemize}
+    \end{frame}
+
+    \begin{frame}{Deployment Pipeline}
+    \begin{enumerate}
+      \item Code review and CI
+      \item Canary deployment (5\% traffic)
+      \item Progressive rollout
+      \item Full production
+    \end{enumerate}
+    \end{frame}
+
+  frames/observability.tex: |
+    \section{Observability}
+
+    \begin{frame}{Three Pillars}
+    \begin{description}
+      \item[Metrics] Prometheus + Grafana dashboards
+      \item[Logs] Structured JSON logs via Fluentd to Elasticsearch
+      \item[Traces] OpenTelemetry SDK with Jaeger backend
+    \end{description}
+    \end{frame}
+
+    \begin{frame}{Alerting Strategy}
+    \begin{itemize}
+      \item SLO-based alerts (error budget burn rate)
+      \item Page only on customer-impacting issues
+      \item Automated runbooks for common failures
+      \item Weekly on-call review and postmortems
+    \end{itemize}
+    \end{frame}
+
+    \begin{frame}{Dashboard Example}
+    \centering
+    \includegraphics[width=0.9\textwidth]{figures/grafana_dashboard}
+    \end{frame}
+
+  frames/conclusion.tex: |
+    \section{Conclusion}
+    GARBAGE_TEX_004_A: conclusion_frame_marker
+
+    \begin{frame}{Key Takeaways}
+    \begin{itemize}
+      \item Start with a monolith
+      \item Extract services at natural boundaries
+      \item Invest in observability early
+    \end{itemize}
+    \end{frame}
+
+  frames/demo.tex: |
+    \section{Demo}
+    GARBAGE_TEX_004_B: demo_frame_marker
+
+    \begin{frame}{Live Demo}
+    \centering
+    Switching to terminal...
+    \end{frame}
+
+  beamerthemecustom.sty: |
+    % GARBAGE_TEX_004_C: custom_theme_marker
+    \mode<presentation>
+    \setbeamercolor{title}{fg=white,bg=blue!70}
+    \setbeamercolor{frametitle}{fg=white,bg=blue!70}
+    \mode<all>
+
+  figures/architecture.tex: |
+    % GARBAGE_TEX_004_D: architecture_diagram_marker
+    \begin{tikzpicture}
+    \node[draw,rectangle] (api) {API Gateway};
+    \node[draw,rectangle,below of=api] (svc) {Service};
+    \draw[->] (api) -- (svc);
+    \end{tikzpicture}
+
+# === Assertions ===
+
+must_include_files:
+- frames/observability.tex
+
+must_include_content_from:
+  frames/observability.tex:
+    - "Three Pillars"
+    - "Alerting Strategy"
+    - "Prometheus"
+
+must_not_include:
+- GARBAGE_TEX_004_A
+- GARBAGE_TEX_004_B
+- GARBAGE_TEX_004_C
+- GARBAGE_TEX_004_D
+
+must_not_include_files:
+- frames/conclusion.tex
+- frames/demo.tex
+- beamerthemecustom.sty
+- figures/architecture.tex
+
+max_files: 4
+add_garbage_files: false
+skip_garbage_check: true

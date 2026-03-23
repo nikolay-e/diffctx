@@ -1,0 +1,311 @@
+# Scenario: A Mix config file adds a new configuration key for an application
+# module. The reviewer needs the module that reads this config to understand
+# how the new setting will be used at runtime.
+#
+# Diff: config/config.exs adds `:rate_limit` and `:rate_window_ms` under the
+# `:myapp, MyApp.Gateway` config key. The Gateway module reads these at init.
+#
+# Reviewer questions:
+#   Q1: "How does Gateway use :rate_limit — is it per-user or global?"
+#       -> lib/myapp/gateway.ex (UNCHANGED): init/1 reads
+#          Application.get_env(:myapp, __MODULE__) and uses rate_limit
+#          as a per-connection limit tracked in state.
+#
+#   Q2: "What happens if :rate_window_ms is not set — is there a default?"
+#       -> lib/myapp/gateway.ex: Keyword.get(config, :rate_window_ms, 60_000)
+#          so it defaults to 60 seconds if not configured.
+#
+# Not needed for comprehension:
+#   - config/dev.exs: Dev-specific overrides.
+#     STRUCTURAL TRAP: same config format, may override same keys.
+#     But the reviewer needs the module behavior, not env-specific values.
+#
+#   - lib/myapp/rate_limiter.ex: Standalone rate limiter module.
+#     HARDEST TRAP: has "rate_limit" in its name and similar functionality.
+#     But Gateway has its own built-in rate limiting, not using this module.
+#
+#   - lib/myapp/mailer.ex: Another module configured in config.exs.
+#     Same Application.get_env pattern but for email, not rate limiting.
+
+initial:
+  config/config.exs: |
+    import Config
+
+    config :myapp, MyApp.Repo,
+      database: "myapp_dev",
+      hostname: "localhost",
+      pool_size: 10
+
+    config :myapp, MyApp.Gateway,
+      port: 4000,
+      max_connections: 1000
+
+    config :myapp, MyApp.Mailer,
+      adapter: Bamboo.SMTPAdapter,
+      server: "smtp.example.com",
+      port: 587
+  lib/myapp/gateway.ex: |
+    defmodule MyApp.Gateway do
+      use GenServer
+
+      def start_link(opts) do
+        GenServer.start_link(__MODULE__, opts, name: __MODULE__)
+      end
+
+      @impl true
+      def init(_opts) do
+        config = Application.get_env(:myapp, __MODULE__, [])
+        port = Keyword.get(config, :port, 4000)
+        max_conn = Keyword.get(config, :max_connections, 500)
+        rate_limit = Keyword.get(config, :rate_limit, 100)
+        rate_window = Keyword.get(config, :rate_window_ms, 60_000)
+
+        state = %{
+          port: port,
+          max_connections: max_conn,
+          rate_limit: rate_limit,
+          rate_window_ms: rate_window,
+          connections: %{},
+          request_counts: %{}
+        }
+
+        {:ok, state}
+      end
+
+      @impl true
+      def handle_call({:check_rate, client_id}, _from, state) do
+        count = Map.get(state.request_counts, client_id, 0)
+        allowed = count < state.rate_limit
+        new_counts = Map.put(state.request_counts, client_id, count + 1)
+        {:reply, allowed, %{state | request_counts: new_counts}}
+      end
+
+      @impl true
+      def handle_info(:reset_counts, state) do
+        Process.send_after(self(), :reset_counts, state.rate_window_ms)
+        {:noreply, %{state | request_counts: %{}}}
+      end
+    end
+  config/dev.exs: |
+    import Config
+
+    config :myapp, MyApp.Repo,
+      database: "myapp_dev",
+      show_sensitive_data_on_connection_error: true
+
+    config :myapp, MyApp.Gateway,
+      port: 4001
+
+    def garbage_dev_a, do: "GARBAGE_ELIXIR_005_A_DEV_PORT"
+    def garbage_dev_b, do: "GARBAGE_ELIXIR_005_B_DEV_LOG"
+  lib/myapp/rate_limiter.ex: |
+    defmodule MyApp.RateLimiter do
+      use GenServer
+
+      def start_link(opts) do
+        GenServer.start_link(__MODULE__, opts, name: __MODULE__)
+      end
+
+      @impl true
+      def init(opts) do
+        limit = Keyword.get(opts, :limit, 60)
+        window = Keyword.get(opts, :window_ms, 60_000)
+        {:ok, %{limit: limit, window: window, buckets: %{}}}
+      end
+
+      def check(client_id) do
+        GenServer.call(__MODULE__, {:check, client_id})
+      end
+
+      @impl true
+      def handle_call({:check, client_id}, _from, state) do
+        count = Map.get(state.buckets, client_id, 0)
+        {:reply, count < state.limit, %{state | buckets: Map.put(state.buckets, client_id, count + 1)}}
+      end
+
+      def garbage_marker_c, do: "GARBAGE_ELIXIR_005_C_BUCKET"
+      def garbage_marker_d, do: "GARBAGE_ELIXIR_005_D_SLIDING"
+    end
+  lib/myapp/mailer.ex: |
+    defmodule MyApp.Mailer do
+      use Bamboo.Mailer, otp_app: :myapp
+
+      def send_welcome(email) do
+        new_email()
+        |> to(email)
+        |> from("noreply@example.com")
+        |> subject("Welcome!")
+        |> text_body("Welcome to our app")
+        |> deliver_now()
+      end
+
+      defp new_email, do: Bamboo.Email.new_email()
+      defp to(e, addr), do: Map.put(e, :to, addr)
+      defp from(e, addr), do: Map.put(e, :from, addr)
+      defp subject(e, s), do: Map.put(e, :subject, s)
+      defp text_body(e, b), do: Map.put(e, :text_body, b)
+      defp deliver_now(e), do: {:ok, e}
+
+      def garbage_marker_e, do: "GARBAGE_ELIXIR_005_E_SMTP_HOST"
+    end
+
+changed:
+  config/config.exs: |
+    import Config
+
+    config :myapp, MyApp.Repo,
+      database: "myapp_dev",
+      hostname: "localhost",
+      pool_size: 10
+
+    config :myapp, MyApp.Gateway,
+      port: 4000,
+      max_connections: 1000,
+      rate_limit: 200,
+      rate_window_ms: 30_000
+
+    config :myapp, MyApp.Mailer,
+      adapter: Bamboo.SMTPAdapter,
+      server: "smtp.example.com",
+      port: 587
+  lib/myapp/gateway.ex: |
+    defmodule MyApp.Gateway do
+      use GenServer
+
+      def start_link(opts) do
+        GenServer.start_link(__MODULE__, opts, name: __MODULE__)
+      end
+
+      @impl true
+      def init(_opts) do
+        config = Application.get_env(:myapp, __MODULE__, [])
+        port = Keyword.get(config, :port, 4000)
+        max_conn = Keyword.get(config, :max_connections, 500)
+        rate_limit = Keyword.get(config, :rate_limit, 100)
+        rate_window = Keyword.get(config, :rate_window_ms, 60_000)
+
+        state = %{
+          port: port,
+          max_connections: max_conn,
+          rate_limit: rate_limit,
+          rate_window_ms: rate_window,
+          connections: %{},
+          request_counts: %{}
+        }
+
+        {:ok, state}
+      end
+
+      @impl true
+      def handle_call({:check_rate, client_id}, _from, state) do
+        count = Map.get(state.request_counts, client_id, 0)
+        allowed = count < state.rate_limit
+        new_counts = Map.put(state.request_counts, client_id, count + 1)
+        {:reply, allowed, %{state | request_counts: new_counts}}
+      end
+
+      @impl true
+      def handle_info(:reset_counts, state) do
+        Process.send_after(self(), :reset_counts, state.rate_window_ms)
+        {:noreply, %{state | request_counts: %{}}}
+      end
+    end
+  config/dev.exs: |
+    import Config
+
+    config :myapp, MyApp.Repo,
+      database: "myapp_dev",
+      show_sensitive_data_on_connection_error: true
+
+    config :myapp, MyApp.Gateway,
+      port: 4001
+
+    def garbage_dev_a, do: "GARBAGE_ELIXIR_005_A_DEV_PORT"
+    def garbage_dev_b, do: "GARBAGE_ELIXIR_005_B_DEV_LOG"
+  lib/myapp/rate_limiter.ex: |
+    defmodule MyApp.RateLimiter do
+      use GenServer
+
+      def start_link(opts) do
+        GenServer.start_link(__MODULE__, opts, name: __MODULE__)
+      end
+
+      @impl true
+      def init(opts) do
+        limit = Keyword.get(opts, :limit, 60)
+        window = Keyword.get(opts, :window_ms, 60_000)
+        {:ok, %{limit: limit, window: window, buckets: %{}}}
+      end
+
+      def check(client_id) do
+        GenServer.call(__MODULE__, {:check, client_id})
+      end
+
+      @impl true
+      def handle_call({:check, client_id}, _from, state) do
+        count = Map.get(state.buckets, client_id, 0)
+        {:reply, count < state.limit, %{state | buckets: Map.put(state.buckets, client_id, count + 1)}}
+      end
+
+      def garbage_marker_c, do: "GARBAGE_ELIXIR_005_C_BUCKET"
+      def garbage_marker_d, do: "GARBAGE_ELIXIR_005_D_SLIDING"
+    end
+  lib/myapp/mailer.ex: |
+    defmodule MyApp.Mailer do
+      use Bamboo.Mailer, otp_app: :myapp
+
+      def send_welcome(email) do
+        new_email()
+        |> to(email)
+        |> from("noreply@example.com")
+        |> subject("Welcome!")
+        |> text_body("Welcome to our app")
+        |> deliver_now()
+      end
+
+      defp new_email, do: Bamboo.Email.new_email()
+      defp to(e, addr), do: Map.put(e, :to, addr)
+      defp from(e, addr), do: Map.put(e, :from, addr)
+      defp subject(e, s), do: Map.put(e, :subject, s)
+      defp text_body(e, b), do: Map.put(e, :text_body, b)
+      defp deliver_now(e), do: {:ok, e}
+
+      def garbage_marker_e, do: "GARBAGE_ELIXIR_005_E_SMTP_HOST"
+    end
+
+must_include_files:
+  - config/config.exs
+  - lib/myapp/gateway.ex
+
+must_include_content_from:
+  config/config.exs:
+    - "rate_limit: 200"
+    - "rate_window_ms: 30_000"
+  lib/myapp/gateway.ex:
+    - "Keyword.get(config, :rate_limit, 100)"
+    - "Keyword.get(config, :rate_window_ms, 60_000)"
+    - "count < state.rate_limit"
+
+must_not_include:
+  # --- config/dev.exs: dev overrides, not how config is consumed ---
+  - GARBAGE_ELIXIR_005_A_DEV_PORT
+  - GARBAGE_ELIXIR_005_B_DEV_LOG
+  - show_sensitive_data_on_connection_error
+  # --- rate_limiter.ex: separate rate limiter, not used by Gateway ---
+  - GARBAGE_ELIXIR_005_C_BUCKET
+  - GARBAGE_ELIXIR_005_D_SLIDING
+  - MyApp.RateLimiter
+  # --- mailer.ex: another configured module, unrelated ---
+  - GARBAGE_ELIXIR_005_E_SMTP_HOST
+  - send_welcome
+  - Bamboo.SMTPAdapter
+
+must_not_include_files:
+  - config/dev.exs
+  - lib/myapp/rate_limiter.ex
+  - lib/myapp/mailer.ex
+
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

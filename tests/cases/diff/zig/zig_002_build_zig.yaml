@@ -1,0 +1,254 @@
+# Zig build system: build.zig adds a new module. Context must include the
+# new source module referenced by build.zig. Noise: other source files
+# not mentioned in the build change.
+
+initial:
+  build.zig: |
+    const std = @import("std");
+
+    pub fn build(b: *std.Build) void {
+        const target = b.standardTargetOptions(.{});
+        const optimize = b.standardOptimizeOption(.{});
+
+        const exe = b.addExecutable(.{
+            .name = "myapp",
+            .root_source_file = .{ .path = "src/main.zig" },
+            .target = target,
+            .optimize = optimize,
+        });
+
+        exe.addModule("network", b.createModule(.{
+            .source_file = .{ .path = "src/network.zig" },
+        }));
+
+        b.installArtifact(exe);
+    }
+
+  src/main.zig: |
+    const std = @import("std");
+    const network = @import("network");
+
+    pub fn main() !void {
+        try network.listen(8080);
+    }
+
+  src/network.zig: |
+    const std = @import("std");
+
+    pub fn listen(port: u16) !void {
+        const address = std.net.Address.parseIp("0.0.0.0", port) catch unreachable;
+        var server = try address.listen(.{});
+        defer server.deinit();
+    }
+
+  src/storage.zig: |
+    const std = @import("std");
+
+    pub const StorageEngine = struct {
+        path: []const u8,
+        capacity: usize,
+
+        pub fn init(path: []const u8, capacity: usize) StorageEngine {
+            return .{ .path = path, .capacity = capacity };
+        }
+
+        pub fn write(self: *StorageEngine, key: []const u8, value: []const u8) !void {
+            _ = self;
+            _ = key;
+            _ = value;
+        }
+
+        pub fn read(self: *StorageEngine, key: []const u8) !?[]const u8 {
+            _ = self;
+            _ = key;
+            return null;
+        }
+    };
+
+  # --- Tricky garbage: also referenced in build structure ---
+  build.zig.zon: |
+    .{
+        .name = "myapp",
+        .version = "0.1.0",
+        GARBAGE_ZIG_002_ZON_MARKER_A = "zon",
+        GARBAGE_ZIG_002_MANIFEST_B = true,
+    }
+
+  # --- Tricky garbage: also uses std.net ---
+  src/client.zig: |
+    const std = @import("std");
+
+    const GARBAGE_ZIG_002_CLIENT_MARKER_C: []const u8 = "client";
+    const GARBAGE_ZIG_002_CONN_FLAG_D: bool = true;
+
+    pub fn connect(host: []const u8, port: u16) !std.net.Stream {
+        const address = try std.net.Address.resolveIp(host, port);
+        return try std.net.tcpConnectToAddress(address);
+    }
+
+  # --- Tricky garbage: another module not in build ---
+  src/logger.zig: |
+    const std = @import("std");
+
+    const GARBAGE_ZIG_002_LOGGER_MARKER_E: []const u8 = "logger";
+    const GARBAGE_ZIG_002_LOG_LEVEL_F: u8 = 3;
+
+    pub fn info(msg: []const u8) void {
+        std.debug.print("[INFO] {s}\n", .{msg});
+    }
+
+  # --- Plain garbage ---
+  src/constants.zig: |
+    const GARBAGE_ZIG_002_CONST_MARKER_G: []const u8 = "constants";
+    const GARBAGE_ZIG_002_APP_VER_H: []const u8 = "0.1.0";
+
+    pub const max_retries: u32 = 3;
+    pub const timeout_ms: u64 = 5000;
+
+changed:
+  build.zig: |
+    const std = @import("std");
+
+    pub fn build(b: *std.Build) void {
+        const target = b.standardTargetOptions(.{});
+        const optimize = b.standardOptimizeOption(.{});
+
+        const exe = b.addExecutable(.{
+            .name = "myapp",
+            .root_source_file = .{ .path = "src/main.zig" },
+            .target = target,
+            .optimize = optimize,
+        });
+
+        exe.addModule("network", b.createModule(.{
+            .source_file = .{ .path = "src/network.zig" },
+        }));
+
+        exe.addModule("storage", b.createModule(.{
+            .source_file = .{ .path = "src/storage.zig" },
+        }));
+
+        b.installArtifact(exe);
+    }
+
+  src/main.zig: |
+    const std = @import("std");
+    const network = @import("network");
+    const storage = @import("storage");
+
+    pub fn main() !void {
+        var store = storage.StorageEngine.init("/tmp/data", 1024 * 1024);
+        try store.write("server.started", "true");
+        try network.listen(8080);
+    }
+
+  src/network.zig: |
+    const std = @import("std");
+
+    pub fn listen(port: u16) !void {
+        const address = std.net.Address.parseIp("0.0.0.0", port) catch unreachable;
+        var server = try address.listen(.{});
+        defer server.deinit();
+    }
+
+  src/storage.zig: |
+    const std = @import("std");
+
+    pub const StorageEngine = struct {
+        path: []const u8,
+        capacity: usize,
+
+        pub fn init(path: []const u8, capacity: usize) StorageEngine {
+            return .{ .path = path, .capacity = capacity };
+        }
+
+        pub fn write(self: *StorageEngine, key: []const u8, value: []const u8) !void {
+            _ = self;
+            _ = key;
+            _ = value;
+        }
+
+        pub fn read(self: *StorageEngine, key: []const u8) !?[]const u8 {
+            _ = self;
+            _ = key;
+            return null;
+        }
+    };
+
+  build.zig.zon: |
+    .{
+        .name = "myapp",
+        .version = "0.1.0",
+        GARBAGE_ZIG_002_ZON_MARKER_A = "zon",
+        GARBAGE_ZIG_002_MANIFEST_B = true,
+    }
+
+  src/client.zig: |
+    const std = @import("std");
+
+    const GARBAGE_ZIG_002_CLIENT_MARKER_C: []const u8 = "client";
+    const GARBAGE_ZIG_002_CONN_FLAG_D: bool = true;
+
+    pub fn connect(host: []const u8, port: u16) !std.net.Stream {
+        const address = try std.net.Address.resolveIp(host, port);
+        return try std.net.tcpConnectToAddress(address);
+    }
+
+  src/logger.zig: |
+    const std = @import("std");
+
+    const GARBAGE_ZIG_002_LOGGER_MARKER_E: []const u8 = "logger";
+    const GARBAGE_ZIG_002_LOG_LEVEL_F: u8 = 3;
+
+    pub fn info(msg: []const u8) void {
+        std.debug.print("[INFO] {s}\n", .{msg});
+    }
+
+  src/constants.zig: |
+    const GARBAGE_ZIG_002_CONST_MARKER_G: []const u8 = "constants";
+    const GARBAGE_ZIG_002_APP_VER_H: []const u8 = "0.1.0";
+
+    pub const max_retries: u32 = 3;
+    pub const timeout_ms: u64 = 5000;
+
+# === Assertions ===
+
+must_include_files:
+- build.zig
+- src/main.zig
+
+must_include_content_from:
+  build.zig:
+    - '"storage"'
+    - src/storage.zig
+  src/main.zig:
+    - const storage = @import("storage")
+    - storage.StorageEngine.init
+  src/storage.zig:
+    - pub const StorageEngine = struct
+    - 'pub fn init(path: []const u8, capacity: usize) StorageEngine'
+
+must_not_include:
+# Tricky: build-related file
+- GARBAGE_ZIG_002_ZON_MARKER_A
+- GARBAGE_ZIG_002_MANIFEST_B
+# Tricky: also uses std.net
+- GARBAGE_ZIG_002_CLIENT_MARKER_C
+- GARBAGE_ZIG_002_CONN_FLAG_D
+# Tricky: another module not in build
+- GARBAGE_ZIG_002_LOGGER_MARKER_E
+- GARBAGE_ZIG_002_LOG_LEVEL_F
+# Plain garbage
+- GARBAGE_ZIG_002_CONST_MARKER_G
+- GARBAGE_ZIG_002_APP_VER_H
+
+must_not_include_files:
+- build.zig.zon
+- src/client.zig
+- src/logger.zig
+- src/constants.zig
+
+max_fragments: 10
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

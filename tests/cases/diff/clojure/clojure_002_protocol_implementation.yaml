@@ -1,0 +1,203 @@
+# Clojure protocol implementation: defprotocol in one file gets a new method,
+# defrecord in another implements it. Context must include both the protocol
+# and the implementing record file. Noise: other records.
+
+initial:
+  src/myapp/protocols.clj: |
+    (ns myapp.protocols)
+
+    (defprotocol Renderable
+      (render [this format])
+      (content-type [this]))
+
+  src/myapp/html_renderer.clj: |
+    (ns myapp.html-renderer
+      (:require [myapp.protocols :as proto]))
+
+    (defrecord HtmlRenderer [template]
+      proto/Renderable
+      (render [this format]
+        (str "<html><body>" template "</body></html>"))
+      (content-type [this]
+        "text/html"))
+
+  src/myapp/json_renderer.clj: |
+    (ns myapp.json-renderer
+      (:require [myapp.protocols :as proto]
+                [clojure.data.json :as json]))
+
+    (defrecord JsonRenderer [data]
+      proto/Renderable
+      (render [this format]
+        (json/write-str data))
+      (content-type [this]
+        "application/json"))
+
+  # --- Tricky garbage: also implements Renderable ---
+  src/myapp/xml_renderer.clj: |
+    (ns myapp.xml-renderer
+      (:require [myapp.protocols :as proto]))
+
+    (def GARBAGE_CLJ_002_XML_RENDER_A "xml-renderer")
+    (def GARBAGE_CLJ_002_XML_FORMAT_B "xml")
+
+    (defrecord XmlRenderer [data]
+      proto/Renderable
+      (render [this format]
+        (str "<root>" (pr-str data) "</root>"))
+      (content-type [this]
+        "application/xml"))
+
+  # --- Tricky garbage: defines another protocol ---
+  src/myapp/cacheable.clj: |
+    (ns myapp.cacheable)
+
+    (def GARBAGE_CLJ_002_CACHE_PROTO_C "cacheable")
+    (def GARBAGE_CLJ_002_TTL_MARKER_D 3600)
+
+    (defprotocol Cacheable
+      (cache-key [this])
+      (ttl [this]))
+
+  # --- Tricky garbage: uses protocols in general ---
+  src/myapp/dispatcher.clj: |
+    (ns myapp.dispatcher
+      (:require [myapp.protocols :as proto]))
+
+    (def GARBAGE_CLJ_002_DISPATCH_MARKER_E "dispatcher")
+    (def GARBAGE_CLJ_002_ROUTE_MAP_F {})
+
+    (defn dispatch-render [renderer format]
+      (proto/render renderer format))
+
+  # --- Plain garbage ---
+  src/myapp/utils.clj: |
+    (ns myapp.utils)
+
+    (def GARBAGE_CLJ_002_UTILS_MARKER_G "utils")
+    (def GARBAGE_CLJ_002_HELPER_FN_H true)
+
+    (defn uuid []
+      (str (java.util.UUID/randomUUID)))
+
+changed:
+  src/myapp/protocols.clj: |
+    (ns myapp.protocols)
+
+    (defprotocol Renderable
+      (render [this format])
+      (render-partial [this section format])
+      (content-type [this]))
+
+  src/myapp/html_renderer.clj: |
+    (ns myapp.html-renderer
+      (:require [myapp.protocols :as proto]))
+
+    (defrecord HtmlRenderer [template sections]
+      proto/Renderable
+      (render [this format]
+        (str "<html><body>" template "</body></html>"))
+      (render-partial [this section format]
+        (let [content (get sections section "")]
+          (str "<div class=\"" (name section) "\">" content "</div>")))
+      (content-type [this]
+        "text/html"))
+
+  src/myapp/json_renderer.clj: |
+    (ns myapp.json-renderer
+      (:require [myapp.protocols :as proto]
+                [clojure.data.json :as json]))
+
+    (defrecord JsonRenderer [data]
+      proto/Renderable
+      (render [this format]
+        (json/write-str data))
+      (render-partial [this section format]
+        (json/write-str (get data section {})))
+      (content-type [this]
+        "application/json"))
+
+  src/myapp/xml_renderer.clj: |
+    (ns myapp.xml-renderer
+      (:require [myapp.protocols :as proto]))
+
+    (def GARBAGE_CLJ_002_XML_RENDER_A "xml-renderer")
+    (def GARBAGE_CLJ_002_XML_FORMAT_B "xml")
+
+    (defrecord XmlRenderer [data]
+      proto/Renderable
+      (render [this format]
+        (str "<root>" (pr-str data) "</root>"))
+      (content-type [this]
+        "application/xml"))
+
+  src/myapp/cacheable.clj: |
+    (ns myapp.cacheable)
+
+    (def GARBAGE_CLJ_002_CACHE_PROTO_C "cacheable")
+    (def GARBAGE_CLJ_002_TTL_MARKER_D 3600)
+
+    (defprotocol Cacheable
+      (cache-key [this])
+      (ttl [this]))
+
+  src/myapp/dispatcher.clj: |
+    (ns myapp.dispatcher
+      (:require [myapp.protocols :as proto]))
+
+    (def GARBAGE_CLJ_002_DISPATCH_MARKER_E "dispatcher")
+    (def GARBAGE_CLJ_002_ROUTE_MAP_F {})
+
+    (defn dispatch-render [renderer format]
+      (proto/render renderer format))
+
+  src/myapp/utils.clj: |
+    (ns myapp.utils)
+
+    (def GARBAGE_CLJ_002_UTILS_MARKER_G "utils")
+    (def GARBAGE_CLJ_002_HELPER_FN_H true)
+
+    (defn uuid []
+      (str (java.util.UUID/randomUUID)))
+
+# === Assertions ===
+
+must_include_files:
+- src/myapp/protocols.clj
+- src/myapp/html_renderer.clj
+- src/myapp/json_renderer.clj
+
+must_include_content_from:
+  src/myapp/protocols.clj:
+    - render-partial [this section format]
+  src/myapp/html_renderer.clj:
+    - render-partial [this section format]
+    - get sections section
+  src/myapp/json_renderer.clj:
+    - render-partial [this section format]
+    - get data section
+
+must_not_include:
+# Tricky: also implements Renderable but not updated
+- GARBAGE_CLJ_002_XML_RENDER_A
+- GARBAGE_CLJ_002_XML_FORMAT_B
+# Tricky: defines another protocol
+- GARBAGE_CLJ_002_CACHE_PROTO_C
+- GARBAGE_CLJ_002_TTL_MARKER_D
+# Tricky: uses protocols in general
+- GARBAGE_CLJ_002_DISPATCH_MARKER_E
+- GARBAGE_CLJ_002_ROUTE_MAP_F
+# Plain garbage
+- GARBAGE_CLJ_002_UTILS_MARKER_G
+- GARBAGE_CLJ_002_HELPER_FN_H
+
+must_not_include_files:
+- src/myapp/xml_renderer.clj
+- src/myapp/cacheable.clj
+- src/myapp/dispatcher.clj
+- src/myapp/utils.clj
+
+max_fragments: 10
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

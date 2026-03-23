@@ -1,0 +1,282 @@
+# Scenario: A Dart class adds a new mixin via `with`. The reviewer needs to see
+# the mixin definition to understand what methods and properties are mixed in
+# and whether they conflict with existing members.
+#
+# Diff: lib/services/api_client.dart adds `with RetryMixin` to the class
+# declaration and calls `retryWithBackoff()` in the request method.
+#
+# Reviewer questions:
+#   Q1: "What does RetryMixin provide — what is the retry strategy?"
+#       -> lib/mixins/retry_mixin.dart (UNCHANGED): provides retryWithBackoff()
+#          with exponential backoff, maxRetries, and delay configuration.
+#
+#   Q2: "Does the existing LoggableMixin conflict with RetryMixin?"
+#       -> lib/mixins/loggable_mixin.dart (UNCHANGED): provides logInfo/logError.
+#          No method name overlap with RetryMixin.
+#
+# Not needed for comprehension:
+#   - lib/mixins/cacheable_mixin.dart: Another mixin in the same directory.
+#     STRUCTURAL TRAP: same mixin pattern, same directory. But not applied
+#     to ApiClient.
+#
+#   - lib/services/database_service.dart: Service that also uses RetryMixin.
+#     HARDEST TRAP: same `with RetryMixin`, calls same retryWithBackoff().
+#     But separate service, different usage context.
+#
+#   - lib/config/http_config.dart: Configuration file for HTTP settings.
+#     Mentions timeout and retry values but is not referenced in the diff.
+
+initial:
+  lib/mixins/retry_mixin.dart: |
+    mixin RetryMixin {
+      int maxRetries = 3;
+      Duration retryDelay = const Duration(seconds: 1);
+
+      Future<T> retryWithBackoff<T>(Future<T> Function() operation) async {
+        int attempt = 0;
+        while (true) {
+          try {
+            return await operation();
+          } catch (e) {
+            attempt++;
+            if (attempt >= maxRetries) rethrow;
+            await Future.delayed(retryDelay * attempt);
+          }
+        }
+      }
+    }
+  lib/mixins/loggable_mixin.dart: |
+    mixin LoggableMixin {
+      String get logTag => runtimeType.toString();
+
+      void logInfo(String message) {
+        print('[$logTag] INFO: $message');
+      }
+
+      void logError(String message, [Object? error]) {
+        print('[$logTag] ERROR: $message ${error ?? ""}');
+      }
+    }
+  lib/services/api_client.dart: |
+    import 'dart:convert';
+    import 'package:myapp/mixins/loggable_mixin.dart';
+
+    class ApiClient with LoggableMixin {
+      final String baseUrl;
+
+      ApiClient({required this.baseUrl});
+
+      Future<Map<String, dynamic>> get(String path) async {
+        logInfo('GET $path');
+        return {'status': 'ok'};
+      }
+
+      Future<Map<String, dynamic>> post(String path, Map<String, dynamic> body) async {
+        logInfo('POST $path');
+        return {'status': 'created', 'data': jsonEncode(body)};
+      }
+    }
+  lib/mixins/cacheable_mixin.dart: |
+    mixin CacheableMixin {
+      final Map<String, dynamic> _cache = {};
+
+      T? fromCache<T>(String key) {
+        return _cache[key] as T?;
+      }
+
+      void toCache(String key, dynamic value) {
+        _cache[key] = value;
+      }
+
+      void invalidateCache() {
+        _cache.clear();
+      }
+
+      String get GARBAGE_DART_005_A_CACHE_STRATEGY => 'lru';
+      int get GARBAGE_DART_005_B_CACHE_SIZE => 100;
+    }
+  lib/services/database_service.dart: |
+    import 'package:myapp/mixins/retry_mixin.dart';
+
+    class DatabaseService with RetryMixin {
+      final String connectionString;
+
+      DatabaseService({required this.connectionString}) {
+        maxRetries = 5;
+        retryDelay = const Duration(seconds: 2);
+      }
+
+      Future<List<Map<String, dynamic>>> query(String sql) async {
+        return retryWithBackoff(() async {
+          return [{'id': 1, 'name': 'result'}];
+        });
+      }
+
+      String get GARBAGE_DART_005_C_DB_DRIVER => 'postgres';
+      int get GARBAGE_DART_005_D_POOL_SIZE => 10;
+    }
+  lib/config/http_config.dart: |
+    class HttpConfig {
+      final int timeoutSeconds;
+      final int maxRetries;
+      final bool followRedirects;
+
+      const HttpConfig({
+        this.timeoutSeconds = 30,
+        this.maxRetries = 3,
+        this.followRedirects = true,
+      });
+
+      String get GARBAGE_DART_005_E_CONFIG_VERSION => '2.0';
+    }
+
+changed:
+  lib/mixins/retry_mixin.dart: |
+    mixin RetryMixin {
+      int maxRetries = 3;
+      Duration retryDelay = const Duration(seconds: 1);
+
+      Future<T> retryWithBackoff<T>(Future<T> Function() operation) async {
+        int attempt = 0;
+        while (true) {
+          try {
+            return await operation();
+          } catch (e) {
+            attempt++;
+            if (attempt >= maxRetries) rethrow;
+            await Future.delayed(retryDelay * attempt);
+          }
+        }
+      }
+    }
+  lib/mixins/loggable_mixin.dart: |
+    mixin LoggableMixin {
+      String get logTag => runtimeType.toString();
+
+      void logInfo(String message) {
+        print('[$logTag] INFO: $message');
+      }
+
+      void logError(String message, [Object? error]) {
+        print('[$logTag] ERROR: $message ${error ?? ""}');
+      }
+    }
+  lib/services/api_client.dart: |
+    import 'dart:convert';
+    import 'package:myapp/mixins/loggable_mixin.dart';
+    import 'package:myapp/mixins/retry_mixin.dart';
+
+    class ApiClient with LoggableMixin, RetryMixin {
+      final String baseUrl;
+
+      ApiClient({required this.baseUrl}) {
+        maxRetries = 3;
+        retryDelay = const Duration(milliseconds: 500);
+      }
+
+      Future<Map<String, dynamic>> get(String path) async {
+        logInfo('GET $path');
+        return retryWithBackoff(() async {
+          return {'status': 'ok'};
+        });
+      }
+
+      Future<Map<String, dynamic>> post(String path, Map<String, dynamic> body) async {
+        logInfo('POST $path');
+        return retryWithBackoff(() async {
+          return {'status': 'created', 'data': jsonEncode(body)};
+        });
+      }
+    }
+  lib/mixins/cacheable_mixin.dart: |
+    mixin CacheableMixin {
+      final Map<String, dynamic> _cache = {};
+
+      T? fromCache<T>(String key) {
+        return _cache[key] as T?;
+      }
+
+      void toCache(String key, dynamic value) {
+        _cache[key] = value;
+      }
+
+      void invalidateCache() {
+        _cache.clear();
+      }
+
+      String get GARBAGE_DART_005_A_CACHE_STRATEGY => 'lru';
+      int get GARBAGE_DART_005_B_CACHE_SIZE => 100;
+    }
+  lib/services/database_service.dart: |
+    import 'package:myapp/mixins/retry_mixin.dart';
+
+    class DatabaseService with RetryMixin {
+      final String connectionString;
+
+      DatabaseService({required this.connectionString}) {
+        maxRetries = 5;
+        retryDelay = const Duration(seconds: 2);
+      }
+
+      Future<List<Map<String, dynamic>>> query(String sql) async {
+        return retryWithBackoff(() async {
+          return [{'id': 1, 'name': 'result'}];
+        });
+      }
+
+      String get GARBAGE_DART_005_C_DB_DRIVER => 'postgres';
+      int get GARBAGE_DART_005_D_POOL_SIZE => 10;
+    }
+  lib/config/http_config.dart: |
+    class HttpConfig {
+      final int timeoutSeconds;
+      final int maxRetries;
+      final bool followRedirects;
+
+      const HttpConfig({
+        this.timeoutSeconds = 30,
+        this.maxRetries = 3,
+        this.followRedirects = true,
+      });
+
+      String get GARBAGE_DART_005_E_CONFIG_VERSION => '2.0';
+    }
+
+must_include_files:
+  - lib/services/api_client.dart
+  - lib/mixins/retry_mixin.dart
+
+must_include_content_from:
+  lib/services/api_client.dart:
+    - "with LoggableMixin, RetryMixin"
+    - "retryWithBackoff"
+  lib/mixins/retry_mixin.dart:
+    - "mixin RetryMixin"
+    - "Future<T> retryWithBackoff<T>"
+    - "await Future.delayed(retryDelay * attempt)"
+
+must_not_include:
+  # --- cacheable_mixin.dart: unrelated mixin, same directory ---
+  - GARBAGE_DART_005_A_CACHE_STRATEGY
+  - GARBAGE_DART_005_B_CACHE_SIZE
+  - CacheableMixin
+  - invalidateCache
+  # --- database_service.dart: also uses RetryMixin but different service ---
+  - GARBAGE_DART_005_C_DB_DRIVER
+  - GARBAGE_DART_005_D_POOL_SIZE
+  - DatabaseService
+  - connectionString
+  # --- http_config.dart: config mentioning retries but not referenced ---
+  - GARBAGE_DART_005_E_CONFIG_VERSION
+  - HttpConfig
+  - followRedirects
+
+must_not_include_files:
+  - lib/mixins/cacheable_mixin.dart
+  - lib/services/database_service.dart
+  - lib/config/http_config.dart
+
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

@@ -1,0 +1,203 @@
+# Clojure namespace require: module uses (:require [myapp.db :as db]) and adds
+# a new function calling the db namespace. Context must include the db namespace
+# source. Noise: other namespaces.
+
+initial:
+  src/myapp/db.clj: |
+    (ns myapp.db
+      (:require [clojure.java.jdbc :as jdbc]))
+
+    (def db-spec
+      {:dbtype "postgresql"
+       :dbname "myapp"
+       :host "localhost"
+       :port 5432})
+
+    (defn find-user-by-id [id]
+      (first (jdbc/query db-spec
+               ["SELECT * FROM users WHERE id = ?" id])))
+
+    (defn find-all-users []
+      (jdbc/query db-spec ["SELECT * FROM users"]))
+
+    (defn insert-user! [user-data]
+      (jdbc/insert! db-spec :users user-data))
+
+  src/myapp/handler.clj: |
+    (ns myapp.handler
+      (:require [myapp.db :as db]
+                [clojure.data.json :as json]))
+
+    (defn get-user-handler [request]
+      (let [id (get-in request [:params :id])
+            user (db/find-user-by-id id)]
+        (if user
+          {:status 200 :body (json/write-str user)}
+          {:status 404 :body "Not found"})))
+
+  # --- Tricky garbage: also requires myapp.db ---
+  src/myapp/admin.clj: |
+    (ns myapp.admin
+      (:require [myapp.db :as db]
+                [clojure.data.json :as json]))
+
+    (def GARBAGE_CLJ_001_ADMIN_MARKER_A "admin")
+    (def GARBAGE_CLJ_001_ADMIN_ROLE_B "superuser")
+
+    (defn list-all-users-handler [request]
+      (let [users (db/find-all-users)]
+        {:status 200 :body (json/write-str users)}))
+
+  # --- Tricky garbage: also uses json namespace ---
+  src/myapp/serializer.clj: |
+    (ns myapp.serializer
+      (:require [clojure.data.json :as json]))
+
+    (def GARBAGE_CLJ_001_SERIAL_MARKER_C "serializer")
+    (def GARBAGE_CLJ_001_FORMAT_TYPE_D "json")
+
+    (defn serialize [data]
+      (json/write-str data))
+
+    (defn deserialize [s]
+      (json/read-str s :key-fn keyword))
+
+  # --- Tricky garbage: similar handler structure ---
+  src/myapp/health.clj: |
+    (ns myapp.health)
+
+    (def GARBAGE_CLJ_001_HEALTH_MARKER_E "health")
+    (def GARBAGE_CLJ_001_STATUS_CHECK_F "ok")
+
+    (defn health-check-handler [request]
+      {:status 200 :body "OK"})
+
+  # --- Plain garbage ---
+  src/myapp/config.clj: |
+    (ns myapp.config)
+
+    (def GARBAGE_CLJ_001_CONFIG_MARKER_G "config")
+    (def GARBAGE_CLJ_001_ENV_MARKER_H "production")
+
+    (def app-config
+      {:port 8080
+       :host "0.0.0.0"})
+
+changed:
+  src/myapp/db.clj: |
+    (ns myapp.db
+      (:require [clojure.java.jdbc :as jdbc]))
+
+    (def db-spec
+      {:dbtype "postgresql"
+       :dbname "myapp"
+       :host "localhost"
+       :port 5432})
+
+    (defn find-user-by-id [id]
+      (first (jdbc/query db-spec
+               ["SELECT * FROM users WHERE id = ?" id])))
+
+    (defn find-all-users []
+      (jdbc/query db-spec ["SELECT * FROM users"]))
+
+    (defn insert-user! [user-data]
+      (jdbc/insert! db-spec :users user-data))
+
+  src/myapp/handler.clj: |
+    (ns myapp.handler
+      (:require [myapp.db :as db]
+                [clojure.data.json :as json]))
+
+    (defn get-user-handler [request]
+      (let [id (get-in request [:params :id])
+            user (db/find-user-by-id id)]
+        (if user
+          {:status 200 :body (json/write-str user)}
+          {:status 404 :body "Not found"})))
+
+    (defn create-user-handler [request]
+      (let [body (json/read-str (slurp (:body request)) :key-fn keyword)
+            result (db/insert-user! body)]
+        {:status 201 :body (json/write-str result)}))
+
+  src/myapp/admin.clj: |
+    (ns myapp.admin
+      (:require [myapp.db :as db]
+                [clojure.data.json :as json]))
+
+    (def GARBAGE_CLJ_001_ADMIN_MARKER_A "admin")
+    (def GARBAGE_CLJ_001_ADMIN_ROLE_B "superuser")
+
+    (defn list-all-users-handler [request]
+      (let [users (db/find-all-users)]
+        {:status 200 :body (json/write-str users)}))
+
+  src/myapp/serializer.clj: |
+    (ns myapp.serializer
+      (:require [clojure.data.json :as json]))
+
+    (def GARBAGE_CLJ_001_SERIAL_MARKER_C "serializer")
+    (def GARBAGE_CLJ_001_FORMAT_TYPE_D "json")
+
+    (defn serialize [data]
+      (json/write-str data))
+
+    (defn deserialize [s]
+      (json/read-str s :key-fn keyword))
+
+  src/myapp/health.clj: |
+    (ns myapp.health)
+
+    (def GARBAGE_CLJ_001_HEALTH_MARKER_E "health")
+    (def GARBAGE_CLJ_001_STATUS_CHECK_F "ok")
+
+    (defn health-check-handler [request]
+      {:status 200 :body "OK"})
+
+  src/myapp/config.clj: |
+    (ns myapp.config)
+
+    (def GARBAGE_CLJ_001_CONFIG_MARKER_G "config")
+    (def GARBAGE_CLJ_001_ENV_MARKER_H "production")
+
+    (def app-config
+      {:port 8080
+       :host "0.0.0.0"})
+
+# === Assertions ===
+
+must_include_files:
+- src/myapp/handler.clj
+
+must_include_content_from:
+  src/myapp/handler.clj:
+    - defn create-user-handler
+    - db/insert-user!
+  src/myapp/db.clj:
+    - defn insert-user! [user-data]
+
+must_not_include:
+# Tricky: also requires myapp.db
+- GARBAGE_CLJ_001_ADMIN_MARKER_A
+- GARBAGE_CLJ_001_ADMIN_ROLE_B
+# Tricky: also uses json namespace
+- GARBAGE_CLJ_001_SERIAL_MARKER_C
+- GARBAGE_CLJ_001_FORMAT_TYPE_D
+# Tricky: similar handler structure
+- GARBAGE_CLJ_001_HEALTH_MARKER_E
+- GARBAGE_CLJ_001_STATUS_CHECK_F
+# Plain garbage
+- GARBAGE_CLJ_001_CONFIG_MARKER_G
+- GARBAGE_CLJ_001_ENV_MARKER_H
+
+must_not_include_files:
+- src/myapp/admin.clj
+- src/myapp/serializer.clj
+- src/myapp/health.clj
+- src/myapp/config.clj
+
+max_fragments: 8
+max_files: 2
+add_garbage_files: false
+skip_garbage_check: true

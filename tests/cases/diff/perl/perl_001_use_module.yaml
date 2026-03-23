@@ -1,0 +1,370 @@
+# Test: Perl module adds new method that calls MyApp::Database
+#
+# Scenario: lib/MyApp/UserService.pm adds a find_by_email method that
+# calls MyApp::Database->query. lib/MyApp/Database.pm is UNCHANGED.
+# lib/MyApp/Config.pm is already used but not relevant to this change.
+#
+# Reviewer questions:
+#   Q1: "What does Database->query return — hashref or arrayref?"
+#       -> lib/MyApp/Database.pm (UNCHANGED) shows query returns arrayref of hashrefs
+#   Q2: "Does query handle undef bind params safely?"
+#       -> lib/MyApp/Database.pm uses placeholders with DBI execute
+#
+# Trap files:
+#   - lib/MyApp/Logger.pm: application logging — same namespace, used
+#     by Database internally but not relevant to UserService change
+#   - lib/MyApp/Cache.pm: caching layer — same namespace, plausible
+#     performance concern but UserService doesn't use it
+
+initial:
+  lib/MyApp/Database.pm: |
+    package MyApp::Database;
+    use strict;
+    use warnings;
+    use DBI;
+
+    sub new {
+        my ($class, %args) = @_;
+        my $dsn = $args{dsn} || "dbi:Pg:dbname=myapp";
+        my $dbh = DBI->connect($dsn, $args{user}, $args{pass}, {
+            RaiseError => 1,
+            AutoCommit => 1,
+            pg_enable_utf8 => 1,
+        });
+        return bless { dbh => $dbh }, $class;
+    }
+
+    sub query {
+        my ($self, $sql, @bind) = @_;
+        my $sth = $self->{dbh}->prepare($sql);
+        $sth->execute(@bind);
+        my @rows;
+        while (my $row = $sth->fetchrow_hashref) {
+            push @rows, $row;
+        }
+        return \@rows;
+    }
+
+    sub execute {
+        my ($self, $sql, @bind) = @_;
+        return $self->{dbh}->do($sql, undef, @bind);
+    end
+
+    sub disconnect {
+        my ($self) = @_;
+        $self->{dbh}->disconnect if $self->{dbh};
+    }
+
+    1;
+  lib/MyApp/UserService.pm: |
+    package MyApp::UserService;
+    use strict;
+    use warnings;
+    use MyApp::Database;
+    use MyApp::Config;
+
+    sub new {
+        my ($class, %args) = @_;
+        my $db = $args{db} || MyApp::Database->new;
+        return bless { db => $db }, $class;
+    }
+
+    sub find_by_id {
+        my ($self, $user_id) = @_;
+        my $rows = $self->{db}->query(
+            "SELECT id, name, email FROM users WHERE id = ?", $user_id
+        );
+        return $rows->[0];
+    }
+
+    sub create_user {
+        my ($self, %attrs) = @_;
+        $self->{db}->execute(
+            "INSERT INTO users (name, email) VALUES (?, ?)",
+            $attrs{name}, $attrs{email}
+        );
+    }
+
+    1;
+  lib/MyApp/Config.pm: |
+    package MyApp::Config;
+    use strict;
+    use warnings;
+
+    my %defaults = (
+        db_host   => 'localhost',
+        db_port   => 5432,
+        db_name   => 'myapp',
+        log_level => 'info',
+    );
+
+    sub new {
+        my ($class, %overrides) = @_;
+        my %config = (%defaults, %overrides);
+        return bless \%config, $class;
+    }
+
+    sub get {
+        my ($self, $key) = @_;
+        return $self->{$key};
+    }
+
+    1;
+  lib/MyApp/Logger.pm: |
+    my $GARBAGE_PERL_001_A = "noise_marker_logger";
+
+    package MyApp::Logger;
+    use strict;
+    use warnings;
+
+    my @LEVELS = qw(debug info warn error fatal);
+
+    sub new {
+        my ($class, %args) = @_;
+        my $level = $args{level} || 'info';
+        return bless { level => $level, output => [] }, $class;
+    }
+
+    sub log {
+        my ($self, $level, $msg) = @_;
+        push @{$self->{output}}, "[$level] $msg";
+    }
+
+    sub debug { $_[0]->log('debug', $_[1]) }
+    sub info  { $_[0]->log('info',  $_[1]) }
+    sub warn  { $_[0]->log('warn',  $_[1]) }
+    sub error { $_[0]->log('error', $_[1]) }
+
+    1;
+  lib/MyApp/Cache.pm: |
+    my $GARBAGE_PERL_001_B = "noise_marker_cache";
+
+    package MyApp::Cache;
+    use strict;
+    use warnings;
+
+    sub new {
+        my ($class, %args) = @_;
+        my $ttl = $args{ttl} || 300;
+        return bless { store => {}, ttl => $ttl }, $class;
+    }
+
+    sub get {
+        my ($self, $key) = @_;
+        my $entry = $self->{store}{$key};
+        return undef unless $entry;
+        if (time() > $entry->{expires}) {
+            delete $self->{store}{$key};
+            return undef;
+        }
+        return $entry->{value};
+    }
+
+    sub set {
+        my ($self, $key, $value) = @_;
+        $self->{store}{$key} = {
+            value   => $value,
+            expires => time() + $self->{ttl},
+        };
+    }
+
+    1;
+
+changed:
+  lib/MyApp/Database.pm: |
+    package MyApp::Database;
+    use strict;
+    use warnings;
+    use DBI;
+
+    sub new {
+        my ($class, %args) = @_;
+        my $dsn = $args{dsn} || "dbi:Pg:dbname=myapp";
+        my $dbh = DBI->connect($dsn, $args{user}, $args{pass}, {
+            RaiseError => 1,
+            AutoCommit => 1,
+            pg_enable_utf8 => 1,
+        });
+        return bless { dbh => $dbh }, $class;
+    }
+
+    sub query {
+        my ($self, $sql, @bind) = @_;
+        my $sth = $self->{dbh}->prepare($sql);
+        $sth->execute(@bind);
+        my @rows;
+        while (my $row = $sth->fetchrow_hashref) {
+            push @rows, $row;
+        }
+        return \@rows;
+    }
+
+    sub execute {
+        my ($self, $sql, @bind) = @_;
+        return $self->{dbh}->do($sql, undef, @bind);
+    end
+
+    sub disconnect {
+        my ($self) = @_;
+        $self->{dbh}->disconnect if $self->{dbh};
+    }
+
+    1;
+  lib/MyApp/UserService.pm: |
+    package MyApp::UserService;
+    use strict;
+    use warnings;
+    use MyApp::Database;
+    use MyApp::Config;
+
+    sub new {
+        my ($class, %args) = @_;
+        my $db = $args{db} || MyApp::Database->new;
+        return bless { db => $db }, $class;
+    }
+
+    sub find_by_id {
+        my ($self, $user_id) = @_;
+        my $rows = $self->{db}->query(
+            "SELECT id, name, email FROM users WHERE id = ?", $user_id
+        );
+        return $rows->[0];
+    }
+
+    sub find_by_email {
+        my ($self, $email) = @_;
+        my $rows = $self->{db}->query(
+            "SELECT id, name, email FROM users WHERE email = ?", $email
+        );
+        return $rows->[0];
+    }
+
+    sub list_active_users {
+        my ($self, $limit) = @_;
+        $limit ||= 50;
+        return $self->{db}->query(
+            "SELECT id, name, email FROM users WHERE active = true LIMIT ?",
+            $limit
+        );
+    }
+
+    sub create_user {
+        my ($self, %attrs) = @_;
+        $self->{db}->execute(
+            "INSERT INTO users (name, email) VALUES (?, ?)",
+            $attrs{name}, $attrs{email}
+        );
+    }
+
+    1;
+  lib/MyApp/Config.pm: |
+    package MyApp::Config;
+    use strict;
+    use warnings;
+
+    my %defaults = (
+        db_host   => 'localhost',
+        db_port   => 5432,
+        db_name   => 'myapp',
+        log_level => 'info',
+    );
+
+    sub new {
+        my ($class, %overrides) = @_;
+        my %config = (%defaults, %overrides);
+        return bless \%config, $class;
+    }
+
+    sub get {
+        my ($self, $key) = @_;
+        return $self->{$key};
+    }
+
+    1;
+  lib/MyApp/Logger.pm: |
+    my $GARBAGE_PERL_001_A = "noise_marker_logger";
+
+    package MyApp::Logger;
+    use strict;
+    use warnings;
+
+    my @LEVELS = qw(debug info warn error fatal);
+
+    sub new {
+        my ($class, %args) = @_;
+        my $level = $args{level} || 'info';
+        return bless { level => $level, output => [] }, $class;
+    }
+
+    sub log {
+        my ($self, $level, $msg) = @_;
+        push @{$self->{output}}, "[$level] $msg";
+    }
+
+    sub debug { $_[0]->log('debug', $_[1]) }
+    sub info  { $_[0]->log('info',  $_[1]) }
+    sub warn  { $_[0]->log('warn',  $_[1]) }
+    sub error { $_[0]->log('error', $_[1]) }
+
+    1;
+  lib/MyApp/Cache.pm: |
+    my $GARBAGE_PERL_001_B = "noise_marker_cache";
+
+    package MyApp::Cache;
+    use strict;
+    use warnings;
+
+    sub new {
+        my ($class, %args) = @_;
+        my $ttl = $args{ttl} || 300;
+        return bless { store => {}, ttl => $ttl }, $class;
+    }
+
+    sub get {
+        my ($self, $key) = @_;
+        my $entry = $self->{store}{$key};
+        return undef unless $entry;
+        if (time() > $entry->{expires}) {
+            delete $self->{store}{$key};
+            return undef;
+        }
+        return $entry->{value};
+    }
+
+    sub set {
+        my ($self, $key, $value) = @_;
+        $self->{store}{$key} = {
+            value   => $value,
+            expires => time() + $self->{ttl},
+        };
+    }
+
+    1;
+
+must_include_files:
+  - lib/MyApp/UserService.pm
+  # Q1+Q2: Database.pm defines query method used by new UserService methods
+  - lib/MyApp/Database.pm
+must_include_content_from:
+  lib/MyApp/UserService.pm:
+    - "sub find_by_email"
+    - "sub list_active_users"
+    - "use MyApp::Database"
+  lib/MyApp/Database.pm:
+    - "sub query"
+    - "fetchrow_hashref"
+must_not_include:
+  # lib/MyApp/Logger.pm: logging — not used by UserService
+  - GARBAGE_PERL_001_A
+  - "noise_marker_logger"
+  - "@LEVELS"
+  # lib/MyApp/Cache.pm: caching — not used by UserService
+  - GARBAGE_PERL_001_B
+  - "noise_marker_cache"
+must_not_include_files:
+  - lib/MyApp/Logger.pm
+  - lib/MyApp/Cache.pm
+max_fragments: 6
+max_files: 4
+add_garbage_files: false
+skip_garbage_check: true

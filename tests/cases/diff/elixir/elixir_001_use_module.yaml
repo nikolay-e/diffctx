@@ -1,0 +1,285 @@
+# Scenario: A GenServer module adds a new handle_call callback. The reviewer
+# needs the supervisor that starts this GenServer to understand the supervision
+# strategy and how the new functionality fits into the process tree.
+#
+# Diff: lib/myapp/workers/order_processor.ex adds handle_call for :process_batch
+# that processes multiple orders and returns a summary. The GenServer is started
+# by OrderSupervisor.
+#
+# Reviewer questions:
+#   Q1: "How is this GenServer supervised — will crashes in :process_batch
+#        restart it or propagate?"
+#       -> lib/myapp/workers/order_supervisor.ex (UNCHANGED): starts
+#          OrderProcessor under :one_for_one strategy, max_restarts: 3.
+#
+#   Q2: "What state does the GenServer hold — is the new callback
+#        consistent with the existing state shape?"
+#       -> lib/myapp/workers/order_processor.ex init/1 sets state as
+#          %{orders: [], processed_count: 0}. New callback uses both fields.
+#
+# Not needed for comprehension:
+#   - lib/myapp/workers/email_sender.ex: Sibling GenServer under same supervisor.
+#     STRUCTURAL TRAP: same `use GenServer`, same handle_call pattern.
+#     But processes emails, not orders.
+#
+#   - lib/myapp/workers/metrics_collector.ex: Another GenServer in workers/.
+#     STRUCTURAL TRAP: same directory, same process pattern.
+#
+#   - lib/myapp/schemas/order.ex: Ecto schema for orders.
+#     Mentions "order" in name but is a data schema, not involved in
+#     process supervision or GenServer state.
+
+initial:
+  lib/myapp/workers/order_processor.ex: |
+    defmodule MyApp.Workers.OrderProcessor do
+      use GenServer
+
+      def start_link(opts) do
+        GenServer.start_link(__MODULE__, opts, name: __MODULE__)
+      end
+
+      @impl true
+      def init(_opts) do
+        {:ok, %{orders: [], processed_count: 0}}
+      end
+
+      @impl true
+      def handle_call(:get_count, _from, state) do
+        {:reply, state.processed_count, state}
+      end
+
+      @impl true
+      def handle_cast({:enqueue, order}, state) do
+        {:noreply, %{state | orders: state.orders ++ [order]}}
+      end
+    end
+  lib/myapp/workers/order_supervisor.ex: |
+    defmodule MyApp.Workers.OrderSupervisor do
+      use Supervisor
+
+      def start_link(init_arg) do
+        Supervisor.start_link(__MODULE__, init_arg, name: __MODULE__)
+      end
+
+      @impl true
+      def init(_init_arg) do
+        children = [
+          {MyApp.Workers.OrderProcessor, []},
+          {MyApp.Workers.EmailSender, []}
+        ]
+
+        Supervisor.init(children, strategy: :one_for_one, max_restarts: 3)
+      end
+    end
+  lib/myapp/workers/email_sender.ex: |
+    defmodule MyApp.Workers.EmailSender do
+      use GenServer
+
+      def start_link(opts) do
+        GenServer.start_link(__MODULE__, opts, name: __MODULE__)
+      end
+
+      @impl true
+      def init(_opts) do
+        {:ok, %{queue: [], sent_count: 0}}
+      end
+
+      @impl true
+      def handle_cast({:send, email}, state) do
+        new_state = %{state | queue: state.queue ++ [email], sent_count: state.sent_count + 1}
+        {:noreply, new_state}
+      end
+
+      def garbage_dart_001_a, do: "GARBAGE_ELIXIR_001_A_MAILER"
+      def garbage_dart_001_b, do: "GARBAGE_ELIXIR_001_B_SMTP"
+    end
+  lib/myapp/workers/metrics_collector.ex: |
+    defmodule MyApp.Workers.MetricsCollector do
+      use GenServer
+
+      def start_link(opts) do
+        GenServer.start_link(__MODULE__, opts, name: __MODULE__)
+      end
+
+      @impl true
+      def init(_opts) do
+        {:ok, %{metrics: %{}}}
+      end
+
+      @impl true
+      def handle_cast({:record, key, value}, state) do
+        metrics = Map.update(state.metrics, key, value, &(&1 + value))
+        {:noreply, %{state | metrics: metrics}}
+      end
+
+      def garbage_marker_c, do: "GARBAGE_ELIXIR_001_C_COUNTER"
+      def garbage_marker_d, do: "GARBAGE_ELIXIR_001_D_HISTOGRAM"
+    end
+  lib/myapp/schemas/order.ex: |
+    defmodule MyApp.Schemas.Order do
+      use Ecto.Schema
+
+      schema "orders" do
+        field :item_name, :string
+        field :quantity, :integer
+        field :total_price, :decimal
+        field :status, :string, default: "pending"
+
+        timestamps()
+      end
+
+      def garbage_marker_e, do: "GARBAGE_ELIXIR_001_E_SCHEMA"
+    end
+
+changed:
+  lib/myapp/workers/order_processor.ex: |
+    defmodule MyApp.Workers.OrderProcessor do
+      use GenServer
+
+      def start_link(opts) do
+        GenServer.start_link(__MODULE__, opts, name: __MODULE__)
+      end
+
+      @impl true
+      def init(_opts) do
+        {:ok, %{orders: [], processed_count: 0}}
+      end
+
+      @impl true
+      def handle_call(:get_count, _from, state) do
+        {:reply, state.processed_count, state}
+      end
+
+      @impl true
+      def handle_call(:process_batch, _from, state) do
+        results = Enum.map(state.orders, fn order ->
+          process_single_order(order)
+        end)
+
+        new_count = state.processed_count + length(results)
+        summary = %{processed: length(results), total: new_count}
+
+        {:reply, summary, %{state | orders: [], processed_count: new_count}}
+      end
+
+      @impl true
+      def handle_cast({:enqueue, order}, state) do
+        {:noreply, %{state | orders: state.orders ++ [order]}}
+      end
+
+      defp process_single_order(order) do
+        %{order | status: "completed"}
+      end
+    end
+  lib/myapp/workers/order_supervisor.ex: |
+    defmodule MyApp.Workers.OrderSupervisor do
+      use Supervisor
+
+      def start_link(init_arg) do
+        Supervisor.start_link(__MODULE__, init_arg, name: __MODULE__)
+      end
+
+      @impl true
+      def init(_init_arg) do
+        children = [
+          {MyApp.Workers.OrderProcessor, []},
+          {MyApp.Workers.EmailSender, []}
+        ]
+
+        Supervisor.init(children, strategy: :one_for_one, max_restarts: 3)
+      end
+    end
+  lib/myapp/workers/email_sender.ex: |
+    defmodule MyApp.Workers.EmailSender do
+      use GenServer
+
+      def start_link(opts) do
+        GenServer.start_link(__MODULE__, opts, name: __MODULE__)
+      end
+
+      @impl true
+      def init(_opts) do
+        {:ok, %{queue: [], sent_count: 0}}
+      end
+
+      @impl true
+      def handle_cast({:send, email}, state) do
+        new_state = %{state | queue: state.queue ++ [email], sent_count: state.sent_count + 1}
+        {:noreply, new_state}
+      end
+
+      def garbage_dart_001_a, do: "GARBAGE_ELIXIR_001_A_MAILER"
+      def garbage_dart_001_b, do: "GARBAGE_ELIXIR_001_B_SMTP"
+    end
+  lib/myapp/workers/metrics_collector.ex: |
+    defmodule MyApp.Workers.MetricsCollector do
+      use GenServer
+
+      def start_link(opts) do
+        GenServer.start_link(__MODULE__, opts, name: __MODULE__)
+      end
+
+      @impl true
+      def init(_opts) do
+        {:ok, %{metrics: %{}}}
+      end
+
+      @impl true
+      def handle_cast({:record, key, value}, state) do
+        metrics = Map.update(state.metrics, key, value, &(&1 + value))
+        {:noreply, %{state | metrics: metrics}}
+      end
+
+      def garbage_marker_c, do: "GARBAGE_ELIXIR_001_C_COUNTER"
+      def garbage_marker_d, do: "GARBAGE_ELIXIR_001_D_HISTOGRAM"
+    end
+  lib/myapp/schemas/order.ex: |
+    defmodule MyApp.Schemas.Order do
+      use Ecto.Schema
+
+      schema "orders" do
+        field :item_name, :string
+        field :quantity, :integer
+        field :total_price, :decimal
+        field :status, :string, default: "pending"
+
+        timestamps()
+      end
+
+      def garbage_marker_e, do: "GARBAGE_ELIXIR_001_E_SCHEMA"
+    end
+
+must_include_files:
+  - lib/myapp/workers/order_processor.ex
+  - lib/myapp/workers/order_supervisor.ex
+
+must_include_content_from:
+  lib/myapp/workers/order_processor.ex:
+    - "handle_call(:process_batch"
+    - "process_single_order(order)"
+  lib/myapp/workers/order_supervisor.ex:
+    - "{MyApp.Workers.OrderProcessor, []}"
+    - "strategy: :one_for_one"
+
+must_not_include:
+  # --- email_sender.ex: sibling GenServer, not involved in order processing ---
+  - GARBAGE_ELIXIR_001_A_MAILER
+  - GARBAGE_ELIXIR_001_B_SMTP
+  - EmailSender
+  # --- metrics_collector.ex: another GenServer, unrelated ---
+  - GARBAGE_ELIXIR_001_C_COUNTER
+  - GARBAGE_ELIXIR_001_D_HISTOGRAM
+  - MetricsCollector
+  # --- schemas/order.ex: Ecto schema, not process-related ---
+  - GARBAGE_ELIXIR_001_E_SCHEMA
+  - "use Ecto.Schema"
+
+must_not_include_files:
+  - lib/myapp/workers/email_sender.ex
+  - lib/myapp/workers/metrics_collector.ex
+  - lib/myapp/schemas/order.ex
+
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

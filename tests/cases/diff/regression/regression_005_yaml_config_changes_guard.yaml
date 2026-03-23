@@ -1,0 +1,162 @@
+# Regression guard: YAML/JSON config changes must produce relevant fragments
+# Previously broken (TODO 2026-02-22): all 23 fragments from unrelated files,
+# zero from the 6 changed config files. Now fixed — guards against regression.
+
+initial:
+  .pre-commit-config.yaml: |
+    repos:
+      - repo: https://github.com/pre-commit/pre-commit-hooks
+        rev: v4.5.0
+        hooks:
+          - id: trailing-whitespace
+          - id: end-of-file-fixer
+      - repo: https://github.com/semgrep/semgrep
+        rev: v1.50.0
+        hooks:
+          - id: semgrep
+            args: ['--config', 'auto']
+  .github/workflows/ci.yml: |
+    name: CI
+    on:
+      push:
+        branches: [main]
+      pull_request:
+        branches: [main]
+    jobs:
+      test:
+        runs-on: ubuntu-latest
+        steps:
+          - uses: actions/checkout@v4
+          - uses: actions/setup-python@v5
+            with:
+              python-version: "3.12"
+          - run: pip install -r requirements.txt
+          - run: pytest
+  .github/actions/deploy/action.yml: |
+    name: Deploy
+    description: Deploy application
+    inputs:
+      environment:
+        description: Target environment
+        required: true
+    runs:
+      using: composite
+      steps:
+        - run: echo "Deploying to ${{ inputs.environment }}"
+          shell: bash
+  src/auth.py: |
+    GARBAGE_REG_005_AUTH_A = "auth"
+    GARBAGE_REG_005_TOKEN_B = "jwt"
+    class AuthService:
+        GARBAGE_REG_005_SVC_C = True
+        def login(self, u, p):
+            pass
+  src/models.py: |
+    GARBAGE_REG_005_MODEL_D = "orm"
+    class User:
+        GARBAGE_REG_005_USER_E = True
+        name = ""
+  src/utils.py: |
+    GARBAGE_REG_005_UTIL_F = "helpers"
+    def slugify(text):
+        GARBAGE_REG_005_SLUG_G = True
+        return text.lower().replace(" ", "-")
+
+changed:
+  .pre-commit-config.yaml: |
+    repos:
+      - repo: https://github.com/pre-commit/pre-commit-hooks
+        rev: v4.6.0
+        hooks:
+          - id: trailing-whitespace
+          - id: end-of-file-fixer
+          - id: check-yaml
+      - repo: https://github.com/semgrep/semgrep
+        rev: v1.60.0
+        hooks:
+          - id: semgrep
+            args: ['--config', 'auto', '--error']
+  .github/workflows/ci.yml: |
+    name: CI
+    on:
+      push:
+        branches: [main]
+      pull_request:
+        branches: [main]
+    jobs:
+      test:
+        runs-on: ubuntu-latest
+        steps:
+          - uses: actions/checkout@v4
+          - uses: actions/setup-python@v5
+            with:
+              python-version: "3.13"
+          - run: pip install -e ".[dev]"
+          - run: pytest --strict-markers
+  .github/actions/deploy/action.yml: |
+    name: Deploy
+    description: Deploy application to environment
+    inputs:
+      environment:
+        description: Target environment
+        required: true
+      dry-run:
+        description: Dry run mode
+        required: false
+        default: "false"
+    runs:
+      using: composite
+      steps:
+        - run: echo "Deploying to ${{ inputs.environment }}"
+          shell: bash
+        - run: echo "Dry run = ${{ inputs.dry-run }}"
+          shell: bash
+  src/auth.py: |
+    GARBAGE_REG_005_AUTH_A = "auth"
+    GARBAGE_REG_005_TOKEN_B = "jwt"
+    class AuthService:
+        GARBAGE_REG_005_SVC_C = True
+        def login(self, u, p):
+            pass
+  src/models.py: |
+    GARBAGE_REG_005_MODEL_D = "orm"
+    class User:
+        GARBAGE_REG_005_USER_E = True
+        name = ""
+  src/utils.py: |
+    GARBAGE_REG_005_UTIL_F = "helpers"
+    def slugify(text):
+        GARBAGE_REG_005_SLUG_G = True
+        return text.lower().replace(" ", "-")
+
+must_include_files:
+- .pre-commit-config.yaml
+- .github/workflows/ci.yml
+- .github/actions/deploy/action.yml
+
+must_include_content_from:
+  .pre-commit-config.yaml:
+    - "rev: v1.60.0"
+    - "check-yaml"
+  .github/workflows/ci.yml:
+    - 'pip install -e ".[dev]"'
+    - "python-version: \"3.13\""
+
+must_not_include:
+- GARBAGE_REG_005_AUTH_A
+- GARBAGE_REG_005_TOKEN_B
+- GARBAGE_REG_005_SVC_C
+- GARBAGE_REG_005_MODEL_D
+- GARBAGE_REG_005_USER_E
+- GARBAGE_REG_005_UTIL_F
+- GARBAGE_REG_005_SLUG_G
+
+must_not_include_files:
+- src/auth.py
+- src/models.py
+- src/utils.py
+
+strict: true
+max_files: 4
+add_garbage_files: false
+skip_garbage_check: true

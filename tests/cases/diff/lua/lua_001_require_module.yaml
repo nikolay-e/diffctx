@@ -1,0 +1,228 @@
+# Test: game.lua adds require("lib.utils") and calls new utility functions
+#
+# Scenario: game.lua is extended to require lib/utils.lua and call
+# clamp() and lerp() for position smoothing. lib/utils.lua is UNCHANGED.
+#
+# Reviewer questions:
+#   Q1: "What does clamp return — does it handle edge cases?"
+#       -> lib/utils.lua (UNCHANGED) defines clamp(value, min, max)
+#   Q2: "What interpolation does lerp use — is alpha [0,1]?"
+#       -> lib/utils.lua defines lerp(a, b, t) with linear interpolation
+#
+# Trap files (plausible but unrelated):
+#   - lib/strings.lua: string utilities in same lib/ directory — similar
+#     "utility" pattern but game.lua never requires it
+#   - lib/logging.lua: debug logging module — same lib/ dir, plausible
+#     for a game module but no require edge from game.lua
+
+initial:
+  lib/utils.lua: |
+    local M = {}
+
+    function M.clamp(value, min_val, max_val)
+        if value < min_val then return min_val end
+        if value > max_val then return max_val end
+        return value
+    end
+
+    function M.lerp(a, b, t)
+        return a + (b - a) * t
+    end
+
+    function M.distance(x1, y1, x2, y2)
+        local dx = x2 - x1
+        local dy = y2 - y1
+        return math.sqrt(dx * dx + dy * dy)
+    end
+
+    function M.normalize(x, y)
+        local len = math.sqrt(x * x + y * y)
+        if len == 0 then return 0, 0 end
+        return x / len, y / len
+    end
+
+    return M
+  game.lua: |
+    local game = {}
+
+    function game.init()
+        game.x = 0
+        game.y = 0
+    end
+
+    function game.update(dt)
+        game.x = game.x + dt
+    end
+
+    return game
+  lib/strings.lua: |
+    local GARBAGE_LUA_001_A = "noise_marker_strings"
+
+    local M = {}
+
+    function M.trim(s)
+        return s:match("^%s*(.-)%s*$")
+    end
+
+    function M.split(s, sep)
+        local parts = {}
+        for part in s:gmatch("[^" .. sep .. "]+") do
+            parts[#parts + 1] = part
+        end
+        return parts
+    end
+
+    function M.starts_with(s, prefix)
+        return s:sub(1, #prefix) == prefix
+    end
+
+    return M
+  lib/logging.lua: |
+    local GARBAGE_LUA_001_B = "noise_marker_logging"
+
+    local M = {}
+    M.level = "info"
+
+    function M.set_level(level)
+        M.level = level
+    end
+
+    function M.debug(msg)
+        if M.level == "debug" then
+            print("[DEBUG] " .. msg)
+        end
+    end
+
+    function M.info(msg)
+        print("[INFO] " .. msg)
+    end
+
+    function M.error(msg)
+        print("[ERROR] " .. msg)
+    end
+
+    return M
+
+changed:
+  lib/utils.lua: |
+    local M = {}
+
+    function M.clamp(value, min_val, max_val)
+        if value < min_val then return min_val end
+        if value > max_val then return max_val end
+        return value
+    end
+
+    function M.lerp(a, b, t)
+        return a + (b - a) * t
+    end
+
+    function M.distance(x1, y1, x2, y2)
+        local dx = x2 - x1
+        local dy = y2 - y1
+        return math.sqrt(dx * dx + dy * dy)
+    end
+
+    function M.normalize(x, y)
+        local len = math.sqrt(x * x + y * y)
+        if len == 0 then return 0, 0 end
+        return x / len, y / len
+    end
+
+    return M
+  game.lua: |
+    local utils = require("lib.utils")
+
+    local game = {}
+
+    function game.init()
+        game.x = 0
+        game.y = 0
+        game.target_x = 100
+        game.target_y = 100
+    end
+
+    function game.update(dt)
+        local smooth_factor = utils.clamp(dt * 5, 0, 1)
+        game.x = utils.lerp(game.x, game.target_x, smooth_factor)
+        game.y = utils.lerp(game.y, game.target_y, smooth_factor)
+    end
+
+    return game
+  lib/strings.lua: |
+    local GARBAGE_LUA_001_A = "noise_marker_strings"
+
+    local M = {}
+
+    function M.trim(s)
+        return s:match("^%s*(.-)%s*$")
+    end
+
+    function M.split(s, sep)
+        local parts = {}
+        for part in s:gmatch("[^" .. sep .. "]+") do
+            parts[#parts + 1] = part
+        end
+        return parts
+    end
+
+    function M.starts_with(s, prefix)
+        return s:sub(1, #prefix) == prefix
+    end
+
+    return M
+  lib/logging.lua: |
+    local GARBAGE_LUA_001_B = "noise_marker_logging"
+
+    local M = {}
+    M.level = "info"
+
+    function M.set_level(level)
+        M.level = level
+    end
+
+    function M.debug(msg)
+        if M.level == "debug" then
+            print("[DEBUG] " .. msg)
+        end
+    end
+
+    function M.info(msg)
+        print("[INFO] " .. msg)
+    end
+
+    function M.error(msg)
+        print("[ERROR] " .. msg)
+    end
+
+    return M
+
+must_include_files:
+  - game.lua
+  # Q1+Q2: utils.lua defines clamp and lerp called by game.lua
+  - lib/utils.lua
+must_include_content_from:
+  game.lua:
+    - 'require("lib.utils")'
+    - "utils.clamp"
+    - "utils.lerp"
+  lib/utils.lua:
+    - "function M.clamp(value, min_val, max_val)"
+    - "function M.lerp(a, b, t)"
+must_not_include:
+  # lib/strings.lua: string utils — not required by game.lua
+  - GARBAGE_LUA_001_A
+  - "M.trim"
+  - "M.split"
+  - "M.starts_with"
+  # lib/logging.lua: logging module — not required by game.lua
+  - GARBAGE_LUA_001_B
+  - "M.set_level"
+  - 'M.level = "info"'
+must_not_include_files:
+  - lib/strings.lua
+  - lib/logging.lua
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

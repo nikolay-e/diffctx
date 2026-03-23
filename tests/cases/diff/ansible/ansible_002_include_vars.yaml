@@ -1,0 +1,163 @@
+# Ansible include_vars: a task starts using a new variable defined
+# in an included vars file. The vars file must appear in context
+# so a reviewer can see the variable definition.
+
+initial:
+  playbooks/webserver.yml: |
+    ---
+    - hosts: webservers
+      tasks:
+        - name: Include web variables
+          ansible.builtin.include_vars:
+            file: web_vars.yml
+
+        - name: Install packages
+          ansible.builtin.apt:
+            name: "{{ web_packages }}"
+            state: present
+          become: true
+
+  vars/web_vars.yml: |
+    ---
+    web_packages:
+      - nginx
+      - certbot
+    web_port: 80
+    web_user: www-data
+    ssl_enabled: false
+
+  vars/db_vars.yml: |
+    ---
+    GARBAGE_ANS_002_A: "db_packages_marker"
+    db_packages:
+      - postgresql
+      - libpq-dev
+    db_port: 5432
+    db_user: postgres
+
+  vars/cache_vars.yml: |
+    ---
+    GARBAGE_ANS_002_B: "cache_packages_marker"
+    cache_packages:
+      - redis-server
+    cache_port: 6379
+
+  playbooks/database.yml: |
+    ---
+    - hosts: dbservers
+      GARBAGE_ANS_002_C: "database_playbook_marker"
+      tasks:
+        - name: Include database variables
+          ansible.builtin.include_vars:
+            file: db_vars.yml
+
+        - name: Install database packages
+          ansible.builtin.apt:
+            name: "{{ db_packages }}"
+            state: present
+
+  playbooks/monitoring.yml: |
+    ---
+    - hosts: all
+      GARBAGE_ANS_002_D: "monitoring_marker"
+      tasks:
+        - name: Install monitoring agent
+          ansible.builtin.apt:
+            name: node-exporter
+            state: present
+
+changed:
+  playbooks/webserver.yml: |
+    ---
+    - hosts: webservers
+      tasks:
+        - name: Include web variables
+          ansible.builtin.include_vars:
+            file: web_vars.yml
+
+        - name: Install packages
+          ansible.builtin.apt:
+            name: "{{ web_packages }}"
+            state: present
+          become: true
+
+        - name: Configure SSL certificate
+          ansible.builtin.command:
+            cmd: "certbot certonly --standalone -d {{ ssl_domain }}"
+          when: ssl_enabled
+
+  vars/web_vars.yml: |
+    ---
+    web_packages:
+      - nginx
+      - certbot
+    web_port: 80
+    web_user: www-data
+    ssl_enabled: false
+    ssl_domain: example.com
+
+  vars/db_vars.yml: |
+    ---
+    GARBAGE_ANS_002_A: "db_packages_marker"
+    db_packages:
+      - postgresql
+      - libpq-dev
+    db_port: 5432
+    db_user: postgres
+
+  vars/cache_vars.yml: |
+    ---
+    GARBAGE_ANS_002_B: "cache_packages_marker"
+    cache_packages:
+      - redis-server
+    cache_port: 6379
+
+  playbooks/database.yml: |
+    ---
+    - hosts: dbservers
+      GARBAGE_ANS_002_C: "database_playbook_marker"
+      tasks:
+        - name: Include database variables
+          ansible.builtin.include_vars:
+            file: db_vars.yml
+
+        - name: Install database packages
+          ansible.builtin.apt:
+            name: "{{ db_packages }}"
+            state: present
+
+  playbooks/monitoring.yml: |
+    ---
+    - hosts: all
+      GARBAGE_ANS_002_D: "monitoring_marker"
+      tasks:
+        - name: Install monitoring agent
+          ansible.builtin.apt:
+            name: node-exporter
+            state: present
+
+# === Assertions ===
+
+must_include_files:
+- vars/web_vars.yml
+
+must_include_content_from:
+  vars/web_vars.yml:
+    - "ssl_domain"
+    - "ssl_enabled"
+
+must_not_include:
+- GARBAGE_ANS_002_A
+- GARBAGE_ANS_002_B
+- GARBAGE_ANS_002_C
+- GARBAGE_ANS_002_D
+
+must_not_include_files:
+- vars/db_vars.yml
+- vars/cache_vars.yml
+- playbooks/database.yml
+- playbooks/monitoring.yml
+
+max_files: 4
+add_garbage_files: false
+skip_garbage_check: true

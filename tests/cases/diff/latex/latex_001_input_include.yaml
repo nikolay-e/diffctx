@@ -1,0 +1,239 @@
+# LaTeX \input/\include: main.tex adds a new \input for a results
+# chapter. The content of the newly included file must appear in
+# context so a reviewer can see what is being added.
+
+initial:
+  main.tex: |
+    \documentclass[12pt]{report}
+    \usepackage[utf8]{inputenc}
+    \usepackage{amsmath}
+    \usepackage{graphicx}
+
+    \title{Research on Distributed Systems}
+    \author{Jane Doe}
+    \date{\today}
+
+    \begin{document}
+    \maketitle
+    \tableofcontents
+
+    \input{chapters/intro}
+    \input{chapters/methods}
+
+    \bibliographystyle{plain}
+    \bibliography{references}
+    \end{document}
+
+  chapters/intro.tex: |
+    \chapter{Introduction}
+    \label{ch:intro}
+
+    Distributed systems form the backbone of modern computing
+    infrastructure. This thesis explores novel approaches to
+    consensus algorithms that improve both latency and throughput
+    under realistic network conditions.
+
+    \section{Motivation}
+    The growing demand for highly available services has driven
+    research into more efficient consensus protocols.
+
+    \section{Contributions}
+    We make the following contributions:
+    \begin{itemize}
+      \item A new consensus algorithm with $O(\log n)$ message complexity
+      \item A formal proof of safety and liveness
+      \item An experimental evaluation on a 100-node cluster
+    \end{itemize}
+
+  chapters/methods.tex: |
+    \chapter{Methods}
+    \label{ch:methods}
+
+    \section{System Model}
+    We assume an asynchronous network with crash-stop failures.
+    Each node $p_i$ maintains a local state $s_i$ and communicates
+    via reliable point-to-point channels.
+
+    \section{Algorithm Description}
+    Our algorithm proceeds in rounds. In each round $r$, the leader
+    $\ell_r$ proposes a value $v_r$ and collects acknowledgments
+    from a quorum $Q \subseteq \Pi$ where $|Q| > n/2$.
+
+  chapters/conclusion.tex: |
+    \chapter{Conclusion}
+    \label{ch:conclusion}
+    GARBAGE_TEX_001_A: conclusion_marker
+
+    We have presented a novel consensus algorithm that achieves
+    logarithmic message complexity while maintaining safety
+    and liveness guarantees.
+
+  chapters/related.tex: |
+    \chapter{Related Work}
+    \label{ch:related}
+    GARBAGE_TEX_001_B: related_work_marker
+
+    Paxos~\cite{lamport1998} remains the foundational consensus
+    algorithm. Raft~\cite{ongaro2014} simplified the design
+    for practical implementations.
+
+  appendices/proofs.tex: |
+    \appendix
+    \chapter{Formal Proofs}
+    GARBAGE_TEX_001_C: proofs_marker
+
+    \begin{theorem}
+    The algorithm satisfies agreement.
+    \end{theorem}
+
+  references.bib: |
+    @article{lamport1998,
+      author = {Lamport, Leslie},
+      title = {The Part-Time Parliament},
+      GARBAGE_TEX_001_D = {bib_marker},
+      journal = {ACM TOCS},
+      year = {1998}
+    }
+
+changed:
+  main.tex: |
+    \documentclass[12pt]{report}
+    \usepackage[utf8]{inputenc}
+    \usepackage{amsmath}
+    \usepackage{graphicx}
+
+    \title{Research on Distributed Systems}
+    \author{Jane Doe}
+    \date{\today}
+
+    \begin{document}
+    \maketitle
+    \tableofcontents
+
+    \input{chapters/intro}
+    \input{chapters/methods}
+    \input{chapters/results}
+
+    \bibliographystyle{plain}
+    \bibliography{references}
+    \end{document}
+
+  chapters/intro.tex: |
+    \chapter{Introduction}
+    \label{ch:intro}
+
+    Distributed systems form the backbone of modern computing
+    infrastructure. This thesis explores novel approaches to
+    consensus algorithms that improve both latency and throughput
+    under realistic network conditions.
+
+    \section{Motivation}
+    The growing demand for highly available services has driven
+    research into more efficient consensus protocols.
+
+    \section{Contributions}
+    We make the following contributions:
+    \begin{itemize}
+      \item A new consensus algorithm with $O(\log n)$ message complexity
+      \item A formal proof of safety and liveness
+      \item An experimental evaluation on a 100-node cluster
+    \end{itemize}
+
+  chapters/methods.tex: |
+    \chapter{Methods}
+    \label{ch:methods}
+
+    \section{System Model}
+    We assume an asynchronous network with crash-stop failures.
+    Each node $p_i$ maintains a local state $s_i$ and communicates
+    via reliable point-to-point channels.
+
+    \section{Algorithm Description}
+    Our algorithm proceeds in rounds. In each round $r$, the leader
+    $\ell_r$ proposes a value $v_r$ and collects acknowledgments
+    from a quorum $Q \subseteq \Pi$ where $|Q| > n/2$.
+
+  chapters/results.tex: |
+    \chapter{Results}
+    \label{ch:results}
+
+    \section{Experimental Setup}
+    We deployed our algorithm on a cluster of 100 nodes across
+    three data centers with inter-DC latency of 50ms.
+
+    \section{Throughput Evaluation}
+    Figure~\ref{fig:throughput} shows that our algorithm achieves
+    $2.3\times$ higher throughput than Raft under contention.
+
+    \begin{figure}[h]
+      \centering
+      \includegraphics[width=0.8\textwidth]{figures/throughput}
+      \caption{Throughput comparison under varying contention levels}
+      \label{fig:throughput}
+    \end{figure}
+
+    \section{Latency Analysis}
+    The median commit latency was 12ms for single-DC operations
+    and 67ms for cross-DC consensus.
+
+  chapters/conclusion.tex: |
+    \chapter{Conclusion}
+    \label{ch:conclusion}
+    GARBAGE_TEX_001_A: conclusion_marker
+
+    We have presented a novel consensus algorithm that achieves
+    logarithmic message complexity while maintaining safety
+    and liveness guarantees.
+
+  chapters/related.tex: |
+    \chapter{Related Work}
+    \label{ch:related}
+    GARBAGE_TEX_001_B: related_work_marker
+
+    Paxos~\cite{lamport1998} remains the foundational consensus
+    algorithm. Raft~\cite{ongaro2014} simplified the design
+    for practical implementations.
+
+  appendices/proofs.tex: |
+    \appendix
+    \chapter{Formal Proofs}
+    GARBAGE_TEX_001_C: proofs_marker
+
+    \begin{theorem}
+    The algorithm satisfies agreement.
+    \end{theorem}
+
+  references.bib: |
+    @article{lamport1998,
+      author = {Lamport, Leslie},
+      title = {The Part-Time Parliament},
+      GARBAGE_TEX_001_D = {bib_marker},
+      journal = {ACM TOCS},
+      year = {1998}
+    }
+
+# === Assertions ===
+
+must_include_files:
+- chapters/results.tex
+
+must_include_content_from:
+  chapters/results.tex:
+    - "Experimental Setup"
+    - "Throughput Evaluation"
+    - "Latency Analysis"
+
+must_not_include:
+- GARBAGE_TEX_001_A
+- GARBAGE_TEX_001_B
+- GARBAGE_TEX_001_C
+- GARBAGE_TEX_001_D
+
+must_not_include_files:
+- chapters/conclusion.tex
+- chapters/related.tex
+- appendices/proofs.tex
+
+max_files: 4
+add_garbage_files: false
+skip_garbage_check: true

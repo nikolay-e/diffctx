@@ -1,0 +1,242 @@
+# Scenario: An Elixir module adds a new query function that uses an aliased
+# schema and imported Ecto.Query macros. The reviewer needs the schema definition
+# to verify the query references valid fields.
+#
+# Diff: lib/myapp/accounts/queries.ex adds find_active_users/1 which queries
+# User schema filtering by :active status and ordering by :inserted_at.
+# Uses `alias MyApp.Accounts.User` and `import Ecto.Query`.
+#
+# Reviewer questions:
+#   Q1: "Does the User schema have a :status field with 'active' as a value?"
+#       -> lib/myapp/accounts/user.ex (UNCHANGED): schema has
+#          `field :status, :string, default: "active"` — confirmed.
+#
+#   Q2: "Does User have :inserted_at for the order_by clause?"
+#       -> lib/myapp/accounts/user.ex: uses `timestamps()` which provides
+#          :inserted_at and :updated_at automatically.
+#
+# Not needed for comprehension:
+#   - lib/myapp/accounts/team.ex: Another schema in same context.
+#     STRUCTURAL TRAP: same Ecto.Schema pattern, same directory.
+#     But Team has different fields, not queried here.
+#
+#   - lib/myapp/accounts/admin.ex: Schema that also has :status field.
+#     HARDEST TRAP: has `field :status, :string` just like User.
+#     But admin accounts are queried separately.
+#
+#   - lib/myapp/repo.ex: The Ecto Repo module.
+#     Referenced indirectly (Repo.all) but the query construction
+#     is what the reviewer needs to verify, not the repo adapter.
+
+initial:
+  lib/myapp/accounts/user.ex: |
+    defmodule MyApp.Accounts.User do
+      use Ecto.Schema
+      import Ecto.Changeset
+
+      schema "users" do
+        field :name, :string
+        field :email, :string
+        field :status, :string, default: "active"
+        field :role, :string, default: "member"
+
+        timestamps()
+      end
+
+      def changeset(user, attrs) do
+        user
+        |> cast(attrs, [:name, :email, :status, :role])
+        |> validate_required([:name, :email])
+        |> unique_constraint(:email)
+      end
+    end
+  lib/myapp/accounts/queries.ex: |
+    defmodule MyApp.Accounts.Queries do
+      import Ecto.Query
+      alias MyApp.Accounts.User
+
+      def find_by_email(email) do
+        from(u in User, where: u.email == ^email)
+      end
+    end
+  lib/myapp/accounts/team.ex: |
+    defmodule MyApp.Accounts.Team do
+      use Ecto.Schema
+      import Ecto.Changeset
+
+      schema "teams" do
+        field :name, :string
+        field :description, :string
+        field :max_members, :integer, default: 10
+
+        timestamps()
+      end
+
+      def changeset(team, attrs) do
+        team
+        |> cast(attrs, [:name, :description, :max_members])
+        |> validate_required([:name])
+      end
+
+      def garbage_marker_a, do: "GARBAGE_ELIXIR_002_A_TEAM_LIMIT"
+      def garbage_marker_b, do: "GARBAGE_ELIXIR_002_B_TEAM_SLUG"
+    end
+  lib/myapp/accounts/admin.ex: |
+    defmodule MyApp.Accounts.Admin do
+      use Ecto.Schema
+      import Ecto.Changeset
+
+      schema "admins" do
+        field :username, :string
+        field :status, :string, default: "active"
+        field :permissions, {:array, :string}, default: []
+
+        timestamps()
+      end
+
+      def changeset(admin, attrs) do
+        admin
+        |> cast(attrs, [:username, :status, :permissions])
+        |> validate_required([:username])
+      end
+
+      def garbage_marker_c, do: "GARBAGE_ELIXIR_002_C_ADMIN_PERMS"
+      def garbage_marker_d, do: "GARBAGE_ELIXIR_002_D_SUPERADMIN"
+    end
+  lib/myapp/repo.ex: |
+    defmodule MyApp.Repo do
+      use Ecto.Repo,
+        otp_app: :myapp,
+        adapter: Ecto.Adapters.Postgres
+
+      def garbage_marker_e, do: "GARBAGE_ELIXIR_002_E_POOL_SIZE"
+    end
+
+changed:
+  lib/myapp/accounts/user.ex: |
+    defmodule MyApp.Accounts.User do
+      use Ecto.Schema
+      import Ecto.Changeset
+
+      schema "users" do
+        field :name, :string
+        field :email, :string
+        field :status, :string, default: "active"
+        field :role, :string, default: "member"
+
+        timestamps()
+      end
+
+      def changeset(user, attrs) do
+        user
+        |> cast(attrs, [:name, :email, :status, :role])
+        |> validate_required([:name, :email])
+        |> unique_constraint(:email)
+      end
+    end
+  lib/myapp/accounts/queries.ex: |
+    defmodule MyApp.Accounts.Queries do
+      import Ecto.Query
+      alias MyApp.Accounts.User
+
+      def find_by_email(email) do
+        from(u in User, where: u.email == ^email)
+      end
+
+      def find_active_users(limit \\ 50) do
+        from(u in User,
+          where: u.status == "active",
+          order_by: [desc: u.inserted_at],
+          limit: ^limit
+        )
+      end
+    end
+  lib/myapp/accounts/team.ex: |
+    defmodule MyApp.Accounts.Team do
+      use Ecto.Schema
+      import Ecto.Changeset
+
+      schema "teams" do
+        field :name, :string
+        field :description, :string
+        field :max_members, :integer, default: 10
+
+        timestamps()
+      end
+
+      def changeset(team, attrs) do
+        team
+        |> cast(attrs, [:name, :description, :max_members])
+        |> validate_required([:name])
+      end
+
+      def garbage_marker_a, do: "GARBAGE_ELIXIR_002_A_TEAM_LIMIT"
+      def garbage_marker_b, do: "GARBAGE_ELIXIR_002_B_TEAM_SLUG"
+    end
+  lib/myapp/accounts/admin.ex: |
+    defmodule MyApp.Accounts.Admin do
+      use Ecto.Schema
+      import Ecto.Changeset
+
+      schema "admins" do
+        field :username, :string
+        field :status, :string, default: "active"
+        field :permissions, {:array, :string}, default: []
+
+        timestamps()
+      end
+
+      def changeset(admin, attrs) do
+        admin
+        |> cast(attrs, [:username, :status, :permissions])
+        |> validate_required([:username])
+      end
+
+      def garbage_marker_c, do: "GARBAGE_ELIXIR_002_C_ADMIN_PERMS"
+      def garbage_marker_d, do: "GARBAGE_ELIXIR_002_D_SUPERADMIN"
+    end
+  lib/myapp/repo.ex: |
+    defmodule MyApp.Repo do
+      use Ecto.Repo,
+        otp_app: :myapp,
+        adapter: Ecto.Adapters.Postgres
+
+      def garbage_marker_e, do: "GARBAGE_ELIXIR_002_E_POOL_SIZE"
+    end
+
+must_include_files:
+  - lib/myapp/accounts/queries.ex
+  - lib/myapp/accounts/user.ex
+
+must_include_content_from:
+  lib/myapp/accounts/queries.ex:
+    - "def find_active_users"
+    - 'u.status == "active"'
+  lib/myapp/accounts/user.ex:
+    - 'field :status, :string, default: "active"'
+    - "schema \"users\""
+
+must_not_include:
+  # --- team.ex: sibling schema, same directory ---
+  - GARBAGE_ELIXIR_002_A_TEAM_LIMIT
+  - GARBAGE_ELIXIR_002_B_TEAM_SLUG
+  - "schema \"teams\""
+  - max_members
+  # --- admin.ex: also has :status but different entity ---
+  - GARBAGE_ELIXIR_002_C_ADMIN_PERMS
+  - GARBAGE_ELIXIR_002_D_SUPERADMIN
+  - "schema \"admins\""
+  - permissions
+  # --- repo.ex: data layer, not needed for query field verification ---
+  - GARBAGE_ELIXIR_002_E_POOL_SIZE
+  - Ecto.Adapters.Postgres
+
+must_not_include_files:
+  - lib/myapp/accounts/team.ex
+  - lib/myapp/accounts/admin.ex
+  - lib/myapp/repo.ex
+
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

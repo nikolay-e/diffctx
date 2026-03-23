@@ -1,0 +1,382 @@
+# Test: LOVE2D game state adds new entity type referencing sprite module
+#
+# Scenario: game/state.lua adds an Enemy entity type that uses
+# sprite.create_animated from game/sprite.lua to build its visual.
+# main.lua loads state and is UNCHANGED. game/sprite.lua is UNCHANGED.
+#
+# Reviewer questions:
+#   Q1: "What does create_animated return — does it match Enemy expectations?"
+#       -> game/sprite.lua (UNCHANGED) defines create_animated(sheet, frames, fps)
+#   Q2: "Does the sprite sheet format match what Enemy passes?"
+#       -> game/sprite.lua shows frame_width/frame_height extraction logic
+#
+# Trap files:
+#   - game/audio.lua: sound manager — same game/ dir, similar module
+#     table pattern but state.lua never requires it
+#   - game/input.lua: input handler — same directory, plausible for
+#     game entities but no dependency from state.lua
+
+initial:
+  main.lua: |
+    local state = require("game.state")
+
+    function love.load()
+        state.init()
+    end
+
+    function love.update(dt)
+        state.update(dt)
+    end
+
+    function love.draw()
+        state.draw()
+    end
+  game/state.lua: |
+    local sprite = require("game.sprite")
+
+    local M = {}
+    M.entities = {}
+
+    function M.init()
+        local player = {
+            type = "player",
+            x = 400,
+            y = 300,
+            sprite = sprite.create("assets/player.png", 32, 32),
+        }
+        table.insert(M.entities, player)
+    end
+
+    function M.update(dt)
+        for _, entity in ipairs(M.entities) do
+            if entity.update then
+                entity.update(entity, dt)
+            end
+        end
+    end
+
+    function M.draw()
+        for _, entity in ipairs(M.entities) do
+            sprite.draw(entity.sprite, entity.x, entity.y)
+        end
+    end
+
+    return M
+  game/sprite.lua: |
+    local M = {}
+
+    function M.create(path, width, height)
+        local image = love.graphics.newImage(path)
+        return {
+            image = image,
+            width = width,
+            height = height,
+            quad = love.graphics.newQuad(0, 0, width, height,
+                image:getDimensions()),
+        }
+    end
+
+    function M.create_animated(sheet_path, frame_count, fps)
+        local image = love.graphics.newImage(sheet_path)
+        local iw, ih = image:getDimensions()
+        local frame_width = iw / frame_count
+        local frame_height = ih
+        local frames = {}
+        for i = 0, frame_count - 1 do
+            frames[#frames + 1] = love.graphics.newQuad(
+                i * frame_width, 0, frame_width, frame_height, iw, ih)
+        end
+        return {
+            image = image,
+            frames = frames,
+            frame_width = frame_width,
+            frame_height = frame_height,
+            current_frame = 1,
+            timer = 0,
+            fps = fps,
+        }
+    end
+
+    function M.update_animated(spr, dt)
+        spr.timer = spr.timer + dt
+        if spr.timer >= 1 / spr.fps then
+            spr.timer = spr.timer - 1 / spr.fps
+            spr.current_frame = spr.current_frame % #spr.frames + 1
+        end
+    end
+
+    function M.draw(spr, x, y)
+        if spr.frames then
+            love.graphics.draw(spr.image, spr.frames[spr.current_frame], x, y)
+        else
+            love.graphics.draw(spr.image, spr.quad, x, y)
+        end
+    end
+
+    return M
+  game/audio.lua: |
+    local GARBAGE_LUA_003_A = "noise_marker_audio"
+
+    local M = {}
+    M.sounds = {}
+    M.music = nil
+
+    function M.load_sound(name, path)
+        M.sounds[name] = love.audio.newSource(path, "static")
+    end
+
+    function M.play(name)
+        if M.sounds[name] then
+            M.sounds[name]:play()
+        end
+    end
+
+    function M.play_music(path)
+        if M.music then M.music:stop() end
+        M.music = love.audio.newSource(path, "stream")
+        M.music:setLooping(true)
+        M.music:play()
+    end
+
+    function M.set_volume(vol)
+        love.audio.setVolume(vol)
+    end
+
+    return M
+  game/input.lua: |
+    local GARBAGE_LUA_003_B = "noise_marker_input"
+
+    local M = {}
+    M.bindings = {}
+
+    function M.bind(key, action)
+        M.bindings[key] = action
+    end
+
+    function M.is_pressed(action)
+        for key, act in pairs(M.bindings) do
+            if act == action and love.keyboard.isDown(key) then
+                return true
+            end
+        end
+        return false
+    end
+
+    function M.get_axis(neg_action, pos_action)
+        local val = 0
+        if M.is_pressed(neg_action) then val = val - 1 end
+        if M.is_pressed(pos_action) then val = val + 1 end
+        return val
+    end
+
+    return M
+
+changed:
+  main.lua: |
+    local state = require("game.state")
+
+    function love.load()
+        state.init()
+    end
+
+    function love.update(dt)
+        state.update(dt)
+    end
+
+    function love.draw()
+        state.draw()
+    end
+  game/state.lua: |
+    local sprite = require("game.sprite")
+
+    local M = {}
+    M.entities = {}
+
+    local function enemy_update(self, dt)
+        sprite.update_animated(self.sprite, dt)
+        self.x = self.x + self.speed * dt * self.direction
+        if self.x < 50 or self.x > 750 then
+            self.direction = -self.direction
+        end
+    end
+
+    function M.spawn_enemy(x, y)
+        local enemy = {
+            type = "enemy",
+            x = x,
+            y = y,
+            speed = 120,
+            direction = 1,
+            sprite = sprite.create_animated("assets/enemy_walk.png", 6, 10),
+            update = enemy_update,
+        }
+        table.insert(M.entities, enemy)
+        return enemy
+    end
+
+    function M.init()
+        local player = {
+            type = "player",
+            x = 400,
+            y = 300,
+            sprite = sprite.create("assets/player.png", 32, 32),
+        }
+        table.insert(M.entities, player)
+        M.spawn_enemy(200, 300)
+        M.spawn_enemy(600, 300)
+    end
+
+    function M.update(dt)
+        for _, entity in ipairs(M.entities) do
+            if entity.update then
+                entity.update(entity, dt)
+            end
+        end
+    end
+
+    function M.draw()
+        for _, entity in ipairs(M.entities) do
+            sprite.draw(entity.sprite, entity.x, entity.y)
+        end
+    end
+
+    return M
+  game/sprite.lua: |
+    local M = {}
+
+    function M.create(path, width, height)
+        local image = love.graphics.newImage(path)
+        return {
+            image = image,
+            width = width,
+            height = height,
+            quad = love.graphics.newQuad(0, 0, width, height,
+                image:getDimensions()),
+        }
+    end
+
+    function M.create_animated(sheet_path, frame_count, fps)
+        local image = love.graphics.newImage(sheet_path)
+        local iw, ih = image:getDimensions()
+        local frame_width = iw / frame_count
+        local frame_height = ih
+        local frames = {}
+        for i = 0, frame_count - 1 do
+            frames[#frames + 1] = love.graphics.newQuad(
+                i * frame_width, 0, frame_width, frame_height, iw, ih)
+        end
+        return {
+            image = image,
+            frames = frames,
+            frame_width = frame_width,
+            frame_height = frame_height,
+            current_frame = 1,
+            timer = 0,
+            fps = fps,
+        }
+    end
+
+    function M.update_animated(spr, dt)
+        spr.timer = spr.timer + dt
+        if spr.timer >= 1 / spr.fps then
+            spr.timer = spr.timer - 1 / spr.fps
+            spr.current_frame = spr.current_frame % #spr.frames + 1
+        end
+    end
+
+    function M.draw(spr, x, y)
+        if spr.frames then
+            love.graphics.draw(spr.image, spr.frames[spr.current_frame], x, y)
+        else
+            love.graphics.draw(spr.image, spr.quad, x, y)
+        end
+    end
+
+    return M
+  game/audio.lua: |
+    local GARBAGE_LUA_003_A = "noise_marker_audio"
+
+    local M = {}
+    M.sounds = {}
+    M.music = nil
+
+    function M.load_sound(name, path)
+        M.sounds[name] = love.audio.newSource(path, "static")
+    end
+
+    function M.play(name)
+        if M.sounds[name] then
+            M.sounds[name]:play()
+        end
+    end
+
+    function M.play_music(path)
+        if M.music then M.music:stop() end
+        M.music = love.audio.newSource(path, "stream")
+        M.music:setLooping(true)
+        M.music:play()
+    end
+
+    function M.set_volume(vol)
+        love.audio.setVolume(vol)
+    end
+
+    return M
+  game/input.lua: |
+    local GARBAGE_LUA_003_B = "noise_marker_input"
+
+    local M = {}
+    M.bindings = {}
+
+    function M.bind(key, action)
+        M.bindings[key] = action
+    end
+
+    function M.is_pressed(action)
+        for key, act in pairs(M.bindings) do
+            if act == action and love.keyboard.isDown(key) then
+                return true
+            end
+        end
+        return false
+    end
+
+    function M.get_axis(neg_action, pos_action)
+        local val = 0
+        if M.is_pressed(neg_action) then val = val - 1 end
+        if M.is_pressed(pos_action) then val = val + 1 end
+        return val
+    end
+
+    return M
+
+must_include_files:
+  - game/state.lua
+  # Q1+Q2: sprite.lua defines create_animated and update_animated
+  - game/sprite.lua
+must_include_content_from:
+  game/state.lua:
+    - "sprite.create_animated"
+    - "sprite.update_animated"
+    - "spawn_enemy"
+  game/sprite.lua:
+    - "function M.create_animated(sheet_path, frame_count, fps)"
+    - "frame_width = iw / frame_count"
+must_not_include:
+  # game/audio.lua: sound manager — same directory but no dependency
+  - GARBAGE_LUA_003_A
+  - "love.audio.newSource"
+  - "M.load_sound"
+  - "M.play_music"
+  # game/input.lua: input handler — same directory but no dependency
+  - GARBAGE_LUA_003_B
+  - "M.is_pressed"
+  - "M.get_axis"
+  - "love.keyboard.isDown"
+must_not_include_files:
+  - game/audio.lua
+  - game/input.lua
+max_fragments: 8
+max_files: 4
+add_garbage_files: false
+skip_garbage_check: true

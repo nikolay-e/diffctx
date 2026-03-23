@@ -1,0 +1,248 @@
+# Scenario: A BUILD genrule adds a new source file to its srcs list,
+# and a new source file is created for the genrule to process.
+# The reviewer needs both the BUILD genrule and the new source file.
+#
+# Reviewer questions:
+#   Q1: "What new source file is being processed by the genrule?"
+#       -> codegen/templates/events.tmpl: new event template
+#   Q2: "How is the genrule modified to include the new file?"
+#       -> codegen/BUILD: srcs adds events.tmpl, cmd updated
+#
+# Not needed:
+#   - codegen/templates/legacy.tmpl: existing template not involved in change
+#   - codegen/scripts/validate.sh: unrelated script in same package
+#   - services/BUILD: unrelated BUILD file
+
+initial:
+  codegen/BUILD: |
+    genrule(
+        name = "generate_models",
+        srcs = [
+            "templates/user.tmpl",
+            "templates/order.tmpl",
+        ],
+        outs = [
+            "generated/user_model.py",
+            "generated/order_model.py",
+        ],
+        cmd = """
+            $(location //codegen/scripts:generator) \
+                --templates $(SRCS) \
+                --output-dir $(RULEDIR)/generated
+        """,
+        tools = ["//codegen/scripts:generator"],
+        visibility = ["//visibility:public"],
+    )
+  codegen/templates/user.tmpl: |
+    class {{ .Name }}Model:
+        def __init__(self, {{ range .Fields }}{{ .Name }}: {{ .Type }}, {{ end }}):
+            {{ range .Fields }}self.{{ .Name }} = {{ .Name }}
+            {{ end }}
+
+        def to_dict(self):
+            return {
+                {{ range .Fields }}"{{ .Name }}": self.{{ .Name }},
+                {{ end }}
+            }
+  codegen/templates/order.tmpl: |
+    class {{ .Name }}Model:
+        def __init__(self, {{ range .Fields }}{{ .Name }}: {{ .Type }}, {{ end }}):
+            {{ range .Fields }}self.{{ .Name }} = {{ .Name }}
+            {{ end }}
+
+        def validate(self):
+            {{ range .Validations }}
+            if not self.{{ .Field }}:
+                raise ValueError("{{ .Field }} is required")
+            {{ end }}
+            return True
+  codegen/scripts/generator.py: |
+    import sys
+    import os
+
+    def generate(template_path, output_dir):
+        with open(template_path) as f:
+            template = f.read()
+        basename = os.path.basename(template_path).replace(".tmpl", "_model.py")
+        output_path = os.path.join(output_dir, basename)
+        with open(output_path, "w") as f:
+            f.write(template)
+
+    if __name__ == "__main__":
+        for tmpl in sys.argv[1:]:
+            generate(tmpl, "generated/")
+
+  # Trap: existing template not touched by the change
+  codegen/templates/legacy.tmpl: |
+    GARBAGE_BAZEL_004_A = "noise_legacy_template"
+    class Legacy{{ .Name }}:
+        pass
+
+  # Trap: unrelated script in same package
+  codegen/scripts/validate.sh: |
+    #!/bin/bash
+    GARBAGE_BAZEL_004_B="noise_validate_script"
+    echo "Validating generated code..."
+    python -m py_compile "$1"
+
+  # Trap: unrelated BUILD in another package
+  services/BUILD: |
+    py_binary(
+        name = "api",
+        srcs = ["api.py"],
+        deps = ["//codegen:generate_models"],
+        GARBAGE_BAZEL_004_C = "noise_services_build",
+    )
+  services/api.py: |
+    GARBAGE_BAZEL_004_D = "noise_services_api"
+    from codegen.generated.user_model import UserModel
+    print(UserModel)
+
+  # Trap: another genrule in a different package
+  data/BUILD: |
+    genrule(
+        name = "process_data",
+        srcs = ["input.csv"],
+        outs = ["output.json"],
+        cmd = "python $(location :converter) < $< > $@",
+        tools = [":converter"],
+        GARBAGE_BAZEL_004_E = "noise_data_build",
+    )
+
+changed:
+  codegen/BUILD: |
+    genrule(
+        name = "generate_models",
+        srcs = [
+            "templates/user.tmpl",
+            "templates/order.tmpl",
+            "templates/events.tmpl",
+        ],
+        outs = [
+            "generated/user_model.py",
+            "generated/order_model.py",
+            "generated/events_model.py",
+        ],
+        cmd = """
+            $(location //codegen/scripts:generator) \
+                --templates $(SRCS) \
+                --output-dir $(RULEDIR)/generated
+        """,
+        tools = ["//codegen/scripts:generator"],
+        visibility = ["//visibility:public"],
+    )
+  codegen/templates/user.tmpl: |
+    class {{ .Name }}Model:
+        def __init__(self, {{ range .Fields }}{{ .Name }}: {{ .Type }}, {{ end }}):
+            {{ range .Fields }}self.{{ .Name }} = {{ .Name }}
+            {{ end }}
+
+        def to_dict(self):
+            return {
+                {{ range .Fields }}"{{ .Name }}": self.{{ .Name }},
+                {{ end }}
+            }
+  codegen/templates/order.tmpl: |
+    class {{ .Name }}Model:
+        def __init__(self, {{ range .Fields }}{{ .Name }}: {{ .Type }}, {{ end }}):
+            {{ range .Fields }}self.{{ .Name }} = {{ .Name }}
+            {{ end }}
+
+        def validate(self):
+            {{ range .Validations }}
+            if not self.{{ .Field }}:
+                raise ValueError("{{ .Field }} is required")
+            {{ end }}
+            return True
+  codegen/templates/events.tmpl: |
+    class {{ .Name }}Event:
+        def __init__(self, {{ range .Fields }}{{ .Name }}: {{ .Type }}, {{ end }}):
+            {{ range .Fields }}self.{{ .Name }} = {{ .Name }}
+            {{ end }}
+            self.timestamp = None
+
+        def emit(self):
+            import json
+            return json.dumps(self.to_dict())
+
+        def to_dict(self):
+            return {
+                "type": "{{ .Name }}",
+                {{ range .Fields }}"{{ .Name }}": self.{{ .Name }},
+                {{ end }}
+                "timestamp": self.timestamp,
+            }
+  codegen/scripts/generator.py: |
+    import sys
+    import os
+
+    def generate(template_path, output_dir):
+        with open(template_path) as f:
+            template = f.read()
+        basename = os.path.basename(template_path).replace(".tmpl", "_model.py")
+        output_path = os.path.join(output_dir, basename)
+        with open(output_path, "w") as f:
+            f.write(template)
+
+    if __name__ == "__main__":
+        for tmpl in sys.argv[1:]:
+            generate(tmpl, "generated/")
+  codegen/templates/legacy.tmpl: |
+    GARBAGE_BAZEL_004_A = "noise_legacy_template"
+    class Legacy{{ .Name }}:
+        pass
+  codegen/scripts/validate.sh: |
+    #!/bin/bash
+    GARBAGE_BAZEL_004_B="noise_validate_script"
+    echo "Validating generated code..."
+    python -m py_compile "$1"
+  services/BUILD: |
+    py_binary(
+        name = "api",
+        srcs = ["api.py"],
+        deps = ["//codegen:generate_models"],
+        GARBAGE_BAZEL_004_C = "noise_services_build",
+    )
+  services/api.py: |
+    GARBAGE_BAZEL_004_D = "noise_services_api"
+    from codegen.generated.user_model import UserModel
+    print(UserModel)
+  data/BUILD: |
+    genrule(
+        name = "process_data",
+        srcs = ["input.csv"],
+        outs = ["output.json"],
+        cmd = "python $(location :converter) < $< > $@",
+        tools = [":converter"],
+        GARBAGE_BAZEL_004_E = "noise_data_build",
+    )
+
+must_include_files:
+- codegen/BUILD
+- codegen/templates/events.tmpl
+
+must_include_content_from:
+  codegen/BUILD:
+    - events.tmpl
+    - events_model.py
+  codegen/templates/events.tmpl:
+    - Event
+    - emit
+
+must_not_include:
+- GARBAGE_BAZEL_004_A
+- GARBAGE_BAZEL_004_B
+- GARBAGE_BAZEL_004_C
+- GARBAGE_BAZEL_004_D
+- GARBAGE_BAZEL_004_E
+
+must_not_include_files:
+- codegen/templates/legacy.tmpl
+- codegen/scripts/validate.sh
+- services/BUILD
+- services/api.py
+- data/BUILD
+
+max_files: 4
+add_garbage_files: false
+skip_garbage_check: true

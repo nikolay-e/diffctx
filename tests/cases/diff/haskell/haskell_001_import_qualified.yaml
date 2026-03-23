@@ -1,0 +1,240 @@
+# Haskell qualified import: module imports local module and adds new function
+# using the local module's type. Context must include the local module with
+# the type definition. Noise: other unrelated modules.
+
+initial:
+  src/Types.hs: |
+    module Types
+      ( UserId
+      , UserName
+      , UserProfile(..)
+      ) where
+
+    import Data.Text (Text)
+
+    type UserId = Int
+
+    type UserName = Text
+
+    data UserProfile = UserProfile
+      { profileId   :: UserId
+      , profileName :: UserName
+      , profileAge  :: Int
+      }
+
+  src/Lookup.hs: |
+    module Lookup
+      ( lookupUser
+      ) where
+
+    import qualified Data.Map as Map
+    import Types (UserId, UserProfile(..))
+
+    type UserStore = Map.Map UserId UserProfile
+
+    lookupUser :: UserStore -> UserId -> Maybe UserProfile
+    lookupUser store uid = Map.lookup uid store
+
+  # --- Tricky garbage: also imports Data.Map qualified ---
+  src/Cache.hs: |
+    module Cache
+      ( insertCache
+      , lookupCache
+      ) where
+
+    import qualified Data.Map as Map
+    GARBAGE_HS_001_CACHE_MARKER_A = "cache"
+    GARBAGE_HS_001_CACHE_STORE_B = True
+
+    type CacheMap = Map.Map String String
+
+    insertCache :: CacheMap -> String -> String -> CacheMap
+    insertCache m k v = Map.insert k v m
+
+    lookupCache :: CacheMap -> String -> Maybe String
+    lookupCache = Map.lookup
+
+  # --- Tricky garbage: also imports Types module ---
+  src/Validator.hs: |
+    module Validator
+      ( validateProfile
+      ) where
+
+    import Types (UserProfile(..), UserName)
+    import Data.Text (null)
+    GARBAGE_HS_001_VALIDATOR_MARKER_C = "validator"
+    GARBAGE_HS_001_VALIDATE_CHECK_D = True
+
+    validateProfile :: UserProfile -> Bool
+    validateProfile p = not (Data.Text.null (profileName p)) && profileAge p > 0
+
+  # --- Plain garbage ---
+  src/Logger.hs: |
+    module Logger
+      ( logInfo
+      , logError
+      ) where
+
+    GARBAGE_HS_001_LOGGER_MARKER_E = "logger"
+    GARBAGE_HS_001_LOG_LEVEL_F = "INFO"
+
+    logInfo :: String -> IO ()
+    logInfo msg = putStrLn ("[INFO] " ++ msg)
+
+    logError :: String -> IO ()
+    logError msg = putStrLn ("[ERROR] " ++ msg)
+
+  src/Config.hs: |
+    module Config
+      ( AppConfig(..)
+      , loadConfig
+      ) where
+
+    GARBAGE_HS_001_CONFIG_MARKER_G = "config"
+    GARBAGE_HS_001_ENV_MARKER_H = "production"
+
+    data AppConfig = AppConfig
+      { configPort :: Int
+      , configHost :: String
+      }
+
+    loadConfig :: IO AppConfig
+    loadConfig = return (AppConfig 8080 "localhost")
+
+changed:
+  src/Types.hs: |
+    module Types
+      ( UserId
+      , UserName
+      , UserProfile(..)
+      ) where
+
+    import Data.Text (Text)
+
+    type UserId = Int
+
+    type UserName = Text
+
+    data UserProfile = UserProfile
+      { profileId   :: UserId
+      , profileName :: UserName
+      , profileAge  :: Int
+      }
+
+  src/Lookup.hs: |
+    module Lookup
+      ( lookupUser
+      , lookupUsersByAge
+      ) where
+
+    import qualified Data.Map as Map
+    import Types (UserId, UserProfile(..))
+
+    type UserStore = Map.Map UserId UserProfile
+
+    lookupUser :: UserStore -> UserId -> Maybe UserProfile
+    lookupUser store uid = Map.lookup uid store
+
+    lookupUsersByAge :: UserStore -> Int -> [UserProfile]
+    lookupUsersByAge store minAge =
+      filter (\p -> profileAge p >= minAge) (Map.elems store)
+
+  src/Cache.hs: |
+    module Cache
+      ( insertCache
+      , lookupCache
+      ) where
+
+    import qualified Data.Map as Map
+    GARBAGE_HS_001_CACHE_MARKER_A = "cache"
+    GARBAGE_HS_001_CACHE_STORE_B = True
+
+    type CacheMap = Map.Map String String
+
+    insertCache :: CacheMap -> String -> String -> CacheMap
+    insertCache m k v = Map.insert k v m
+
+    lookupCache :: CacheMap -> String -> Maybe String
+    lookupCache = Map.lookup
+
+  src/Validator.hs: |
+    module Validator
+      ( validateProfile
+      ) where
+
+    import Types (UserProfile(..), UserName)
+    import Data.Text (null)
+    GARBAGE_HS_001_VALIDATOR_MARKER_C = "validator"
+    GARBAGE_HS_001_VALIDATE_CHECK_D = True
+
+    validateProfile :: UserProfile -> Bool
+    validateProfile p = not (Data.Text.null (profileName p)) && profileAge p > 0
+
+  src/Logger.hs: |
+    module Logger
+      ( logInfo
+      , logError
+      ) where
+
+    GARBAGE_HS_001_LOGGER_MARKER_E = "logger"
+    GARBAGE_HS_001_LOG_LEVEL_F = "INFO"
+
+    logInfo :: String -> IO ()
+    logInfo msg = putStrLn ("[INFO] " ++ msg)
+
+    logError :: String -> IO ()
+    logError msg = putStrLn ("[ERROR] " ++ msg)
+
+  src/Config.hs: |
+    module Config
+      ( AppConfig(..)
+      , loadConfig
+      ) where
+
+    GARBAGE_HS_001_CONFIG_MARKER_G = "config"
+    GARBAGE_HS_001_ENV_MARKER_H = "production"
+
+    data AppConfig = AppConfig
+      { configPort :: Int
+      , configHost :: String
+      }
+
+    loadConfig :: IO AppConfig
+    loadConfig = return (AppConfig 8080 "localhost")
+
+# === Assertions ===
+
+must_include_files:
+- src/Lookup.hs
+
+must_include_content_from:
+  src/Lookup.hs:
+    - lookupUsersByAge :: UserStore -> Int -> [UserProfile]
+    - profileAge p >= minAge
+  src/Types.hs:
+    - data UserProfile = UserProfile
+    - profileAge  :: Int
+
+must_not_include:
+# Tricky: also imports Data.Map qualified
+- GARBAGE_HS_001_CACHE_MARKER_A
+- GARBAGE_HS_001_CACHE_STORE_B
+# Tricky: also imports Types module
+- GARBAGE_HS_001_VALIDATOR_MARKER_C
+- GARBAGE_HS_001_VALIDATE_CHECK_D
+# Plain garbage
+- GARBAGE_HS_001_LOGGER_MARKER_E
+- GARBAGE_HS_001_LOG_LEVEL_F
+- GARBAGE_HS_001_CONFIG_MARKER_G
+- GARBAGE_HS_001_ENV_MARKER_H
+
+must_not_include_files:
+- src/Cache.hs
+- src/Validator.hs
+- src/Logger.hs
+- src/Config.hs
+
+max_fragments: 8
+max_files: 2
+add_garbage_files: false
+skip_garbage_check: true

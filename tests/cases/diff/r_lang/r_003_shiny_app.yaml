@@ -1,0 +1,289 @@
+# Test: Shiny server module adds new reactive using helper function
+#
+# Scenario: app/server.R adds a new reactive expression that calls
+# aggregate_by_period from R/data_processing.R to compute period
+# summaries. The data processing module is UNCHANGED. app/ui.R is
+# UNCHANGED (already has the output placeholder).
+#
+# Reviewer questions:
+#   Q1: "What grouping does aggregate_by_period support?"
+#       -> R/data_processing.R (UNCHANGED) supports daily/weekly/monthly
+#   Q2: "What summary statistics does it compute per period?"
+#       -> R/data_processing.R computes mean, median, sd, n per group
+#
+# Trap files:
+#   - app/ui.R: Shiny UI — same app but UI layout doesn't help review
+#     the server-side data processing logic
+#   - R/export_helpers.R: data export — same R/ dir, plausible for
+#     dashboard data flow but not used by server.R
+
+initial:
+  R/data_processing.R: |
+    aggregate_by_period <- function(data, date_col, value_col, period = "monthly") {
+      data$date <- as.Date(data[[date_col]])
+
+      if (period == "daily") {
+        data$period_key <- data$date
+      } else if (period == "weekly") {
+        data$period_key <- cut(data$date, breaks = "week")
+      } else {
+        data$period_key <- format(data$date, "%Y-%m")
+      }
+
+      result <- aggregate(
+        data[[value_col]],
+        by = list(period = data$period_key),
+        FUN = function(x) {
+          c(mean = mean(x, na.rm = TRUE),
+            median = median(x, na.rm = TRUE),
+            sd = sd(x, na.rm = TRUE),
+            n = length(x))
+        }
+      )
+      colnames(result) <- c("period", "stats")
+      result
+    }
+
+    filter_date_range <- function(data, date_col, start_date, end_date) {
+      data$date <- as.Date(data[[date_col]])
+      data[data$date >= as.Date(start_date) & data$date <= as.Date(end_date), ]
+    }
+
+    compute_running_total <- function(values) {
+      cumsum(ifelse(is.na(values), 0, values))
+    }
+
+    fill_missing_dates <- function(data, date_col) {
+      all_dates <- seq(min(data[[date_col]]), max(data[[date_col]]), by = "day")
+      full_df <- data.frame(date = all_dates)
+      merge(full_df, data, by.x = "date", by.y = date_col, all.x = TRUE)
+    }
+  app/server.R: |
+    source("R/data_processing.R")
+
+    server <- function(input, output, session) {
+      raw_data <- reactive({
+        read.csv("data/measurements.csv")
+      })
+
+      filtered_data <- reactive({
+        req(input$date_range)
+        filter_date_range(raw_data(), "date", input$date_range[1], input$date_range[2])
+      })
+
+      output$data_table <- renderTable({
+        head(filtered_data(), 20)
+      })
+    }
+  app/ui.R: |
+    GARBAGE_R_003_A <- "noise_marker_ui"
+
+    ui <- fluidPage(
+      titlePanel("Sensor Dashboard"),
+
+      sidebarLayout(
+        sidebarPanel(
+          dateRangeInput("date_range", "Date Range:",
+                         start = Sys.Date() - 30,
+                         end = Sys.Date()),
+          selectInput("period", "Aggregation Period:",
+                      choices = c("Daily" = "daily",
+                                  "Weekly" = "weekly",
+                                  "Monthly" = "monthly")),
+          actionButton("refresh", "Refresh Data")
+        ),
+
+        mainPanel(
+          tabsetPanel(
+            tabPanel("Data", tableOutput("data_table")),
+            tabPanel("Summary", tableOutput("summary_table")),
+            tabPanel("Chart", plotOutput("trend_chart"))
+          )
+        )
+      )
+    )
+  R/export_helpers.R: |
+    GARBAGE_R_003_B <- "noise_marker_export"
+
+    export_to_excel <- function(data, filename) {
+      library(writexl)
+      write_xlsx(data, filename)
+    }
+
+    export_to_pdf <- function(plot_obj, filename, width = 8, height = 6) {
+      pdf(filename, width = width, height = height)
+      print(plot_obj)
+      dev.off()
+    }
+
+    create_download_handler <- function(data_reactive, filename_base) {
+      downloadHandler(
+        filename = function() {
+          paste0(filename_base, "_", Sys.Date(), ".csv")
+        },
+        content = function(file) {
+          write.csv(data_reactive(), file, row.names = FALSE)
+        }
+      )
+    }
+
+changed:
+  R/data_processing.R: |
+    aggregate_by_period <- function(data, date_col, value_col, period = "monthly") {
+      data$date <- as.Date(data[[date_col]])
+
+      if (period == "daily") {
+        data$period_key <- data$date
+      } else if (period == "weekly") {
+        data$period_key <- cut(data$date, breaks = "week")
+      } else {
+        data$period_key <- format(data$date, "%Y-%m")
+      }
+
+      result <- aggregate(
+        data[[value_col]],
+        by = list(period = data$period_key),
+        FUN = function(x) {
+          c(mean = mean(x, na.rm = TRUE),
+            median = median(x, na.rm = TRUE),
+            sd = sd(x, na.rm = TRUE),
+            n = length(x))
+        }
+      )
+      colnames(result) <- c("period", "stats")
+      result
+    }
+
+    filter_date_range <- function(data, date_col, start_date, end_date) {
+      data$date <- as.Date(data[[date_col]])
+      data[data$date >= as.Date(start_date) & data$date <= as.Date(end_date), ]
+    }
+
+    compute_running_total <- function(values) {
+      cumsum(ifelse(is.na(values), 0, values))
+    }
+
+    fill_missing_dates <- function(data, date_col) {
+      all_dates <- seq(min(data[[date_col]]), max(data[[date_col]]), by = "day")
+      full_df <- data.frame(date = all_dates)
+      merge(full_df, data, by.x = "date", by.y = date_col, all.x = TRUE)
+    }
+  app/server.R: |
+    source("R/data_processing.R")
+
+    server <- function(input, output, session) {
+      raw_data <- reactive({
+        read.csv("data/measurements.csv")
+      })
+
+      filtered_data <- reactive({
+        req(input$date_range)
+        filter_date_range(raw_data(), "date", input$date_range[1], input$date_range[2])
+      })
+
+      period_summary <- reactive({
+        req(input$period)
+        aggregate_by_period(filtered_data(), "date", "value", input$period)
+      })
+
+      output$data_table <- renderTable({
+        head(filtered_data(), 20)
+      })
+
+      output$summary_table <- renderTable({
+        period_summary()
+      })
+
+      output$trend_chart <- renderPlot({
+        summary_df <- period_summary()
+        barplot(summary_df$stats[, "mean"],
+                names.arg = summary_df$period,
+                main = paste("Average by", input$period),
+                col = "steelblue")
+      })
+    }
+  app/ui.R: |
+    GARBAGE_R_003_A <- "noise_marker_ui"
+
+    ui <- fluidPage(
+      titlePanel("Sensor Dashboard"),
+
+      sidebarLayout(
+        sidebarPanel(
+          dateRangeInput("date_range", "Date Range:",
+                         start = Sys.Date() - 30,
+                         end = Sys.Date()),
+          selectInput("period", "Aggregation Period:",
+                      choices = c("Daily" = "daily",
+                                  "Weekly" = "weekly",
+                                  "Monthly" = "monthly")),
+          actionButton("refresh", "Refresh Data")
+        ),
+
+        mainPanel(
+          tabsetPanel(
+            tabPanel("Data", tableOutput("data_table")),
+            tabPanel("Summary", tableOutput("summary_table")),
+            tabPanel("Chart", plotOutput("trend_chart"))
+          )
+        )
+      )
+    )
+  R/export_helpers.R: |
+    GARBAGE_R_003_B <- "noise_marker_export"
+
+    export_to_excel <- function(data, filename) {
+      library(writexl)
+      write_xlsx(data, filename)
+    }
+
+    export_to_pdf <- function(plot_obj, filename, width = 8, height = 6) {
+      pdf(filename, width = width, height = height)
+      print(plot_obj)
+      dev.off()
+    }
+
+    create_download_handler <- function(data_reactive, filename_base) {
+      downloadHandler(
+        filename = function() {
+          paste0(filename_base, "_", Sys.Date(), ".csv")
+        },
+        content = function(file) {
+          write.csv(data_reactive(), file, row.names = FALSE)
+        }
+      )
+    }
+
+must_include_files:
+  - app/server.R
+  # Q1+Q2: data_processing.R defines aggregate_by_period
+  - R/data_processing.R
+must_include_content_from:
+  app/server.R:
+    - "aggregate_by_period"
+    - "period_summary"
+    - 'source("R/data_processing.R")'
+  R/data_processing.R:
+    - "aggregate_by_period <- function"
+    - 'period = "monthly"'
+    - "na.rm = TRUE"
+must_not_include:
+  # app/ui.R: Shiny UI layout — doesn't help review data processing
+  - GARBAGE_R_003_A
+  - "noise_marker_ui"
+  - "fluidPage"
+  - "sidebarLayout"
+  - "dateRangeInput"
+  # R/export_helpers.R: export — not sourced by server.R
+  - GARBAGE_R_003_B
+  - "noise_marker_export"
+  - "export_to_excel"
+  - "export_to_pdf"
+  - "create_download_handler"
+must_not_include_files:
+  - app/ui.R
+  - R/export_helpers.R
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

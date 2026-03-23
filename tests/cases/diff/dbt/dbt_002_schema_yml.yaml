@@ -1,0 +1,256 @@
+# Scenario: schema.yml adds new column-level tests (not_null, accepted_values)
+# for the order_summary model. The reviewer needs the model SQL to understand
+# what columns are being tested and verify test correctness.
+#
+# Reviewer questions:
+#   Q1: "What does the 'status' column contain in order_summary?"
+#       -> models/marts/order_summary.sql: CASE statement deriving status
+#   Q2: "Are the accepted_values in the test consistent with the SQL logic?"
+#       -> models/marts/order_summary.sql: shows 'completed', 'pending', 'refunded'
+#
+# Not needed:
+#   - models/staging/schema.yml: different schema file for staging layer
+#   - models/marts/customer_segments.sql: sibling mart, different model
+
+initial:
+  models/marts/schema.yml: |
+    version: 2
+
+    models:
+      - name: order_summary
+        description: Aggregated order data with customer info
+        columns:
+          - name: order_id
+            tests:
+              - unique
+              - not_null
+          - name: customer_name
+            tests:
+              - not_null
+
+      - name: customer_segments
+        description: Customer segmentation by behavior
+        columns:
+          - name: customer_id
+            tests:
+              - unique
+              - not_null
+  models/marts/order_summary.sql: |
+    WITH orders AS (
+        SELECT * FROM {{ ref('stg_orders') }}
+    ),
+
+    customers AS (
+        SELECT * FROM {{ ref('stg_customers') }}
+    )
+
+    SELECT
+        orders.order_id,
+        orders.order_date,
+        orders.amount,
+        customers.customer_name,
+        customers.email,
+        CASE
+            WHEN orders.is_refunded THEN 'refunded'
+            WHEN orders.is_completed THEN 'completed'
+            ELSE 'pending'
+        END AS status,
+        orders.amount * orders.quantity AS total_amount
+    FROM orders
+    LEFT JOIN customers ON orders.customer_id = customers.customer_id
+  models/marts/customer_segments.sql: |
+    -- GARBAGE_DBT_002_A: noise_customer_segments
+    WITH customers AS (
+        SELECT * FROM {{ ref('stg_customers') }}
+    ),
+
+    orders AS (
+        SELECT
+            customer_id,
+            COUNT(*) AS order_count,
+            SUM(amount) AS total_spend
+        FROM {{ ref('stg_orders') }}
+        GROUP BY 1
+    )
+
+    SELECT
+        customers.customer_id,
+        customers.customer_name,
+        CASE
+            WHEN orders.total_spend > 1000 THEN 'premium'
+            WHEN orders.total_spend > 100 THEN 'regular'
+            ELSE 'new'
+        END AS segment
+    FROM customers
+    LEFT JOIN orders ON customers.customer_id = orders.customer_id
+
+  # Trap: staging schema with similar test structures
+  models/staging/schema.yml: |
+    version: 2
+
+    models:
+      - name: stg_orders
+        GARBAGE_DBT_002_B: noise_staging_schema
+        columns:
+          - name: order_id
+            tests:
+              - unique
+              - not_null
+          - name: customer_id
+            tests:
+              - not_null
+
+      - name: stg_customers
+        columns:
+          - name: customer_id
+            tests:
+              - unique
+              - not_null
+
+  # Trap: another mart model not related to schema change
+  models/marts/revenue_daily.sql: |
+    -- GARBAGE_DBT_002_C: noise_revenue_daily
+    SELECT
+        DATE_TRUNC('day', order_date) AS day,
+        SUM(amount) AS daily_revenue
+    FROM {{ ref('stg_orders') }}
+    GROUP BY 1
+
+changed:
+  models/marts/schema.yml: |
+    version: 2
+
+    models:
+      - name: order_summary
+        description: Aggregated order data with customer info
+        columns:
+          - name: order_id
+            tests:
+              - unique
+              - not_null
+          - name: customer_name
+            tests:
+              - not_null
+          - name: status
+            tests:
+              - not_null
+              - accepted_values:
+                  values: ['completed', 'pending', 'refunded']
+          - name: total_amount
+            tests:
+              - not_null
+              - dbt_utils.expression_is_true:
+                  expression: ">= 0"
+
+      - name: customer_segments
+        description: Customer segmentation by behavior
+        columns:
+          - name: customer_id
+            tests:
+              - unique
+              - not_null
+  models/marts/order_summary.sql: |
+    WITH orders AS (
+        SELECT * FROM {{ ref('stg_orders') }}
+    ),
+
+    customers AS (
+        SELECT * FROM {{ ref('stg_customers') }}
+    )
+
+    SELECT
+        orders.order_id,
+        orders.order_date,
+        orders.amount,
+        customers.customer_name,
+        customers.email,
+        CASE
+            WHEN orders.is_refunded THEN 'refunded'
+            WHEN orders.is_completed THEN 'completed'
+            ELSE 'pending'
+        END AS status,
+        orders.amount * orders.quantity AS total_amount
+    FROM orders
+    LEFT JOIN customers ON orders.customer_id = customers.customer_id
+  models/marts/customer_segments.sql: |
+    -- GARBAGE_DBT_002_A: noise_customer_segments
+    WITH customers AS (
+        SELECT * FROM {{ ref('stg_customers') }}
+    ),
+
+    orders AS (
+        SELECT
+            customer_id,
+            COUNT(*) AS order_count,
+            SUM(amount) AS total_spend
+        FROM {{ ref('stg_orders') }}
+        GROUP BY 1
+    )
+
+    SELECT
+        customers.customer_id,
+        customers.customer_name,
+        CASE
+            WHEN orders.total_spend > 1000 THEN 'premium'
+            WHEN orders.total_spend > 100 THEN 'regular'
+            ELSE 'new'
+        END AS segment
+    FROM customers
+    LEFT JOIN orders ON customers.customer_id = orders.customer_id
+  models/staging/schema.yml: |
+    version: 2
+
+    models:
+      - name: stg_orders
+        GARBAGE_DBT_002_B: noise_staging_schema
+        columns:
+          - name: order_id
+            tests:
+              - unique
+              - not_null
+          - name: customer_id
+            tests:
+              - not_null
+
+      - name: stg_customers
+        columns:
+          - name: customer_id
+            tests:
+              - unique
+              - not_null
+  models/marts/revenue_daily.sql: |
+    -- GARBAGE_DBT_002_C: noise_revenue_daily
+    SELECT
+        DATE_TRUNC('day', order_date) AS day,
+        SUM(amount) AS daily_revenue
+    FROM {{ ref('stg_orders') }}
+    GROUP BY 1
+
+must_include_files:
+- models/marts/schema.yml
+- models/marts/order_summary.sql
+
+must_include_content_from:
+  models/marts/schema.yml:
+    - accepted_values
+    - completed
+    - total_amount
+  models/marts/order_summary.sql:
+    - refunded
+    - completed
+    - pending
+    - total_amount
+
+must_not_include:
+- GARBAGE_DBT_002_A
+- GARBAGE_DBT_002_B
+- GARBAGE_DBT_002_C
+
+must_not_include_files:
+- models/marts/customer_segments.sql
+- models/staging/schema.yml
+- models/marts/revenue_daily.sql
+
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

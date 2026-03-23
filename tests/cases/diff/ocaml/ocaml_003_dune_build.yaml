@@ -1,0 +1,258 @@
+# Scenario: A dune build file declares a library with specific modules. The change
+# adds a new module to the library listing in dune and creates the corresponding
+# .ml file. The reviewer needs to see both the dune change and the new module.
+#
+# Diff: lib/dune adds `Serializer` to the `(modules ...)` list, and
+# lib/serializer.ml is a new file providing JSON serialization functions.
+#
+# Reviewer questions:
+#   Q1: "Was the new module properly registered in the build system?"
+#       -> lib/dune: (modules ... Serializer) added to the library declaration.
+#          Reviewer verifies the build will include it.
+#
+#   Q2: "What does the new Serializer module provide?"
+#       -> lib/serializer.ml: to_json and from_json functions for the Record type.
+#
+# Not needed for comprehension:
+#   - lib/parser.ml: Existing module already in the dune modules list.
+#     Same library, same directory, but unchanged and unrelated to serialization.
+#
+#   - dune-project: Top-level project configuration.
+#     Defines project metadata, not module listings.
+#
+#   - test/dune: Test build configuration.
+#     STRUCTURAL TRAP: also a dune file, but for tests, not library.
+
+initial:
+  lib/dune: |
+    (library
+     (name mylib)
+     (public_name mylib)
+     (modules
+      Parser
+      Transformer
+      Printer)
+     (libraries yojson cmdliner))
+
+  lib/parser.ml: |
+    type token =
+      | Ident of string
+      | Number of int
+      | LParen
+      | RParen
+
+    let _GARBAGE_OCAML_003_A = "parser_marker"
+    let _GARBAGE_OCAML_003_B = "token_marker"
+
+    let tokenize input =
+      ignore input;
+      [Ident "placeholder"]
+
+    let parse tokens =
+      ignore tokens;
+      Ident "parsed"
+
+  lib/transformer.ml: |
+    let _GARBAGE_OCAML_003_C = "transform_marker"
+    let _GARBAGE_OCAML_003_D = "ast_marker"
+
+    let optimize ast =
+      ignore ast;
+      "optimized"
+
+    let simplify ast =
+      ignore ast;
+      "simplified"
+
+  lib/printer.ml: |
+    let _GARBAGE_OCAML_003_E = "printer_marker"
+    let _GARBAGE_OCAML_003_F = "output_marker"
+
+    let to_string ast =
+      ignore ast;
+      "printed"
+
+    let pretty_print ast indent =
+      ignore ast;
+      ignore indent;
+      "pretty"
+
+  dune-project: |
+    (lang dune 3.0)
+    (name mylib)
+    (version 0.1.0)
+
+    (generate_opam_files true)
+
+    (package
+     (name mylib)
+     (synopsis "A sample OCaml library")
+     (depends
+      (ocaml (>= 4.14))
+      (yojson (>= 2.0))
+      (cmdliner (>= 1.1))))
+
+    ; GARBAGE_OCAML_003_G = "project_marker"
+    ; GARBAGE_OCAML_003_H = "meta_marker"
+
+  test/dune: |
+    (test
+     (name test_main)
+     (libraries mylib alcotest))
+
+    ; GARBAGE_OCAML_003_I = "test_dune_marker"
+    ; GARBAGE_OCAML_003_J = "test_config_marker"
+
+changed:
+  lib/dune: |
+    (library
+     (name mylib)
+     (public_name mylib)
+     (modules
+      Parser
+      Transformer
+      Printer
+      Serializer)
+     (libraries yojson cmdliner))
+
+  lib/serializer.ml: |
+    type record = {
+      id : int;
+      name : string;
+      tags : string list;
+    }
+
+    let to_json r =
+      `Assoc [
+        ("id", `Int r.id);
+        ("name", `String r.name);
+        ("tags", `List (List.map (fun t -> `String t) r.tags));
+      ]
+
+    let from_json json =
+      let open Yojson.Basic.Util in
+      {
+        id = json |> member "id" |> to_int;
+        name = json |> member "name" |> to_string;
+        tags = json |> member "tags" |> to_list |> List.map to_string;
+      }
+
+    let to_json_string r =
+      Yojson.Basic.to_string (to_json r)
+
+    let from_json_string s =
+      from_json (Yojson.Basic.from_string s)
+
+  lib/parser.ml: |
+    type token =
+      | Ident of string
+      | Number of int
+      | LParen
+      | RParen
+
+    let _GARBAGE_OCAML_003_A = "parser_marker"
+    let _GARBAGE_OCAML_003_B = "token_marker"
+
+    let tokenize input =
+      ignore input;
+      [Ident "placeholder"]
+
+    let parse tokens =
+      ignore tokens;
+      Ident "parsed"
+
+  lib/transformer.ml: |
+    let _GARBAGE_OCAML_003_C = "transform_marker"
+    let _GARBAGE_OCAML_003_D = "ast_marker"
+
+    let optimize ast =
+      ignore ast;
+      "optimized"
+
+    let simplify ast =
+      ignore ast;
+      "simplified"
+
+  lib/printer.ml: |
+    let _GARBAGE_OCAML_003_E = "printer_marker"
+    let _GARBAGE_OCAML_003_F = "output_marker"
+
+    let to_string ast =
+      ignore ast;
+      "printed"
+
+    let pretty_print ast indent =
+      ignore ast;
+      ignore indent;
+      "pretty"
+
+  dune-project: |
+    (lang dune 3.0)
+    (name mylib)
+    (version 0.1.0)
+
+    (generate_opam_files true)
+
+    (package
+     (name mylib)
+     (synopsis "A sample OCaml library")
+     (depends
+      (ocaml (>= 4.14))
+      (yojson (>= 2.0))
+      (cmdliner (>= 1.1))))
+
+    ; GARBAGE_OCAML_003_G = "project_marker"
+    ; GARBAGE_OCAML_003_H = "meta_marker"
+
+  test/dune: |
+    (test
+     (name test_main)
+     (libraries mylib alcotest))
+
+    ; GARBAGE_OCAML_003_I = "test_dune_marker"
+    ; GARBAGE_OCAML_003_J = "test_config_marker"
+
+must_include_files:
+  - lib/dune
+  - lib/serializer.ml
+
+must_include_content_from:
+  lib/dune:
+    - Serializer
+  lib/serializer.ml:
+    - "let to_json r"
+    - "let from_json json"
+    - "type record"
+
+must_not_include:
+  # parser.ml: existing module, unchanged
+  - _GARBAGE_OCAML_003_A
+  - _GARBAGE_OCAML_003_B
+  - tokenize
+  # transformer.ml: existing module, unchanged
+  - _GARBAGE_OCAML_003_C
+  - _GARBAGE_OCAML_003_D
+  - optimize
+  - simplify
+  # printer.ml: existing module, unchanged
+  - _GARBAGE_OCAML_003_E
+  - _GARBAGE_OCAML_003_F
+  - pretty_print
+  # dune-project: project config, not module listing
+  - GARBAGE_OCAML_003_G
+  - GARBAGE_OCAML_003_H
+  # test/dune: test build, not library
+  - GARBAGE_OCAML_003_I
+  - GARBAGE_OCAML_003_J
+
+must_not_include_files:
+  - lib/parser.ml
+  - lib/transformer.ml
+  - lib/printer.ml
+  - dune-project
+  - test/dune
+
+max_fragments: 8
+max_files: 2
+add_garbage_files: false
+skip_garbage_check: true

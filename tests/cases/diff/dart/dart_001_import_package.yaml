@@ -1,0 +1,328 @@
+# Scenario: A Flutter widget adds a new field display using a model class imported
+# from a package. The reviewer needs to see the model definition to verify the
+# field exists and has the expected type.
+#
+# Diff: lib/screens/profile_screen.dart changes from displaying only user.name
+# to also displaying user.avatarUrl via a CircleAvatar widget. The User model
+# is imported via `import 'package:myapp/models/user.dart';`.
+#
+# Reviewer questions:
+#   Q1: "Does User have an avatarUrl field?"
+#       -> lib/models/user.dart (UNCHANGED): class User with avatarUrl String field.
+#
+#   Q2: "Is avatarUrl nullable — do we need a null check?"
+#       -> lib/models/user.dart: avatarUrl is `final String avatarUrl` (non-nullable).
+#          The diff uses it directly without a null check, which is correct.
+#
+# Not needed for comprehension:
+#   - lib/screens/settings_screen.dart: Sibling screen in same directory.
+#     STRUCTURAL TRAP: same import pattern, same StatelessWidget. But deals
+#     with app settings, not user profile display.
+#
+#   - lib/services/auth_service.dart: Service that also uses User objects.
+#     HARDEST TRAP: imports the same User model, calls methods that return User.
+#     But authentication logic is unrelated to rendering avatarUrl.
+#
+#   - lib/models/post.dart: Sibling model in models/ directory.
+#     STRUCTURAL TRAP: same class pattern, same field types. But represents
+#     a social post, not a user.
+#
+#   - lib/widgets/loading_spinner.dart: Generic widget used across the app.
+#     No connection to User or profile rendering.
+
+initial:
+  lib/models/user.dart: |
+    class User {
+      final String id;
+      final String name;
+      final String email;
+      final String avatarUrl;
+
+      User({
+        required this.id,
+        required this.name,
+        required this.email,
+        required this.avatarUrl,
+      });
+
+      factory User.fromJson(Map<String, dynamic> json) {
+        return User(
+          id: json['id'] as String,
+          name: json['name'] as String,
+          email: json['email'] as String,
+          avatarUrl: json['avatar_url'] as String,
+        );
+      }
+    }
+  lib/screens/profile_screen.dart: |
+    import 'package:flutter/material.dart';
+    import 'package:myapp/models/user.dart';
+
+    class ProfileScreen extends StatelessWidget {
+      final User user;
+
+      const ProfileScreen({super.key, required this.user});
+
+      @override
+      Widget build(BuildContext context) {
+        return Scaffold(
+          appBar: AppBar(title: const Text('Profile')),
+          body: Center(
+            child: Text(user.name),
+          ),
+        );
+      }
+    }
+  lib/screens/settings_screen.dart: |
+    import 'package:flutter/material.dart';
+
+    class SettingsScreen extends StatelessWidget {
+      const SettingsScreen({super.key});
+
+      @override
+      Widget build(BuildContext context) {
+        return Scaffold(
+          appBar: AppBar(title: const Text('Settings')),
+          body: ListView(
+            children: [
+              SwitchListTile(
+                title: const Text('GARBAGE_DART_001_A_DARK_MODE'),
+                value: false,
+                onChanged: (v) {},
+              ),
+              SwitchListTile(
+                title: const Text('GARBAGE_DART_001_B_NOTIFICATIONS'),
+                value: true,
+                onChanged: (v) {},
+              ),
+            ],
+          ),
+        );
+      }
+    }
+  lib/services/auth_service.dart: |
+    import 'package:myapp/models/user.dart';
+
+    class AuthService {
+      User? _currentUser;
+
+      Future<User> signIn(String email, String password) async {
+        final response = await _postCredentials(email, password);
+        _currentUser = User.fromJson(response);
+        return _currentUser!;
+      }
+
+      void signOut() {
+        _currentUser = null;
+      }
+
+      String get GARBAGE_DART_001_C_AUTH_TOKEN => 'fake_token';
+
+      Future<Map<String, dynamic>> _postCredentials(String e, String p) async {
+        return {'id': '1', 'name': 'Test', 'email': e, 'avatar_url': ''};
+      }
+    }
+  lib/models/post.dart: |
+    class Post {
+      final String id;
+      final String title;
+      final String body;
+      final String authorId;
+
+      Post({
+        required this.id,
+        required this.title,
+        required this.body,
+        required this.authorId,
+      });
+
+      String get GARBAGE_DART_001_D_SUMMARY => title.substring(0, 50);
+    }
+  lib/widgets/loading_spinner.dart: |
+    import 'package:flutter/material.dart';
+
+    class LoadingSpinner extends StatelessWidget {
+      const LoadingSpinner({super.key});
+
+      @override
+      Widget build(BuildContext context) {
+        return const Center(
+          child: CircularProgressIndicator(),
+        );
+      }
+
+      String get GARBAGE_DART_001_E_SPINNER_ID => 'loading';
+    }
+
+changed:
+  lib/models/user.dart: |
+    class User {
+      final String id;
+      final String name;
+      final String email;
+      final String avatarUrl;
+
+      User({
+        required this.id,
+        required this.name,
+        required this.email,
+        required this.avatarUrl,
+      });
+
+      factory User.fromJson(Map<String, dynamic> json) {
+        return User(
+          id: json['id'] as String,
+          name: json['name'] as String,
+          email: json['email'] as String,
+          avatarUrl: json['avatar_url'] as String,
+        );
+      }
+    }
+  lib/screens/profile_screen.dart: |
+    import 'package:flutter/material.dart';
+    import 'package:myapp/models/user.dart';
+
+    class ProfileScreen extends StatelessWidget {
+      final User user;
+
+      const ProfileScreen({super.key, required this.user});
+
+      @override
+      Widget build(BuildContext context) {
+        return Scaffold(
+          appBar: AppBar(title: const Text('Profile')),
+          body: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              CircleAvatar(
+                radius: 48,
+                backgroundImage: NetworkImage(user.avatarUrl),
+              ),
+              const SizedBox(height: 16),
+              Text(user.name, style: Theme.of(context).textTheme.headlineMedium),
+              Text(user.email, style: Theme.of(context).textTheme.bodyMedium),
+            ],
+          ),
+        );
+      }
+    }
+  lib/screens/settings_screen.dart: |
+    import 'package:flutter/material.dart';
+
+    class SettingsScreen extends StatelessWidget {
+      const SettingsScreen({super.key});
+
+      @override
+      Widget build(BuildContext context) {
+        return Scaffold(
+          appBar: AppBar(title: const Text('Settings')),
+          body: ListView(
+            children: [
+              SwitchListTile(
+                title: const Text('GARBAGE_DART_001_A_DARK_MODE'),
+                value: false,
+                onChanged: (v) {},
+              ),
+              SwitchListTile(
+                title: const Text('GARBAGE_DART_001_B_NOTIFICATIONS'),
+                value: true,
+                onChanged: (v) {},
+              ),
+            ],
+          ),
+        );
+      }
+    }
+  lib/services/auth_service.dart: |
+    import 'package:myapp/models/user.dart';
+
+    class AuthService {
+      User? _currentUser;
+
+      Future<User> signIn(String email, String password) async {
+        final response = await _postCredentials(email, password);
+        _currentUser = User.fromJson(response);
+        return _currentUser!;
+      }
+
+      void signOut() {
+        _currentUser = null;
+      }
+
+      String get GARBAGE_DART_001_C_AUTH_TOKEN => 'fake_token';
+
+      Future<Map<String, dynamic>> _postCredentials(String e, String p) async {
+        return {'id': '1', 'name': 'Test', 'email': e, 'avatar_url': ''};
+      }
+    }
+  lib/models/post.dart: |
+    class Post {
+      final String id;
+      final String title;
+      final String body;
+      final String authorId;
+
+      Post({
+        required this.id,
+        required this.title,
+        required this.body,
+        required this.authorId,
+      });
+
+      String get GARBAGE_DART_001_D_SUMMARY => title.substring(0, 50);
+    }
+  lib/widgets/loading_spinner.dart: |
+    import 'package:flutter/material.dart';
+
+    class LoadingSpinner extends StatelessWidget {
+      const LoadingSpinner({super.key});
+
+      @override
+      Widget build(BuildContext context) {
+        return const Center(
+          child: CircularProgressIndicator(),
+        );
+      }
+
+      String get GARBAGE_DART_001_E_SPINNER_ID => 'loading';
+    }
+
+must_include_files:
+  - lib/screens/profile_screen.dart
+  - lib/models/user.dart
+
+must_include_content_from:
+  lib/screens/profile_screen.dart:
+    - "NetworkImage(user.avatarUrl)"
+    - "CircleAvatar"
+  lib/models/user.dart:
+    - "final String avatarUrl"
+    - "class User"
+
+must_not_include:
+  # --- settings_screen.dart: sibling screen, unrelated ---
+  - GARBAGE_DART_001_A_DARK_MODE
+  - GARBAGE_DART_001_B_NOTIFICATIONS
+  - SettingsScreen
+  # --- auth_service.dart: uses User but unrelated to display ---
+  - GARBAGE_DART_001_C_AUTH_TOKEN
+  - AuthService
+  - signIn
+  # --- post.dart: sibling model, same directory ---
+  - GARBAGE_DART_001_D_SUMMARY
+  - "class Post"
+  - authorId
+  # --- loading_spinner.dart: generic widget, no connection ---
+  - GARBAGE_DART_001_E_SPINNER_ID
+  - LoadingSpinner
+
+must_not_include_files:
+  - lib/screens/settings_screen.dart
+  - lib/services/auth_service.dart
+  - lib/models/post.dart
+  - lib/widgets/loading_spinner.dart
+
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

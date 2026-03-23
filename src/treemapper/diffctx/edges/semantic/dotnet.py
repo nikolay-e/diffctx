@@ -6,7 +6,7 @@ from pathlib import Path
 
 from ...config.weights import EDGE_WEIGHTS
 from ...types import Fragment, FragmentId
-from ..base import EdgeBuilder, EdgeDict
+from ..base import EdgeBuilder, EdgeDict, discover_files_by_refs
 
 _CSHARP_EXTS = {".cs"}
 _FSHARP_EXTS = {".fs", ".fsi", ".fsx"}
@@ -97,6 +97,34 @@ class DotNetEdgeBuilder(EdgeBuilder):
     attribute_weight = EDGE_WEIGHTS["dotnet_attribute"].forward
     partial_class_weight = EDGE_WEIGHTS["dotnet_partial"].forward
     reverse_weight_factor = EDGE_WEIGHTS["dotnet_using"].reverse_factor
+
+    def discover_related_files(
+        self,
+        changed_files: list[Path],
+        all_candidate_files: list[Path],
+        repo_root: Path | None = None,
+    ) -> list[Path]:
+        dotnet_changed = [f for f in changed_files if _is_dotnet_file(f)]
+        if not dotnet_changed:
+            return []
+
+        refs: set[str] = set()
+        for f in dotnet_changed:
+            try:
+                content = f.read_text(encoding="utf-8")
+                for using in _extract_usings(content, f):
+                    refs.add(using.split(".")[-1].lower())
+                    refs.add(using.replace(".", "/").lower())
+                ns = _extract_namespace(content, f)
+                if ns:
+                    for part in ns.split("."):
+                        refs.add(part.lower())
+                for t in _extract_types(content, f):
+                    refs.add(t.lower())
+            except (OSError, UnicodeDecodeError):
+                continue
+
+        return discover_files_by_refs(refs, changed_files, all_candidate_files, repo_root)
 
     def build(self, fragments: list[Fragment], repo_root: Path | None = None) -> EdgeDict:
         dotnet_frags = [f for f in fragments if _is_dotnet_file(f.path)]

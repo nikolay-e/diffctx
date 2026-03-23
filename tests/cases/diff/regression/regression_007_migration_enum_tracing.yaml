@@ -1,0 +1,276 @@
+# Regression: migration changes SQL constraint values but enum definition not traced
+# Real-world: life-as-code commit f9dd5a0 — migration changes
+# CHECK(mode IN ('short','mid','long')) but TrendMode enum with old values
+# ('recent','quarter','year','all') in types.py not included.
+# The enum definition is the critical context for understanding the mismatch.
+# Noise: add enough unrelated files to make budget pressure realistic.
+
+xfail: "Enum fragment truncated under budget pressure — QUARTER value missing"
+
+initial:
+  migrations/021_fix_mode_constraint.py: |
+    from alembic import op
+
+    def upgrade():
+        op.execute(
+            "ALTER TABLE snapshots DROP CONSTRAINT IF EXISTS ck_snapshot_mode"
+        )
+        op.execute(
+            "ALTER TABLE snapshots ADD CONSTRAINT ck_snapshot_mode "
+            "CHECK (mode IN ('recent', 'quarter', 'year', 'all'))"
+        )
+
+    def downgrade():
+        op.execute(
+            "ALTER TABLE snapshots DROP CONSTRAINT IF EXISTS ck_snapshot_mode"
+        )
+  src/analytics/types.py: |
+    from enum import Enum
+
+    class TrendMode(Enum):
+        RECENT = "recent"
+        QUARTER = "quarter"
+        YEAR = "year"
+        ALL = "all"
+
+    class AlertLevel(Enum):
+        LOW = "low"
+        MEDIUM = "medium"
+        HIGH = "high"
+  src/analytics/pipeline.py: |
+    from src.analytics.types import TrendMode
+
+    class AnalyticsPipeline:
+        def __init__(self, db_session):
+            self.db = db_session
+
+        def store_snapshot(self, data, mode: TrendMode):
+            self.db.execute(
+                "INSERT INTO snapshots (data, mode) VALUES (:data, :mode)",
+                {"data": data, "mode": mode.value},
+            )
+
+        def get_snapshots(self, mode: TrendMode):
+            return self.db.execute(
+                "SELECT * FROM snapshots WHERE mode = :mode",
+                {"mode": mode.value},
+            ).fetchall()
+  src/api.py: |
+    from src.analytics.pipeline import AnalyticsPipeline
+    from src.analytics.types import TrendMode
+
+    def handle_snapshot_request(request):
+        mode = TrendMode(request.params["mode"])
+        pipeline = AnalyticsPipeline(request.db)
+        return pipeline.store_snapshot(request.body, mode)
+  src/models/user.py: |
+    GARBAGE_REG_007_USER_A = "user_model"
+    class User:
+        GARBAGE_REG_007_USER_B = True
+        def __init__(self, name, email):
+            self.name = name
+            self.email = email
+        def to_dict(self):
+            return {"name": self.name, "email": self.email}
+  src/models/session.py: |
+    GARBAGE_REG_007_SESSION_C = "session_model"
+    class Session:
+        GARBAGE_REG_007_SESSION_D = True
+        def __init__(self, user_id, token):
+            self.user_id = user_id
+            self.token = token
+        def is_expired(self):
+            return False
+  frontend/src/components/LoginPage.tsx: |
+    GARBAGE_REG_007_LOGIN_E = "login";
+    export function LoginPage() {
+        GARBAGE_REG_007_LOGIN_F = true;
+        return null;
+    }
+  frontend/src/components/DashboardLayout.tsx: |
+    GARBAGE_REG_007_DASH_G = "dashboard";
+    export function DashboardLayout() {
+        GARBAGE_REG_007_DASH_H = true;
+        return null;
+    }
+  frontend/src/components/CaloriesChart.tsx: |
+    GARBAGE_REG_007_CAL_I = "calories";
+    export function CaloriesChart() {
+        GARBAGE_REG_007_CAL_J = true;
+        return null;
+    }
+  frontend/src/components/SleepChart.tsx: |
+    GARBAGE_REG_007_SLEEP_K = "sleep";
+    export function SleepChart() {
+        GARBAGE_REG_007_SLEEP_L = true;
+        return null;
+    }
+  src/sync/scheduler.py: |
+    GARBAGE_REG_007_SCHED_M = "scheduler"
+    class Scheduler:
+        GARBAGE_REG_007_SCHED_N = True
+        def run(self):
+            pass
+  src/sync/progressive_sync.py: |
+    GARBAGE_REG_007_SYNC_O = "progressive"
+    class ProgressiveSync:
+        GARBAGE_REG_007_SYNC_P = True
+        def sync(self):
+            pass
+
+changed:
+  migrations/021_fix_mode_constraint.py: |
+    from alembic import op
+
+    def upgrade():
+        op.execute(
+            "ALTER TABLE snapshots DROP CONSTRAINT IF EXISTS ck_snapshot_mode"
+        )
+        op.execute(
+            "ALTER TABLE snapshots ADD CONSTRAINT ck_snapshot_mode "
+            "CHECK (mode IN ('short', 'mid', 'long'))"
+        )
+
+    def downgrade():
+        op.execute(
+            "ALTER TABLE snapshots DROP CONSTRAINT IF EXISTS ck_snapshot_mode"
+        )
+  src/analytics/types.py: |
+    from enum import Enum
+
+    class TrendMode(Enum):
+        RECENT = "recent"
+        QUARTER = "quarter"
+        YEAR = "year"
+        ALL = "all"
+
+    class AlertLevel(Enum):
+        LOW = "low"
+        MEDIUM = "medium"
+        HIGH = "high"
+  src/analytics/pipeline.py: |
+    from src.analytics.types import TrendMode
+
+    class AnalyticsPipeline:
+        def __init__(self, db_session):
+            self.db = db_session
+
+        def store_snapshot(self, data, mode: TrendMode):
+            self.db.execute(
+                "INSERT INTO snapshots (data, mode) VALUES (:data, :mode)",
+                {"data": data, "mode": mode.value},
+            )
+
+        def get_snapshots(self, mode: TrendMode):
+            return self.db.execute(
+                "SELECT * FROM snapshots WHERE mode = :mode",
+                {"mode": mode.value},
+            ).fetchall()
+  src/api.py: |
+    from src.analytics.pipeline import AnalyticsPipeline
+    from src.analytics.types import TrendMode
+
+    def handle_snapshot_request(request):
+        mode = TrendMode(request.params["mode"])
+        pipeline = AnalyticsPipeline(request.db)
+        return pipeline.store_snapshot(request.body, mode)
+  src/models/user.py: |
+    GARBAGE_REG_007_USER_A = "user_model"
+    class User:
+        GARBAGE_REG_007_USER_B = True
+        def __init__(self, name, email):
+            self.name = name
+            self.email = email
+        def to_dict(self):
+            return {"name": self.name, "email": self.email}
+  src/models/session.py: |
+    GARBAGE_REG_007_SESSION_C = "session_model"
+    class Session:
+        GARBAGE_REG_007_SESSION_D = True
+        def __init__(self, user_id, token):
+            self.user_id = user_id
+            self.token = token
+        def is_expired(self):
+            return False
+  frontend/src/components/LoginPage.tsx: |
+    GARBAGE_REG_007_LOGIN_E = "login";
+    export function LoginPage() {
+        GARBAGE_REG_007_LOGIN_F = true;
+        return null;
+    }
+  frontend/src/components/DashboardLayout.tsx: |
+    GARBAGE_REG_007_DASH_G = "dashboard";
+    export function DashboardLayout() {
+        GARBAGE_REG_007_DASH_H = true;
+        return null;
+    }
+  frontend/src/components/CaloriesChart.tsx: |
+    GARBAGE_REG_007_CAL_I = "calories";
+    export function CaloriesChart() {
+        GARBAGE_REG_007_CAL_J = true;
+        return null;
+    }
+  frontend/src/components/SleepChart.tsx: |
+    GARBAGE_REG_007_SLEEP_K = "sleep";
+    export function SleepChart() {
+        GARBAGE_REG_007_SLEEP_L = true;
+        return null;
+    }
+  src/sync/scheduler.py: |
+    GARBAGE_REG_007_SCHED_M = "scheduler"
+    class Scheduler:
+        GARBAGE_REG_007_SCHED_N = True
+        def run(self):
+            pass
+  src/sync/progressive_sync.py: |
+    GARBAGE_REG_007_SYNC_O = "progressive"
+    class ProgressiveSync:
+        GARBAGE_REG_007_SYNC_P = True
+        def sync(self):
+            pass
+
+must_include_files:
+- migrations/021_fix_mode_constraint.py
+- src/analytics/types.py
+
+must_include_content_from:
+  migrations/021_fix_mode_constraint.py:
+    - "CHECK (mode IN ('short', 'mid', 'long'))"
+  src/analytics/types.py:
+    - "class TrendMode(Enum):"
+    - 'RECENT = "recent"'
+    - 'QUARTER = "quarter"'
+
+must_not_include:
+- GARBAGE_REG_007_USER_A
+- GARBAGE_REG_007_USER_B
+- GARBAGE_REG_007_SESSION_C
+- GARBAGE_REG_007_SESSION_D
+- GARBAGE_REG_007_LOGIN_E
+- GARBAGE_REG_007_LOGIN_F
+- GARBAGE_REG_007_DASH_G
+- GARBAGE_REG_007_DASH_H
+- GARBAGE_REG_007_CAL_I
+- GARBAGE_REG_007_CAL_J
+- GARBAGE_REG_007_SLEEP_K
+- GARBAGE_REG_007_SLEEP_L
+- GARBAGE_REG_007_SCHED_M
+- GARBAGE_REG_007_SCHED_N
+- GARBAGE_REG_007_SYNC_O
+- GARBAGE_REG_007_SYNC_P
+
+must_not_include_files:
+- src/models/user.py
+- src/models/session.py
+- frontend/src/components/LoginPage.tsx
+- frontend/src/components/DashboardLayout.tsx
+- frontend/src/components/CaloriesChart.tsx
+- frontend/src/components/SleepChart.tsx
+- src/sync/scheduler.py
+- src/sync/progressive_sync.py
+
+strict: true
+min_score: 90.0
+max_files: 5
+add_garbage_files: false
+skip_garbage_check: true

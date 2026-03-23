@@ -15,7 +15,7 @@ _TF_EXTENSIONS = {".tf", ".hcl"}
 #         moved, import, check, removed, and any future HCL block types.
 _TF_BLOCK_HEADER_RE = re.compile(r'^\w[\w-]*(?:\s+"[^"]*")*\s*\{')
 
-_TF_COMPOUND_REF_RE = re.compile(r"(?<![.\w])(\w+)\.(\w+)\.\w+")
+_TF_COMPOUND_REF_RE = re.compile(r"(?<![.\w])([a-zA-Z]\w*)\.(\w+)(?:\[\*?\w*\])?\.[\w\[\]*]+")
 _TF_COMPOUND_REF_SKIP = frozenset({"var", "local", "data", "module", "path", "terraform", "count", "each", "self"})
 
 

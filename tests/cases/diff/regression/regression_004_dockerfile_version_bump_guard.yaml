@@ -1,0 +1,132 @@
+# Regression guard: Dockerfile-only diff must include Dockerfile content
+# Previously broken (TODO 2026-03-07): Dockerfile change showed csrf.py instead.
+# Now fixed — this test guards against regression.
+
+initial:
+  Dockerfile: |
+    FROM node:25-alpine AS builder
+    WORKDIR /app
+    COPY package*.json ./
+    RUN npm ci --production=false
+    COPY . .
+    RUN npm run build
+
+    FROM nginx:1.27.3-alpine AS production
+    COPY --from=builder /app/dist /usr/share/nginx/html
+    COPY nginx.conf /etc/nginx/nginx.conf
+    EXPOSE 80
+    CMD ["nginx", "-g", "daemon off;"]
+  nginx.conf: |
+    worker_processes auto;
+    events { worker_connections 1024; }
+    http {
+        include /etc/nginx/mime.types;
+        server {
+            listen 80;
+            root /usr/share/nginx/html;
+            location / {
+                try_files $uri /index.html;
+            }
+        }
+    }
+  src/core/csrf.py: |
+    GARBAGE_REG_004_CSRF_A = "csrf_module"
+    GARBAGE_REG_004_ORIGIN_B = True
+
+    def validate_origin(request):
+        allowed = ["https://example.com"]
+        return request.headers.get("Origin", "") in allowed
+
+    class CsrfMiddleware:
+        GARBAGE_REG_004_MW_C = True
+        def process_request(self, request):
+            pass
+  src/auth/login.py: |
+    GARBAGE_REG_004_LOGIN_D = "auth"
+
+    class LoginHandler:
+        GARBAGE_REG_004_SESSION_E = "jwt"
+        def authenticate(self, username, password):
+            pass
+  src/config.py: |
+    GARBAGE_REG_004_CFG_F = "settings"
+    DEBUG = False
+    DATABASE_URL = "postgresql://localhost/app"
+
+changed:
+  Dockerfile: |
+    FROM node:24-alpine AS builder
+    WORKDIR /app
+    COPY package*.json ./
+    RUN npm ci --production=false
+    COPY . .
+    RUN npm run build
+
+    FROM nginx:1.28-alpine AS production
+    COPY --from=builder /app/dist /usr/share/nginx/html
+    COPY nginx.conf /etc/nginx/nginx.conf
+    EXPOSE 80
+    CMD ["nginx", "-g", "daemon off;"]
+  nginx.conf: |
+    worker_processes auto;
+    events { worker_connections 1024; }
+    http {
+        include /etc/nginx/mime.types;
+        server {
+            listen 80;
+            root /usr/share/nginx/html;
+            location / {
+                try_files $uri /index.html;
+            }
+        }
+    }
+  src/core/csrf.py: |
+    GARBAGE_REG_004_CSRF_A = "csrf_module"
+    GARBAGE_REG_004_ORIGIN_B = True
+
+    def validate_origin(request):
+        allowed = ["https://example.com"]
+        return request.headers.get("Origin", "") in allowed
+
+    class CsrfMiddleware:
+        GARBAGE_REG_004_MW_C = True
+        def process_request(self, request):
+            pass
+  src/auth/login.py: |
+    GARBAGE_REG_004_LOGIN_D = "auth"
+
+    class LoginHandler:
+        GARBAGE_REG_004_SESSION_E = "jwt"
+        def authenticate(self, username, password):
+            pass
+  src/config.py: |
+    GARBAGE_REG_004_CFG_F = "settings"
+    DEBUG = False
+    DATABASE_URL = "postgresql://localhost/app"
+
+must_include_files:
+- Dockerfile
+
+must_include_content_from:
+  Dockerfile:
+    - "FROM node:24-alpine AS builder"
+    - "FROM nginx:1.28-alpine AS production"
+
+must_not_include:
+- GARBAGE_REG_004_CSRF_A
+- GARBAGE_REG_004_ORIGIN_B
+- GARBAGE_REG_004_MW_C
+- GARBAGE_REG_004_LOGIN_D
+- GARBAGE_REG_004_SESSION_E
+- GARBAGE_REG_004_CFG_F
+
+must_not_include_files:
+- src/core/csrf.py
+- src/auth/login.py
+- src/config.py
+
+strict: true
+max_fragments: 4
+max_files: 2
+add_garbage_files: false
+skip_garbage_check: true

@@ -1,0 +1,290 @@
+# Zig comptime: module uses comptime to process config and imports a helper.
+# A new comptime block is added using the helper function. Context must
+# include the helper module. Noise: modules that also use @import("meta.zig")
+# comptime features but are unrelated to the change.
+
+initial:
+  src/meta.zig: |
+    const std = @import("std");
+
+    pub fn fieldCount(comptime T: type) usize {
+        return @typeInfo(T).Struct.fields.len;
+    }
+
+    pub fn hasField(comptime T: type, comptime name: []const u8) bool {
+        inline for (@typeInfo(T).Struct.fields) |field| {
+            if (std.mem.eql(u8, field.name, name)) return true;
+        }
+        return false;
+    }
+
+    pub fn fieldNames(comptime T: type) []const []const u8 {
+        const info = @typeInfo(T).Struct;
+        var names: [info.fields.len][]const u8 = undefined;
+        inline for (info.fields, 0..) |field, i| {
+            names[i] = field.name;
+        }
+        return &names;
+    }
+
+  src/models.zig: |
+    const std = @import("std");
+    const meta = @import("meta.zig");
+
+    pub const User = struct {
+        id: u64,
+        name: []const u8,
+        email: []const u8,
+        active: bool,
+    };
+
+    pub const user_field_count = meta.fieldCount(User);
+
+  # --- Trap: imports meta.zig, calls fieldCount (same function used in models) ---
+  src/validator.zig: |
+    const std = @import("std");
+    const meta = @import("meta.zig");
+
+    const TRAP_ZIG_004_VALID_MARKER_A: []const u8 = "validator_module";
+    const TRAP_ZIG_004_CHECK_FLAG_B: bool = true;
+
+    pub fn validateStruct(comptime T: type, instance: T) bool {
+        _ = instance;
+        return meta.fieldCount(T) > 0;
+    }
+
+  # --- Trap: imports meta.zig, calls hasField (same function the diff adds) ---
+  src/schema_checker.zig: |
+    const std = @import("std");
+    const meta = @import("meta.zig");
+
+    const TRAP_ZIG_004_SCHEMA_MARKER_C: []const u8 = "schema_checker_module";
+    const TRAP_ZIG_004_SCHEMA_FLAG_D: bool = true;
+
+    pub fn ensureFieldExists(comptime T: type, comptime name: []const u8) void {
+        if (!meta.hasField(T, name)) {
+            @compileError("Required field missing: " ++ name);
+        }
+    }
+
+  # --- Trap: imports meta.zig, calls fieldNames (same function the diff adds) ---
+  src/debug_printer.zig: |
+    const std = @import("std");
+    const meta = @import("meta.zig");
+
+    const TRAP_ZIG_004_DEBUG_MARKER_E: []const u8 = "debug_printer_module";
+    const TRAP_ZIG_004_PRINT_FLAG_F: bool = true;
+
+    pub fn printFieldNames(comptime T: type) void {
+        const names = meta.fieldNames(T);
+        for (names) |name| {
+            std.debug.print("{s}\n", .{name});
+        }
+    }
+
+  # --- Trap: uses comptime but no meta.zig import ---
+  src/serializer.zig: |
+    const std = @import("std");
+
+    const TRAP_ZIG_004_SERIAL_MARKER_G: []const u8 = "serializer_module";
+    const TRAP_ZIG_004_ENCODE_FLAG_H: bool = true;
+
+    pub fn comptimeHash(comptime s: []const u8) u64 {
+        var hash: u64 = 5381;
+        for (s) |c| {
+            hash = ((hash << 5) +% hash) +% c;
+        }
+        return hash;
+    }
+
+  # --- Trap: imports models.zig (references User struct) ---
+  src/repository.zig: |
+    const std = @import("std");
+    const models = @import("models.zig");
+
+    const TRAP_ZIG_004_REPO_MARKER_I: []const u8 = "repository_module";
+    const TRAP_ZIG_004_STORE_FLAG_J: bool = true;
+
+    pub fn createUser(name: []const u8, email: []const u8) models.User {
+        return .{
+            .id = 0,
+            .name = name,
+            .email = email,
+            .active = true,
+        };
+    }
+
+  # --- Plain trap ---
+  src/runtime_utils.zig: |
+    const std = @import("std");
+
+    const TRAP_ZIG_004_RUNTIME_MARKER_K: []const u8 = "runtime_utils_module";
+    const TRAP_ZIG_004_ALLOC_FLAG_L: bool = true;
+
+    pub fn duplicateString(allocator: std.mem.Allocator, s: []const u8) ![]u8 {
+        const copy = try allocator.alloc(u8, s.len);
+        @memcpy(copy, s);
+        return copy;
+    }
+
+changed:
+  src/meta.zig: |
+    const std = @import("std");
+
+    pub fn fieldCount(comptime T: type) usize {
+        return @typeInfo(T).Struct.fields.len;
+    }
+
+    pub fn hasField(comptime T: type, comptime name: []const u8) bool {
+        inline for (@typeInfo(T).Struct.fields) |field| {
+            if (std.mem.eql(u8, field.name, name)) return true;
+        }
+        return false;
+    }
+
+    pub fn fieldNames(comptime T: type) []const []const u8 {
+        const info = @typeInfo(T).Struct;
+        var names: [info.fields.len][]const u8 = undefined;
+        inline for (info.fields, 0..) |field, i| {
+            names[i] = field.name;
+        }
+        return &names;
+    }
+
+  src/models.zig: |
+    const std = @import("std");
+    const meta = @import("meta.zig");
+
+    pub const User = struct {
+        id: u64,
+        name: []const u8,
+        email: []const u8,
+        active: bool,
+    };
+
+    pub const user_field_count = meta.fieldCount(User);
+    pub const has_email_field = meta.hasField(User, "email");
+    pub const user_fields = meta.fieldNames(User);
+
+  src/validator.zig: |
+    const std = @import("std");
+    const meta = @import("meta.zig");
+
+    const TRAP_ZIG_004_VALID_MARKER_A: []const u8 = "validator_module";
+    const TRAP_ZIG_004_CHECK_FLAG_B: bool = true;
+
+    pub fn validateStruct(comptime T: type, instance: T) bool {
+        _ = instance;
+        return meta.fieldCount(T) > 0;
+    }
+
+  src/schema_checker.zig: |
+    const std = @import("std");
+    const meta = @import("meta.zig");
+
+    const TRAP_ZIG_004_SCHEMA_MARKER_C: []const u8 = "schema_checker_module";
+    const TRAP_ZIG_004_SCHEMA_FLAG_D: bool = true;
+
+    pub fn ensureFieldExists(comptime T: type, comptime name: []const u8) void {
+        if (!meta.hasField(T, name)) {
+            @compileError("Required field missing: " ++ name);
+        }
+    }
+
+  src/debug_printer.zig: |
+    const std = @import("std");
+    const meta = @import("meta.zig");
+
+    const TRAP_ZIG_004_DEBUG_MARKER_E: []const u8 = "debug_printer_module";
+    const TRAP_ZIG_004_PRINT_FLAG_F: bool = true;
+
+    pub fn printFieldNames(comptime T: type) void {
+        const names = meta.fieldNames(T);
+        for (names) |name| {
+            std.debug.print("{s}\n", .{name});
+        }
+    }
+
+  src/serializer.zig: |
+    const std = @import("std");
+
+    const TRAP_ZIG_004_SERIAL_MARKER_G: []const u8 = "serializer_module";
+    const TRAP_ZIG_004_ENCODE_FLAG_H: bool = true;
+
+    pub fn comptimeHash(comptime s: []const u8) u64 {
+        var hash: u64 = 5381;
+        for (s) |c| {
+            hash = ((hash << 5) +% hash) +% c;
+        }
+        return hash;
+    }
+
+  src/repository.zig: |
+    const std = @import("std");
+    const models = @import("models.zig");
+
+    const TRAP_ZIG_004_REPO_MARKER_I: []const u8 = "repository_module";
+    const TRAP_ZIG_004_STORE_FLAG_J: bool = true;
+
+    pub fn createUser(name: []const u8, email: []const u8) models.User {
+        return .{
+            .id = 0,
+            .name = name,
+            .email = email,
+            .active = true,
+        };
+    }
+
+  src/runtime_utils.zig: |
+    const std = @import("std");
+
+    const TRAP_ZIG_004_RUNTIME_MARKER_K: []const u8 = "runtime_utils_module";
+    const TRAP_ZIG_004_ALLOC_FLAG_L: bool = true;
+
+    pub fn duplicateString(allocator: std.mem.Allocator, s: []const u8) ![]u8 {
+        const copy = try allocator.alloc(u8, s.len);
+        @memcpy(copy, s);
+        return copy;
+    }
+
+# === Assertions ===
+
+must_include_files:
+- src/models.zig
+
+must_include_content_from:
+  src/models.zig:
+    - has_email_field = meta.hasField(User, "email")
+    - user_fields = meta.fieldNames(User)
+
+must_not_include:
+# Trap: imports meta.zig, calls fieldCount
+- TRAP_ZIG_004_VALID_MARKER_A
+- TRAP_ZIG_004_CHECK_FLAG_B
+# Trap: imports meta.zig, calls hasField (same function as diff!)
+- TRAP_ZIG_004_SCHEMA_MARKER_C
+- TRAP_ZIG_004_SCHEMA_FLAG_D
+# Trap: imports meta.zig, calls fieldNames (same function as diff!)
+- TRAP_ZIG_004_DEBUG_MARKER_E
+- TRAP_ZIG_004_PRINT_FLAG_F
+# Trap: uses comptime but no meta.zig
+- TRAP_ZIG_004_SERIAL_MARKER_G
+- TRAP_ZIG_004_ENCODE_FLAG_H
+# Trap: imports models.zig, references User struct
+- TRAP_ZIG_004_REPO_MARKER_I
+- TRAP_ZIG_004_STORE_FLAG_J
+# Plain trap
+- TRAP_ZIG_004_RUNTIME_MARKER_K
+- TRAP_ZIG_004_ALLOC_FLAG_L
+
+must_not_include_files:
+- src/validator.zig
+- src/schema_checker.zig
+- src/debug_printer.zig
+- src/serializer.zig
+- src/repository.zig
+- src/runtime_utils.zig
+
+max_fragments: 8
+max_files: 2
+min_budget: 3000

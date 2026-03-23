@@ -1,0 +1,209 @@
+# Scenario: BUILD file adds a new dependency to a py_library target,
+# and the source file starts importing from that dependency.
+# The reviewer needs the dependency's source to understand what's being pulled in.
+#
+# Reviewer questions:
+#   Q1: "What does the new dependency 'utils' provide?"
+#       -> libs/utils/utils.py: parse_config, validate_input functions
+#   Q2: "How does the BUILD file wire the dependency?"
+#       -> app/BUILD: deps = ["//libs/utils:utils"]
+#
+# Not needed:
+#   - libs/logging/BUILD: sibling package, unrelated to change
+#   - libs/logging/logger.py: noise — different library entirely
+#   - other/BUILD: unrelated package in same workspace
+
+initial:
+  app/BUILD: |
+    py_library(
+        name = "app",
+        srcs = ["main.py"],
+        deps = [
+            "//libs/database:client",
+        ],
+        visibility = ["//visibility:public"],
+    )
+  app/main.py: |
+    from libs.database.client import DatabaseClient
+
+    class Application:
+        def __init__(self):
+            self.db = DatabaseClient()
+
+        def run(self):
+            self.db.connect()
+            records = self.db.query("SELECT * FROM users")
+            return records
+  libs/database/BUILD: |
+    py_library(
+        name = "client",
+        srcs = ["client.py"],
+        visibility = ["//visibility:public"],
+    )
+  libs/database/client.py: |
+    class DatabaseClient:
+        def connect(self):
+            pass
+
+        def query(self, sql):
+            return []
+  libs/utils/BUILD: |
+    py_library(
+        name = "utils",
+        srcs = ["utils.py"],
+        visibility = ["//visibility:public"],
+    )
+  libs/utils/utils.py: |
+    def parse_config(path):
+        with open(path) as f:
+            return dict(line.strip().split("=") for line in f if "=" in line)
+
+    def validate_input(data, schema):
+        for key in schema:
+            if key not in data:
+                raise ValueError(f"Missing required key: {key}")
+        return True
+
+  # Trap: sibling library with similar BUILD structure
+  libs/logging/BUILD: |
+    py_library(
+        name = "logging",
+        srcs = ["logger.py"],
+        deps = [],
+        GARBAGE_BAZEL_001_A = "noise_logging_build",
+        visibility = ["//visibility:public"],
+    )
+  libs/logging/logger.py: |
+    GARBAGE_BAZEL_001_B = "noise_logging_module"
+
+    class Logger:
+        def info(self, msg):
+            print(f"INFO: {msg}")
+
+        def error(self, msg):
+            print(f"ERROR: {msg}")
+
+  # Trap: unrelated package
+  other/BUILD: |
+    py_binary(
+        name = "cli",
+        srcs = ["cli.py"],
+        deps = ["//libs/logging:logging"],
+        GARBAGE_BAZEL_001_C = "noise_other_build",
+    )
+  other/cli.py: |
+    GARBAGE_BAZEL_001_D = "noise_other_cli"
+    from libs.logging.logger import Logger
+    logger = Logger()
+    logger.info("Starting CLI")
+
+changed:
+  app/BUILD: |
+    py_library(
+        name = "app",
+        srcs = ["main.py"],
+        deps = [
+            "//libs/database:client",
+            "//libs/utils:utils",
+        ],
+        visibility = ["//visibility:public"],
+    )
+  app/main.py: |
+    from libs.database.client import DatabaseClient
+    from libs.utils.utils import parse_config, validate_input
+
+    class Application:
+        def __init__(self, config_path="app.conf"):
+            self.db = DatabaseClient()
+            self.config = parse_config(config_path)
+
+        def run(self):
+            validate_input(self.config, ["host", "port"])
+            self.db.connect()
+            records = self.db.query("SELECT * FROM users")
+            return records
+  libs/database/BUILD: |
+    py_library(
+        name = "client",
+        srcs = ["client.py"],
+        visibility = ["//visibility:public"],
+    )
+  libs/database/client.py: |
+    class DatabaseClient:
+        def connect(self):
+            pass
+
+        def query(self, sql):
+            return []
+  libs/utils/BUILD: |
+    py_library(
+        name = "utils",
+        srcs = ["utils.py"],
+        visibility = ["//visibility:public"],
+    )
+  libs/utils/utils.py: |
+    def parse_config(path):
+        with open(path) as f:
+            return dict(line.strip().split("=") for line in f if "=" in line)
+
+    def validate_input(data, schema):
+        for key in schema:
+            if key not in data:
+                raise ValueError(f"Missing required key: {key}")
+        return True
+  libs/logging/BUILD: |
+    py_library(
+        name = "logging",
+        srcs = ["logger.py"],
+        deps = [],
+        GARBAGE_BAZEL_001_A = "noise_logging_build",
+        visibility = ["//visibility:public"],
+    )
+  libs/logging/logger.py: |
+    GARBAGE_BAZEL_001_B = "noise_logging_module"
+
+    class Logger:
+        def info(self, msg):
+            print(f"INFO: {msg}")
+
+        def error(self, msg):
+            print(f"ERROR: {msg}")
+  other/BUILD: |
+    py_binary(
+        name = "cli",
+        srcs = ["cli.py"],
+        deps = ["//libs/logging:logging"],
+        GARBAGE_BAZEL_001_C = "noise_other_build",
+    )
+  other/cli.py: |
+    GARBAGE_BAZEL_001_D = "noise_other_cli"
+    from libs.logging.logger import Logger
+    logger = Logger()
+    logger.info("Starting CLI")
+
+must_include_files:
+- app/BUILD
+- libs/utils/utils.py
+
+must_include_content_from:
+  app/BUILD:
+    - '//libs/utils:utils'
+  libs/utils/utils.py:
+    - parse_config
+    - validate_input
+
+must_not_include:
+- GARBAGE_BAZEL_001_A
+- GARBAGE_BAZEL_001_B
+- GARBAGE_BAZEL_001_C
+- GARBAGE_BAZEL_001_D
+
+must_not_include_files:
+- libs/logging/BUILD
+- libs/logging/logger.py
+- other/BUILD
+- other/cli.py
+
+max_files: 4
+add_garbage_files: false
+skip_garbage_check: true

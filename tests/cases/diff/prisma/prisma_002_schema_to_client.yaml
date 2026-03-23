@@ -1,0 +1,284 @@
+# Prisma schema to TypeScript client: schema adds a new field and
+# a TypeScript service starts using it. Both the schema and the
+# service must appear in context.
+
+initial:
+  prisma/schema.prisma: |
+    generator client {
+      provider = "prisma-client-js"
+    }
+
+    datasource db {
+      provider = "postgresql"
+      url      = env("DATABASE_URL")
+    }
+
+    model Product {
+      id          Int      @id @default(autoincrement())
+      name        String
+      description String?
+      price       Float
+      inStock     Boolean  @default(true)
+      createdAt   DateTime @default(now())
+      updatedAt   DateTime @updatedAt
+    }
+
+    model Order {
+      id        Int         @id @default(autoincrement())
+      total     Float
+      status    OrderStatus @default(PENDING)
+      items     OrderItem[]
+      createdAt DateTime    @default(now())
+    }
+
+    model OrderItem {
+      id        Int   @id @default(autoincrement())
+      quantity  Int
+      price     Float
+      order     Order @relation(fields: [orderId], references: [id])
+      orderId   Int
+      productId Int
+    }
+
+    enum OrderStatus {
+      PENDING
+      CONFIRMED
+      SHIPPED
+      DELIVERED
+    }
+
+  src/services/product.service.ts: |
+    import { PrismaClient, Product } from '@prisma/client';
+
+    const prisma = new PrismaClient();
+
+    export async function getAllProducts(): Promise<Product[]> {
+      return prisma.product.findMany({
+        where: { inStock: true },
+        orderBy: { name: 'asc' },
+      });
+    }
+
+    export async function getProductById(id: number): Promise<Product | null> {
+      return prisma.product.findUnique({
+        where: { id },
+      });
+    }
+
+    export async function createProduct(
+      data: Pick<Product, 'name' | 'price' | 'description'>
+    ): Promise<Product> {
+      return prisma.product.create({ data });
+    }
+
+  src/services/order.service.ts: |
+    // GARBAGE_PRISMA_002_A: order_service_marker
+    import { PrismaClient, Order } from '@prisma/client';
+
+    const prisma = new PrismaClient();
+
+    export async function getOrderById(id: number): Promise<Order | null> {
+      return prisma.order.findUnique({
+        where: { id },
+        include: { items: true },
+      });
+    }
+
+  src/routes/order.routes.ts: |
+    // GARBAGE_PRISMA_002_B: order_routes_marker
+    import { Router } from 'express';
+    import { getOrderById } from '../services/order.service';
+
+    const router = Router();
+
+    router.get('/:id', async (req, res) => {
+      const order = await getOrderById(parseInt(req.params.id));
+      res.json(order);
+    });
+
+    export default router;
+
+  src/routes/product.routes.ts: |
+    // GARBAGE_PRISMA_002_C: product_routes_marker
+    import { Router } from 'express';
+    import { getAllProducts } from '../services/product.service';
+
+    const router = Router();
+
+    router.get('/', async (req, res) => {
+      const products = await getAllProducts();
+      res.json(products);
+    });
+
+    export default router;
+
+  src/utils/validators.ts: |
+    // GARBAGE_PRISMA_002_D: validators_marker
+    export function isValidPrice(price: number): boolean {
+      return price > 0 && Number.isFinite(price);
+    }
+
+changed:
+  prisma/schema.prisma: |
+    generator client {
+      provider = "prisma-client-js"
+    }
+
+    datasource db {
+      provider = "postgresql"
+      url      = env("DATABASE_URL")
+    }
+
+    model Product {
+      id          Int      @id @default(autoincrement())
+      name        String
+      description String?
+      sku         String   @unique
+      price       Float
+      compareAt   Float?
+      inStock     Boolean  @default(true)
+      createdAt   DateTime @default(now())
+      updatedAt   DateTime @updatedAt
+    }
+
+    model Order {
+      id        Int         @id @default(autoincrement())
+      total     Float
+      status    OrderStatus @default(PENDING)
+      items     OrderItem[]
+      createdAt DateTime    @default(now())
+    }
+
+    model OrderItem {
+      id        Int   @id @default(autoincrement())
+      quantity  Int
+      price     Float
+      order     Order @relation(fields: [orderId], references: [id])
+      orderId   Int
+      productId Int
+    }
+
+    enum OrderStatus {
+      PENDING
+      CONFIRMED
+      SHIPPED
+      DELIVERED
+    }
+
+  src/services/product.service.ts: |
+    import { PrismaClient, Product } from '@prisma/client';
+
+    const prisma = new PrismaClient();
+
+    export async function getAllProducts(): Promise<Product[]> {
+      return prisma.product.findMany({
+        where: { inStock: true },
+        orderBy: { name: 'asc' },
+      });
+    }
+
+    export async function getProductById(id: number): Promise<Product | null> {
+      return prisma.product.findUnique({
+        where: { id },
+      });
+    }
+
+    export async function getProductBySku(sku: string): Promise<Product | null> {
+      return prisma.product.findUnique({
+        where: { sku },
+      });
+    }
+
+    export async function createProduct(
+      data: Pick<Product, 'name' | 'price' | 'description' | 'sku'>
+    ): Promise<Product> {
+      return prisma.product.create({ data });
+    }
+
+    export async function getDiscountedProducts(): Promise<Product[]> {
+      return prisma.product.findMany({
+        where: {
+          inStock: true,
+          compareAt: { not: null },
+          price: { lt: prisma.product.fields.compareAt },
+        },
+      });
+    }
+
+  src/services/order.service.ts: |
+    // GARBAGE_PRISMA_002_A: order_service_marker
+    import { PrismaClient, Order } from '@prisma/client';
+
+    const prisma = new PrismaClient();
+
+    export async function getOrderById(id: number): Promise<Order | null> {
+      return prisma.order.findUnique({
+        where: { id },
+        include: { items: true },
+      });
+    }
+
+  src/routes/order.routes.ts: |
+    // GARBAGE_PRISMA_002_B: order_routes_marker
+    import { Router } from 'express';
+    import { getOrderById } from '../services/order.service';
+
+    const router = Router();
+
+    router.get('/:id', async (req, res) => {
+      const order = await getOrderById(parseInt(req.params.id));
+      res.json(order);
+    });
+
+    export default router;
+
+  src/routes/product.routes.ts: |
+    // GARBAGE_PRISMA_002_C: product_routes_marker
+    import { Router } from 'express';
+    import { getAllProducts } from '../services/product.service';
+
+    const router = Router();
+
+    router.get('/', async (req, res) => {
+      const products = await getAllProducts();
+      res.json(products);
+    });
+
+    export default router;
+
+  src/utils/validators.ts: |
+    // GARBAGE_PRISMA_002_D: validators_marker
+    export function isValidPrice(price: number): boolean {
+      return price > 0 && Number.isFinite(price);
+    }
+
+# === Assertions ===
+
+must_include_files:
+- prisma/schema.prisma
+- src/services/product.service.ts
+
+must_include_content_from:
+  prisma/schema.prisma:
+    - "sku"
+    - "compareAt"
+  src/services/product.service.ts:
+    - "getProductBySku"
+    - "getDiscountedProducts"
+    - "compareAt"
+
+must_not_include:
+- GARBAGE_PRISMA_002_A
+- GARBAGE_PRISMA_002_B
+- GARBAGE_PRISMA_002_C
+- GARBAGE_PRISMA_002_D
+
+must_not_include_files:
+- src/services/order.service.ts
+- src/routes/order.routes.ts
+- src/routes/product.routes.ts
+- src/utils/validators.ts
+
+max_files: 4
+add_garbage_files: false
+skip_garbage_check: true

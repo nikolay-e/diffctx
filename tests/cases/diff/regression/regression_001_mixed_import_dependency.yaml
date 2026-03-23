@@ -1,0 +1,213 @@
+# Regression: mixed default+named import not followed as dependency
+# Root cause: JavaScript semantic parser regex doesn't handle
+# `import defaultExport, { namedExport } from './module'` syntax.
+# Only `import X from` and `import { X } from` are matched.
+# Real-world: lingua-quiz commit 14f3470 — api/admin.ts missed as
+# dependency of useAdminPage.ts which uses this exact pattern.
+
+initial:
+  src/pages/admin/useAdminPage.ts: |
+    import adminApi, { type VocabularyItemCreate, type VocabularyItemUpdate } from '../../api/admin';
+    import { useState, useCallback } from 'react';
+
+    interface VocabularyItem {
+      id: string;
+      word: string;
+      translation: string;
+    }
+
+    export function useAdminPage() {
+      const [items, setItems] = useState<VocabularyItem[]>([]);
+      const [loading, setLoading] = useState(false);
+
+      const handleCreate = useCallback(async (word: string, translation: string) => {
+        setLoading(true);
+        const item = await adminApi.create({ word, translation });
+        setItems(prev => [...prev, item]);
+        setLoading(false);
+      }, []);
+
+      const handleUpdate = useCallback(async (id: string, data: Partial<VocabularyItem>) => {
+        await adminApi.update(id, data);
+        setItems(prev => prev.map(i => i.id === id ? { ...i, ...data } : i));
+      }, []);
+
+      const handleDelete = useCallback(async (id: string) => {
+        await adminApi.remove(id);
+        setItems(prev => prev.filter(i => i.id !== id));
+      }, []);
+
+      return { items, loading, handleCreate, handleUpdate, handleDelete };
+    }
+  src/api/admin.ts: |
+    const API_BASE = '/api/admin';
+
+    export interface VocabularyItemCreate {
+      word: string;
+      translation: string;
+    }
+
+    export interface VocabularyItemUpdate {
+      word?: string;
+      translation?: string;
+    }
+
+    async function create(data: VocabularyItemCreate) {
+      const response = await fetch(`${API_BASE}/vocabulary`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      return response.json();
+    }
+
+    async function update(id: string, data: VocabularyItemUpdate) {
+      const response = await fetch(`${API_BASE}/vocabulary/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      return response.json();
+    }
+
+    async function remove(id: string) {
+      await fetch(`${API_BASE}/vocabulary/${id}`, { method: 'DELETE' });
+    }
+
+    const adminApi = { create, update, remove };
+    export default adminApi;
+  src/pages/admin/AdminLayout.tsx: |
+    import React from 'react';
+
+    export function AdminLayout({ children }: { children: React.ReactNode }) {
+      return (
+        <div className="admin-layout">
+          <nav className="admin-nav">
+            <a href="/admin">Dashboard</a>
+            <a href="/admin/vocabulary">Vocabulary</a>
+          </nav>
+          <main>{children}</main>
+        </div>
+      );
+    }
+
+changed:
+  src/pages/admin/useAdminPage.ts: |
+    import adminApi, { type VocabularyItemCreate, type VocabularyItemUpdate } from '../../api/admin';
+    import { useState, useCallback } from 'react';
+
+    interface VocabularyItem {
+      id: string;
+      word: string;
+      translation: string;
+      category: string;
+    }
+
+    export function useAdminPage() {
+      const [items, setItems] = useState<VocabularyItem[]>([]);
+      const [loading, setLoading] = useState(false);
+      const [error, setError] = useState<string | null>(null);
+
+      const handleCreate = useCallback(async (word: string, translation: string, category: string) => {
+        setLoading(true);
+        setError(null);
+        try {
+          const item = await adminApi.create({ word, translation });
+          setItems(prev => [...prev, item]);
+        } catch (e) {
+          setError(e instanceof Error ? e.message : 'Failed to create');
+        } finally {
+          setLoading(false);
+        }
+      }, []);
+
+      const handleUpdate = useCallback(async (id: string, data: Partial<VocabularyItem>) => {
+        try {
+          await adminApi.update(id, data);
+          setItems(prev => prev.map(i => i.id === id ? { ...i, ...data } : i));
+        } catch (e) {
+          setError(e instanceof Error ? e.message : 'Failed to update');
+        }
+      }, []);
+
+      const handleDelete = useCallback(async (id: string) => {
+        try {
+          await adminApi.remove(id);
+          setItems(prev => prev.filter(i => i.id !== id));
+        } catch (e) {
+          setError(e instanceof Error ? e.message : 'Failed to delete');
+        }
+      }, []);
+
+      return { items, loading, error, handleCreate, handleUpdate, handleDelete };
+    }
+  src/api/admin.ts: |
+    const API_BASE = '/api/admin';
+
+    export interface VocabularyItemCreate {
+      word: string;
+      translation: string;
+    }
+
+    export interface VocabularyItemUpdate {
+      word?: string;
+      translation?: string;
+    }
+
+    async function create(data: VocabularyItemCreate) {
+      const response = await fetch(`${API_BASE}/vocabulary`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      return response.json();
+    }
+
+    async function update(id: string, data: VocabularyItemUpdate) {
+      const response = await fetch(`${API_BASE}/vocabulary/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      return response.json();
+    }
+
+    async function remove(id: string) {
+      await fetch(`${API_BASE}/vocabulary/${id}`, { method: 'DELETE' });
+    }
+
+    const adminApi = { create, update, remove };
+    export default adminApi;
+  src/pages/admin/AdminLayout.tsx: |
+    import React from 'react';
+
+    export function AdminLayout({ children }: { children: React.ReactNode }) {
+      return (
+        <div className="admin-layout">
+          <nav className="admin-nav">
+            <a href="/admin">Dashboard</a>
+            <a href="/admin/vocabulary">Vocabulary</a>
+          </nav>
+          <main>{children}</main>
+        </div>
+      );
+    }
+
+must_include_files:
+- src/pages/admin/useAdminPage.ts
+- src/api/admin.ts
+
+must_include_content_from:
+  src/pages/admin/useAdminPage.ts:
+    - "export function useAdminPage()"
+    - "const handleCreate = useCallback"
+  src/api/admin.ts:
+    - "async function create(data: VocabularyItemCreate)"
+    - "export default adminApi"
+
+must_not_include_files:
+- src/pages/admin/AdminLayout.tsx
+
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

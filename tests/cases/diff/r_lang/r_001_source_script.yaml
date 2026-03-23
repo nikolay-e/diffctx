@@ -1,0 +1,207 @@
+# Test: R script sources helpers/utils.R and calls new function
+#
+# Scenario: analysis/main.R adds a call to normalize_vector() from
+# helpers/utils.R via source("helpers/utils.R"). The utils module
+# is UNCHANGED — it already defined normalize_vector.
+#
+# Reviewer questions:
+#   Q1: "What normalization does normalize_vector use — L2 or min-max?"
+#       -> helpers/utils.R (UNCHANGED) uses L2 norm (Euclidean)
+#   Q2: "Does normalize_vector handle zero-length vectors?"
+#       -> helpers/utils.R checks for zero norm and returns zeros
+#
+# Trap files:
+#   - helpers/plotting.R: visualization helpers — same helpers/ dir,
+#     also sourced by other scripts but not by main.R
+#   - analysis/clustering.R: another analysis script — same directory,
+#     also uses normalize_vector but independent analysis
+
+initial:
+  helpers/utils.R: |
+    safe_divide <- function(a, b) {
+      ifelse(b == 0, 0, a / b)
+    }
+
+    normalize_vector <- function(x) {
+      n <- sqrt(sum(x^2))
+      if (n == 0) return(rep(0, length(x)))
+      x / n
+    }
+
+    scale_to_range <- function(x, new_min = 0, new_max = 1) {
+      old_min <- min(x, na.rm = TRUE)
+      old_max <- max(x, na.rm = TRUE)
+      if (old_max == old_min) return(rep(new_min, length(x)))
+      (x - old_min) / (old_max - old_min) * (new_max - new_min) + new_min
+    }
+
+    remove_outliers <- function(x, threshold = 3) {
+      mu <- mean(x, na.rm = TRUE)
+      sigma <- sd(x, na.rm = TRUE)
+      x[abs(x - mu) <= threshold * sigma]
+    }
+  analysis/main.R: |
+    source("helpers/utils.R")
+
+    data <- read.csv("data/measurements.csv")
+
+    cleaned <- data[complete.cases(data), ]
+    summary_stats <- summary(cleaned$value)
+    cat("Summary:\n")
+    print(summary_stats)
+  helpers/plotting.R: |
+    GARBAGE_R_001_A <- "noise_marker_plotting"
+
+    create_histogram <- function(data, column, bins = 30) {
+      hist(data[[column]], breaks = bins, main = paste("Histogram of", column),
+           xlab = column, col = "steelblue", border = "white")
+    }
+
+    create_scatter <- function(data, x_col, y_col) {
+      plot(data[[x_col]], data[[y_col]],
+           xlab = x_col, ylab = y_col,
+           main = paste(x_col, "vs", y_col),
+           pch = 19, col = rgb(0.2, 0.4, 0.6, 0.5))
+    }
+
+    save_plot <- function(filename, width = 8, height = 6) {
+      pdf(filename, width = width, height = height)
+    }
+  analysis/clustering.R: |
+    GARBAGE_R_001_B <- "noise_marker_clustering"
+
+    source("helpers/utils.R")
+
+    perform_kmeans <- function(data, k = 3) {
+      normalized <- t(apply(data, 1, normalize_vector))
+      result <- kmeans(normalized, centers = k, nstart = 25)
+      return(result)
+    }
+
+    compute_silhouette <- function(data, clusters) {
+      library(cluster)
+      sil <- silhouette(clusters, dist(data))
+      return(mean(sil[, 3]))
+    }
+
+    find_optimal_k <- function(data, max_k = 10) {
+      wss <- sapply(1:max_k, function(k) {
+        kmeans(data, centers = k, nstart = 10)$tot.withinss
+      })
+      return(wss)
+    }
+
+changed:
+  helpers/utils.R: |
+    safe_divide <- function(a, b) {
+      ifelse(b == 0, 0, a / b)
+    }
+
+    normalize_vector <- function(x) {
+      n <- sqrt(sum(x^2))
+      if (n == 0) return(rep(0, length(x)))
+      x / n
+    }
+
+    scale_to_range <- function(x, new_min = 0, new_max = 1) {
+      old_min <- min(x, na.rm = TRUE)
+      old_max <- max(x, na.rm = TRUE)
+      if (old_max == old_min) return(rep(new_min, length(x)))
+      (x - old_min) / (old_max - old_min) * (new_max - new_min) + new_min
+    }
+
+    remove_outliers <- function(x, threshold = 3) {
+      mu <- mean(x, na.rm = TRUE)
+      sigma <- sd(x, na.rm = TRUE)
+      x[abs(x - mu) <= threshold * sigma]
+    }
+  analysis/main.R: |
+    source("helpers/utils.R")
+
+    data <- read.csv("data/measurements.csv")
+
+    cleaned <- data[complete.cases(data), ]
+    summary_stats <- summary(cleaned$value)
+    cat("Summary:\n")
+    print(summary_stats)
+
+    feature_cols <- c("height", "weight", "age")
+    features <- as.matrix(cleaned[, feature_cols])
+    normalized_features <- t(apply(features, 1, normalize_vector))
+
+    scaled_values <- scale_to_range(cleaned$value)
+    cat("Normalized feature dimensions:", dim(normalized_features), "\n")
+    cat("Scaled value range:", range(scaled_values), "\n")
+  helpers/plotting.R: |
+    GARBAGE_R_001_A <- "noise_marker_plotting"
+
+    create_histogram <- function(data, column, bins = 30) {
+      hist(data[[column]], breaks = bins, main = paste("Histogram of", column),
+           xlab = column, col = "steelblue", border = "white")
+    }
+
+    create_scatter <- function(data, x_col, y_col) {
+      plot(data[[x_col]], data[[y_col]],
+           xlab = x_col, ylab = y_col,
+           main = paste(x_col, "vs", y_col),
+           pch = 19, col = rgb(0.2, 0.4, 0.6, 0.5))
+    }
+
+    save_plot <- function(filename, width = 8, height = 6) {
+      pdf(filename, width = width, height = height)
+    }
+  analysis/clustering.R: |
+    GARBAGE_R_001_B <- "noise_marker_clustering"
+
+    source("helpers/utils.R")
+
+    perform_kmeans <- function(data, k = 3) {
+      normalized <- t(apply(data, 1, normalize_vector))
+      result <- kmeans(normalized, centers = k, nstart = 25)
+      return(result)
+    }
+
+    compute_silhouette <- function(data, clusters) {
+      library(cluster)
+      sil <- silhouette(clusters, dist(data))
+      return(mean(sil[, 3]))
+    }
+
+    find_optimal_k <- function(data, max_k = 10) {
+      wss <- sapply(1:max_k, function(k) {
+        kmeans(data, centers = k, nstart = 10)$tot.withinss
+      })
+      return(wss)
+    }
+
+must_include_files:
+  - analysis/main.R
+  # Q1+Q2: utils.R defines normalize_vector and scale_to_range
+  - helpers/utils.R
+must_include_content_from:
+  analysis/main.R:
+    - 'source("helpers/utils.R")'
+    - "normalize_vector"
+    - "scale_to_range"
+  helpers/utils.R:
+    - "normalize_vector <- function(x)"
+    - "n <- sqrt(sum(x^2))"
+    - "scale_to_range <- function"
+must_not_include:
+  # helpers/plotting.R: visualization — same dir but not sourced by main.R
+  - GARBAGE_R_001_A
+  - "create_histogram"
+  - "create_scatter"
+  - "save_plot"
+  # analysis/clustering.R: uses same utils but independent analysis
+  - GARBAGE_R_001_B
+  - "perform_kmeans"
+  - "compute_silhouette"
+  - "find_optimal_k"
+must_not_include_files:
+  - helpers/plotting.R
+  - analysis/clustering.R
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

@@ -1,0 +1,270 @@
+# Scenario: A Nim module uses `from os import walkDir, joinPath` for selective
+# imports, and also imports a local helper module. The change adds a new proc
+# that calls a function from the local helper.
+#
+# Diff: src/scanner.nim adds a new proc `scanWithFilter` that calls
+# `matchesPattern` from src/pathhelper.nim.
+#
+# Reviewer questions:
+#   Q1: "What does matchesPattern do and what are its parameters?"
+#       -> src/pathhelper.nim (UNCHANGED): matchesPattern takes a path and a
+#          glob pattern, returns bool. Reviewer verifies the call is correct.
+#
+# Not needed for comprehension:
+#   - src/fileops.nim: Another helper in same directory that also works with
+#     paths. STRUCTURAL TRAP: same directory, same path-related domain,
+#     but provides file read/write ops, not pattern matching.
+#
+#   - src/formathelper.nim: Utility that formats output strings.
+#     Same helper pattern but completely unrelated functionality.
+#
+#   - src/cachehelper.nim: Caching utility in same directory.
+#     Same naming convention (*helper.nim) but no path matching.
+
+initial:
+  src/pathhelper.nim: |
+    import os, strutils
+
+    proc matchesPattern*(path: string, pattern: string): bool =
+      let filename = extractFilename(path)
+      if pattern.startsWith("*"):
+        filename.endsWith(pattern[1..^1])
+      elif pattern.endsWith("*"):
+        filename.startsWith(pattern[0..^2])
+      else:
+        filename == pattern
+
+    proc normalizePath*(path: string): string =
+      path.replace("\\", "/").strip(chars = {'/'})
+
+    proc isHidden*(path: string): bool =
+      extractFilename(path).startsWith(".")
+
+  src/scanner.nim: |
+    from os import walkDir, joinPath, pcFile, pcDir
+    import pathhelper
+
+    proc scanDirectory*(root: string): seq[string] =
+      var results: seq[string] = @[]
+      for kind, path in walkDir(root):
+        if kind == pcFile:
+          results.add(path)
+      results
+
+  src/fileops.nim: |
+    import os, streams
+
+    let GARBAGE_NIM_002_A = "fileops_marker"
+    let GARBAGE_NIM_002_B = "stream_marker"
+
+    proc readFileContent*(path: string): string =
+      let stream = newFileStream(path, fmRead)
+      if stream != nil:
+        result = stream.readAll()
+        stream.close()
+
+    proc writeFileContent*(path: string, content: string) =
+      let stream = newFileStream(path, fmWrite)
+      if stream != nil:
+        stream.write(content)
+        stream.close()
+
+    proc fileExists*(path: string): bool =
+      os.fileExists(path)
+
+  src/formathelper.nim: |
+    import strutils, strformat
+
+    let GARBAGE_NIM_002_C = "format_marker"
+    let GARBAGE_NIM_002_D = "template_marker"
+
+    proc formatSize*(bytes: int64): string =
+      if bytes < 1024:
+        $bytes & " B"
+      elif bytes < 1024 * 1024:
+        fmt"{bytes div 1024} KB"
+      else:
+        fmt"{bytes div (1024 * 1024)} MB"
+
+    proc formatPath*(path: string, maxLen: int): string =
+      if path.len <= maxLen: path
+      else: "..." & path[^(maxLen - 3)..^1]
+
+  src/cachehelper.nim: |
+    import tables, times
+
+    let GARBAGE_NIM_002_E = "cache_marker"
+    let GARBAGE_NIM_002_F = "ttl_marker"
+
+    type
+      CacheEntry = object
+        value: string
+        expiry: Time
+
+    var cache = initTable[string, CacheEntry]()
+
+    proc cacheGet*(key: string): string =
+      if cache.hasKey(key) and cache[key].expiry > getTime():
+        cache[key].value
+      else:
+        ""
+
+    proc cacheSet*(key: string, value: string, ttlSeconds: int) =
+      cache[key] = CacheEntry(
+        value: value,
+        expiry: getTime() + initDuration(seconds = ttlSeconds)
+      )
+
+changed:
+  src/pathhelper.nim: |
+    import os, strutils
+
+    proc matchesPattern*(path: string, pattern: string): bool =
+      let filename = extractFilename(path)
+      if pattern.startsWith("*"):
+        filename.endsWith(pattern[1..^1])
+      elif pattern.endsWith("*"):
+        filename.startsWith(pattern[0..^2])
+      else:
+        filename == pattern
+
+    proc normalizePath*(path: string): string =
+      path.replace("\\", "/").strip(chars = {'/'})
+
+    proc isHidden*(path: string): bool =
+      extractFilename(path).startsWith(".")
+
+  src/scanner.nim: |
+    from os import walkDir, joinPath, pcFile, pcDir
+    import pathhelper
+
+    proc scanDirectory*(root: string): seq[string] =
+      var results: seq[string] = @[]
+      for kind, path in walkDir(root):
+        if kind == pcFile:
+          results.add(path)
+      results
+
+    proc scanWithFilter*(root: string, pattern: string): seq[string] =
+      var results: seq[string] = @[]
+      for kind, path in walkDir(root):
+        if kind == pcFile and matchesPattern(path, pattern):
+          results.add(normalizePath(path))
+      results
+
+    proc scanRecursive*(root: string, pattern: string): seq[string] =
+      var results: seq[string] = @[]
+      for kind, path in walkDir(root):
+        case kind
+        of pcFile:
+          if matchesPattern(path, pattern) and not isHidden(path):
+            results.add(path)
+        of pcDir:
+          if not isHidden(path):
+            results.add(scanRecursive(path, pattern))
+        else:
+          discard
+      results
+
+  src/fileops.nim: |
+    import os, streams
+
+    let GARBAGE_NIM_002_A = "fileops_marker"
+    let GARBAGE_NIM_002_B = "stream_marker"
+
+    proc readFileContent*(path: string): string =
+      let stream = newFileStream(path, fmRead)
+      if stream != nil:
+        result = stream.readAll()
+        stream.close()
+
+    proc writeFileContent*(path: string, content: string) =
+      let stream = newFileStream(path, fmWrite)
+      if stream != nil:
+        stream.write(content)
+        stream.close()
+
+    proc fileExists*(path: string): bool =
+      os.fileExists(path)
+
+  src/formathelper.nim: |
+    import strutils, strformat
+
+    let GARBAGE_NIM_002_C = "format_marker"
+    let GARBAGE_NIM_002_D = "template_marker"
+
+    proc formatSize*(bytes: int64): string =
+      if bytes < 1024:
+        $bytes & " B"
+      elif bytes < 1024 * 1024:
+        fmt"{bytes div 1024} KB"
+      else:
+        fmt"{bytes div (1024 * 1024)} MB"
+
+    proc formatPath*(path: string, maxLen: int): string =
+      if path.len <= maxLen: path
+      else: "..." & path[^(maxLen - 3)..^1]
+
+  src/cachehelper.nim: |
+    import tables, times
+
+    let GARBAGE_NIM_002_E = "cache_marker"
+    let GARBAGE_NIM_002_F = "ttl_marker"
+
+    type
+      CacheEntry = object
+        value: string
+        expiry: Time
+
+    var cache = initTable[string, CacheEntry]()
+
+    proc cacheGet*(key: string): string =
+      if cache.hasKey(key) and cache[key].expiry > getTime():
+        cache[key].value
+      else:
+        ""
+
+    proc cacheSet*(key: string, value: string, ttlSeconds: int) =
+      cache[key] = CacheEntry(
+        value: value,
+        expiry: getTime() + initDuration(seconds = ttlSeconds)
+      )
+
+must_include_files:
+  - src/scanner.nim
+
+must_include_content_from:
+  src/scanner.nim:
+    - "proc scanWithFilter*(root: string, pattern: string): seq[string]"
+    - "matchesPattern(path, pattern)"
+    - "normalizePath(path)"
+  src/pathhelper.nim:
+    - "proc matchesPattern*(path: string, pattern: string): bool"
+    - "proc normalizePath*(path: string): string"
+
+must_not_include:
+  # fileops.nim: path-related module but no pattern matching
+  - GARBAGE_NIM_002_A
+  - GARBAGE_NIM_002_B
+  - readFileContent
+  - writeFileContent
+  # formathelper.nim: formatting utility, unrelated
+  - GARBAGE_NIM_002_C
+  - GARBAGE_NIM_002_D
+  - formatSize
+  - formatPath
+  # cachehelper.nim: same *helper naming but unrelated
+  - GARBAGE_NIM_002_E
+  - GARBAGE_NIM_002_F
+  - cacheGet
+  - cacheSet
+
+must_not_include_files:
+  - src/fileops.nim
+  - src/formathelper.nim
+  - src/cachehelper.nim
+
+max_fragments: 8
+max_files: 2
+add_garbage_files: false
+skip_garbage_check: true

@@ -1,0 +1,397 @@
+# Scenario: A Flutter StatefulWidget's State class adds a new method that reads
+# from a provider (ChangeNotifier). The reviewer needs the provider definition
+# to understand what data the new method accesses and whether the state change
+# notifications are correct.
+#
+# Diff: lib/screens/cart_screen.dart State class adds _applyDiscount() which
+# reads CartProvider.items and CartProvider.applyDiscount(). The CartProvider
+# is imported via Provider package pattern.
+#
+# Reviewer questions:
+#   Q1: "What does CartProvider.applyDiscount() actually do — does it
+#        modify the list in place or return a new total?"
+#       -> lib/providers/cart_provider.dart (UNCHANGED): applyDiscount mutates
+#          _items prices and calls notifyListeners().
+#
+#   Q2: "What is the shape of CartItem — does it have a price field?"
+#       -> lib/models/cart_item.dart (UNCHANGED): CartItem with name, price, quantity.
+#
+# Not needed for comprehension:
+#   - lib/providers/theme_provider.dart: Another provider, same directory.
+#     STRUCTURAL TRAP: same ChangeNotifier pattern, same notifyListeners() calls.
+#
+#   - lib/screens/checkout_screen.dart: Screen that also uses CartProvider.
+#     HARDEST TRAP: imports same provider, accesses same items list. But
+#     checkout flow is not needed to understand the discount feature.
+#
+#   - lib/widgets/cart_badge.dart: Widget that displays cart count.
+#     Uses CartProvider.items.length but unrelated to discount logic.
+
+initial:
+  lib/models/cart_item.dart: |
+    class CartItem {
+      final String id;
+      final String name;
+      double price;
+      int quantity;
+
+      CartItem({
+        required this.id,
+        required this.name,
+        required this.price,
+        this.quantity = 1,
+      });
+
+      double get total => price * quantity;
+    }
+  lib/providers/cart_provider.dart: |
+    import 'package:flutter/foundation.dart';
+    import 'package:myapp/models/cart_item.dart';
+
+    class CartProvider extends ChangeNotifier {
+      final List<CartItem> _items = [];
+
+      List<CartItem> get items => List.unmodifiable(_items);
+
+      double get subtotal => _items.fold(0, (sum, item) => sum + item.total);
+
+      void addItem(CartItem item) {
+        _items.add(item);
+        notifyListeners();
+      }
+
+      void removeItem(String itemId) {
+        _items.removeWhere((item) => item.id == itemId);
+        notifyListeners();
+      }
+
+      void applyDiscount(double percentage) {
+        for (final item in _items) {
+          item.price = item.price * (1 - percentage / 100);
+        }
+        notifyListeners();
+      }
+
+      void clearCart() {
+        _items.clear();
+        notifyListeners();
+      }
+    }
+  lib/screens/cart_screen.dart: |
+    import 'package:flutter/material.dart';
+    import 'package:provider/provider.dart';
+    import 'package:myapp/providers/cart_provider.dart';
+
+    class CartScreen extends StatefulWidget {
+      const CartScreen({super.key});
+
+      @override
+      State<CartScreen> createState() => _CartScreenState();
+    }
+
+    class _CartScreenState extends State<CartScreen> {
+      @override
+      Widget build(BuildContext context) {
+        final cart = Provider.of<CartProvider>(context);
+        return Scaffold(
+          appBar: AppBar(title: const Text('Cart')),
+          body: ListView.builder(
+            itemCount: cart.items.length,
+            itemBuilder: (context, index) {
+              final item = cart.items[index];
+              return ListTile(
+                title: Text(item.name),
+                subtitle: Text('\$${item.price.toStringAsFixed(2)}'),
+              );
+            },
+          ),
+        );
+      }
+    }
+  lib/providers/theme_provider.dart: |
+    import 'package:flutter/foundation.dart';
+    import 'package:flutter/material.dart';
+
+    class ThemeProvider extends ChangeNotifier {
+      ThemeMode _mode = ThemeMode.light;
+
+      ThemeMode get mode => _mode;
+
+      void toggleTheme() {
+        _mode = _mode == ThemeMode.light ? ThemeMode.dark : ThemeMode.light;
+        notifyListeners();
+      }
+
+      String get GARBAGE_DART_003_A_THEME_ID => 'default_theme';
+      int get GARBAGE_DART_003_B_TRANSITION_MS => 300;
+    }
+  lib/screens/checkout_screen.dart: |
+    import 'package:flutter/material.dart';
+    import 'package:provider/provider.dart';
+    import 'package:myapp/providers/cart_provider.dart';
+
+    class CheckoutScreen extends StatelessWidget {
+      const CheckoutScreen({super.key});
+
+      @override
+      Widget build(BuildContext context) {
+        final cart = Provider.of<CartProvider>(context);
+        return Scaffold(
+          appBar: AppBar(title: const Text('Checkout')),
+          body: Column(
+            children: [
+              Text('Total: \$${cart.subtotal.toStringAsFixed(2)}'),
+              ElevatedButton(
+                onPressed: () => cart.clearCart(),
+                child: const Text('GARBAGE_DART_003_C_PLACE_ORDER'),
+              ),
+            ],
+          ),
+        );
+      }
+    }
+  lib/widgets/cart_badge.dart: |
+    import 'package:flutter/material.dart';
+    import 'package:provider/provider.dart';
+    import 'package:myapp/providers/cart_provider.dart';
+
+    class CartBadge extends StatelessWidget {
+      const CartBadge({super.key});
+
+      @override
+      Widget build(BuildContext context) {
+        final count = Provider.of<CartProvider>(context).items.length;
+        return Badge(
+          label: Text('$count'),
+          child: const Icon(Icons.shopping_cart),
+        );
+      }
+
+      String get GARBAGE_DART_003_D_BADGE_KEY => 'cart_icon';
+    }
+
+changed:
+  lib/models/cart_item.dart: |
+    class CartItem {
+      final String id;
+      final String name;
+      double price;
+      int quantity;
+
+      CartItem({
+        required this.id,
+        required this.name,
+        required this.price,
+        this.quantity = 1,
+      });
+
+      double get total => price * quantity;
+    }
+  lib/providers/cart_provider.dart: |
+    import 'package:flutter/foundation.dart';
+    import 'package:myapp/models/cart_item.dart';
+
+    class CartProvider extends ChangeNotifier {
+      final List<CartItem> _items = [];
+
+      List<CartItem> get items => List.unmodifiable(_items);
+
+      double get subtotal => _items.fold(0, (sum, item) => sum + item.total);
+
+      void addItem(CartItem item) {
+        _items.add(item);
+        notifyListeners();
+      }
+
+      void removeItem(String itemId) {
+        _items.removeWhere((item) => item.id == itemId);
+        notifyListeners();
+      }
+
+      void applyDiscount(double percentage) {
+        for (final item in _items) {
+          item.price = item.price * (1 - percentage / 100);
+        }
+        notifyListeners();
+      }
+
+      void clearCart() {
+        _items.clear();
+        notifyListeners();
+      }
+    }
+  lib/screens/cart_screen.dart: |
+    import 'package:flutter/material.dart';
+    import 'package:provider/provider.dart';
+    import 'package:myapp/providers/cart_provider.dart';
+
+    class CartScreen extends StatefulWidget {
+      const CartScreen({super.key});
+
+      @override
+      State<CartScreen> createState() => _CartScreenState();
+    }
+
+    class _CartScreenState extends State<CartScreen> {
+      final TextEditingController _discountController = TextEditingController();
+      bool _discountApplied = false;
+
+      void _applyDiscount() {
+        final percentage = double.tryParse(_discountController.text);
+        if (percentage != null && percentage > 0 && percentage <= 50) {
+          final cart = Provider.of<CartProvider>(context, listen: false);
+          cart.applyDiscount(percentage);
+          setState(() {
+            _discountApplied = true;
+          });
+        }
+      }
+
+      @override
+      void dispose() {
+        _discountController.dispose();
+        super.dispose();
+      }
+
+      @override
+      Widget build(BuildContext context) {
+        final cart = Provider.of<CartProvider>(context);
+        return Scaffold(
+          appBar: AppBar(title: const Text('Cart')),
+          body: Column(
+            children: [
+              Expanded(
+                child: ListView.builder(
+                  itemCount: cart.items.length,
+                  itemBuilder: (context, index) {
+                    final item = cart.items[index];
+                    return ListTile(
+                      title: Text(item.name),
+                      subtitle: Text('\$${item.price.toStringAsFixed(2)} x ${item.quantity}'),
+                      trailing: Text('\$${item.total.toStringAsFixed(2)}'),
+                    );
+                  },
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _discountController,
+                        decoration: const InputDecoration(labelText: 'Discount %'),
+                        keyboardType: TextInputType.number,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    ElevatedButton(
+                      onPressed: _discountApplied ? null : _applyDiscount,
+                      child: const Text('Apply'),
+                    ),
+                  ],
+                ),
+              ),
+              Text('Subtotal: \$${cart.subtotal.toStringAsFixed(2)}'),
+            ],
+          ),
+        );
+      }
+    }
+  lib/providers/theme_provider.dart: |
+    import 'package:flutter/foundation.dart';
+    import 'package:flutter/material.dart';
+
+    class ThemeProvider extends ChangeNotifier {
+      ThemeMode _mode = ThemeMode.light;
+
+      ThemeMode get mode => _mode;
+
+      void toggleTheme() {
+        _mode = _mode == ThemeMode.light ? ThemeMode.dark : ThemeMode.light;
+        notifyListeners();
+      }
+
+      String get GARBAGE_DART_003_A_THEME_ID => 'default_theme';
+      int get GARBAGE_DART_003_B_TRANSITION_MS => 300;
+    }
+  lib/screens/checkout_screen.dart: |
+    import 'package:flutter/material.dart';
+    import 'package:provider/provider.dart';
+    import 'package:myapp/providers/cart_provider.dart';
+
+    class CheckoutScreen extends StatelessWidget {
+      const CheckoutScreen({super.key});
+
+      @override
+      Widget build(BuildContext context) {
+        final cart = Provider.of<CartProvider>(context);
+        return Scaffold(
+          appBar: AppBar(title: const Text('Checkout')),
+          body: Column(
+            children: [
+              Text('Total: \$${cart.subtotal.toStringAsFixed(2)}'),
+              ElevatedButton(
+                onPressed: () => cart.clearCart(),
+                child: const Text('GARBAGE_DART_003_C_PLACE_ORDER'),
+              ),
+            ],
+          ),
+        );
+      }
+    }
+  lib/widgets/cart_badge.dart: |
+    import 'package:flutter/material.dart';
+    import 'package:provider/provider.dart';
+    import 'package:myapp/providers/cart_provider.dart';
+
+    class CartBadge extends StatelessWidget {
+      const CartBadge({super.key});
+
+      @override
+      Widget build(BuildContext context) {
+        final count = Provider.of<CartProvider>(context).items.length;
+        return Badge(
+          label: Text('$count'),
+          child: const Icon(Icons.shopping_cart),
+        );
+      }
+
+      String get GARBAGE_DART_003_D_BADGE_KEY => 'cart_icon';
+    }
+
+must_include_files:
+  - lib/screens/cart_screen.dart
+  - lib/providers/cart_provider.dart
+
+must_include_content_from:
+  lib/screens/cart_screen.dart:
+    - "_applyDiscount"
+    - "cart.applyDiscount(percentage)"
+  lib/providers/cart_provider.dart:
+    - "void applyDiscount(double percentage)"
+    - "notifyListeners()"
+    - "item.price = item.price * (1 - percentage / 100)"
+
+must_not_include:
+  # --- theme_provider.dart: different provider, same pattern ---
+  - GARBAGE_DART_003_A_THEME_ID
+  - GARBAGE_DART_003_B_TRANSITION_MS
+  - ThemeProvider
+  - toggleTheme
+  # --- checkout_screen.dart: uses same CartProvider but different flow ---
+  - GARBAGE_DART_003_C_PLACE_ORDER
+  - CheckoutScreen
+  # --- cart_badge.dart: reads cart but unrelated to discount ---
+  - GARBAGE_DART_003_D_BADGE_KEY
+  - CartBadge
+
+must_not_include_files:
+  - lib/providers/theme_provider.dart
+  - lib/screens/checkout_screen.dart
+  - lib/widgets/cart_badge.dart
+
+max_fragments: 8
+max_files: 4
+add_garbage_files: false
+skip_garbage_check: true

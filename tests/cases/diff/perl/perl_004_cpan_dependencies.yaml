@@ -1,0 +1,263 @@
+# Test: cpanfile adds new dependency, module imports and uses it
+#
+# Scenario: cpanfile adds Text::CSV_XS as a new dependency, and
+# lib/MyApp/Exporter.pm gains a new export_csv method that uses it.
+# Both the cpanfile change and the module change should be included.
+#
+# Reviewer questions:
+#   Q1: "Is Text::CSV_XS the right version — does 1.50 have the needed API?"
+#       -> cpanfile (CHANGED) specifies requires 'Text::CSV_XS', '1.50'
+#   Q2: "How is the module wiring CSV output — column ordering correct?"
+#       -> lib/MyApp/Exporter.pm (CHANGED) uses csv->combine with headers
+#
+# Trap files:
+#   - lib/MyApp/Importer.pm: data import — complementary domain, also
+#     handles CSV but existing module not changed, no dependency
+#   - lib/MyApp/Reporter.pm: report generation — produces output like
+#     Exporter but uses Template Toolkit, not CSV
+
+initial:
+  cpanfile: |
+    requires 'Moose', '2.2000';
+    requires 'DBI', '1.643';
+    requires 'DBD::Pg', '3.15';
+    requires 'Catalyst::Runtime', '5.90';
+    requires 'JSON::XS', '4.03';
+    requires 'DateTime', '1.59';
+    requires 'Template', '3.10';
+
+    on 'test' => sub {
+        requires 'Test::More', '1.302';
+        requires 'Test::Exception', '0.43';
+    };
+  lib/MyApp/Exporter.pm: |
+    package MyApp::Exporter;
+    use strict;
+    use warnings;
+    use JSON::XS;
+
+    sub new {
+        my ($class, %args) = @_;
+        return bless { format => $args{format} || 'json' }, $class;
+    }
+
+    sub export_json {
+        my ($self, $data) = @_;
+        return encode_json($data);
+    }
+
+    sub export_data {
+        my ($self, $data) = @_;
+        if ($self->{format} eq 'json') {
+            return $self->export_json($data);
+        }
+        die "Unsupported format: $self->{format}";
+    }
+
+    1;
+  lib/MyApp/Importer.pm: |
+    my $GARBAGE_PERL_004_A = "noise_marker_importer";
+
+    package MyApp::Importer;
+    use strict;
+    use warnings;
+
+    sub new {
+        my ($class, %args) = @_;
+        return bless { source => $args{source} }, $class;
+    }
+
+    sub import_from_file {
+        my ($self, $path) = @_;
+        open my $fh, '<', $path or die "Cannot open $path: $!";
+        my @lines = <$fh>;
+        close $fh;
+        chomp @lines;
+        return \@lines;
+    }
+
+    sub parse_csv_line {
+        my ($self, $line) = @_;
+        my @fields = split /,/, $line;
+        return \@fields;
+    }
+
+    1;
+  lib/MyApp/Reporter.pm: |
+    my $GARBAGE_PERL_004_B = "noise_marker_reporter";
+
+    package MyApp::Reporter;
+    use strict;
+    use warnings;
+    use Template;
+
+    sub new {
+        my ($class, %args) = @_;
+        my $tt = Template->new(INCLUDE_PATH => $args{template_dir});
+        return bless { tt => $tt }, $class;
+    }
+
+    sub generate_report {
+        my ($self, $template_name, $data) = @_;
+        my $output = '';
+        $self->{tt}->process($template_name, $data, \$output)
+            or die $self->{tt}->error();
+        return $output;
+    }
+
+    sub generate_summary {
+        my ($self, $records) = @_;
+        my $total = 0;
+        $total += $_->{amount} for @$records;
+        return { count => scalar @$records, total => $total };
+    }
+
+    1;
+
+changed:
+  cpanfile: |
+    requires 'Moose', '2.2000';
+    requires 'DBI', '1.643';
+    requires 'DBD::Pg', '3.15';
+    requires 'Catalyst::Runtime', '5.90';
+    requires 'JSON::XS', '4.03';
+    requires 'Text::CSV_XS', '1.50';
+    requires 'DateTime', '1.59';
+    requires 'Template', '3.10';
+
+    on 'test' => sub {
+        requires 'Test::More', '1.302';
+        requires 'Test::Exception', '0.43';
+    };
+  lib/MyApp/Exporter.pm: |
+    package MyApp::Exporter;
+    use strict;
+    use warnings;
+    use JSON::XS;
+    use Text::CSV_XS;
+
+    sub new {
+        my ($class, %args) = @_;
+        return bless { format => $args{format} || 'json' }, $class;
+    }
+
+    sub export_json {
+        my ($self, $data) = @_;
+        return encode_json($data);
+    }
+
+    sub export_csv {
+        my ($self, $headers, $rows) = @_;
+        my $csv = Text::CSV_XS->new({ binary => 1, eol => "\n" });
+        my $output = '';
+        open my $fh, '>', \$output or die "Cannot open string ref: $!";
+        $csv->print($fh, $headers);
+        for my $row (@$rows) {
+            my @ordered = map { $row->{$_} // '' } @$headers;
+            $csv->print($fh, \@ordered);
+        }
+        close $fh;
+        return $output;
+    }
+
+    sub export_data {
+        my ($self, $data, %opts) = @_;
+        if ($self->{format} eq 'json') {
+            return $self->export_json($data);
+        }
+        if ($self->{format} eq 'csv') {
+            my $headers = $opts{headers} || [sort keys %{$data->[0]}];
+            return $self->export_csv($headers, $data);
+        }
+        die "Unsupported format: $self->{format}";
+    }
+
+    1;
+  lib/MyApp/Importer.pm: |
+    my $GARBAGE_PERL_004_A = "noise_marker_importer";
+
+    package MyApp::Importer;
+    use strict;
+    use warnings;
+
+    sub new {
+        my ($class, %args) = @_;
+        return bless { source => $args{source} }, $class;
+    }
+
+    sub import_from_file {
+        my ($self, $path) = @_;
+        open my $fh, '<', $path or die "Cannot open $path: $!";
+        my @lines = <$fh>;
+        close $fh;
+        chomp @lines;
+        return \@lines;
+    }
+
+    sub parse_csv_line {
+        my ($self, $line) = @_;
+        my @fields = split /,/, $line;
+        return \@fields;
+    }
+
+    1;
+  lib/MyApp/Reporter.pm: |
+    my $GARBAGE_PERL_004_B = "noise_marker_reporter";
+
+    package MyApp::Reporter;
+    use strict;
+    use warnings;
+    use Template;
+
+    sub new {
+        my ($class, %args) = @_;
+        my $tt = Template->new(INCLUDE_PATH => $args{template_dir});
+        return bless { tt => $tt }, $class;
+    }
+
+    sub generate_report {
+        my ($self, $template_name, $data) = @_;
+        my $output = '';
+        $self->{tt}->process($template_name, $data, \$output)
+            or die $self->{tt}->error();
+        return $output;
+    }
+
+    sub generate_summary {
+        my ($self, $records) = @_;
+        my $total = 0;
+        $total += $_->{amount} for @$records;
+        return { count => scalar @$records, total => $total };
+    }
+
+    1;
+
+must_include_files:
+  # Both changed — cpanfile declares the dependency, Exporter uses it
+  - cpanfile
+  - lib/MyApp/Exporter.pm
+must_include_content_from:
+  cpanfile:
+    - "Text::CSV_XS"
+  lib/MyApp/Exporter.pm:
+    - "use Text::CSV_XS"
+    - "sub export_csv"
+    - "Text::CSV_XS->new"
+must_not_include:
+  # lib/MyApp/Importer.pm: data import — similar CSV domain but no dep
+  - GARBAGE_PERL_004_A
+  - "noise_marker_importer"
+  - "import_from_file"
+  - "parse_csv_line"
+  # lib/MyApp/Reporter.pm: report generation — output domain but Template
+  - GARBAGE_PERL_004_B
+  - "noise_marker_reporter"
+  - "generate_report"
+  - "generate_summary"
+must_not_include_files:
+  - lib/MyApp/Importer.pm
+  - lib/MyApp/Reporter.pm
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

@@ -67,6 +67,7 @@ optional-dependencies.dev = [
   "mutmut>=3.5,<4.0",
   "mypy>=1.0,<2.0",
   "pre-commit>=3.0,<5.0",
+  "pygit2>=1.12,<2.0",
   "pyinstaller>=5.0,<7.0",
   "pytest>=7.0,<10.0",
   "pytest-cov>=3.0,<8.0",
@@ -139,7 +140,7 @@ keep_full_version = true
 ini_options.testpaths = [ "tests" ]
 ini_options.pythonpath = [ "src" ]
 ini_options.norecursedirs = [ "mutants", ".git", ".mypy_cache", ".pytest_cache", "__pycache__", ".hypothesis" ]
-ini_options.addopts = "-n auto --dist loadfile"
+ini_options.addopts = "-n auto --dist worksteal"
 
 [tool.coverage]
 run.branch = true

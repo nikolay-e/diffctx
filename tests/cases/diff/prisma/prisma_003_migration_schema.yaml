@@ -1,0 +1,235 @@
+# Prisma migration and schema: a new migration adds a column and
+# the schema reflects it. Both the migration SQL and the schema
+# must appear in context.
+
+initial:
+  prisma/schema.prisma: |
+    generator client {
+      provider = "prisma-client-js"
+    }
+
+    datasource db {
+      provider = "postgresql"
+      url      = env("DATABASE_URL")
+    }
+
+    model User {
+      id        Int      @id @default(autoincrement())
+      email     String   @unique
+      name      String?
+      role      Role     @default(USER)
+      createdAt DateTime @default(now())
+      updatedAt DateTime @updatedAt
+    }
+
+    model Session {
+      id        String   @id @default(cuid())
+      userId    Int
+      expiresAt DateTime
+      createdAt DateTime @default(now())
+    }
+
+    enum Role {
+      USER
+      ADMIN
+    }
+
+  prisma/migrations/20240101_init/migration.sql: |
+    -- GARBAGE_PRISMA_003_A: init_migration_marker
+    CREATE TABLE "User" (
+      "id" SERIAL PRIMARY KEY,
+      "email" TEXT NOT NULL UNIQUE,
+      "name" TEXT,
+      "role" TEXT NOT NULL DEFAULT 'USER',
+      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updatedAt" TIMESTAMP(3) NOT NULL
+    );
+
+    CREATE TABLE "Session" (
+      "id" TEXT PRIMARY KEY,
+      "userId" INTEGER NOT NULL,
+      "expiresAt" TIMESTAMP(3) NOT NULL,
+      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
+  prisma/migrations/20240215_add_index/migration.sql: |
+    -- GARBAGE_PRISMA_003_B: index_migration_marker
+    CREATE INDEX "Session_userId_idx" ON "Session"("userId");
+    CREATE INDEX "Session_expiresAt_idx" ON "Session"("expiresAt");
+
+  prisma/seed.ts: |
+    // GARBAGE_PRISMA_003_C: seed_file_marker
+    import { PrismaClient } from '@prisma/client';
+    const prisma = new PrismaClient();
+
+    async function main() {
+      await prisma.user.create({
+        data: { email: 'admin@example.com', name: 'Admin', role: 'ADMIN' },
+      });
+    }
+
+    main().finally(() => prisma.$disconnect());
+
+  src/middleware/auth.ts: |
+    // GARBAGE_PRISMA_003_D: auth_middleware_marker
+    import { PrismaClient } from '@prisma/client';
+
+    const prisma = new PrismaClient();
+
+    export async function validateSession(sessionId: string) {
+      const session = await prisma.session.findUnique({
+        where: { id: sessionId },
+      });
+      if (!session || session.expiresAt < new Date()) {
+        return null;
+      }
+      return session;
+    }
+
+  src/services/analytics.service.ts: |
+    // GARBAGE_PRISMA_003_E: analytics_service_marker
+    import { PrismaClient } from '@prisma/client';
+
+    const prisma = new PrismaClient();
+
+    export async function getUserCount() {
+      return prisma.user.count();
+    }
+
+changed:
+  prisma/schema.prisma: |
+    generator client {
+      provider = "prisma-client-js"
+    }
+
+    datasource db {
+      provider = "postgresql"
+      url      = env("DATABASE_URL")
+    }
+
+    model User {
+      id            Int       @id @default(autoincrement())
+      email         String    @unique
+      name          String?
+      role          Role      @default(USER)
+      emailVerified Boolean   @default(false)
+      verifiedAt    DateTime?
+      createdAt     DateTime  @default(now())
+      updatedAt     DateTime  @updatedAt
+    }
+
+    model Session {
+      id        String   @id @default(cuid())
+      userId    Int
+      expiresAt DateTime
+      createdAt DateTime @default(now())
+    }
+
+    enum Role {
+      USER
+      ADMIN
+    }
+
+  prisma/migrations/20240101_init/migration.sql: |
+    -- GARBAGE_PRISMA_003_A: init_migration_marker
+    CREATE TABLE "User" (
+      "id" SERIAL PRIMARY KEY,
+      "email" TEXT NOT NULL UNIQUE,
+      "name" TEXT,
+      "role" TEXT NOT NULL DEFAULT 'USER',
+      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updatedAt" TIMESTAMP(3) NOT NULL
+    );
+
+    CREATE TABLE "Session" (
+      "id" TEXT PRIMARY KEY,
+      "userId" INTEGER NOT NULL,
+      "expiresAt" TIMESTAMP(3) NOT NULL,
+      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
+  prisma/migrations/20240215_add_index/migration.sql: |
+    -- GARBAGE_PRISMA_003_B: index_migration_marker
+    CREATE INDEX "Session_userId_idx" ON "Session"("userId");
+    CREATE INDEX "Session_expiresAt_idx" ON "Session"("expiresAt");
+
+  prisma/migrations/20240320_email_verification/migration.sql: |
+    -- Add email verification columns to User table
+    ALTER TABLE "User"
+      ADD COLUMN "emailVerified" BOOLEAN NOT NULL DEFAULT false,
+      ADD COLUMN "verifiedAt" TIMESTAMP(3);
+
+    -- Create index for filtering verified users
+    CREATE INDEX "User_emailVerified_idx" ON "User"("emailVerified");
+
+  prisma/seed.ts: |
+    // GARBAGE_PRISMA_003_C: seed_file_marker
+    import { PrismaClient } from '@prisma/client';
+    const prisma = new PrismaClient();
+
+    async function main() {
+      await prisma.user.create({
+        data: { email: 'admin@example.com', name: 'Admin', role: 'ADMIN' },
+      });
+    }
+
+    main().finally(() => prisma.$disconnect());
+
+  src/middleware/auth.ts: |
+    // GARBAGE_PRISMA_003_D: auth_middleware_marker
+    import { PrismaClient } from '@prisma/client';
+
+    const prisma = new PrismaClient();
+
+    export async function validateSession(sessionId: string) {
+      const session = await prisma.session.findUnique({
+        where: { id: sessionId },
+      });
+      if (!session || session.expiresAt < new Date()) {
+        return null;
+      }
+      return session;
+    }
+
+  src/services/analytics.service.ts: |
+    // GARBAGE_PRISMA_003_E: analytics_service_marker
+    import { PrismaClient } from '@prisma/client';
+
+    const prisma = new PrismaClient();
+
+    export async function getUserCount() {
+      return prisma.user.count();
+    }
+
+# === Assertions ===
+
+must_include_files:
+- prisma/migrations/20240320_email_verification/migration.sql
+- prisma/schema.prisma
+
+must_include_content_from:
+  prisma/migrations/20240320_email_verification/migration.sql:
+    - "emailVerified"
+    - "verifiedAt"
+    - "ALTER TABLE"
+  prisma/schema.prisma:
+    - "emailVerified"
+    - "verifiedAt"
+
+must_not_include:
+- GARBAGE_PRISMA_003_A
+- GARBAGE_PRISMA_003_B
+- GARBAGE_PRISMA_003_C
+- GARBAGE_PRISMA_003_D
+- GARBAGE_PRISMA_003_E
+
+must_not_include_files:
+- prisma/migrations/20240101_init/migration.sql
+- prisma/migrations/20240215_add_index/migration.sql
+- prisma/seed.ts
+- src/middleware/auth.ts
+- src/services/analytics.service.ts
+
+max_files: 4
+add_garbage_files: false
+skip_garbage_check: true

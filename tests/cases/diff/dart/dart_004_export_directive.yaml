@@ -1,0 +1,234 @@
+# Scenario: A Dart barrel file (package API surface) adds a new export directive.
+# The reviewer needs to see the newly exported file to understand what is being
+# added to the public API.
+#
+# Diff: lib/myapp.dart adds `export 'src/cache.dart';` to the barrel file.
+# The cache.dart file already exists but was previously internal-only.
+#
+# Reviewer questions:
+#   Q1: "What classes/functions does cache.dart expose?"
+#       -> lib/src/cache.dart (UNCHANGED): CacheManager class with get/set/clear.
+#          Reviewer needs to verify the public API surface is appropriate.
+#
+#   Q2: "Are the existing exports still correct — any naming conflicts?"
+#       -> lib/myapp.dart: already exports auth.dart and user.dart.
+#          Reviewer checks CacheManager doesn't shadow existing names.
+#
+# Not needed for comprehension:
+#   - lib/src/logger.dart: Internal implementation not exported.
+#     STRUCTURAL TRAP: same src/ directory, same class pattern. But not
+#     part of the public API change.
+#
+#   - lib/src/internal_helpers.dart: Utility file in src/.
+#     Never exported, private implementation detail.
+
+initial:
+  lib/myapp.dart: |
+    export 'src/auth.dart';
+    export 'src/user.dart';
+  lib/src/auth.dart: |
+    class AuthManager {
+      String? _token;
+
+      Future<bool> login(String username, String password) async {
+        if (username.isNotEmpty && password.length >= 6) {
+          _token = 'token_$username';
+          return true;
+        }
+        return false;
+      }
+
+      void logout() {
+        _token = null;
+      }
+
+      bool get isAuthenticated => _token != null;
+    }
+  lib/src/user.dart: |
+    class User {
+      final String id;
+      final String name;
+      final String email;
+
+      const User({required this.id, required this.name, required this.email});
+
+      Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'email': email,
+      };
+    }
+  lib/src/cache.dart: |
+    class CacheManager {
+      final Map<String, dynamic> _store = {};
+      final Duration defaultTtl;
+
+      CacheManager({this.defaultTtl = const Duration(minutes: 5)});
+
+      void set(String key, dynamic value) {
+        _store[key] = value;
+      }
+
+      T? get<T>(String key) {
+        final value = _store[key];
+        return value is T ? value : null;
+      }
+
+      void clear() {
+        _store.clear();
+      }
+
+      bool containsKey(String key) => _store.containsKey(key);
+
+      int get size => _store.length;
+    }
+  lib/src/logger.dart: |
+    class Logger {
+      final String tag;
+
+      Logger(this.tag);
+
+      void info(String message) {
+        print('[$tag INFO] $message');
+      }
+
+      void error(String message) {
+        print('[$tag ERROR] $message');
+      }
+
+      String get GARBAGE_DART_004_A_LOG_FORMAT => 'structured';
+      int get GARBAGE_DART_004_B_MAX_BUFFER => 1024;
+    }
+  lib/src/internal_helpers.dart: |
+    String sanitizeInput(String input) {
+      return input.trim().replaceAll(RegExp(r'[<>]'), '');
+    }
+
+    bool isValidEmail(String email) {
+      return email.contains('@') && email.contains('.');
+    }
+
+    String get GARBAGE_DART_004_C_HELPER_VERSION => '1.0.0';
+    int get GARBAGE_DART_004_D_MAX_INPUT => 4096;
+
+changed:
+  lib/myapp.dart: |
+    export 'src/auth.dart';
+    export 'src/user.dart';
+    export 'src/cache.dart';
+  lib/src/auth.dart: |
+    class AuthManager {
+      String? _token;
+
+      Future<bool> login(String username, String password) async {
+        if (username.isNotEmpty && password.length >= 6) {
+          _token = 'token_$username';
+          return true;
+        }
+        return false;
+      }
+
+      void logout() {
+        _token = null;
+      }
+
+      bool get isAuthenticated => _token != null;
+    }
+  lib/src/user.dart: |
+    class User {
+      final String id;
+      final String name;
+      final String email;
+
+      const User({required this.id, required this.name, required this.email});
+
+      Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'email': email,
+      };
+    }
+  lib/src/cache.dart: |
+    class CacheManager {
+      final Map<String, dynamic> _store = {};
+      final Duration defaultTtl;
+
+      CacheManager({this.defaultTtl = const Duration(minutes: 5)});
+
+      void set(String key, dynamic value) {
+        _store[key] = value;
+      }
+
+      T? get<T>(String key) {
+        final value = _store[key];
+        return value is T ? value : null;
+      }
+
+      void clear() {
+        _store.clear();
+      }
+
+      bool containsKey(String key) => _store.containsKey(key);
+
+      int get size => _store.length;
+    }
+  lib/src/logger.dart: |
+    class Logger {
+      final String tag;
+
+      Logger(this.tag);
+
+      void info(String message) {
+        print('[$tag INFO] $message');
+      }
+
+      void error(String message) {
+        print('[$tag ERROR] $message');
+      }
+
+      String get GARBAGE_DART_004_A_LOG_FORMAT => 'structured';
+      int get GARBAGE_DART_004_B_MAX_BUFFER => 1024;
+    }
+  lib/src/internal_helpers.dart: |
+    String sanitizeInput(String input) {
+      return input.trim().replaceAll(RegExp(r'[<>]'), '');
+    }
+
+    bool isValidEmail(String email) {
+      return email.contains('@') && email.contains('.');
+    }
+
+    String get GARBAGE_DART_004_C_HELPER_VERSION => '1.0.0';
+    int get GARBAGE_DART_004_D_MAX_INPUT => 4096;
+
+must_include_files:
+  - lib/myapp.dart
+  - lib/src/cache.dart
+
+must_include_content_from:
+  lib/myapp.dart:
+    - "export 'src/cache.dart'"
+  lib/src/cache.dart:
+    - "class CacheManager"
+    - "void set(String key, dynamic value)"
+    - "T? get<T>(String key)"
+
+must_not_include:
+  # --- logger.dart: internal file, not exported ---
+  - GARBAGE_DART_004_A_LOG_FORMAT
+  - GARBAGE_DART_004_B_MAX_BUFFER
+  - "class Logger"
+  # --- internal_helpers.dart: utility, never exported ---
+  - GARBAGE_DART_004_C_HELPER_VERSION
+  - GARBAGE_DART_004_D_MAX_INPUT
+  - sanitizeInput
+  - isValidEmail
+
+must_not_include_files:
+  - lib/src/logger.dart
+  - lib/src/internal_helpers.dart
+
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

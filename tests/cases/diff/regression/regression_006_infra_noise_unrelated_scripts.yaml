@@ -1,0 +1,271 @@
+# Regression: infrastructure changes (Helm/Terraform/K8s YAML) pull in
+# unrelated scripts from the same repo as noise fragments.
+# Real-world: gitops commit 3267557 — unrelated terraform files dragged in.
+# Also related to TODO 2026-02-21 (music_consistency_checker.py noise).
+
+initial:
+  argocd/apps/api-service/values.yaml: |
+    replicaCount: 2
+    image:
+      repository: ghcr.io/myorg/api-service
+      tag: "1.5.0"
+    resources:
+      limits:
+        memory: 256Mi
+        cpu: 200m
+      requests:
+        memory: 128Mi
+        cpu: 100m
+    service:
+      type: ClusterIP
+      port: 8080
+    ingress:
+      enabled: true
+      host: api.example.com
+  argocd/apps/api-service/Chart.yaml: |
+    apiVersion: v2
+    name: api-service
+    version: 0.3.0
+    appVersion: "1.5.0"
+  terraform/modules/dns/main.tf: |
+    resource "cloudflare_record" "api" {
+      zone_id = var.zone_id
+      name    = "api"
+      value   = var.lb_ip
+      type    = "A"
+      proxied = true
+    }
+
+    variable "zone_id" {
+      type = string
+    }
+
+    variable "lb_ip" {
+      type = string
+    }
+  terraform/providers.tf: |
+    GARBAGE_REG_006_PROVIDER_A = "cloudflare"
+
+    terraform {
+      required_providers {
+        cloudflare = {
+          source  = "cloudflare/cloudflare"
+          version = "~> 4.0"
+        }
+      }
+    }
+
+    provider "cloudflare" {
+      api_token = var.cloudflare_api_token
+    }
+  terraform/r2.tf: |
+    GARBAGE_REG_006_R2_B = "storage"
+
+    resource "cloudflare_r2_bucket" "backups" {
+      account_id = var.account_id
+      name       = "backups"
+      location   = "ENAM"
+    }
+
+    resource "cloudflare_r2_bucket" "media" {
+      account_id = var.account_id
+      name       = "media"
+      location   = "ENAM"
+    }
+  scripts/setup_sops.sh: |
+    #!/bin/bash
+    # GARBAGE_REG_006_SOPS_C
+    GARBAGE_REG_006_DECRYPT_D="sops"
+
+    decrypt_secrets() {
+        sops -d "$1"
+    }
+
+    encrypt_secrets() {
+        sops -e "$1"
+    }
+
+    rotate_keys() {
+        sops updatekeys "$1"
+    }
+  ansible/scripts/music_checker.py: |
+    GARBAGE_REG_006_MUSIC_E = "checker"
+    GARBAGE_REG_006_ALBUM_F = "album"
+
+    class MusicChecker:
+        GARBAGE_REG_006_SCAN_G = True
+
+        def check_album(self, path):
+            GARBAGE_REG_006_INTEGRITY_H = "md5"
+            pass
+
+        def verify_tags(self, track):
+            GARBAGE_REG_006_TAGS_I = "id3"
+            pass
+
+        def find_dupes(self, lib):
+            GARBAGE_REG_006_DUPES_J = "hash"
+            pass
+
+        def fix_encoding(self, f):
+            GARBAGE_REG_006_ENCODE_K = "utf8"
+            pass
+
+changed:
+  argocd/apps/api-service/values.yaml: |
+    replicaCount: 3
+    image:
+      repository: ghcr.io/myorg/api-service
+      tag: "2.0.0"
+    resources:
+      limits:
+        memory: 512Mi
+        cpu: 500m
+      requests:
+        memory: 256Mi
+        cpu: 200m
+    service:
+      type: ClusterIP
+      port: 8080
+    ingress:
+      enabled: true
+      host: api.example.com
+      annotations:
+        nginx.ingress.kubernetes.io/ssl-redirect: "true"
+      tls:
+        - secretName: api-tls
+          hosts:
+            - api.example.com
+  argocd/apps/api-service/Chart.yaml: |
+    apiVersion: v2
+    name: api-service
+    version: 0.4.0
+    appVersion: "2.0.0"
+  terraform/modules/dns/main.tf: |
+    resource "cloudflare_record" "api" {
+      zone_id = var.zone_id
+      name    = "api"
+      value   = var.lb_ip
+      type    = "A"
+      proxied = true
+    }
+
+    resource "cloudflare_record" "api_staging" {
+      zone_id = var.zone_id
+      name    = "staging-api"
+      value   = var.staging_ip
+      type    = "A"
+      proxied = false
+    }
+
+    variable "zone_id" {
+      type = string
+    }
+
+    variable "lb_ip" {
+      type = string
+    }
+
+    variable "staging_ip" {
+      type = string
+    }
+  terraform/providers.tf: |
+    GARBAGE_REG_006_PROVIDER_A = "cloudflare"
+
+    terraform {
+      required_providers {
+        cloudflare = {
+          source  = "cloudflare/cloudflare"
+          version = "~> 4.0"
+        }
+      }
+    }
+
+    provider "cloudflare" {
+      api_token = var.cloudflare_api_token
+    }
+  terraform/r2.tf: |
+    GARBAGE_REG_006_R2_B = "storage"
+
+    resource "cloudflare_r2_bucket" "backups" {
+      account_id = var.account_id
+      name       = "backups"
+      location   = "ENAM"
+    }
+
+    resource "cloudflare_r2_bucket" "media" {
+      account_id = var.account_id
+      name       = "media"
+      location   = "ENAM"
+    }
+  scripts/setup_sops.sh: |
+    #!/bin/bash
+    # GARBAGE_REG_006_SOPS_C
+    GARBAGE_REG_006_DECRYPT_D="sops"
+
+    decrypt_secrets() {
+        sops -d "$1"
+    }
+
+    encrypt_secrets() {
+        sops -e "$1"
+    }
+
+    rotate_keys() {
+        sops updatekeys "$1"
+    }
+  ansible/scripts/music_checker.py: |
+    GARBAGE_REG_006_MUSIC_E = "checker"
+    GARBAGE_REG_006_ALBUM_F = "album"
+
+    class MusicChecker:
+        GARBAGE_REG_006_SCAN_G = True
+
+        def check_album(self, path):
+            GARBAGE_REG_006_INTEGRITY_H = "md5"
+            pass
+
+        def verify_tags(self, track):
+            GARBAGE_REG_006_TAGS_I = "id3"
+            pass
+
+        def find_dupes(self, lib):
+            GARBAGE_REG_006_DUPES_J = "hash"
+            pass
+
+        def fix_encoding(self, f):
+            GARBAGE_REG_006_ENCODE_K = "utf8"
+            pass
+
+must_include_files:
+- argocd/apps/api-service/values.yaml
+- terraform/modules/dns/main.tf
+
+must_include_content_from:
+  argocd/apps/api-service/values.yaml:
+    - 'tag: "2.0.0"'
+    - "replicaCount: 3"
+  terraform/modules/dns/main.tf:
+    - 'resource "cloudflare_record" "api_staging"'
+
+must_not_include:
+- GARBAGE_REG_006_MUSIC_E
+- GARBAGE_REG_006_ALBUM_F
+- GARBAGE_REG_006_SCAN_G
+- GARBAGE_REG_006_INTEGRITY_H
+- GARBAGE_REG_006_TAGS_I
+- GARBAGE_REG_006_DUPES_J
+- GARBAGE_REG_006_ENCODE_K
+- GARBAGE_REG_006_SOPS_C
+- GARBAGE_REG_006_DECRYPT_D
+- GARBAGE_REG_006_R2_B
+
+must_not_include_files:
+- ansible/scripts/music_checker.py
+- scripts/setup_sops.sh
+- terraform/r2.tf
+
+strict: true
+max_files: 5
+add_garbage_files: false
+skip_garbage_check: true

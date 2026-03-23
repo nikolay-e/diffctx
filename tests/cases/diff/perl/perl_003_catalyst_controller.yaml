@@ -1,0 +1,284 @@
+# Test: Catalyst controller adds new action that calls model method
+#
+# Scenario: lib/MyApp/Controller/User.pm adds a search action that
+# calls MyApp::Model::User->search_by_name. The model is UNCHANGED.
+# The controller already uses the model for other actions.
+#
+# Reviewer questions:
+#   Q1: "What does search_by_name return — paginated or full list?"
+#       -> lib/MyApp/Model/User.pm (UNCHANGED) defines search_by_name
+#          with LIKE query and optional limit parameter
+#   Q2: "Does the model handle SQL injection via the search term?"
+#       -> lib/MyApp/Model/User.pm uses parameterized queries
+#
+# Trap files:
+#   - lib/MyApp/Controller/Admin.pm: admin controller — same controller
+#     namespace, also uses User model but different functionality
+#   - lib/MyApp/View/JSON.pm: JSON view — same MVC stack, used
+#     implicitly by all controllers but not relevant to the data flow
+
+initial:
+  lib/MyApp/Model/User.pm: |
+    package MyApp::Model::User;
+    use strict;
+    use warnings;
+    use base 'MyApp::Model::Base';
+
+    sub find {
+        my ($self, $id) = @_;
+        return $self->db->query(
+            "SELECT * FROM users WHERE id = ?", $id
+        )->[0];
+    }
+
+    sub search_by_name {
+        my ($self, $name, $limit) = @_;
+        $limit ||= 20;
+        return $self->db->query(
+            "SELECT id, name, email FROM users WHERE name ILIKE ? LIMIT ?",
+            "%${name}%", $limit
+        );
+    }
+
+    sub create {
+        my ($self, %attrs) = @_;
+        $self->db->execute(
+            "INSERT INTO users (name, email, role) VALUES (?, ?, ?)",
+            $attrs{name}, $attrs{email}, $attrs{role} || 'user'
+        );
+    }
+
+    sub count_active {
+        my ($self) = @_;
+        my $rows = $self->db->query(
+            "SELECT COUNT(*) as cnt FROM users WHERE active = true"
+        );
+        return $rows->[0]{cnt};
+    }
+
+    1;
+  lib/MyApp/Controller/User.pm: |
+    package MyApp::Controller::User;
+    use strict;
+    use warnings;
+    use base 'Catalyst::Controller';
+
+    sub index :Path :Args(0) {
+        my ($self, $c) = @_;
+        my $users = $c->model('User')->count_active;
+        $c->stash(active_count => $users);
+        $c->stash(template => 'user/index.tt');
+    }
+
+    sub view :Path :Args(1) {
+        my ($self, $c, $id) = @_;
+        my $user = $c->model('User')->find($id);
+        unless ($user) {
+            $c->response->status(404);
+            $c->stash(template => 'error/not_found.tt');
+            return;
+        }
+        $c->stash(user => $user, template => 'user/view.tt');
+    }
+
+    1;
+  lib/MyApp/Controller/Admin.pm: |
+    my $GARBAGE_PERL_003_A = "noise_marker_admin_ctrl";
+
+    package MyApp::Controller::Admin;
+    use strict;
+    use warnings;
+    use base 'Catalyst::Controller';
+
+    sub dashboard :Path('/admin') :Args(0) {
+        my ($self, $c) = @_;
+        my $count = $c->model('User')->count_active;
+        $c->stash(
+            user_count => $count,
+            template   => 'admin/dashboard.tt',
+        );
+    }
+
+    sub settings :Path('/admin/settings') :Args(0) {
+        my ($self, $c) = @_;
+        $c->stash(template => 'admin/settings.tt');
+    }
+
+    sub audit_log :Path('/admin/audit') :Args(0) {
+        my ($self, $c) = @_;
+        $c->stash(template => 'admin/audit.tt');
+    }
+
+    1;
+  lib/MyApp/View/JSON.pm: |
+    my $GARBAGE_PERL_003_B = "noise_marker_json_view";
+
+    package MyApp::View::JSON;
+    use strict;
+    use warnings;
+    use base 'Catalyst::View::JSON';
+    use JSON::XS;
+
+    __PACKAGE__->config(
+        expose_stash => 'json_data',
+        json_encoder => JSON::XS->new->utf8->pretty->canonical,
+    );
+
+    1;
+
+changed:
+  lib/MyApp/Model/User.pm: |
+    package MyApp::Model::User;
+    use strict;
+    use warnings;
+    use base 'MyApp::Model::Base';
+
+    sub find {
+        my ($self, $id) = @_;
+        return $self->db->query(
+            "SELECT * FROM users WHERE id = ?", $id
+        )->[0];
+    }
+
+    sub search_by_name {
+        my ($self, $name, $limit) = @_;
+        $limit ||= 20;
+        return $self->db->query(
+            "SELECT id, name, email FROM users WHERE name ILIKE ? LIMIT ?",
+            "%${name}%", $limit
+        );
+    }
+
+    sub create {
+        my ($self, %attrs) = @_;
+        $self->db->execute(
+            "INSERT INTO users (name, email, role) VALUES (?, ?, ?)",
+            $attrs{name}, $attrs{email}, $attrs{role} || 'user'
+        );
+    }
+
+    sub count_active {
+        my ($self) = @_;
+        my $rows = $self->db->query(
+            "SELECT COUNT(*) as cnt FROM users WHERE active = true"
+        );
+        return $rows->[0]{cnt};
+    }
+
+    1;
+  lib/MyApp/Controller/User.pm: |
+    package MyApp::Controller::User;
+    use strict;
+    use warnings;
+    use base 'Catalyst::Controller';
+
+    sub index :Path :Args(0) {
+        my ($self, $c) = @_;
+        my $users = $c->model('User')->count_active;
+        $c->stash(active_count => $users);
+        $c->stash(template => 'user/index.tt');
+    }
+
+    sub view :Path :Args(1) {
+        my ($self, $c, $id) = @_;
+        my $user = $c->model('User')->find($id);
+        unless ($user) {
+            $c->response->status(404);
+            $c->stash(template => 'error/not_found.tt');
+            return;
+        }
+        $c->stash(user => $user, template => 'user/view.tt');
+    }
+
+    sub search :Path('search') :Args(0) {
+        my ($self, $c) = @_;
+        my $query = $c->request->params->{q};
+        unless ($query && length($query) >= 2) {
+            $c->stash(
+                error    => 'Search query must be at least 2 characters',
+                template => 'user/search.tt',
+            );
+            return;
+        }
+        my $results = $c->model('User')->search_by_name($query, 50);
+        $c->stash(
+            results  => $results,
+            query    => $query,
+            template => 'user/search.tt',
+        );
+    }
+
+    1;
+  lib/MyApp/Controller/Admin.pm: |
+    my $GARBAGE_PERL_003_A = "noise_marker_admin_ctrl";
+
+    package MyApp::Controller::Admin;
+    use strict;
+    use warnings;
+    use base 'Catalyst::Controller';
+
+    sub dashboard :Path('/admin') :Args(0) {
+        my ($self, $c) = @_;
+        my $count = $c->model('User')->count_active;
+        $c->stash(
+            user_count => $count,
+            template   => 'admin/dashboard.tt',
+        );
+    }
+
+    sub settings :Path('/admin/settings') :Args(0) {
+        my ($self, $c) = @_;
+        $c->stash(template => 'admin/settings.tt');
+    }
+
+    sub audit_log :Path('/admin/audit') :Args(0) {
+        my ($self, $c) = @_;
+        $c->stash(template => 'admin/audit.tt');
+    }
+
+    1;
+  lib/MyApp/View/JSON.pm: |
+    my $GARBAGE_PERL_003_B = "noise_marker_json_view";
+
+    package MyApp::View::JSON;
+    use strict;
+    use warnings;
+    use base 'Catalyst::View::JSON';
+    use JSON::XS;
+
+    __PACKAGE__->config(
+        expose_stash => 'json_data',
+        json_encoder => JSON::XS->new->utf8->pretty->canonical,
+    );
+
+    1;
+
+must_include_files:
+  - lib/MyApp/Controller/User.pm
+  # Q1+Q2: Model/User.pm defines search_by_name called by controller
+  - lib/MyApp/Model/User.pm
+must_include_content_from:
+  lib/MyApp/Controller/User.pm:
+    - "sub search"
+    - "search_by_name"
+  lib/MyApp/Model/User.pm:
+    - "sub search_by_name"
+    - "ILIKE"
+must_not_include:
+  # lib/MyApp/Controller/Admin.pm: admin controller — different controller
+  - GARBAGE_PERL_003_A
+  - "noise_marker_admin_ctrl"
+  - "sub dashboard"
+  - "sub audit_log"
+  # lib/MyApp/View/JSON.pm: JSON view — infrastructure, not data flow
+  - GARBAGE_PERL_003_B
+  - "noise_marker_json_view"
+  - "expose_stash"
+  - "json_encoder"
+must_not_include_files:
+  - lib/MyApp/Controller/Admin.pm
+  - lib/MyApp/View/JSON.pm
+max_fragments: 6
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

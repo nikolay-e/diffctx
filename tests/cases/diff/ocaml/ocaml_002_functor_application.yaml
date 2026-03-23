@@ -1,0 +1,233 @@
+# Scenario: An OCaml module applies a functor `Set.Make(Int)` to create an IntSet
+# module, then adds new operations using IntSet. The reviewer needs the module
+# signature (.mli) to understand what the functor input requires.
+#
+# Diff: lib/analysis.ml adds `find_duplicates` and `symmetric_diff` functions
+# that use IntSet operations (add, mem, fold, diff, union).
+#
+# Reviewer questions:
+#   Q1: "What operations does IntSet support?"
+#       -> IntSet is Set.Make(Int), so it has the standard Set.S signature.
+#          The Int module must satisfy OrderedType. Reviewer needs lib/int_key.mli
+#          to confirm Int provides the `compare` function.
+#
+#   Q2: "Does Int_key satisfy the OrderedType signature?"
+#       -> lib/int_key.mli: type t = int; val compare : t -> t -> int.
+#          This matches Set.OrderedType.
+#
+# Not needed for comprehension:
+#   - lib/string_set.ml: Another functor application using Set.Make(String).
+#     HARDEST TRAP: identical pattern (Set.Make), same directory, but
+#     for strings, not ints.
+#
+#   - lib/hash_map.ml: Uses Hashtbl, similar collection module.
+#     Same directory, same collections domain, different data structure.
+#
+#   - lib/sorter.ml: Module that sorts integers.
+#     Same integer domain, same directory, but no Set usage.
+
+initial:
+  lib/int_key.ml: |
+    type t = int
+    let compare = compare
+
+  lib/int_key.mli: |
+    type t = int
+    val compare : t -> t -> int
+
+  lib/analysis.ml: |
+    module IntSet = Set.Make(Int_key)
+
+    let collect_unique lst =
+      List.fold_left (fun acc x -> IntSet.add x acc) IntSet.empty lst
+
+    let count_unique lst =
+      IntSet.cardinal (collect_unique lst)
+
+  lib/string_set.ml: |
+    module StringSet = Set.Make(String)
+
+    let _GARBAGE_OCAML_002_A = "string_set_marker"
+    let _GARBAGE_OCAML_002_B = "string_ops_marker"
+
+    let collect_strings lst =
+      List.fold_left (fun acc x -> StringSet.add x acc) StringSet.empty lst
+
+    let has_string set s = StringSet.mem s set
+
+    let merge_strings s1 s2 = StringSet.union s1 s2
+
+  lib/hash_map.ml: |
+    let _GARBAGE_OCAML_002_C = "hash_marker"
+    let _GARBAGE_OCAML_002_D = "table_marker"
+
+    let create_map () : (string, int) Hashtbl.t =
+      Hashtbl.create 16
+
+    let insert_entry map key value =
+      Hashtbl.replace map key value
+
+    let lookup_entry map key =
+      Hashtbl.find_opt map key
+
+    let remove_entry map key =
+      Hashtbl.remove map key
+
+    let count_entries map =
+      Hashtbl.length map
+
+  lib/sorter.ml: |
+    let _GARBAGE_OCAML_002_E = "sorter_marker"
+    let _GARBAGE_OCAML_002_F = "order_marker"
+
+    let sort_ascending lst =
+      List.sort compare lst
+
+    let sort_descending lst =
+      List.sort (fun a b -> compare b a) lst
+
+    let is_sorted lst =
+      let rec check = function
+        | [] | [_] -> true
+        | x :: y :: rest -> x <= y && check (y :: rest)
+      in
+      check lst
+
+    let median lst =
+      let sorted = sort_ascending lst in
+      let n = List.length sorted in
+      List.nth sorted (n / 2)
+
+changed:
+  lib/int_key.ml: |
+    type t = int
+    let compare = compare
+
+  lib/int_key.mli: |
+    type t = int
+    val compare : t -> t -> int
+
+  lib/analysis.ml: |
+    module IntSet = Set.Make(Int_key)
+
+    let collect_unique lst =
+      List.fold_left (fun acc x -> IntSet.add x acc) IntSet.empty lst
+
+    let count_unique lst =
+      IntSet.cardinal (collect_unique lst)
+
+    let find_duplicates lst =
+      let seen = ref IntSet.empty in
+      let dupes = ref IntSet.empty in
+      List.iter (fun x ->
+        if IntSet.mem x !seen then
+          dupes := IntSet.add x !dupes
+        else
+          seen := IntSet.add x !seen
+      ) lst;
+      IntSet.elements !dupes
+
+    let symmetric_diff s1 s2 =
+      let only_in_s1 = IntSet.diff s1 s2 in
+      let only_in_s2 = IntSet.diff s2 s1 in
+      IntSet.union only_in_s1 only_in_s2
+
+    let intersection_size s1 s2 =
+      IntSet.cardinal (IntSet.inter s1 s2)
+
+  lib/string_set.ml: |
+    module StringSet = Set.Make(String)
+
+    let _GARBAGE_OCAML_002_A = "string_set_marker"
+    let _GARBAGE_OCAML_002_B = "string_ops_marker"
+
+    let collect_strings lst =
+      List.fold_left (fun acc x -> StringSet.add x acc) StringSet.empty lst
+
+    let has_string set s = StringSet.mem s set
+
+    let merge_strings s1 s2 = StringSet.union s1 s2
+
+  lib/hash_map.ml: |
+    let _GARBAGE_OCAML_002_C = "hash_marker"
+    let _GARBAGE_OCAML_002_D = "table_marker"
+
+    let create_map () : (string, int) Hashtbl.t =
+      Hashtbl.create 16
+
+    let insert_entry map key value =
+      Hashtbl.replace map key value
+
+    let lookup_entry map key =
+      Hashtbl.find_opt map key
+
+    let remove_entry map key =
+      Hashtbl.remove map key
+
+    let count_entries map =
+      Hashtbl.length map
+
+  lib/sorter.ml: |
+    let _GARBAGE_OCAML_002_E = "sorter_marker"
+    let _GARBAGE_OCAML_002_F = "order_marker"
+
+    let sort_ascending lst =
+      List.sort compare lst
+
+    let sort_descending lst =
+      List.sort (fun a b -> compare b a) lst
+
+    let is_sorted lst =
+      let rec check = function
+        | [] | [_] -> true
+        | x :: y :: rest -> x <= y && check (y :: rest)
+      in
+      check lst
+
+    let median lst =
+      let sorted = sort_ascending lst in
+      let n = List.length sorted in
+      List.nth sorted (n / 2)
+
+must_include_files:
+  - lib/analysis.ml
+
+must_include_content_from:
+  lib/analysis.ml:
+    - "let find_duplicates lst"
+    - "IntSet.mem x !seen"
+    - "let symmetric_diff s1 s2"
+    - "IntSet.diff s1 s2"
+  lib/int_key.mli:
+    - "type t = int"
+    - "val compare : t -> t -> int"
+
+must_not_include:
+  # string_set.ml: HARDEST TRAP, same Set.Make pattern
+  - _GARBAGE_OCAML_002_A
+  - _GARBAGE_OCAML_002_B
+  - StringSet
+  - collect_strings
+  - merge_strings
+  # hash_map.ml: same collections domain, different data structure
+  - _GARBAGE_OCAML_002_C
+  - _GARBAGE_OCAML_002_D
+  - create_map
+  - insert_entry
+  - count_entries
+  # sorter.ml: same integer domain, no Set usage
+  - _GARBAGE_OCAML_002_E
+  - _GARBAGE_OCAML_002_F
+  - sort_ascending
+  - sort_descending
+  - median
+
+must_not_include_files:
+  - lib/string_set.ml
+  - lib/hash_map.ml
+  - lib/sorter.ml
+
+max_fragments: 8
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

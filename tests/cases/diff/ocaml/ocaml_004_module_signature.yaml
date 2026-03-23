@@ -1,0 +1,421 @@
+# Scenario: An OCaml .mli interface file adds a new function signature, and the
+# corresponding .ml implementation file must provide the implementation. The
+# reviewer needs to see the .ml file to verify the implementation matches.
+#
+# Diff: lib/cache.mli adds `val evict_expired : t -> float -> t` and
+# `val stats : t -> cache_stats`. The .ml file already has the implementations
+# (they existed but were not exposed).
+#
+# Reviewer questions:
+#   Q1: "Does the implementation match the new signatures?"
+#       -> lib/cache.ml (UNCHANGED): has evict_expired and stats functions.
+#          Reviewer verifies return types and parameter types match the .mli.
+#
+#   Q2: "What is cache_stats and what fields does it have?"
+#       -> lib/cache.mli: type cache_stats = { hits: int; misses: int; size: int }.
+#          The type is defined in the interface alongside the new signatures.
+#
+# Not needed for comprehension:
+#   - lib/store.mli + lib/store.ml: Another .mli/.ml pair in the same directory.
+#     HARDEST TRAP: same pattern (interface + implementation), same directory,
+#     also exposes a data structure with operations.
+#
+#   - lib/pool.mli + lib/pool.ml: Third .mli/.ml pair.
+#     Same structural pattern, same library.
+#
+#   - lib/metrics.ml: Standalone module (no .mli) that also tracks stats.
+#     STRUCTURAL TRAP: also has a stats-like type and functions.
+
+initial:
+  lib/cache.mli: |
+    type t
+
+    type key = string
+
+    val create : int -> t
+
+    val get : t -> key -> string option
+
+    val set : t -> key -> string -> t
+
+    val remove : t -> key -> t
+
+    val size : t -> int
+
+  lib/cache.ml: |
+    type entry = {
+      value : string;
+      timestamp : float;
+    }
+
+    type t = {
+      capacity : int;
+      entries : (string, entry) Hashtbl.t;
+      hit_count : int;
+      miss_count : int;
+    }
+
+    type key = string
+
+    type cache_stats = {
+      hits : int;
+      misses : int;
+      size : int;
+    }
+
+    let create capacity = {
+      capacity;
+      entries = Hashtbl.create capacity;
+      hit_count = 0;
+      miss_count = 0;
+    }
+
+    let get cache key =
+      match Hashtbl.find_opt cache.entries key with
+      | Some entry -> Some entry.value
+      | None -> None
+
+    let set cache key value =
+      let entry = { value; timestamp = Unix.gettimeofday () } in
+      Hashtbl.replace cache.entries key entry;
+      cache
+
+    let remove cache key =
+      Hashtbl.remove cache.entries key;
+      cache
+
+    let size cache =
+      Hashtbl.length cache.entries
+
+    let evict_expired cache max_age =
+      let now = Unix.gettimeofday () in
+      let to_remove = Hashtbl.fold (fun k v acc ->
+        if now -. v.timestamp > max_age then k :: acc else acc
+      ) cache.entries [] in
+      List.iter (fun k -> Hashtbl.remove cache.entries k) to_remove;
+      cache
+
+    let stats cache = {
+      hits = cache.hit_count;
+      misses = cache.miss_count;
+      size = Hashtbl.length cache.entries;
+    }
+
+  lib/store.mli: |
+    type t
+    val create : unit -> t
+    val put : t -> string -> string -> t
+    val fetch : t -> string -> string option
+    val delete : t -> string -> t
+
+    (* GARBAGE_OCAML_004_A = "store_iface_marker" *)
+    (* GARBAGE_OCAML_004_B = "store_sig_marker" *)
+
+  lib/store.ml: |
+    type t = {
+      data : (string, string) Hashtbl.t;
+    }
+
+    let _GARBAGE_OCAML_004_C = "store_impl_marker"
+    let _GARBAGE_OCAML_004_D = "store_data_marker"
+
+    let create () = { data = Hashtbl.create 32 }
+
+    let put store key value =
+      Hashtbl.replace store.data key value;
+      store
+
+    let fetch store key =
+      Hashtbl.find_opt store.data key
+
+    let delete store key =
+      Hashtbl.remove store.data key;
+      store
+
+  lib/pool.mli: |
+    type t
+    val create : int -> t
+    val acquire : t -> int option
+    val release : t -> int -> t
+
+    (* GARBAGE_OCAML_004_E = "pool_iface_marker" *)
+
+  lib/pool.ml: |
+    type t = {
+      capacity : int;
+      available : int list;
+      in_use : int list;
+    }
+
+    let _GARBAGE_OCAML_004_F = "pool_impl_marker"
+    let _GARBAGE_OCAML_004_G = "pool_data_marker"
+
+    let create n = {
+      capacity = n;
+      available = List.init n Fun.id;
+      in_use = [];
+    }
+
+    let acquire pool =
+      match pool.available with
+      | [] -> None
+      | x :: _ -> Some x
+
+    let release pool id =
+      { pool with
+        available = id :: pool.available;
+        in_use = List.filter (fun x -> x <> id) pool.in_use;
+      }
+
+  lib/metrics.ml: |
+    type metric_stats = {
+      total_requests : int;
+      avg_latency : float;
+      error_rate : float;
+    }
+
+    let _GARBAGE_OCAML_004_H = "metrics_marker"
+    let _GARBAGE_OCAML_004_I = "latency_marker"
+
+    let empty_stats = {
+      total_requests = 0;
+      avg_latency = 0.0;
+      error_rate = 0.0;
+    }
+
+    let record_request stats latency is_error =
+      let n = float_of_int stats.total_requests in
+      let new_avg = (stats.avg_latency *. n +. latency) /. (n +. 1.0) in
+      let errors = if is_error then 1 else 0 in
+      {
+        total_requests = stats.total_requests + 1;
+        avg_latency = new_avg;
+        error_rate = float_of_int errors /. (n +. 1.0);
+      }
+
+changed:
+  lib/cache.mli: |
+    type t
+
+    type key = string
+
+    type cache_stats = {
+      hits : int;
+      misses : int;
+      size : int;
+    }
+
+    val create : int -> t
+
+    val get : t -> key -> string option
+
+    val set : t -> key -> string -> t
+
+    val remove : t -> key -> t
+
+    val size : t -> int
+
+    val evict_expired : t -> float -> t
+
+    val stats : t -> cache_stats
+
+  lib/cache.ml: |
+    type entry = {
+      value : string;
+      timestamp : float;
+    }
+
+    type t = {
+      capacity : int;
+      entries : (string, entry) Hashtbl.t;
+      hit_count : int;
+      miss_count : int;
+    }
+
+    type key = string
+
+    type cache_stats = {
+      hits : int;
+      misses : int;
+      size : int;
+    }
+
+    let create capacity = {
+      capacity;
+      entries = Hashtbl.create capacity;
+      hit_count = 0;
+      miss_count = 0;
+    }
+
+    let get cache key =
+      match Hashtbl.find_opt cache.entries key with
+      | Some entry -> Some entry.value
+      | None -> None
+
+    let set cache key value =
+      let entry = { value; timestamp = Unix.gettimeofday () } in
+      Hashtbl.replace cache.entries key entry;
+      cache
+
+    let remove cache key =
+      Hashtbl.remove cache.entries key;
+      cache
+
+    let size cache =
+      Hashtbl.length cache.entries
+
+    let evict_expired cache max_age =
+      let now = Unix.gettimeofday () in
+      let to_remove = Hashtbl.fold (fun k v acc ->
+        if now -. v.timestamp > max_age then k :: acc else acc
+      ) cache.entries [] in
+      List.iter (fun k -> Hashtbl.remove cache.entries k) to_remove;
+      cache
+
+    let stats cache = {
+      hits = cache.hit_count;
+      misses = cache.miss_count;
+      size = Hashtbl.length cache.entries;
+    }
+
+  lib/store.mli: |
+    type t
+    val create : unit -> t
+    val put : t -> string -> string -> t
+    val fetch : t -> string -> string option
+    val delete : t -> string -> t
+
+    (* GARBAGE_OCAML_004_A = "store_iface_marker" *)
+    (* GARBAGE_OCAML_004_B = "store_sig_marker" *)
+
+  lib/store.ml: |
+    type t = {
+      data : (string, string) Hashtbl.t;
+    }
+
+    let _GARBAGE_OCAML_004_C = "store_impl_marker"
+    let _GARBAGE_OCAML_004_D = "store_data_marker"
+
+    let create () = { data = Hashtbl.create 32 }
+
+    let put store key value =
+      Hashtbl.replace store.data key value;
+      store
+
+    let fetch store key =
+      Hashtbl.find_opt store.data key
+
+    let delete store key =
+      Hashtbl.remove store.data key;
+      store
+
+  lib/pool.mli: |
+    type t
+    val create : int -> t
+    val acquire : t -> int option
+    val release : t -> int -> t
+
+    (* GARBAGE_OCAML_004_E = "pool_iface_marker" *)
+
+  lib/pool.ml: |
+    type t = {
+      capacity : int;
+      available : int list;
+      in_use : int list;
+    }
+
+    let _GARBAGE_OCAML_004_F = "pool_impl_marker"
+    let _GARBAGE_OCAML_004_G = "pool_data_marker"
+
+    let create n = {
+      capacity = n;
+      available = List.init n Fun.id;
+      in_use = [];
+    }
+
+    let acquire pool =
+      match pool.available with
+      | [] -> None
+      | x :: _ -> Some x
+
+    let release pool id =
+      { pool with
+        available = id :: pool.available;
+        in_use = List.filter (fun x -> x <> id) pool.in_use;
+      }
+
+  lib/metrics.ml: |
+    type metric_stats = {
+      total_requests : int;
+      avg_latency : float;
+      error_rate : float;
+    }
+
+    let _GARBAGE_OCAML_004_H = "metrics_marker"
+    let _GARBAGE_OCAML_004_I = "latency_marker"
+
+    let empty_stats = {
+      total_requests = 0;
+      avg_latency = 0.0;
+      error_rate = 0.0;
+    }
+
+    let record_request stats latency is_error =
+      let n = float_of_int stats.total_requests in
+      let new_avg = (stats.avg_latency *. n +. latency) /. (n +. 1.0) in
+      let errors = if is_error then 1 else 0 in
+      {
+        total_requests = stats.total_requests + 1;
+        avg_latency = new_avg;
+        error_rate = float_of_int errors /. (n +. 1.0);
+      }
+
+must_include_files:
+  - lib/cache.mli
+  - lib/cache.ml
+
+must_include_content_from:
+  lib/cache.mli:
+    - "val evict_expired : t -> float -> t"
+    - "val stats : t -> cache_stats"
+    - "type cache_stats"
+    - "hits : int"
+  lib/cache.ml:
+    - "let evict_expired cache max_age"
+    - "let stats cache"
+    - "hit_count : int"
+    - "miss_count : int"
+
+must_not_include:
+  # store.mli/store.ml: HARDEST TRAP, same .mli/.ml pattern
+  - GARBAGE_OCAML_004_A
+  - GARBAGE_OCAML_004_B
+  - _GARBAGE_OCAML_004_C
+  - _GARBAGE_OCAML_004_D
+  - "val put :"
+  - "val fetch :"
+  # pool.mli/pool.ml: same pattern, third pair
+  - GARBAGE_OCAML_004_E
+  - _GARBAGE_OCAML_004_F
+  - _GARBAGE_OCAML_004_G
+  - "val acquire :"
+  - "val release :"
+  # metrics.ml: also has stats-like type
+  - _GARBAGE_OCAML_004_H
+  - _GARBAGE_OCAML_004_I
+  - metric_stats
+  - total_requests
+  - avg_latency
+  - record_request
+
+must_not_include_files:
+  - lib/store.mli
+  - lib/store.ml
+  - lib/pool.mli
+  - lib/pool.ml
+  - lib/metrics.ml
+
+max_fragments: 8
+max_files: 2
+add_garbage_files: false
+skip_garbage_check: true

@@ -1,0 +1,218 @@
+# Scenario: A Starlark .bzl macro definition gains a new attribute,
+# and BUILD files that invoke the macro need context to understand the impact.
+# The reviewer needs to see the BUILD files consuming the macro.
+#
+# Reviewer questions:
+#   Q1: "Which BUILD files invoke this macro and might need updating?"
+#       -> services/api/BUILD: uses py_service_library macro
+#   Q2: "What does the new 'health_check' attribute do in the macro?"
+#       -> macros/service.bzl: adds health_check endpoint configuration
+#
+# Not needed:
+#   - macros/testing.bzl: different macro file entirely
+#   - tools/BUILD: uses a different macro, not py_service_library
+#   - services/worker/BUILD: uses plain py_binary, not the macro
+
+initial:
+  macros/service.bzl: |
+    def py_service_library(name, srcs, deps = [], port = 8080, visibility = None):
+        native.py_library(
+            name = name + "_lib",
+            srcs = srcs,
+            deps = deps,
+            visibility = visibility,
+        )
+
+        native.py_binary(
+            name = name,
+            srcs = [name + "_main.py"],
+            deps = [":" + name + "_lib"],
+            args = ["--port", str(port)],
+            visibility = visibility,
+        )
+  services/api/BUILD: |
+    load("//macros:service.bzl", "py_service_library")
+
+    py_service_library(
+        name = "api",
+        srcs = ["handler.py", "routes.py"],
+        deps = [
+            "//libs/database:client",
+            "//libs/auth:middleware",
+        ],
+        port = 8080,
+        visibility = ["//visibility:public"],
+    )
+  services/api/handler.py: |
+    from libs.database.client import DatabaseClient
+
+    class RequestHandler:
+        def __init__(self):
+            self.db = DatabaseClient()
+
+        def handle(self, request):
+            return {"status": "ok"}
+  services/api/routes.py: |
+    from services.api.handler import RequestHandler
+
+    handler = RequestHandler()
+
+    ROUTES = {
+        "/health": lambda: {"healthy": True},
+        "/api/users": handler.handle,
+    }
+
+  # Trap: different macro file
+  macros/testing.bzl: |
+    GARBAGE_BAZEL_003_A = "noise_testing_macro"
+
+    def py_test_suite(name, srcs, deps = []):
+        for src in srcs:
+            native.py_test(
+                name = src.replace(".py", ""),
+                srcs = [src],
+                deps = deps,
+            )
+
+  # Trap: uses different macro
+  tools/BUILD: |
+    load("//macros:testing.bzl", "py_test_suite")
+
+    py_test_suite(
+        name = "tool_tests",
+        srcs = ["test_format.py"],
+        GARBAGE_BAZEL_003_B = "noise_tools_build",
+    )
+  tools/test_format.py: |
+    GARBAGE_BAZEL_003_C = "noise_test_format"
+    def test_basic():
+        assert True
+
+  # Trap: plain py_binary, not using the macro
+  services/worker/BUILD: |
+    py_binary(
+        name = "worker",
+        srcs = ["worker.py"],
+        GARBAGE_BAZEL_003_D = "noise_worker_build",
+    )
+  services/worker/worker.py: |
+    GARBAGE_BAZEL_003_E = "noise_worker"
+    def run_worker():
+        while True:
+            pass
+
+changed:
+  macros/service.bzl: |
+    def py_service_library(name, srcs, deps = [], port = 8080, health_check = True, visibility = None):
+        native.py_library(
+            name = name + "_lib",
+            srcs = srcs,
+            deps = deps,
+            visibility = visibility,
+        )
+
+        args = ["--port", str(port)]
+        if health_check:
+            args.extend(["--health-check", "/healthz"])
+
+        native.py_binary(
+            name = name,
+            srcs = [name + "_main.py"],
+            deps = [":" + name + "_lib"],
+            args = args,
+            visibility = visibility,
+        )
+  services/api/BUILD: |
+    load("//macros:service.bzl", "py_service_library")
+
+    py_service_library(
+        name = "api",
+        srcs = ["handler.py", "routes.py"],
+        deps = [
+            "//libs/database:client",
+            "//libs/auth:middleware",
+        ],
+        port = 8080,
+        visibility = ["//visibility:public"],
+    )
+  services/api/handler.py: |
+    from libs.database.client import DatabaseClient
+
+    class RequestHandler:
+        def __init__(self):
+            self.db = DatabaseClient()
+
+        def handle(self, request):
+            return {"status": "ok"}
+  services/api/routes.py: |
+    from services.api.handler import RequestHandler
+
+    handler = RequestHandler()
+
+    ROUTES = {
+        "/health": lambda: {"healthy": True},
+        "/api/users": handler.handle,
+    }
+  macros/testing.bzl: |
+    GARBAGE_BAZEL_003_A = "noise_testing_macro"
+
+    def py_test_suite(name, srcs, deps = []):
+        for src in srcs:
+            native.py_test(
+                name = src.replace(".py", ""),
+                srcs = [src],
+                deps = deps,
+            )
+  tools/BUILD: |
+    load("//macros:testing.bzl", "py_test_suite")
+
+    py_test_suite(
+        name = "tool_tests",
+        srcs = ["test_format.py"],
+        GARBAGE_BAZEL_003_B = "noise_tools_build",
+    )
+  tools/test_format.py: |
+    GARBAGE_BAZEL_003_C = "noise_test_format"
+    def test_basic():
+        assert True
+  services/worker/BUILD: |
+    py_binary(
+        name = "worker",
+        srcs = ["worker.py"],
+        GARBAGE_BAZEL_003_D = "noise_worker_build",
+    )
+  services/worker/worker.py: |
+    GARBAGE_BAZEL_003_E = "noise_worker"
+    def run_worker():
+        while True:
+            pass
+
+must_include_files:
+- macros/service.bzl
+- services/api/BUILD
+
+must_include_content_from:
+  macros/service.bzl:
+    - health_check
+    - '--health-check'
+  services/api/BUILD:
+    - py_service_library
+    - '//macros:service.bzl'
+
+must_not_include:
+- GARBAGE_BAZEL_003_A
+- GARBAGE_BAZEL_003_B
+- GARBAGE_BAZEL_003_C
+- GARBAGE_BAZEL_003_D
+- GARBAGE_BAZEL_003_E
+
+must_not_include_files:
+- macros/testing.bzl
+- tools/BUILD
+- tools/test_format.py
+- services/worker/BUILD
+- services/worker/worker.py
+
+max_files: 4
+add_garbage_files: false
+skip_garbage_check: true

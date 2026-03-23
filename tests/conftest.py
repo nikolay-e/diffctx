@@ -8,6 +8,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.framework.pygit2_backend import Pygit2Repo
+
 # Maximum budget for diff context tests - forces algorithm to actually select
 # Set to None to disable budget capping (original behavior)
 DIFF_CONTEXT_MAX_BUDGET = int(os.environ.get("DIFF_CONTEXT_MAX_BUDGET", "0"))
@@ -48,6 +50,30 @@ def cap_diff_context_budget(monkeypatch):
 
     monkeypatch.setattr(diffctx, "build_diff_context", enhanced_build)
     yield
+
+
+@pytest.fixture(autouse=True)
+def _use_pygit2_git(monkeypatch):
+    from tests.framework import pygit2_backend as pg
+    from treemapper import diffctx as diffctx_mod
+    from treemapper.diffctx import git as git_mod
+
+    for target in (git_mod, diffctx_mod):
+        for name in (
+            "parse_diff",
+            "get_diff_text",
+            "get_changed_files",
+            "show_file_at_revision",
+            "get_deleted_files",
+            "get_renamed_old_paths",
+            "get_untracked_files",
+            "is_git_repo",
+        ):
+            if hasattr(target, name):
+                monkeypatch.setattr(target, name, getattr(pg, name))
+    monkeypatch.setattr(git_mod, "run_git", pg.run_git)
+    yield
+    pg.clear_repo_cache()
 
 
 def _verify_no_garbage_in_context(context: dict) -> None:
@@ -261,14 +287,8 @@ def project_builder(tmp_path):
 
 @pytest.fixture
 def git_repo(tmp_path):
-    """Create a real git repository for testing diff-context mode."""
     repo_path = tmp_path / "git_test_repo"
-    repo_path.mkdir()
-
-    subprocess.run(["git", "init"], cwd=repo_path, capture_output=True, check=True)
-    subprocess.run(["git", "config", "user.email", "test@test.com"], cwd=repo_path, capture_output=True, check=True)
-    subprocess.run(["git", "config", "user.name", "Test User"], cwd=repo_path, capture_output=True, check=True)
-
+    Pygit2Repo(repo_path)
     return repo_path
 
 

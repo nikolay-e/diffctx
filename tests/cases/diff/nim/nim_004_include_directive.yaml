@@ -1,0 +1,230 @@
+# Scenario: A Nim module uses `include` to inline code from helper files.
+# The included helper file adds a new template, and the main module's existing
+# code implicitly gains access to it. The change is in the helper file.
+#
+# Diff: src/helpers.nim adds a new template `withLogging` that wraps a block
+# with entry/exit log statements. src/main.nim adds a call using the new template.
+#
+# Reviewer questions:
+#   Q1: "What does the withLogging template do?"
+#       -> src/helpers.nim: defines template withLogging that wraps a code block
+#          with echo statements for entry and exit.
+#
+#   Q2: "How does main.nim access helpers.nim symbols?"
+#       -> src/main.nim: uses `include "helpers"` which inlines all code.
+#          Reviewer needs to see both files to understand the relationship.
+#
+# Not needed for comprehension:
+#   - src/constants.nim: Another included file that defines constants.
+#     STRUCTURAL TRAP: also included via `include`, same directory,
+#     but provides constants, not the new template.
+#
+#   - src/validators.nim: Standalone module (imported, not included).
+#     Same directory but different inclusion mechanism.
+#
+#   - src/macrohelpers.nim: Another file with templates and macros.
+#     HARDEST TRAP: also defines templates, same directory, same pattern.
+#     But its templates are unrelated to withLogging.
+
+initial:
+  src/helpers.nim: |
+    template tryExcept*(body: untyped, handler: untyped): untyped =
+      try:
+        body
+      except CatchableError as e:
+        handler
+
+    template benchmark*(name: string, body: untyped): untyped =
+      let startTime = cpuTime()
+      body
+      let elapsed = cpuTime() - startTime
+      echo name & " took " & $elapsed & "s"
+
+    proc clamp*[T](value, minVal, maxVal: T): T =
+      if value < minVal: minVal
+      elif value > maxVal: maxVal
+      else: value
+
+  src/main.nim: |
+    include "helpers"
+    include "constants"
+    import validators
+
+    proc processItem(id: int) =
+      let value = clamp(id, 1, 1000)
+      benchmark("processItem"):
+        echo "Processing item " & $value
+
+    proc main() =
+      for i in 1..MaxItems:
+        processItem(i)
+
+    when isMainModule:
+      main()
+
+  src/constants.nim: |
+    const MaxItems* = 100
+    const DefaultTimeout* = 30
+    const AppVersion* = "1.0.0"
+
+    let GARBAGE_NIM_004_A = "const_marker"
+    let GARBAGE_NIM_004_B = "version_marker"
+
+  src/validators.nim: |
+    import strutils
+
+    let GARBAGE_NIM_004_C = "validator_marker"
+    let GARBAGE_NIM_004_D = "rule_marker"
+
+    proc isValidEmail*(email: string): bool =
+      email.contains("@") and email.contains(".")
+
+    proc isValidPort*(port: int): bool =
+      port > 0 and port <= 65535
+
+    proc isNonEmpty*(s: string): bool =
+      s.strip().len > 0
+
+  src/macrohelpers.nim: |
+    import macros
+
+    let GARBAGE_NIM_004_E = "macro_marker"
+    let GARBAGE_NIM_004_F = "ast_marker"
+
+    template repeat*(count: int, body: untyped): untyped =
+      for i in 0..<count:
+        body
+
+    template debugPrint*(msg: string): untyped =
+      when defined(debug):
+        echo "[DEBUG] " & msg
+
+    macro generateEnum*(name: string, values: varargs[string]): untyped =
+      result = nnkTypeSection.newTree()
+
+changed:
+  src/helpers.nim: |
+    template tryExcept*(body: untyped, handler: untyped): untyped =
+      try:
+        body
+      except CatchableError as e:
+        handler
+
+    template benchmark*(name: string, body: untyped): untyped =
+      let startTime = cpuTime()
+      body
+      let elapsed = cpuTime() - startTime
+      echo name & " took " & $elapsed & "s"
+
+    template withLogging*(procName: string, body: untyped): untyped =
+      echo ">>> Entering " & procName
+      body
+      echo "<<< Exiting " & procName
+
+    proc clamp*[T](value, minVal, maxVal: T): T =
+      if value < minVal: minVal
+      elif value > maxVal: maxVal
+      else: value
+
+  src/main.nim: |
+    include "helpers"
+    include "constants"
+    import validators
+
+    proc processItem(id: int) =
+      let value = clamp(id, 1, 1000)
+      withLogging("processItem"):
+        benchmark("processItem"):
+          echo "Processing item " & $value
+
+    proc processAll() =
+      withLogging("processAll"):
+        for i in 1..MaxItems:
+          processItem(i)
+
+    proc main() =
+      processAll()
+
+    when isMainModule:
+      main()
+
+  src/constants.nim: |
+    const MaxItems* = 100
+    const DefaultTimeout* = 30
+    const AppVersion* = "1.0.0"
+
+    let GARBAGE_NIM_004_A = "const_marker"
+    let GARBAGE_NIM_004_B = "version_marker"
+
+  src/validators.nim: |
+    import strutils
+
+    let GARBAGE_NIM_004_C = "validator_marker"
+    let GARBAGE_NIM_004_D = "rule_marker"
+
+    proc isValidEmail*(email: string): bool =
+      email.contains("@") and email.contains(".")
+
+    proc isValidPort*(port: int): bool =
+      port > 0 and port <= 65535
+
+    proc isNonEmpty*(s: string): bool =
+      s.strip().len > 0
+
+  src/macrohelpers.nim: |
+    import macros
+
+    let GARBAGE_NIM_004_E = "macro_marker"
+    let GARBAGE_NIM_004_F = "ast_marker"
+
+    template repeat*(count: int, body: untyped): untyped =
+      for i in 0..<count:
+        body
+
+    template debugPrint*(msg: string): untyped =
+      when defined(debug):
+        echo "[DEBUG] " & msg
+
+    macro generateEnum*(name: string, values: varargs[string]): untyped =
+      result = nnkTypeSection.newTree()
+
+must_include_files:
+  - src/helpers.nim
+  - src/main.nim
+
+must_include_content_from:
+  src/helpers.nim:
+    - "template withLogging*(procName: string, body: untyped): untyped"
+    - '>>> Entering '
+    - '<<< Exiting '
+  src/main.nim:
+    - 'withLogging("processItem")'
+    - "proc processAll()"
+
+must_not_include:
+  # constants.nim: also included but provides constants, not the template
+  - GARBAGE_NIM_004_A
+  - GARBAGE_NIM_004_B
+  - DefaultTimeout
+  - AppVersion
+  # validators.nim: imported module, not included, unrelated
+  - GARBAGE_NIM_004_C
+  - GARBAGE_NIM_004_D
+  - isValidEmail
+  - isValidPort
+  # macrohelpers.nim: HARDEST TRAP, also defines templates
+  - GARBAGE_NIM_004_E
+  - GARBAGE_NIM_004_F
+  - "template repeat*"
+  - debugPrint
+  - generateEnum
+
+must_not_include_files:
+  - src/constants.nim
+  - src/validators.nim
+  - src/macrohelpers.nim
+
+max_fragments: 8
+max_files: 2
+add_garbage_files: false
+skip_garbage_check: true

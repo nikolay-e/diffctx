@@ -209,6 +209,25 @@ class EdgeBuilder(ABC):
             if fid != source_id:
                 self.add_edge(edges, source_id, fid, weight)
 
+    def link_by_name_or_path(
+        self,
+        src_id: FragmentId,
+        ref: str,
+        idx: FragmentIndex,
+        edges: EdgeDict,
+        weight: float | None = None,
+        filename: str | None = None,
+    ) -> None:
+        w = weight if weight is not None else self.weight
+        target = filename if filename is not None else ref.split("/")[-1].lower()
+        for name, frag_ids in idx.by_name.items():
+            if name == target:
+                for fid in frag_ids:
+                    if fid != src_id:
+                        self.add_edge(edges, src_id, fid, w)
+                        return
+        self.link_by_path_match(src_id, ref, idx, edges, w)
+
     def link_by_path_match(
         self,
         src_id: FragmentId,
@@ -224,6 +243,21 @@ class EdgeBuilder(ABC):
                 for fid in frag_ids:
                     if fid != src_id:
                         self.add_edge(edges, src_id, fid, w)
+
+    def link_by_stem(
+        self,
+        src_id: FragmentId,
+        ref_name: str,
+        idx: FragmentIndex,
+        edges: EdgeDict,
+        weight: float,
+    ) -> None:
+        ref_no_slash = ref_name.replace("/", "")
+        ref_base = ref_name.split(".")[0] if "." in ref_name else ""
+        for name, frag_ids in idx.by_name.items():
+            stem = name.split(".")[0]
+            if stem == ref_name or stem == ref_no_slash or (ref_base and stem == ref_base):
+                self.add_edges_from_ids(src_id, frag_ids, weight, edges)
 
     @staticmethod
     def index_paths_for_fragment(

@@ -1,0 +1,202 @@
+# Clojure deps.edn: new dependency added in deps.edn and new require in
+# a namespace that uses the library. Context must include both deps.edn
+# and the namespace. Noise: other namespaces not using the new dependency.
+
+initial:
+  deps.edn: |
+    {:paths ["src"]
+     :deps
+     {org.clojure/clojure       {:mvn/version "1.11.1"}
+      org.clojure/data.json     {:mvn/version "2.4.0"}
+      ring/ring-core            {:mvn/version "1.10.0"}
+      ring/ring-jetty-adapter   {:mvn/version "1.10.0"}}
+     :aliases
+     {:test {:extra-paths ["test"]
+             :extra-deps {lambdaisland/kaocha {:mvn/version "1.87.1366"}}}}}
+
+  src/myapp/server.clj: |
+    (ns myapp.server
+      (:require [ring.adapter.jetty :refer [run-jetty]]
+                [myapp.routes :as routes]))
+
+    (defn start-server [port]
+      (run-jetty routes/app {:port port :join? false}))
+
+  src/myapp/routes.clj: |
+    (ns myapp.routes
+      (:require [ring.core :as ring]))
+
+    (defn app [request]
+      {:status 200
+       :headers {"Content-Type" "text/plain"}
+       :body "Hello, World!"})
+
+  # --- Tricky garbage: also has require for ring ---
+  src/myapp/middleware.clj: |
+    (ns myapp.middleware
+      (:require [ring.core :as ring]))
+
+    (def GARBAGE_CLJ_004_MIDDLEWARE_MARKER_A "middleware")
+    (def GARBAGE_CLJ_004_WRAP_FN_B "wrap-json")
+
+    (defn wrap-content-type [handler]
+      (fn [request]
+        (let [response (handler request)]
+          (assoc-in response [:headers "Content-Type"] "application/json"))))
+
+  # --- Tricky garbage: also uses data.json ---
+  src/myapp/parser.clj: |
+    (ns myapp.parser
+      (:require [clojure.data.json :as json]))
+
+    (def GARBAGE_CLJ_004_PARSER_MARKER_C "parser")
+    (def GARBAGE_CLJ_004_DECODE_FLAG_D true)
+
+    (defn parse-body [body]
+      (json/read-str (slurp body) :key-fn keyword))
+
+  # --- Tricky garbage: another config-like file ---
+  project.clj: |
+    ;; Legacy project.clj kept for reference
+    (def GARBAGE_CLJ_004_LEGACY_PROJ_E "project")
+    (def GARBAGE_CLJ_004_LEIN_MARKER_F "lein")
+
+  # --- Plain garbage ---
+  src/myapp/constants.clj: |
+    (ns myapp.constants)
+
+    (def GARBAGE_CLJ_004_CONST_MARKER_G "constants")
+    (def GARBAGE_CLJ_004_APP_NAME_H "myapp")
+
+    (def default-port 8080)
+    (def max-connections 100)
+
+changed:
+  deps.edn: |
+    {:paths ["src"]
+     :deps
+     {org.clojure/clojure       {:mvn/version "1.11.1"}
+      org.clojure/data.json     {:mvn/version "2.4.0"}
+      ring/ring-core            {:mvn/version "1.10.0"}
+      ring/ring-jetty-adapter   {:mvn/version "1.10.0"}
+      com.github.seancorfield/next.jdbc {:mvn/version "1.3.909"}
+      com.zaxxer/HikariCP       {:mvn/version "5.1.0"}}
+     :aliases
+     {:test {:extra-paths ["test"]
+             :extra-deps {lambdaisland/kaocha {:mvn/version "1.87.1366"}}}}}
+
+  src/myapp/server.clj: |
+    (ns myapp.server
+      (:require [ring.adapter.jetty :refer [run-jetty]]
+                [myapp.routes :as routes]))
+
+    (defn start-server [port]
+      (run-jetty routes/app {:port port :join? false}))
+
+  src/myapp/routes.clj: |
+    (ns myapp.routes
+      (:require [ring.core :as ring]
+                [myapp.db :as db]))
+
+    (defn app [request]
+      (case (:uri request)
+        "/users" {:status 200
+                  :headers {"Content-Type" "application/json"}
+                  :body (str (db/find-all-users))}
+        {:status 200
+         :headers {"Content-Type" "text/plain"}
+         :body "Hello, World!"}))
+
+  src/myapp/db.clj: |
+    (ns myapp.db
+      (:require [next.jdbc :as jdbc]
+                [next.jdbc.result-set :as rs]))
+
+    (def db-spec
+      {:dbtype "postgresql"
+       :dbname "myapp"
+       :host "localhost"
+       :port 5432})
+
+    (def ds (jdbc/get-datasource db-spec))
+
+    (defn find-all-users []
+      (jdbc/execute! ds
+        ["SELECT * FROM users"]
+        {:builder-fn rs/as-unqualified-maps}))
+
+  src/myapp/middleware.clj: |
+    (ns myapp.middleware
+      (:require [ring.core :as ring]))
+
+    (def GARBAGE_CLJ_004_MIDDLEWARE_MARKER_A "middleware")
+    (def GARBAGE_CLJ_004_WRAP_FN_B "wrap-json")
+
+    (defn wrap-content-type [handler]
+      (fn [request]
+        (let [response (handler request)]
+          (assoc-in response [:headers "Content-Type"] "application/json"))))
+
+  src/myapp/parser.clj: |
+    (ns myapp.parser
+      (:require [clojure.data.json :as json]))
+
+    (def GARBAGE_CLJ_004_PARSER_MARKER_C "parser")
+    (def GARBAGE_CLJ_004_DECODE_FLAG_D true)
+
+    (defn parse-body [body]
+      (json/read-str (slurp body) :key-fn keyword))
+
+  project.clj: |
+    ;; Legacy project.clj kept for reference
+    (def GARBAGE_CLJ_004_LEGACY_PROJ_E "project")
+    (def GARBAGE_CLJ_004_LEIN_MARKER_F "lein")
+
+  src/myapp/constants.clj: |
+    (ns myapp.constants)
+
+    (def GARBAGE_CLJ_004_CONST_MARKER_G "constants")
+    (def GARBAGE_CLJ_004_APP_NAME_H "myapp")
+
+    (def default-port 8080)
+    (def max-connections 100)
+
+# === Assertions ===
+
+must_include_files:
+- deps.edn
+- src/myapp/db.clj
+
+must_include_content_from:
+  deps.edn:
+    - com.github.seancorfield/next.jdbc
+    - com.zaxxer/HikariCP
+  src/myapp/db.clj:
+    - next.jdbc :as jdbc
+    - jdbc/execute! ds
+    - jdbc/get-datasource db-spec
+
+must_not_include:
+# Tricky: also has require for ring
+- GARBAGE_CLJ_004_MIDDLEWARE_MARKER_A
+- GARBAGE_CLJ_004_WRAP_FN_B
+# Tricky: also uses data.json
+- GARBAGE_CLJ_004_PARSER_MARKER_C
+- GARBAGE_CLJ_004_DECODE_FLAG_D
+# Tricky: another config-like file
+- GARBAGE_CLJ_004_LEGACY_PROJ_E
+- GARBAGE_CLJ_004_LEIN_MARKER_F
+# Plain garbage
+- GARBAGE_CLJ_004_CONST_MARKER_G
+- GARBAGE_CLJ_004_APP_NAME_H
+
+must_not_include_files:
+- src/myapp/middleware.clj
+- src/myapp/parser.clj
+- project.clj
+- src/myapp/constants.clj
+
+max_fragments: 10
+max_files: 4
+add_garbage_files: false
+skip_garbage_check: true

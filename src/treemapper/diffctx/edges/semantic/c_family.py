@@ -17,7 +17,7 @@ _INCLUDE_RE = re.compile(r'^\s*#\s*(?:include|import)\s*[<"]([^>"]+)[>"]', re.MU
 
 _FUNC_DEF_RE = re.compile(
     r"^\s*(?:static\s+|inline\s+|virtual\s+|explicit\s+|constexpr\s+)*"
-    r"(?:[\w:]+\s+)+"
+    r"(?:[\w:]{1,80}\s{1,10}){1,10}"
     r"(\w+)\s*\([^)]*\)\s*(?:const\s*)?(?:override\s*)?(?:final\s*)?"
     r"(?:noexcept(?:\([^)]*\))?\s*)?"
     r"\s*\{",

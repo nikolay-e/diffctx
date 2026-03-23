@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import math
-import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -9,6 +8,7 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
+from tests.framework.pygit2_backend import Pygit2Repo
 from treemapper.diffctx import build_diff_context
 from treemapper.diffctx.graph import Graph
 from treemapper.diffctx.ppr import personalized_pagerank
@@ -156,21 +156,25 @@ class TestPPRMathematicalInvariants:
                 assert math.isfinite(score), f"Non-finite score for {node}: {score}"
 
 
+def _extract_content(context: dict[str, Any]) -> str:
+    parts = []
+    for frag in context.get("fragments", []):
+        if "content" in frag:
+            parts.append(frag["content"])
+        if "path" in frag:
+            parts.append(frag["path"])
+    return "\n".join(parts)
+
+
 class TestDiffContextNegativeCases:
     @pytest.fixture
     def git_repo(self, tmp_path: Path) -> Path:
-        repo = tmp_path / "test_repo"
-        repo.mkdir()
-        subprocess.run(["git", "init"], cwd=repo, capture_output=True, check=True)
-        subprocess.run(["git", "config", "user.email", "t@t.com"], cwd=repo, capture_output=True, check=True)
-        subprocess.run(["git", "config", "user.name", "T"], cwd=repo, capture_output=True, check=True)
-        (repo / "file.py").write_text("x = 1\n", encoding="utf-8")
-        subprocess.run(["git", "add", "-A"], cwd=repo, capture_output=True, check=True)
-        subprocess.run(["git", "commit", "-m", "init"], cwd=repo, capture_output=True, check=True)
-        (repo / "file.py").write_text("x = 2\n", encoding="utf-8")
-        subprocess.run(["git", "add", "-A"], cwd=repo, capture_output=True, check=True)
-        subprocess.run(["git", "commit", "-m", "change"], cwd=repo, capture_output=True, check=True)
-        return repo
+        g = Pygit2Repo(tmp_path / "test_repo")
+        g.add_file("file.py", "x = 1\n")
+        g.commit("init")
+        g.add_file("file.py", "x = 2\n")
+        g.commit("change")
+        return g.path
 
     def test_invalid_diff_range_raises_error(self, git_repo: Path) -> None:
         with pytest.raises(Exception):
@@ -200,67 +204,44 @@ class TestDiffContextNegativeCases:
             )
 
     def test_multi_file_change_includes_all_changed_files(self, tmp_path: Path) -> None:
-        repo = tmp_path / "multi_file_repo"
-        repo.mkdir()
-        subprocess.run(["git", "init"], cwd=repo, capture_output=True, check=True)
-        subprocess.run(["git", "config", "user.email", "t@t.com"], cwd=repo, capture_output=True, check=True)
-        subprocess.run(["git", "config", "user.name", "T"], cwd=repo, capture_output=True, check=True)
-        (repo / "alpha.py").write_text("def alpha():\n    return 1\n", encoding="utf-8")
-        (repo / "beta.py").write_text("def beta():\n    return 2\n", encoding="utf-8")
-        (repo / "gamma.py").write_text("def gamma():\n    return 3\n", encoding="utf-8")
-        subprocess.run(["git", "add", "-A"], cwd=repo, capture_output=True, check=True)
-        subprocess.run(["git", "commit", "-m", "init"], cwd=repo, capture_output=True, check=True)
-        (repo / "alpha.py").write_text("def alpha():\n    return 10\n", encoding="utf-8")
-        (repo / "beta.py").write_text("def beta():\n    return 20\n", encoding="utf-8")
-        subprocess.run(["git", "add", "-A"], cwd=repo, capture_output=True, check=True)
-        subprocess.run(["git", "commit", "-m", "change two files"], cwd=repo, capture_output=True, check=True)
+        g = Pygit2Repo(tmp_path / "multi_file_repo")
+        g.add_file("alpha.py", "def alpha():\n    return 1\n")
+        g.add_file("beta.py", "def beta():\n    return 2\n")
+        g.add_file("gamma.py", "def gamma():\n    return 3\n")
+        g.commit("init")
+        g.add_file("alpha.py", "def alpha():\n    return 10\n")
+        g.add_file("beta.py", "def beta():\n    return 20\n")
+        g.commit("change two files")
         context = build_diff_context(
-            root_dir=repo,
+            root_dir=g.path,
             diff_range="HEAD~1..HEAD",
             budget_tokens=5000,
         )
-        all_content = self._extract_content(context)
+        all_content = _extract_content(context)
         assert "alpha" in all_content, "First changed file must be included"
         assert "beta" in all_content, "Second changed file must be included"
 
-    def _extract_content(self, context: dict[str, Any]) -> str:
-        parts = []
-        for frag in context.get("fragments", []):
-            if "content" in frag:
-                parts.append(frag["content"])
-            if "path" in frag:
-                parts.append(frag["path"])
-        return "\n".join(parts)
-
     def test_binary_file_in_diff_does_not_crash(self, tmp_path: Path) -> None:
-        repo = tmp_path / "binary_repo"
-        repo.mkdir()
-        subprocess.run(["git", "init"], cwd=repo, capture_output=True, check=True)
-        subprocess.run(["git", "config", "user.email", "t@t.com"], cwd=repo, capture_output=True, check=True)
-        subprocess.run(["git", "config", "user.name", "T"], cwd=repo, capture_output=True, check=True)
-        (repo / "code.py").write_text("x = 1\n", encoding="utf-8")
-        (repo / "image.bin").write_bytes(b"\x89PNG\r\n\x1a\n" + bytes(range(256)))
-        subprocess.run(["git", "add", "-A"], cwd=repo, capture_output=True, check=True)
-        subprocess.run(["git", "commit", "-m", "init"], cwd=repo, capture_output=True, check=True)
-        (repo / "code.py").write_text("x = 2\n", encoding="utf-8")
-        (repo / "image.bin").write_bytes(b"\x89PNG\r\n\x1a\n" + bytes(reversed(range(256))))
-        subprocess.run(["git", "add", "-A"], cwd=repo, capture_output=True, check=True)
-        subprocess.run(["git", "commit", "-m", "change"], cwd=repo, capture_output=True, check=True)
+        g = Pygit2Repo(tmp_path / "binary_repo")
+        g.add_file("code.py", "x = 1\n")
+        g.add_file_binary("image.bin", b"\x89PNG\r\n\x1a\n" + bytes(range(256)))
+        g.commit("init")
+        g.add_file("code.py", "x = 2\n")
+        g.add_file_binary("image.bin", b"\x89PNG\r\n\x1a\n" + bytes(reversed(range(256))))
+        g.commit("change")
         context = build_diff_context(
-            root_dir=repo,
+            root_dir=g.path,
             diff_range="HEAD~1..HEAD",
             budget_tokens=5000,
         )
         assert "fragments" in context or context.get("type") == "diff_context"
 
     def test_empty_diff_returns_empty_fragments(self, git_repo: Path) -> None:
-        head_sha = subprocess.run(
-            ["git", "rev-parse", "HEAD"],
-            cwd=git_repo,
-            capture_output=True,
-            text=True,
-            check=True,
-        ).stdout.strip()
+        from tests.framework.pygit2_backend import _get_repo, _resolve_commit
+
+        repo = _get_repo(git_repo)
+        head = _resolve_commit(repo, "HEAD")
+        head_sha = str(head.id)
         context = build_diff_context(
             root_dir=git_repo,
             diff_range=f"{head_sha}..{head_sha}",
@@ -273,14 +254,10 @@ class TestDiffContextNegativeCases:
 class TestRealisticGarbageFiltering:
     @pytest.fixture
     def repo_with_realistic_unrelated_code(self, tmp_path: Path) -> tuple[Path, str]:
-        repo = tmp_path / "realistic_repo"
-        repo.mkdir()
-        subprocess.run(["git", "init"], cwd=repo, capture_output=True, check=True)
-        subprocess.run(["git", "config", "user.email", "t@t.com"], cwd=repo, capture_output=True, check=True)
-        subprocess.run(["git", "config", "user.name", "T"], cwd=repo, capture_output=True, check=True)
-        main_module = repo / "src" / "main_feature.py"
-        main_module.parent.mkdir(parents=True, exist_ok=True)
-        main_module.write_text(
+        g = Pygit2Repo(tmp_path / "realistic_repo")
+
+        g.add_file(
+            "src/main_feature.py",
             """
 def process_user_data(user_id: int) -> dict:
     return {"id": user_id, "status": "active"}
@@ -288,11 +265,9 @@ def process_user_data(user_id: int) -> dict:
 def validate_input(data: dict) -> bool:
     return "id" in data
 """,
-            encoding="utf-8",
         )
-        unrelated1 = repo / "utils" / "math_helpers.py"
-        unrelated1.parent.mkdir(parents=True, exist_ok=True)
-        unrelated1.write_text(
+        g.add_file(
+            "utils/math_helpers.py",
             """
 def calculate_fibonacci(n: int) -> int:
     FIBONACCI_MARKER_UNIQUE_12345 = True
@@ -321,11 +296,9 @@ class MathUtilities:
             return 1
         return n * self.factorial(n - 1)
 """,
-            encoding="utf-8",
         )
-        unrelated2 = repo / "services" / "email_service.py"
-        unrelated2.parent.mkdir(parents=True, exist_ok=True)
-        unrelated2.write_text(
+        g.add_file(
+            "services/email_service.py",
             """
 class EmailSender:
     EMAIL_SENDER_MARKER_FGHIJ = "email"
@@ -341,11 +314,9 @@ def format_email_body(template: str, params: dict) -> str:
     EMAIL_FORMAT_MARKER_PQRST = True
     return template.format(**params)
 """,
-            encoding="utf-8",
         )
-        unrelated3 = repo / "config" / "settings_loader.py"
-        unrelated3.parent.mkdir(parents=True, exist_ok=True)
-        unrelated3.write_text(
+        g.add_file(
+            "config/settings_loader.py",
             """
 import os
 
@@ -367,14 +338,11 @@ class ConfigurationManager:
     def get(self, key: str, default=None):
         return self.settings.get(key, default)
 """,
-            encoding="utf-8",
         )
-        subprocess.run(["git", "add", "-A"], cwd=repo, capture_output=True, check=True)
-        subprocess.run(["git", "commit", "-m", "initial"], cwd=repo, capture_output=True, check=True)
-        base_sha = subprocess.run(
-            ["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True, check=True
-        ).stdout.strip()
-        main_module.write_text(
+        base_sha = g.commit("initial")
+
+        g.add_file(
+            "src/main_feature.py",
             """
 def process_user_data(user_id: int) -> dict:
     validated = validate_input({"id": user_id})
@@ -385,11 +353,9 @@ def process_user_data(user_id: int) -> dict:
 def validate_input(data: dict) -> bool:
     return "id" in data and isinstance(data["id"], int)
 """,
-            encoding="utf-8",
         )
-        subprocess.run(["git", "add", "-A"], cwd=repo, capture_output=True, check=True)
-        subprocess.run(["git", "commit", "-m", "improve user processing"], cwd=repo, capture_output=True, check=True)
-        return repo, base_sha
+        g.commit("improve user processing")
+        return g.path, base_sha
 
     def test_unrelated_code_excluded_without_garbage_keyword(self, repo_with_realistic_unrelated_code: tuple[Path, str]) -> None:
         repo, base_sha = repo_with_realistic_unrelated_code
@@ -398,7 +364,7 @@ def validate_input(data: dict) -> bool:
             diff_range=f"{base_sha}..HEAD",
             budget_tokens=2000,
         )
-        all_content = self._extract_content(context)
+        all_content = _extract_content(context)
         assert "process_user_data" in all_content, "Changed function should be included"
         assert "validate_input" in all_content, "Related function should be included"
         unrelated_markers = [
@@ -418,23 +384,10 @@ def validate_input(data: dict) -> bool:
                 f"Algorithm is including irrelevant code without 'garbage' keyword."
             )
 
-    def _extract_content(self, context: dict[str, Any]) -> str:
-        parts = []
-        for frag in context.get("fragments", []):
-            if "content" in frag:
-                parts.append(frag["content"])
-            if "path" in frag:
-                parts.append(frag["path"])
-        return "\n".join(parts)
-
 
 class TestAssertionPrecision:
     def test_fragment_line_range_accuracy(self, tmp_path: Path) -> None:
-        repo = tmp_path / "line_range_repo"
-        repo.mkdir()
-        subprocess.run(["git", "init"], cwd=repo, capture_output=True, check=True)
-        subprocess.run(["git", "config", "user.email", "t@t.com"], cwd=repo, capture_output=True, check=True)
-        subprocess.run(["git", "config", "user.name", "T"], cwd=repo, capture_output=True, check=True)
+        g = Pygit2Repo(tmp_path / "line_range_repo")
         code = """def first_function():
     return 1
 
@@ -444,9 +397,8 @@ def second_function():
 def third_function():
     return 3
 """
-        (repo / "functions.py").write_text(code, encoding="utf-8")
-        subprocess.run(["git", "add", "-A"], cwd=repo, capture_output=True, check=True)
-        subprocess.run(["git", "commit", "-m", "init"], cwd=repo, capture_output=True, check=True)
+        g.add_file("functions.py", code)
+        g.commit("init")
         modified_code = """def first_function():
     return 1
 
@@ -456,11 +408,10 @@ def second_function():
 def third_function():
     return 3
 """
-        (repo / "functions.py").write_text(modified_code, encoding="utf-8")
-        subprocess.run(["git", "add", "-A"], cwd=repo, capture_output=True, check=True)
-        subprocess.run(["git", "commit", "-m", "change second"], cwd=repo, capture_output=True, check=True)
+        g.add_file("functions.py", modified_code)
+        g.commit("change second")
         context = build_diff_context(
-            root_dir=repo,
+            root_dir=g.path,
             diff_range="HEAD~1..HEAD",
             budget_tokens=5000,
         )
@@ -479,23 +430,13 @@ def third_function():
 class TestBudgetEdgeCases:
     @pytest.fixture
     def large_repo(self, tmp_path: Path) -> tuple[Path, str]:
-        repo = tmp_path / "large_repo"
-        repo.mkdir()
-        subprocess.run(["git", "init"], cwd=repo, capture_output=True, check=True)
-        subprocess.run(["git", "config", "user.email", "t@t.com"], cwd=repo, capture_output=True, check=True)
-        subprocess.run(["git", "config", "user.name", "T"], cwd=repo, capture_output=True, check=True)
+        g = Pygit2Repo(tmp_path / "large_repo")
         for i in range(10):
-            (repo / f"module_{i}.py").write_text(
-                f"def function_{i}():\n    return {i}\n" * 20,
-                encoding="utf-8",
-            )
-        subprocess.run(["git", "add", "-A"], cwd=repo, capture_output=True, check=True)
-        subprocess.run(["git", "commit", "-m", "init"], cwd=repo, capture_output=True, check=True)
-        base = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True, check=True).stdout.strip()
-        (repo / "module_0.py").write_text("def function_0():\n    return 999\n", encoding="utf-8")
-        subprocess.run(["git", "add", "-A"], cwd=repo, capture_output=True, check=True)
-        subprocess.run(["git", "commit", "-m", "change"], cwd=repo, capture_output=True, check=True)
-        return repo, base
+            g.add_file(f"module_{i}.py", f"def function_{i}():\n    return {i}\n" * 20)
+        base = g.commit("init")
+        g.add_file("module_0.py", "def function_0():\n    return 999\n")
+        g.commit("change")
+        return g.path, base
 
     def test_very_small_budget_still_includes_core(self, large_repo: tuple[Path, str]) -> None:
         repo, base = large_repo
@@ -534,47 +475,30 @@ class TestRandomizedGarbageFiltering:
         self, tmp_path_factory: pytest.TempPathFactory, num_unrelated_files: int, identifier_seed: int
     ) -> None:
         tmp_path = tmp_path_factory.mktemp(f"repo_{identifier_seed}")
-        repo = tmp_path / "test_repo"
-        repo.mkdir()
-        subprocess.run(["git", "init"], cwd=repo, capture_output=True, check=True)
-        subprocess.run(["git", "config", "user.email", "t@t.com"], cwd=repo, capture_output=True, check=True)
-        subprocess.run(["git", "config", "user.name", "T"], cwd=repo, capture_output=True, check=True)
-        main_file = repo / "main_feature.py"
-        main_file.write_text("def main_function():\n    return 'initial'\n", encoding="utf-8")
+        g = Pygit2Repo(tmp_path / "test_repo")
+        g.add_file("main_feature.py", "def main_function():\n    return 'initial'\n")
         markers = []
         for i in range(num_unrelated_files):
             marker = f"UNIQUE_MARKER_{identifier_seed}_{i}_XYZ"
             markers.append(marker)
-            unrelated = repo / f"unrelated_{identifier_seed}_{i}.py"
-            unrelated.write_text(
+            g.add_file(
+                f"unrelated_{identifier_seed}_{i}.py",
                 f"{marker} = True\ndef helper_{identifier_seed}_{i}():\n    return '{marker}'\n",
-                encoding="utf-8",
             )
-        subprocess.run(["git", "add", "-A"], cwd=repo, capture_output=True, check=True)
-        subprocess.run(["git", "commit", "-m", "init"], cwd=repo, capture_output=True, check=True)
-        main_file.write_text("def main_function():\n    return 'modified'\n", encoding="utf-8")
-        subprocess.run(["git", "add", "-A"], cwd=repo, capture_output=True, check=True)
-        subprocess.run(["git", "commit", "-m", "change"], cwd=repo, capture_output=True, check=True)
+        g.commit("init")
+        g.add_file("main_feature.py", "def main_function():\n    return 'modified'\n")
+        g.commit("change")
         context = build_diff_context(
-            root_dir=repo,
+            root_dir=g.path,
             diff_range="HEAD~1..HEAD",
             budget_tokens=500,
         )
-        all_content = self._extract_content(context)
+        all_content = _extract_content(context)
         assert "main_function" in all_content, "Changed function must be included"
         for marker in markers:
             assert (
                 marker not in all_content
             ), f"Randomized marker '{marker}' should NOT be in context. Algorithm is including unrelated code."
-
-    def _extract_content(self, context: dict[str, Any]) -> str:
-        parts = []
-        for frag in context.get("fragments", []):
-            if "content" in frag:
-                parts.append(frag["content"])
-            if "path" in frag:
-                parts.append(frag["path"])
-        return "\n".join(parts)
 
 
 class TestGraphBuildingIntegrity:
@@ -630,40 +554,25 @@ class TestGraphBuildingIntegrity:
 
 class TestCICDSeparatorAwareMatching:
     def test_cicd_does_not_create_spurious_edges_from_greedy_prefix(self, tmp_path: Path) -> None:
-        repo = tmp_path / "cicd_repo"
-        repo.mkdir()
-        subprocess.run(["git", "init"], cwd=repo, capture_output=True, check=True)
-        subprocess.run(["git", "config", "user.email", "t@t.com"], cwd=repo, capture_output=True, check=True)
-        subprocess.run(["git", "config", "user.name", "T"], cwd=repo, capture_output=True, check=True)
+        g = Pygit2Repo(tmp_path / "cicd_repo")
 
-        workflows_dir = repo / ".github" / "workflows"
-        workflows_dir.mkdir(parents=True)
-        workflows_dir.joinpath("ci.yml").write_text(
+        g.add_file(
+            ".github/workflows/ci.yml",
             "name: CI\non:\n  push:\njobs:\n  test:\n    runs-on: ubuntu-latest\n    steps:\n      - run: python test.py\n",
-            encoding="utf-8",
         )
-        (repo / "test.py").write_text("def run_tests(): pass\n", encoding="utf-8")
-        (repo / "testing_utils.py").write_text(
-            "TESTING_UTILS_MARKER_XYZZY = True\ndef utility(): pass\n",
-            encoding="utf-8",
-        )
-        (repo / "app.py").write_text(
-            "APP_MARKER_QWERTY = True\ndef main(): pass\n",
-            encoding="utf-8",
-        )
+        g.add_file("test.py", "def run_tests(): pass\n")
+        g.add_file("testing_utils.py", "TESTING_UTILS_MARKER_XYZZY = True\ndef utility(): pass\n")
+        g.add_file("app.py", "APP_MARKER_QWERTY = True\ndef main(): pass\n")
+        g.commit("init")
 
-        subprocess.run(["git", "add", "-A"], cwd=repo, capture_output=True, check=True)
-        subprocess.run(["git", "commit", "-m", "init"], cwd=repo, capture_output=True, check=True)
-
-        workflows_dir.joinpath("ci.yml").write_text(
+        g.add_file(
+            ".github/workflows/ci.yml",
             "name: CI\non:\n  push:\njobs:\n  test:\n    runs-on: ubuntu-latest\n    steps:\n      - run: python test.py --verbose\n",
-            encoding="utf-8",
         )
-        subprocess.run(["git", "add", "-A"], cwd=repo, capture_output=True, check=True)
-        subprocess.run(["git", "commit", "-m", "update ci"], cwd=repo, capture_output=True, check=True)
+        g.commit("update ci")
 
         context = build_diff_context(
-            root_dir=repo,
+            root_dir=g.path,
             diff_range="HEAD~1..HEAD",
             budget_tokens=5000,
         )
@@ -681,120 +590,72 @@ class TestCICDSeparatorAwareMatching:
 
 
 class TestJVMInheritanceEdges:
-    def _init_repo(self, path: Path) -> None:
-        subprocess.run(["git", "init"], cwd=path, capture_output=True, check=True)
-        subprocess.run(["git", "config", "user.email", "t@t.com"], cwd=path, capture_output=True, check=True)
-        subprocess.run(["git", "config", "user.name", "T"], cwd=path, capture_output=True, check=True)
-
-    def _commit(self, repo: Path, message: str) -> None:
-        subprocess.run(["git", "add", "-A"], cwd=repo, capture_output=True, check=True)
-        subprocess.run(["git", "commit", "-m", message], cwd=repo, capture_output=True, check=True)
-
-    def _extract_content(self, context: dict[str, Any]) -> str:
-        parts = []
-        for frag in context.get("fragments", []):
-            if "content" in frag:
-                parts.append(frag["content"])
-            if "path" in frag:
-                parts.append(frag["path"])
-        return "\n".join(parts)
-
     def test_kotlin_inheritance_pulls_derived_class(self, tmp_path: Path) -> None:
-        repo = tmp_path / "kotlin_repo"
-        repo.mkdir()
-        self._init_repo(repo)
+        g = Pygit2Repo(tmp_path / "kotlin_repo")
 
-        (repo / "Base.kt").write_text(
-            'open class BaseService {\n    fun serve() = "base"\n}\n',
-            encoding="utf-8",
-        )
-        (repo / "Derived.kt").write_text(
-            'class DerivedService : BaseService {\n    override fun serve() = "derived"\n}\n',
-            encoding="utf-8",
-        )
-        self._commit(repo, "init")
+        g.add_file("Base.kt", 'open class BaseService {\n    fun serve() = "base"\n}\n')
+        g.add_file("Derived.kt", 'class DerivedService : BaseService {\n    override fun serve() = "derived"\n}\n')
+        g.commit("init")
 
-        (repo / "Base.kt").write_text(
-            'abstract class BaseService {\n    fun serve() = "base_v2"\n}\n',
-            encoding="utf-8",
-        )
-        self._commit(repo, "change base")
+        g.add_file("Base.kt", 'abstract class BaseService {\n    fun serve() = "base_v2"\n}\n')
+        g.commit("change base")
 
         context = build_diff_context(
-            root_dir=repo,
+            root_dir=g.path,
             diff_range="HEAD~1..HEAD",
             budget_tokens=50000,
         )
-        all_content = self._extract_content(context)
+        all_content = _extract_content(context)
         assert "BaseService" in all_content, "Changed base class must be included"
         assert "DerivedService" in all_content, "Kotlin derived class using ':' inheritance must appear in context"
 
     def test_scala_extends_with_pulls_mixing_trait(self, tmp_path: Path) -> None:
-        repo = tmp_path / "scala_repo"
-        repo.mkdir()
-        self._init_repo(repo)
+        g = Pygit2Repo(tmp_path / "scala_repo")
 
-        (repo / "Base.scala").write_text(
-            "trait Loggable {\n  def log(msg: String): Unit\n}\n",
-            encoding="utf-8",
-        )
-        (repo / "Service.scala").write_text(
-            'class Service extends Serializable with Loggable {\n  def run() = "running"\n}\n',
-            encoding="utf-8",
-        )
-        self._commit(repo, "init")
+        g.add_file("Base.scala", "trait Loggable {\n  def log(msg: String): Unit\n}\n")
+        g.add_file("Service.scala", 'class Service extends Serializable with Loggable {\n  def run() = "running"\n}\n')
+        g.commit("init")
 
-        (repo / "Base.scala").write_text(
-            "sealed trait Loggable {\n  def log(msg: String): Unit\n  def debug(msg: String): Unit\n}\n",
-            encoding="utf-8",
-        )
-        self._commit(repo, "change trait")
+        g.add_file("Base.scala", "sealed trait Loggable {\n  def log(msg: String): Unit\n  def debug(msg: String): Unit\n}\n")
+        g.commit("change trait")
 
         context = build_diff_context(
-            root_dir=repo,
+            root_dir=g.path,
             diff_range="HEAD~1..HEAD",
             budget_tokens=50000,
         )
-        all_content = self._extract_content(context)
+        all_content = _extract_content(context)
         assert "Loggable" in all_content, "Changed trait must be included"
         assert "Service" in all_content, "Scala class mixing in changed trait via 'with' must appear in context"
 
     def test_java_extends_implements_still_works(self, tmp_path: Path) -> None:
-        repo = tmp_path / "java_repo"
-        repo.mkdir()
-        self._init_repo(repo)
+        g = Pygit2Repo(tmp_path / "java_repo")
 
-        (repo / "Animal.java").write_text(
-            "public abstract class Animal {\n    public abstract String speak();\n}\n",
-            encoding="utf-8",
-        )
-        (repo / "Runnable.java").write_text(
-            "public interface Runnable {\n    void run();\n}\n",
-            encoding="utf-8",
-        )
-        (repo / "Dog.java").write_text(
+        g.add_file("Animal.java", "public abstract class Animal {\n    public abstract String speak();\n}\n")
+        g.add_file("Runnable.java", "public interface Runnable {\n    void run();\n}\n")
+        g.add_file(
+            "Dog.java",
             "public class Dog extends Animal implements Runnable {\n"
             '    public String speak() { return "woof"; }\n'
             "    public void run() { }\n"
             "}\n",
-            encoding="utf-8",
         )
-        self._commit(repo, "init")
+        g.commit("init")
 
-        (repo / "Animal.java").write_text(
+        g.add_file(
+            "Animal.java",
             "public abstract class Animal {\n"
             "    public abstract String speak();\n"
             '    public String type() { return "animal"; }\n'
             "}\n",
-            encoding="utf-8",
         )
-        self._commit(repo, "add method to base")
+        g.commit("add method to base")
 
         context = build_diff_context(
-            root_dir=repo,
+            root_dir=g.path,
             diff_range="HEAD~1..HEAD",
             budget_tokens=50000,
         )
-        all_content = self._extract_content(context)
+        all_content = _extract_content(context)
         assert "Animal" in all_content, "Changed abstract class must be included"
         assert "Dog" in all_content, "Java subclass using 'extends' must appear in context after refactor"

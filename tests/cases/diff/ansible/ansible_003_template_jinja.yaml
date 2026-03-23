@@ -1,0 +1,210 @@
+# Ansible template: a Jinja2 template is modified with a new directive.
+# The task that deploys the template must appear in context so a
+# reviewer can see where and how the template is applied.
+
+initial:
+  roles/nginx/tasks/main.yml: |
+    ---
+    - name: Install nginx
+      ansible.builtin.apt:
+        name: nginx
+        state: present
+      become: true
+
+    - name: Deploy nginx configuration
+      ansible.builtin.template:
+        src: nginx.conf.j2
+        dest: /etc/nginx/nginx.conf
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Restart nginx
+
+    - name: Ensure nginx is running
+      ansible.builtin.systemd:
+        name: nginx
+        state: started
+        enabled: true
+
+  roles/nginx/templates/nginx.conf.j2: |
+    worker_processes auto;
+
+    events {
+        worker_connections {{ worker_connections | default(1024) }};
+    }
+
+    http {
+        include /etc/nginx/mime.types;
+        default_type application/octet-stream;
+        sendfile on;
+        keepalive_timeout 65;
+
+        server {
+            listen {{ http_port | default(80) }};
+            server_name {{ server_name }};
+
+            location / {
+                root {{ document_root }};
+                index index.html;
+            }
+        }
+    }
+
+  roles/nginx/handlers/main.yml: |
+    ---
+    - name: Restart nginx
+      ansible.builtin.systemd:
+        name: nginx
+        state: restarted
+      become: true
+
+  roles/nginx/templates/vhost.conf.j2: |
+    server {
+        listen 80;
+        server_name {{ vhost_name }};
+        GARBAGE_ANS_003_A: "vhost_template_marker"
+        root {{ vhost_root }};
+    }
+
+  roles/certbot/tasks/main.yml: |
+    ---
+    - name: GARBAGE_ANS_003_B install certbot
+      ansible.builtin.apt:
+        name: certbot
+        state: present
+
+  roles/certbot/templates/certbot.ini.j2: |
+    # GARBAGE_ANS_003_C certbot config template
+    email = {{ certbot_email }}
+    agree-tos = true
+    non-interactive = true
+
+  roles/haproxy/templates/haproxy.cfg.j2: |
+    # GARBAGE_ANS_003_D haproxy config
+    global
+        maxconn {{ haproxy_maxconn }}
+    defaults
+        mode http
+        timeout connect 5000ms
+
+changed:
+  roles/nginx/tasks/main.yml: |
+    ---
+    - name: Install nginx
+      ansible.builtin.apt:
+        name: nginx
+        state: present
+      become: true
+
+    - name: Deploy nginx configuration
+      ansible.builtin.template:
+        src: nginx.conf.j2
+        dest: /etc/nginx/nginx.conf
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Restart nginx
+
+    - name: Ensure nginx is running
+      ansible.builtin.systemd:
+        name: nginx
+        state: started
+        enabled: true
+
+  roles/nginx/templates/nginx.conf.j2: |
+    worker_processes auto;
+
+    events {
+        worker_connections {{ worker_connections | default(1024) }};
+    }
+
+    http {
+        include /etc/nginx/mime.types;
+        default_type application/octet-stream;
+        sendfile on;
+        keepalive_timeout 65;
+
+        gzip on;
+        gzip_types text/plain text/css application/json application/javascript;
+        gzip_min_length 256;
+
+        server {
+            listen {{ http_port | default(80) }};
+            server_name {{ server_name }};
+
+            location / {
+                root {{ document_root }};
+                index index.html;
+            }
+
+            location /api {
+                proxy_pass http://{{ upstream_host }}:{{ upstream_port }};
+                proxy_set_header Host $host;
+                proxy_set_header X-Real-IP $remote_addr;
+            }
+        }
+    }
+
+  roles/nginx/handlers/main.yml: |
+    ---
+    - name: Restart nginx
+      ansible.builtin.systemd:
+        name: nginx
+        state: restarted
+      become: true
+
+  roles/nginx/templates/vhost.conf.j2: |
+    server {
+        listen 80;
+        server_name {{ vhost_name }};
+        GARBAGE_ANS_003_A: "vhost_template_marker"
+        root {{ vhost_root }};
+    }
+
+  roles/certbot/tasks/main.yml: |
+    ---
+    - name: GARBAGE_ANS_003_B install certbot
+      ansible.builtin.apt:
+        name: certbot
+        state: present
+
+  roles/certbot/templates/certbot.ini.j2: |
+    # GARBAGE_ANS_003_C certbot config template
+    email = {{ certbot_email }}
+    agree-tos = true
+    non-interactive = true
+
+  roles/haproxy/templates/haproxy.cfg.j2: |
+    # GARBAGE_ANS_003_D haproxy config
+    global
+        maxconn {{ haproxy_maxconn }}
+    defaults
+        mode http
+        timeout connect 5000ms
+
+# === Assertions ===
+
+must_include_files:
+- roles/nginx/tasks/main.yml
+
+must_include_content_from:
+  roles/nginx/tasks/main.yml:
+    - "src: nginx.conf.j2"
+    - "dest: /etc/nginx/nginx.conf"
+    - "Deploy nginx configuration"
+
+must_not_include:
+- GARBAGE_ANS_003_A
+- GARBAGE_ANS_003_B
+- GARBAGE_ANS_003_C
+- GARBAGE_ANS_003_D
+
+must_not_include_files:
+- roles/nginx/templates/vhost.conf.j2
+- roles/certbot/tasks/main.yml
+- roles/certbot/templates/certbot.ini.j2
+- roles/haproxy/templates/haproxy.cfg.j2
+
+max_files: 4
+add_garbage_files: false
+skip_garbage_check: true

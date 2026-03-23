@@ -24,11 +24,12 @@ _GENERIC_TYPE_RE = re.compile(r"[\[<,]\s*([A-Z]\w*)")
 _TF_EXTENSIONS = frozenset({".tf", ".tfvars", ".hcl"})
 _CONFIG_EXTENSIONS_FOR_DIFF = frozenset({".yaml", ".yml", ".json", ".toml", ".ini"})
 _TF_VAR_NEED_RE = re.compile(r"var\.(\w+)")
-_TF_RES_REF_NEED_RE = re.compile(r"(?<![.\w])(\w+)\.(\w+)\.\w+")
+_TF_RES_REF_NEED_RE = re.compile(r"(?<![.\w])([a-zA-Z]\w*)\.(\w+)(?:\[\*?\w*\])?\.[\w\[\]*]+")
 _TF_SKIP_REF_TYPES = frozenset({"var", "local", "data", "module", "path", "terraform", "count", "each", "self"})
 
 _LANGUAGE_BUILTINS: frozenset[str] = frozenset(
     {
+        # Python builtins
         "range",
         "enumerate",
         "zip",
@@ -60,6 +61,7 @@ _LANGUAGE_BUILTINS: frozenset[str] = frozenset(
         "staticmethod",
         "dataclass",
         "object",
+        # Python exceptions
         "exception",
         "baseexception",
         "valueerror",
@@ -84,6 +86,7 @@ _LANGUAGE_BUILTINS: frozenset[str] = frozenset(
         "assertionerror",
         "lookuperror",
         "arithmeticerror",
+        # JavaScript / DOM APIs
         "array.from",
         "object.keys",
         "object.values",
@@ -101,38 +104,24 @@ _LANGUAGE_BUILTINS: frozenset[str] = frozenset(
         "cleartimeout",
         "requestanimationframe",
         "cancelanimationframe",
-        "new",
-        "delete",
         "typeof",
         "void",
+        # Go builtins
         "make",
         "append",
         "panic",
         "recover",
-        "close",
         "cap",
         "println",
         "printf",
         "sprintf",
         "fprintf",
         "errorf",
+        # Rust — only distinctive, non-generic names
         "vec",
-        "box",
-        "rc",
         "arc",
-        "option",
-        "result",
-        "some",
-        "ok",
-        "err",
         "unwrap",
-        "expect",
-        "clone",
-        "into",
-        "collect",
-        "map",
-        "filter",
-        "fold",
+        # React hooks (distinctive use* naming convention)
         "usestate",
         "useeffect",
         "usecontext",
@@ -149,12 +138,10 @@ _LANGUAGE_BUILTINS: frozenset[str] = frozenset(
         "createcontext",
         "forwardref",
         "createref",
-        "memo",
-        "lazy",
         "suspense",
-        "fragment",
         "strictmode",
         "profiler",
+        # React Router / Redux / React Query hooks
         "usenavigate",
         "useparams",
         "uselocation",
@@ -169,6 +156,7 @@ _LANGUAGE_BUILTINS: frozenset[str] = frozenset(
         "usequery",
         "usemutation",
         "usesubscription",
+        # Test framework globals
         "describe",
         "beforeeach",
         "aftereach",
@@ -555,48 +543,75 @@ def _needs_from_identifiers(frag: Fragment) -> tuple[InformationNeed, ...]:
     return tuple(InformationNeed("definition", c, None, 0.5) for c in frag.identifiers)
 
 
-def marginal_gain(
+@dataclass
+class _GainResult:
+    gain: float = 0.0
+    has_match: bool = False
+    need_updates: list[tuple[tuple[str, str], float, float]] = field(default_factory=list)
+    diversity_bonus: float = 0.0
+    structural_bonus: float = 0.0
+
+
+def _diversity_bonus(
+    needs: tuple[InformationNeed, ...],
+    rel_score: float,
+    gain: float,
+    state: UtilityState,
+) -> float:
+    if not needs or rel_score < _MIN_REL_FOR_BONUS:
+        return 0.0
+    if gain <= 0 and rel_score < _STRONG_REL_THRESHOLD:
+        return 0.0
+    total_covered = sum(min(state.max_rel.get((n.need_type, n.symbol), 0.0), 1.0) for n in needs)
+    unsatisfied = max(0.0, 1.0 - total_covered / max(1, len(needs)))
+    return rel_score * _RELATEDNESS_BONUS * unsatisfied
+
+
+def _compute_gain_core(
     frag: Fragment,
     rel_score: float,
     needs: tuple[InformationNeed, ...],
     state: UtilityState,
-) -> float:
+    use_state_priorities: bool = False,
+) -> _GainResult:
     effective = needs if needs else _needs_from_identifiers(frag)
+    result = _GainResult()
     if not effective:
-        return 0.0
+        return result
 
-    has_match = False
-    gain = 0.0
     for need in effective:
         m = _match_strength_typed(frag, need)
         if m <= 0.0:
             continue
         if need.need_type == "impact" and state.file_importance:
             m *= state.file_importance.get(frag.path, 1.0)
-        has_match = True
+        result.has_match = True
         a_fz = _augmented_score(m, rel_score, state)
         nkey = (need.need_type, need.symbol)
         old_max = state.max_rel.get(nkey, 0.0)
         new_max = max(old_max, a_fz)
-        gain += need.priority * (_phi(new_max) - _phi(old_max))
+        priority = state.priorities.get(nkey, need.priority) if use_state_priorities else need.priority
+        result.gain += priority * (_phi(new_max) - _phi(old_max))
+        result.need_updates.append((nkey, new_max, need.priority))
 
-    # Diversity floor: after needs saturate (U1 gain -> 0), high-PPR
-    # fragments still get nonzero gain proportional to unsatisfied needs.
-    if needs and rel_score >= _MIN_REL_FOR_BONUS and (gain > 0 or rel_score >= _STRONG_REL_THRESHOLD):
-        total_covered = sum(min(state.max_rel.get((n.need_type, n.symbol), 0.0), 1.0) for n in needs)
-        unsatisfied = max(0.0, 1.0 - total_covered / max(1, len(needs)))
-        floor = rel_score * _RELATEDNESS_BONUS * unsatisfied
-        gain = max(gain, floor)
+    result.diversity_bonus = _diversity_bonus(needs, rel_score, result.gain, state)
 
     # Structural proximity layer (U2): gamma * min(R/R_cap, 1).
-    # Gated on has_match: paper assumes high PPR implies relevance,
-    # but noisy edges (sibling, cochange) leak PPR mass to unrelated
-    # fragments. Requiring at least one identifier overlap prevents this.
-    if has_match:
+    if result.has_match:
         r_norm = min(rel_score / state.r_cap, 1.0) if state.r_cap > 0 else 0.0
-        gain += state.gamma * r_norm
+        result.structural_bonus = state.gamma * r_norm
 
-    return gain
+    return result
+
+
+def marginal_gain(
+    frag: Fragment,
+    rel_score: float,
+    needs: tuple[InformationNeed, ...],
+    state: UtilityState,
+) -> float:
+    result = _compute_gain_core(frag, rel_score, needs, state)
+    return result.gain + result.diversity_bonus + result.structural_bonus
 
 
 def apply_fragment(
@@ -605,34 +620,11 @@ def apply_fragment(
     needs: tuple[InformationNeed, ...],
     state: UtilityState,
 ) -> None:
-    effective = needs if needs else _needs_from_identifiers(frag)
-    has_match = False
-    gain = 0.0
-    for need in effective:
-        m = _match_strength_typed(frag, need)
-        if m <= 0.0:
-            continue
-        if need.need_type == "impact" and state.file_importance:
-            m *= state.file_importance.get(frag.path, 1.0)
-        has_match = True
-        a_fz = _augmented_score(m, rel_score, state)
-        nkey = (need.need_type, need.symbol)
-        old_max = state.max_rel.get(nkey, 0.0)
-        new_max = max(old_max, a_fz)
-        gain += state.priorities.get(nkey, need.priority) * (_phi(new_max) - _phi(old_max))
+    result = _compute_gain_core(frag, rel_score, needs, state, use_state_priorities=True)
+    for nkey, new_max, priority in result.need_updates:
         state.max_rel[nkey] = new_max
-        state.priorities[nkey] = max(state.priorities.get(nkey, 0.0), need.priority)
-
-    if needs and rel_score >= _MIN_REL_FOR_BONUS and (gain > 0 or rel_score >= _STRONG_REL_THRESHOLD):
-        total_covered = sum(min(state.max_rel.get((n.need_type, n.symbol), 0.0), 1.0) for n in needs)
-        unsatisfied = max(0.0, 1.0 - total_covered / max(1, len(needs)))
-        floor = rel_score * _RELATEDNESS_BONUS * unsatisfied
-        if floor > gain:
-            state.structural_sum += floor - gain
-
-    if has_match:
-        r_norm = min(rel_score / state.r_cap, 1.0) if state.r_cap > 0 else 0.0
-        state.structural_sum += state.gamma * r_norm
+        state.priorities[nkey] = max(state.priorities.get(nkey, 0.0), priority)
+    state.structural_sum += result.diversity_bonus + result.structural_bonus
 
 
 def _dir_distance(d1: Path, d2: Path) -> int:

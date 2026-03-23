@@ -58,15 +58,15 @@ def _is_test_file(path: Path) -> bool:
     return "/tests/" in path_str or "/test/" in path_str
 
 
-def _has_direct_import(test_frag: Fragment, src_frag: Fragment, repo_root: Path | None) -> bool:
-    src_module = path_to_module(src_frag.path, repo_root=repo_root)
+def _extract_imports(content: str) -> frozenset[str]:
+    return frozenset(imported for match in _IMPORT_RE.finditer(content) if (imported := match.group(1) or match.group(2)))
+
+
+def _has_direct_import_cached(test_imports: frozenset[str], src_module: str) -> bool:
     if not src_module:
         return False
-    for match in _IMPORT_RE.finditer(test_frag.content):
-        imported = match.group(1) or match.group(2)
-        if imported and (imported == src_module or imported.endswith(f".{src_module}")):
-            return True
-    return False
+    suffix = f".{src_module}"
+    return any(imp == src_module or imp.endswith(suffix) for imp in test_imports)
 
 
 def _extract_target_name_from_test(test_name: str) -> str | None:
@@ -141,18 +141,38 @@ class TestEdgeBuilder(EdgeBuilder):
             else:
                 by_base[f.path.stem.lower()].append(f)
 
+        module_cache: dict[Path, str] = {}
+        for src_list in by_base.values():
+            for sf in src_list:
+                if sf.path not in module_cache:
+                    module_cache[sf.path] = path_to_module(sf.path, repo_root=repo_root)
+
+        import_cache: dict[Path, frozenset[str]] = {}
+        for tf in test_frags:
+            if tf.path not in import_cache:
+                import_cache[tf.path] = _extract_imports(tf.content)
+
         for test_frag in test_frags:
             target_name = _extract_target_name_from_test(test_frag.path.stem)
             if not target_name:
                 continue
 
+            test_imports = import_cache[test_frag.path]
             for src_frag in by_base.get(target_name, []):
-                self._add_test_source_edge(edges, test_frag, src_frag, repo_root)
+                self._add_test_source_edge(edges, test_frag, src_frag, test_imports, module_cache)
 
         return edges
 
-    def _add_test_source_edge(self, edges: EdgeDict, test_frag: Fragment, src_frag: Fragment, repo_root: Path | None) -> None:
-        weight = self.weight_direct if _has_direct_import(test_frag, src_frag, repo_root) else self.weight_naming
+    def _add_test_source_edge(
+        self,
+        edges: EdgeDict,
+        test_frag: Fragment,
+        src_frag: Fragment,
+        test_imports: frozenset[str],
+        module_cache: dict[Path, str],
+    ) -> None:
+        src_module = module_cache.get(src_frag.path, "")
+        weight = self.weight_direct if _has_direct_import_cached(test_imports, src_module) else self.weight_naming
         edges[(test_frag.id, src_frag.id)] = max(edges.get((test_frag.id, src_frag.id), 0.0), weight)
         edges[(src_frag.id, test_frag.id)] = max(
             edges.get((src_frag.id, test_frag.id), 0.0), EDGE_WEIGHTS["test_reverse"].forward

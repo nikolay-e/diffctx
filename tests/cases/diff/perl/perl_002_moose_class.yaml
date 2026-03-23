@@ -1,0 +1,327 @@
+# Test: Moose class adds new attribute with type constraint from base class
+#
+# Scenario: lib/MyApp/Product.pm extends MyApp::Base with Moose and adds
+# a new 'discount_percent' attribute using PositiveNum type constraint.
+# lib/MyApp/Base.pm defines shared Moose roles and types. Both the base
+# class and the type library are UNCHANGED.
+#
+# Reviewer questions:
+#   Q1: "Is PositiveNum the right constraint for a percentage?"
+#       -> lib/MyApp/Types.pm (UNCHANGED) defines PositiveNum subtype
+#   Q2: "What does the base class provide — does it have price already?"
+#       -> lib/MyApp/Base.pm (UNCHANGED) has 'name' and 'created_at'
+#
+# Trap files:
+#   - lib/MyApp/Inventory.pm: another Moose class — same namespace, also
+#     extends Base, but unrelated to Product's discount logic
+#   - lib/MyApp/PriceCalculator.pm: pricing logic — similar domain but
+#     Product doesn't use it in this change
+
+initial:
+  lib/MyApp/Types.pm: |
+    package MyApp::Types;
+    use strict;
+    use warnings;
+    use Moose::Util::TypeConstraints;
+
+    subtype 'PositiveNum',
+        as 'Num',
+        where { $_ > 0 },
+        message { "Value must be a positive number, got $_" };
+
+    subtype 'PercentValue',
+        as 'Num',
+        where { $_ >= 0 && $_ <= 100 },
+        message { "Percentage must be 0-100, got $_" };
+
+    subtype 'NonEmptyStr',
+        as 'Str',
+        where { length($_) > 0 },
+        message { "String must not be empty" };
+
+    no Moose::Util::TypeConstraints;
+    1;
+  lib/MyApp/Base.pm: |
+    package MyApp::Base;
+    use Moose;
+    use DateTime;
+
+    has 'name' => (
+        is       => 'rw',
+        isa      => 'Str',
+        required => 1,
+    );
+
+    has 'created_at' => (
+        is      => 'ro',
+        isa     => 'DateTime',
+        default => sub { DateTime->now },
+    );
+
+    sub display_name {
+        my ($self) = @_;
+        return $self->name;
+    }
+
+    __PACKAGE__->meta->make_immutable;
+    1;
+  lib/MyApp/Product.pm: |
+    package MyApp::Product;
+    use Moose;
+    use MyApp::Types;
+    extends 'MyApp::Base';
+
+    has 'price' => (
+        is       => 'rw',
+        isa      => 'PositiveNum',
+        required => 1,
+    );
+
+    has 'sku' => (
+        is       => 'ro',
+        isa      => 'Str',
+        required => 1,
+    );
+
+    sub formatted_price {
+        my ($self) = @_;
+        return sprintf('$%.2f', $self->price);
+    }
+
+    __PACKAGE__->meta->make_immutable;
+    1;
+  lib/MyApp/Inventory.pm: |
+    my $GARBAGE_PERL_002_A = "noise_marker_inventory";
+
+    package MyApp::Inventory;
+    use Moose;
+    extends 'MyApp::Base';
+
+    has 'quantity' => (
+        is      => 'rw',
+        isa     => 'Int',
+        default => 0,
+    );
+
+    has 'warehouse' => (
+        is       => 'rw',
+        isa      => 'Str',
+        required => 1,
+    );
+
+    sub is_in_stock {
+        my ($self) = @_;
+        return $self->quantity > 0;
+    }
+
+    sub adjust_quantity {
+        my ($self, $delta) = @_;
+        my $new_qty = $self->quantity + $delta;
+        die "Quantity cannot be negative" if $new_qty < 0;
+        $self->quantity($new_qty);
+    }
+
+    __PACKAGE__->meta->make_immutable;
+    1;
+  lib/MyApp/PriceCalculator.pm: |
+    my $GARBAGE_PERL_002_B = "noise_marker_price_calc";
+
+    package MyApp::PriceCalculator;
+    use strict;
+    use warnings;
+
+    sub new {
+        my ($class, %args) = @_;
+        return bless { tax_rate => $args{tax_rate} || 0.08 }, $class;
+    }
+
+    sub calculate_total {
+        my ($self, $price, $quantity) = @_;
+        my $subtotal = $price * $quantity;
+        my $tax = $subtotal * $self->{tax_rate};
+        return $subtotal + $tax;
+    }
+
+    sub apply_bulk_discount {
+        my ($self, $price, $quantity) = @_;
+        my $discount = $quantity >= 100 ? 0.15 : $quantity >= 10 ? 0.05 : 0;
+        return $price * (1 - $discount);
+    }
+
+    1;
+
+changed:
+  lib/MyApp/Types.pm: |
+    package MyApp::Types;
+    use strict;
+    use warnings;
+    use Moose::Util::TypeConstraints;
+
+    subtype 'PositiveNum',
+        as 'Num',
+        where { $_ > 0 },
+        message { "Value must be a positive number, got $_" };
+
+    subtype 'PercentValue',
+        as 'Num',
+        where { $_ >= 0 && $_ <= 100 },
+        message { "Percentage must be 0-100, got $_" };
+
+    subtype 'NonEmptyStr',
+        as 'Str',
+        where { length($_) > 0 },
+        message { "String must not be empty" };
+
+    no Moose::Util::TypeConstraints;
+    1;
+  lib/MyApp/Base.pm: |
+    package MyApp::Base;
+    use Moose;
+    use DateTime;
+
+    has 'name' => (
+        is       => 'rw',
+        isa      => 'Str',
+        required => 1,
+    );
+
+    has 'created_at' => (
+        is      => 'ro',
+        isa     => 'DateTime',
+        default => sub { DateTime->now },
+    );
+
+    sub display_name {
+        my ($self) = @_;
+        return $self->name;
+    }
+
+    __PACKAGE__->meta->make_immutable;
+    1;
+  lib/MyApp/Product.pm: |
+    package MyApp::Product;
+    use Moose;
+    use MyApp::Types;
+    extends 'MyApp::Base';
+
+    has 'price' => (
+        is       => 'rw',
+        isa      => 'PositiveNum',
+        required => 1,
+    );
+
+    has 'sku' => (
+        is       => 'ro',
+        isa      => 'Str',
+        required => 1,
+    );
+
+    has 'discount_percent' => (
+        is      => 'rw',
+        isa     => 'PercentValue',
+        default => 0,
+    );
+
+    sub formatted_price {
+        my ($self) = @_;
+        return sprintf('$%.2f', $self->price);
+    }
+
+    sub discounted_price {
+        my ($self) = @_;
+        my $discount = $self->discount_percent / 100;
+        return $self->price * (1 - $discount);
+    }
+
+    __PACKAGE__->meta->make_immutable;
+    1;
+  lib/MyApp/Inventory.pm: |
+    my $GARBAGE_PERL_002_A = "noise_marker_inventory";
+
+    package MyApp::Inventory;
+    use Moose;
+    extends 'MyApp::Base';
+
+    has 'quantity' => (
+        is      => 'rw',
+        isa     => 'Int',
+        default => 0,
+    );
+
+    has 'warehouse' => (
+        is       => 'rw',
+        isa      => 'Str',
+        required => 1,
+    );
+
+    sub is_in_stock {
+        my ($self) = @_;
+        return $self->quantity > 0;
+    }
+
+    sub adjust_quantity {
+        my ($self, $delta) = @_;
+        my $new_qty = $self->quantity + $delta;
+        die "Quantity cannot be negative" if $new_qty < 0;
+        $self->quantity($new_qty);
+    }
+
+    __PACKAGE__->meta->make_immutable;
+    1;
+  lib/MyApp/PriceCalculator.pm: |
+    my $GARBAGE_PERL_002_B = "noise_marker_price_calc";
+
+    package MyApp::PriceCalculator;
+    use strict;
+    use warnings;
+
+    sub new {
+        my ($class, %args) = @_;
+        return bless { tax_rate => $args{tax_rate} || 0.08 }, $class;
+    }
+
+    sub calculate_total {
+        my ($self, $price, $quantity) = @_;
+        my $subtotal = $price * $quantity;
+        my $tax = $subtotal * $self->{tax_rate};
+        return $subtotal + $tax;
+    }
+
+    sub apply_bulk_discount {
+        my ($self, $price, $quantity) = @_;
+        my $discount = $quantity >= 100 ? 0.15 : $quantity >= 10 ? 0.05 : 0;
+        return $price * (1 - $discount);
+    }
+
+    1;
+
+must_include_files:
+  - lib/MyApp/Product.pm
+  # Q1: Types.pm defines PercentValue constraint used by discount_percent
+  - lib/MyApp/Types.pm
+must_include_content_from:
+  lib/MyApp/Product.pm:
+    - "discount_percent"
+    - "PercentValue"
+    - "sub discounted_price"
+  lib/MyApp/Types.pm:
+    - "subtype 'PercentValue'"
+    - "$_ >= 0 && $_ <= 100"
+must_not_include:
+  # lib/MyApp/Inventory.pm: another Moose class — unrelated domain
+  - GARBAGE_PERL_002_A
+  - "noise_marker_inventory"
+  - "is_in_stock"
+  - "adjust_quantity"
+  # lib/MyApp/PriceCalculator.pm: pricing — similar domain but not used
+  - GARBAGE_PERL_002_B
+  - "noise_marker_price_calc"
+  - "calculate_total"
+  - "apply_bulk_discount"
+must_not_include_files:
+  - lib/MyApp/Inventory.pm
+  - lib/MyApp/PriceCalculator.pm
+max_fragments: 6
+max_files: 4
+add_garbage_files: false
+skip_garbage_check: true

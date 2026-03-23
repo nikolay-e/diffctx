@@ -1,0 +1,256 @@
+# Scenario: A Julia main module uses `include("...")` to compose its source from
+# multiple files. The change adds `include("analysis.jl")` and the new file
+# provides analysis functions that operate on types from the existing includes.
+#
+# Diff: src/MyPackage.jl adds `include("analysis.jl")` and a new file
+# src/analysis.jl provides outlier detection and summary statistics.
+#
+# Reviewer questions:
+#   Q1: "What does the new analysis.jl provide?"
+#       -> src/analysis.jl: detect_outliers and summarize functions operating
+#          on Measurement type from types.jl.
+#
+#   Q2: "What is the Measurement type used by analysis.jl?"
+#       -> src/types.jl (UNCHANGED): struct Measurement with value, timestamp,
+#          sensor_id fields. Already included before analysis.jl.
+#
+# Not needed for comprehension:
+#   - src/utils.jl: Existing included file with helper utilities.
+#     Same inclusion pattern, same directory, but provides string/path helpers.
+#
+#   - src/plotting.jl: Another included file for visualization.
+#     Same directory, same include pattern, but handles output, not analysis.
+#
+#   - src/constants.jl: Constants file, also included.
+#     Same pattern but only defines constant values.
+
+initial:
+  src/MyPackage.jl: |
+    module MyPackage
+
+    include("types.jl")
+    include("utils.jl")
+    include("constants.jl")
+    include("plotting.jl")
+
+    export Measurement, process_measurements
+
+    function process_measurements(data::Vector{Measurement})
+        filtered = filter(m -> m.value > THRESHOLD, data)
+        return [format_measurement(m) for m in filtered]
+    end
+
+    end # module
+
+  src/types.jl: |
+    struct Measurement
+        value::Float64
+        timestamp::Float64
+        sensor_id::String
+    end
+
+    struct SensorConfig
+        id::String
+        name::String
+        unit::String
+        precision::Int
+    end
+
+    function Base.show(io::IO, m::Measurement)
+        print(io, "Measurement($(m.sensor_id): $(m.value))")
+    end
+
+  src/utils.jl: |
+    GARBAGE_JULIA_002_A = "utils_marker"
+    GARBAGE_JULIA_002_B = "helper_marker"
+
+    function format_measurement(m::Measurement)::String
+        return "$(m.sensor_id): $(round(m.value, digits=2)) @ $(m.timestamp)"
+    end
+
+    function parse_timestamp(s::String)::Float64
+        return parse(Float64, s)
+    end
+
+    function sanitize_id(id::String)::String
+        return strip(lowercase(id))
+    end
+
+  src/constants.jl: |
+    GARBAGE_JULIA_002_C = "const_marker"
+    GARBAGE_JULIA_002_D = "threshold_marker"
+
+    const THRESHOLD = 0.01
+    const MAX_SENSORS = 256
+    const DEFAULT_PRECISION = 4
+    const VERSION = "1.0.0"
+
+  src/plotting.jl: |
+    GARBAGE_JULIA_002_E = "plot_marker"
+    GARBAGE_JULIA_002_F = "chart_marker"
+
+    function plot_timeseries(measurements::Vector{Measurement})
+        println("Plotting $(length(measurements)) measurements")
+    end
+
+    function plot_sensor_comparison(data::Dict{String, Vector{Measurement}})
+        for (sensor, ms) in data
+            println("Sensor $sensor: $(length(ms)) points")
+        end
+    end
+
+    function export_chart(filename::String)
+        println("Exporting chart to $filename")
+    end
+
+changed:
+  src/MyPackage.jl: |
+    module MyPackage
+
+    include("types.jl")
+    include("utils.jl")
+    include("constants.jl")
+    include("plotting.jl")
+    include("analysis.jl")
+
+    export Measurement, process_measurements, detect_outliers, summarize
+
+    function process_measurements(data::Vector{Measurement})
+        filtered = filter(m -> m.value > THRESHOLD, data)
+        return [format_measurement(m) for m in filtered]
+    end
+
+    end # module
+
+  src/analysis.jl: |
+    function detect_outliers(data::Vector{Measurement}, threshold::Float64)::Vector{Measurement}
+        values = [m.value for m in data]
+        mu = sum(values) / length(values)
+        sigma = sqrt(sum((values .- mu) .^ 2) / length(values))
+        return filter(m -> abs(m.value - mu) > threshold * sigma, data)
+    end
+
+    function summarize(data::Vector{Measurement})::Dict{String, Any}
+        values = [m.value for m in data]
+        return Dict(
+            "count" => length(values),
+            "mean" => sum(values) / length(values),
+            "min" => minimum(values),
+            "max" => maximum(values),
+            "sensors" => length(unique([m.sensor_id for m in data]))
+        )
+    end
+
+    function group_by_sensor(data::Vector{Measurement})::Dict{String, Vector{Measurement}}
+        groups = Dict{String, Vector{Measurement}}()
+        for m in data
+            if !haskey(groups, m.sensor_id)
+                groups[m.sensor_id] = Measurement[]
+            end
+            push!(groups[m.sensor_id], m)
+        end
+        return groups
+    end
+
+  src/types.jl: |
+    struct Measurement
+        value::Float64
+        timestamp::Float64
+        sensor_id::String
+    end
+
+    struct SensorConfig
+        id::String
+        name::String
+        unit::String
+        precision::Int
+    end
+
+    function Base.show(io::IO, m::Measurement)
+        print(io, "Measurement($(m.sensor_id): $(m.value))")
+    end
+
+  src/utils.jl: |
+    GARBAGE_JULIA_002_A = "utils_marker"
+    GARBAGE_JULIA_002_B = "helper_marker"
+
+    function format_measurement(m::Measurement)::String
+        return "$(m.sensor_id): $(round(m.value, digits=2)) @ $(m.timestamp)"
+    end
+
+    function parse_timestamp(s::String)::Float64
+        return parse(Float64, s)
+    end
+
+    function sanitize_id(id::String)::String
+        return strip(lowercase(id))
+    end
+
+  src/constants.jl: |
+    GARBAGE_JULIA_002_C = "const_marker"
+    GARBAGE_JULIA_002_D = "threshold_marker"
+
+    const THRESHOLD = 0.01
+    const MAX_SENSORS = 256
+    const DEFAULT_PRECISION = 4
+    const VERSION = "1.0.0"
+
+  src/plotting.jl: |
+    GARBAGE_JULIA_002_E = "plot_marker"
+    GARBAGE_JULIA_002_F = "chart_marker"
+
+    function plot_timeseries(measurements::Vector{Measurement})
+        println("Plotting $(length(measurements)) measurements")
+    end
+
+    function plot_sensor_comparison(data::Dict{String, Vector{Measurement}})
+        for (sensor, ms) in data
+            println("Sensor $sensor: $(length(ms)) points")
+        end
+    end
+
+    function export_chart(filename::String)
+        println("Exporting chart to $filename")
+    end
+
+must_include_files:
+  - src/MyPackage.jl
+  - src/analysis.jl
+
+must_include_content_from:
+  src/MyPackage.jl:
+    - 'include("analysis.jl")'
+    - "export Measurement, process_measurements, detect_outliers, summarize"
+  src/analysis.jl:
+    - "function detect_outliers(data::Vector{Measurement}"
+    - "function summarize(data::Vector{Measurement})"
+    - "function group_by_sensor"
+
+must_not_include:
+  # utils.jl: existing included file, different concern
+  - GARBAGE_JULIA_002_A
+  - GARBAGE_JULIA_002_B
+  - format_measurement
+  - parse_timestamp
+  - sanitize_id
+  # constants.jl: only defines constants
+  - GARBAGE_JULIA_002_C
+  - GARBAGE_JULIA_002_D
+  - MAX_SENSORS
+  - DEFAULT_PRECISION
+  # plotting.jl: visualization, not analysis
+  - GARBAGE_JULIA_002_E
+  - GARBAGE_JULIA_002_F
+  - plot_timeseries
+  - plot_sensor_comparison
+  - export_chart
+
+must_not_include_files:
+  - src/utils.jl
+  - src/constants.jl
+  - src/plotting.jl
+
+max_fragments: 8
+max_files: 3
+add_garbage_files: false
+skip_garbage_check: true

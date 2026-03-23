@@ -1,0 +1,257 @@
+# Scenario: A Nim project managed with Nimble adds a new dependency to its
+# .nimble file and the main module starts using the new library. The reviewer
+# needs both the .nimble file change and the module change to understand the
+# full picture.
+#
+# Diff: myproject.nimble adds `requires "chronos >= 3.0.0"` and src/server.nim
+# adds `import chronos` with a new async proc using chronos primitives.
+#
+# Reviewer questions:
+#   Q1: "What new dependency was added and what version constraint?"
+#       -> myproject.nimble: requires "chronos >= 3.0.0". Reviewer verifies
+#          the version constraint is appropriate.
+#
+#   Q2: "How is the new dependency used in the code?"
+#       -> src/server.nim: imports chronos and adds an async proc using
+#          chronos.sleepAsync and chronos.waitFor.
+#
+# Not needed for comprehension:
+#   - src/models.nim: Module in same src/ directory defining data types.
+#     No dependency on chronos or async operations.
+#
+#   - src/utils.nim: Utility module with helper procs.
+#     Same package but no async functionality.
+#
+#   - tests/test_server.nim: Test file for server module.
+#     Consumer of server.nim but doesn't define the async API.
+
+initial:
+  myproject.nimble: |
+    # Package
+    version       = "0.1.0"
+    author        = "Developer"
+    description   = "A web server project"
+    license       = "MIT"
+    srcDir        = "src"
+    bin           = @["server"]
+
+    # Dependencies
+    requires "nim >= 1.6.0"
+    requires "httpbeast >= 0.4.0"
+
+  src/server.nim: |
+    import httpbeast, options
+
+    proc onRequest(req: Request): Future[void] =
+      if req.httpMethod == some(HttpGet):
+        case req.path.get()
+        of "/":
+          req.send(Http200, "Hello, World!")
+        of "/health":
+          req.send(Http200, "OK")
+        else:
+          req.send(Http404, "Not Found")
+
+    proc main() =
+      run(onRequest, initSettings(port = Port(8080)))
+
+    when isMainModule:
+      main()
+
+  src/models.nim: |
+    import json
+
+    type
+      User* = object
+        id*: int
+        name*: string
+        email*: string
+
+      ApiResponse* = object
+        status*: int
+        message*: string
+        data*: JsonNode
+
+    let GARBAGE_NIM_003_A = "models_marker"
+    let GARBAGE_NIM_003_B = "schema_marker"
+
+    proc toJson*(user: User): JsonNode =
+      %*{"id": user.id, "name": user.name, "email": user.email}
+
+    proc fromJson*(node: JsonNode): User =
+      User(
+        id: node["id"].getInt(),
+        name: node["name"].getStr(),
+        email: node["email"].getStr()
+      )
+
+  src/utils.nim: |
+    import strutils, times
+
+    let GARBAGE_NIM_003_C = "utils_marker"
+    let GARBAGE_NIM_003_D = "helper_marker"
+
+    proc generateId*(): string =
+      $getTime().toUnix() & "-" & $rand(99999)
+
+    proc sanitizeInput*(input: string): string =
+      input.strip().replace("<", "&lt;").replace(">", "&gt;")
+
+    proc parseQueryString*(qs: string): seq[(string, string)] =
+      for pair in qs.split("&"):
+        let parts = pair.split("=", maxsplit = 1)
+        if parts.len == 2:
+          result.add((parts[0], parts[1]))
+
+  tests/test_server.nim: |
+    import unittest
+
+    let GARBAGE_NIM_003_E = "test_marker"
+    let GARBAGE_NIM_003_F = "assert_marker"
+
+    suite "server tests":
+      test "health endpoint returns OK":
+        check true
+
+      test "root endpoint returns greeting":
+        check true
+
+changed:
+  myproject.nimble: |
+    # Package
+    version       = "0.1.0"
+    author        = "Developer"
+    description   = "A web server project"
+    license       = "MIT"
+    srcDir        = "src"
+    bin           = @["server"]
+
+    # Dependencies
+    requires "nim >= 1.6.0"
+    requires "httpbeast >= 0.4.0"
+    requires "chronos >= 3.0.0"
+
+  src/server.nim: |
+    import httpbeast, options
+    import chronos
+
+    proc onRequest(req: Request): Future[void] =
+      if req.httpMethod == some(HttpGet):
+        case req.path.get()
+        of "/":
+          req.send(Http200, "Hello, World!")
+        of "/health":
+          req.send(Http200, "OK")
+        of "/slow":
+          await sleepAsync(1000.milliseconds)
+          req.send(Http200, "Done after delay")
+        else:
+          req.send(Http404, "Not Found")
+
+    proc startBackgroundTask() {.async.} =
+      while true:
+        await sleepAsync(60_000.milliseconds)
+        echo "Background tick"
+
+    proc main() =
+      asyncSpawn startBackgroundTask()
+      run(onRequest, initSettings(port = Port(8080)))
+
+    when isMainModule:
+      main()
+
+  src/models.nim: |
+    import json
+
+    type
+      User* = object
+        id*: int
+        name*: string
+        email*: string
+
+      ApiResponse* = object
+        status*: int
+        message*: string
+        data*: JsonNode
+
+    let GARBAGE_NIM_003_A = "models_marker"
+    let GARBAGE_NIM_003_B = "schema_marker"
+
+    proc toJson*(user: User): JsonNode =
+      %*{"id": user.id, "name": user.name, "email": user.email}
+
+    proc fromJson*(node: JsonNode): User =
+      User(
+        id: node["id"].getInt(),
+        name: node["name"].getStr(),
+        email: node["email"].getStr()
+      )
+
+  src/utils.nim: |
+    import strutils, times
+
+    let GARBAGE_NIM_003_C = "utils_marker"
+    let GARBAGE_NIM_003_D = "helper_marker"
+
+    proc generateId*(): string =
+      $getTime().toUnix() & "-" & $rand(99999)
+
+    proc sanitizeInput*(input: string): string =
+      input.strip().replace("<", "&lt;").replace(">", "&gt;")
+
+    proc parseQueryString*(qs: string): seq[(string, string)] =
+      for pair in qs.split("&"):
+        let parts = pair.split("=", maxsplit = 1)
+        if parts.len == 2:
+          result.add((parts[0], parts[1]))
+
+  tests/test_server.nim: |
+    import unittest
+
+    let GARBAGE_NIM_003_E = "test_marker"
+    let GARBAGE_NIM_003_F = "assert_marker"
+
+    suite "server tests":
+      test "health endpoint returns OK":
+        check true
+
+      test "root endpoint returns greeting":
+        check true
+
+must_include_files:
+  - myproject.nimble
+  - src/server.nim
+
+must_include_content_from:
+  myproject.nimble:
+    - 'requires "chronos >= 3.0.0"'
+  src/server.nim:
+    - "import chronos"
+    - "await sleepAsync(1000.milliseconds)"
+    - "proc startBackgroundTask()"
+    - "asyncSpawn startBackgroundTask()"
+
+must_not_include:
+  # models.nim: data types, no async
+  - GARBAGE_NIM_003_A
+  - GARBAGE_NIM_003_B
+  - "ApiResponse"
+  # utils.nim: helper procs, no async
+  - GARBAGE_NIM_003_C
+  - GARBAGE_NIM_003_D
+  - generateId
+  - sanitizeInput
+  # test_server.nim: test consumer, doesn't define API
+  - GARBAGE_NIM_003_E
+  - GARBAGE_NIM_003_F
+  - "suite \"server tests\""
+
+must_not_include_files:
+  - src/models.nim
+  - src/utils.nim
+  - tests/test_server.nim
+
+max_fragments: 8
+max_files: 2
+add_garbage_files: false
+skip_garbage_check: true

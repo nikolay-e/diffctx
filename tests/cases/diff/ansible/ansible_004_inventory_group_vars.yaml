@@ -1,0 +1,185 @@
+# Ansible inventory and group_vars: a new variable is added to the
+# production group_vars and a playbook starts using it. Both the
+# playbook and the group_vars file must appear in context.
+
+initial:
+  inventory/production: |
+    [webservers]
+    web01 ansible_host=10.0.1.10
+    web02 ansible_host=10.0.1.11
+
+    [dbservers]
+    db01 ansible_host=10.0.2.10
+
+    [all:vars]
+    ansible_user=deploy
+    ansible_python_interpreter=/usr/bin/python3
+
+  group_vars/production.yml: |
+    ---
+    env_name: production
+    log_level: warn
+    backup_enabled: true
+    backup_retention_days: 30
+
+  group_vars/staging.yml: |
+    ---
+    GARBAGE_ANS_004_A: "staging_marker"
+    env_name: staging
+    log_level: debug
+    backup_enabled: false
+
+  group_vars/dev.yml: |
+    ---
+    GARBAGE_ANS_004_B: "dev_marker"
+    env_name: dev
+    log_level: debug
+    backup_enabled: false
+
+  playbooks/deploy_app.yml: |
+    ---
+    - hosts: webservers
+      become: true
+      vars_files:
+        - "../group_vars/production.yml"
+      tasks:
+        - name: Deploy application
+          ansible.builtin.copy:
+            src: app.tar.gz
+            dest: /opt/app/
+          notify: Restart application
+
+        - name: Configure logging
+          ansible.builtin.template:
+            src: logging.conf.j2
+            dest: /etc/app/logging.conf
+          vars:
+            level: "{{ log_level }}"
+
+  playbooks/backup.yml: |
+    ---
+    - hosts: dbservers
+      GARBAGE_ANS_004_C: "backup_playbook_marker"
+      tasks:
+        - name: Run database backup
+          ansible.builtin.shell: pg_dump mydb > /backups/mydb.sql
+          when: backup_enabled
+
+  inventory/staging: |
+    [webservers]
+    GARBAGE_ANS_004_D: staging_web_marker
+    staging-web01 ansible_host=10.1.1.10
+
+    [dbservers]
+    staging-db01 ansible_host=10.1.2.10
+
+changed:
+  inventory/production: |
+    [webservers]
+    web01 ansible_host=10.0.1.10
+    web02 ansible_host=10.0.1.11
+
+    [dbservers]
+    db01 ansible_host=10.0.2.10
+
+    [all:vars]
+    ansible_user=deploy
+    ansible_python_interpreter=/usr/bin/python3
+
+  group_vars/production.yml: |
+    ---
+    env_name: production
+    log_level: warn
+    backup_enabled: true
+    backup_retention_days: 30
+    rate_limit_enabled: true
+    rate_limit_rps: 100
+
+  group_vars/staging.yml: |
+    ---
+    GARBAGE_ANS_004_A: "staging_marker"
+    env_name: staging
+    log_level: debug
+    backup_enabled: false
+
+  group_vars/dev.yml: |
+    ---
+    GARBAGE_ANS_004_B: "dev_marker"
+    env_name: dev
+    log_level: debug
+    backup_enabled: false
+
+  playbooks/deploy_app.yml: |
+    ---
+    - hosts: webservers
+      become: true
+      vars_files:
+        - "../group_vars/production.yml"
+      tasks:
+        - name: Deploy application
+          ansible.builtin.copy:
+            src: app.tar.gz
+            dest: /opt/app/
+          notify: Restart application
+
+        - name: Configure logging
+          ansible.builtin.template:
+            src: logging.conf.j2
+            dest: /etc/app/logging.conf
+          vars:
+            level: "{{ log_level }}"
+
+        - name: Configure rate limiting
+          ansible.builtin.template:
+            src: rate_limit.conf.j2
+            dest: /etc/app/rate_limit.conf
+          when: rate_limit_enabled
+          vars:
+            rps: "{{ rate_limit_rps }}"
+
+  playbooks/backup.yml: |
+    ---
+    - hosts: dbservers
+      GARBAGE_ANS_004_C: "backup_playbook_marker"
+      tasks:
+        - name: Run database backup
+          ansible.builtin.shell: pg_dump mydb > /backups/mydb.sql
+          when: backup_enabled
+
+  inventory/staging: |
+    [webservers]
+    GARBAGE_ANS_004_D: staging_web_marker
+    staging-web01 ansible_host=10.1.1.10
+
+    [dbservers]
+    staging-db01 ansible_host=10.1.2.10
+
+# === Assertions ===
+
+must_include_files:
+- playbooks/deploy_app.yml
+- group_vars/production.yml
+
+must_include_content_from:
+  group_vars/production.yml:
+    - "rate_limit_enabled"
+    - "rate_limit_rps"
+  playbooks/deploy_app.yml:
+    - "Configure rate limiting"
+    - "rate_limit_enabled"
+
+must_not_include:
+- GARBAGE_ANS_004_A
+- GARBAGE_ANS_004_B
+- GARBAGE_ANS_004_C
+- GARBAGE_ANS_004_D
+
+must_not_include_files:
+- group_vars/staging.yml
+- group_vars/dev.yml
+- playbooks/backup.yml
+- inventory/staging
+
+max_files: 4
+add_garbage_files: false
+skip_garbage_check: true

@@ -1,0 +1,245 @@
+# Scenario: A dbt source definition in sources.yml is updated — the 'events'
+# source table gets a new loaded_at_field and freshness configuration.
+# Models using {{ source('raw', 'events') }} need context for the reviewer.
+#
+# Reviewer questions:
+#   Q1: "Which models consume the 'events' source and might be affected?"
+#       -> models/staging/stg_events.sql: SELECT ... FROM {{ source('raw', 'events') }}
+#   Q2: "What freshness constraints are being set on the source?"
+#       -> models/sources.yml: warn_after 12h, error_after 24h
+#
+# Not needed:
+#   - models/staging/stg_users.sql: uses source('raw', 'users'), different table
+#   - models/staging/stg_pageviews.sql: uses source('analytics', 'pageviews'), different source
+#   - models/marts/event_funnel.sql: uses ref(), not source() directly
+
+initial:
+  models/sources.yml: |
+    version: 2
+
+    sources:
+      - name: raw
+        database: production_db
+        schema: raw_data
+        tables:
+          - name: orders
+            loaded_at_field: _loaded_at
+            freshness:
+              warn_after: {count: 12, period: hour}
+              error_after: {count: 24, period: hour}
+          - name: customers
+            loaded_at_field: _loaded_at
+            freshness:
+              warn_after: {count: 24, period: hour}
+              error_after: {count: 48, period: hour}
+          - name: events
+            description: Raw event stream from application
+          - name: users
+            loaded_at_field: _loaded_at
+
+      - name: analytics
+        database: analytics_db
+        schema: tracking
+        tables:
+          - name: pageviews
+          - name: sessions
+  models/staging/stg_events.sql: |
+    SELECT
+        id AS event_id,
+        user_id,
+        event_type,
+        event_data,
+        created_at AS event_timestamp
+    FROM {{ source('raw', 'events') }}
+    WHERE event_type IS NOT NULL
+  models/staging/stg_orders.sql: |
+    SELECT
+        id AS order_id,
+        customer_id,
+        amount,
+        order_date,
+        status
+    FROM {{ source('raw', 'orders') }}
+
+  # Trap: uses different source table
+  models/staging/stg_users.sql: |
+    -- GARBAGE_DBT_004_A: noise_stg_users
+    SELECT
+        id AS user_id,
+        name AS user_name,
+        email,
+        signup_date
+    FROM {{ source('raw', 'users') }}
+
+  # Trap: uses different source entirely (analytics, not raw)
+  models/staging/stg_pageviews.sql: |
+    -- GARBAGE_DBT_004_B: noise_stg_pageviews
+    SELECT
+        id AS pageview_id,
+        session_id,
+        user_id,
+        page_url,
+        viewed_at
+    FROM {{ source('analytics', 'pageviews') }}
+
+  # Trap: uses ref() not source(), references stg_events indirectly
+  models/marts/event_funnel.sql: |
+    -- GARBAGE_DBT_004_C: noise_event_funnel
+    WITH events AS (
+        SELECT * FROM {{ ref('stg_events') }}
+    )
+
+    SELECT
+        event_type,
+        DATE_TRUNC('day', event_timestamp) AS event_day,
+        COUNT(*) AS event_count,
+        COUNT(DISTINCT user_id) AS unique_users
+    FROM events
+    GROUP BY 1, 2
+
+  # Trap: another sources file for a different schema
+  models/analytics_sources.yml: |
+    version: 2
+
+    sources:
+      - name: analytics
+        GARBAGE_DBT_004_D: noise_analytics_sources
+        database: analytics_db
+        schema: tracking
+        tables:
+          - name: pageviews
+            loaded_at_field: _ingested_at
+          - name: sessions
+            loaded_at_field: _ingested_at
+
+changed:
+  models/sources.yml: |
+    version: 2
+
+    sources:
+      - name: raw
+        database: production_db
+        schema: raw_data
+        tables:
+          - name: orders
+            loaded_at_field: _loaded_at
+            freshness:
+              warn_after: {count: 12, period: hour}
+              error_after: {count: 24, period: hour}
+          - name: customers
+            loaded_at_field: _loaded_at
+            freshness:
+              warn_after: {count: 24, period: hour}
+              error_after: {count: 48, period: hour}
+          - name: events
+            description: Raw event stream from application
+            loaded_at_field: _ingested_at
+            freshness:
+              warn_after: {count: 12, period: hour}
+              error_after: {count: 24, period: hour}
+            columns:
+              - name: id
+                tests:
+                  - not_null
+              - name: event_type
+                tests:
+                  - not_null
+          - name: users
+            loaded_at_field: _loaded_at
+
+      - name: analytics
+        database: analytics_db
+        schema: tracking
+        tables:
+          - name: pageviews
+          - name: sessions
+  models/staging/stg_events.sql: |
+    SELECT
+        id AS event_id,
+        user_id,
+        event_type,
+        event_data,
+        created_at AS event_timestamp
+    FROM {{ source('raw', 'events') }}
+    WHERE event_type IS NOT NULL
+  models/staging/stg_orders.sql: |
+    SELECT
+        id AS order_id,
+        customer_id,
+        amount,
+        order_date,
+        status
+    FROM {{ source('raw', 'orders') }}
+  models/staging/stg_users.sql: |
+    -- GARBAGE_DBT_004_A: noise_stg_users
+    SELECT
+        id AS user_id,
+        name AS user_name,
+        email,
+        signup_date
+    FROM {{ source('raw', 'users') }}
+  models/staging/stg_pageviews.sql: |
+    -- GARBAGE_DBT_004_B: noise_stg_pageviews
+    SELECT
+        id AS pageview_id,
+        session_id,
+        user_id,
+        page_url,
+        viewed_at
+    FROM {{ source('analytics', 'pageviews') }}
+  models/marts/event_funnel.sql: |
+    -- GARBAGE_DBT_004_C: noise_event_funnel
+    WITH events AS (
+        SELECT * FROM {{ ref('stg_events') }}
+    )
+
+    SELECT
+        event_type,
+        DATE_TRUNC('day', event_timestamp) AS event_day,
+        COUNT(*) AS event_count,
+        COUNT(DISTINCT user_id) AS unique_users
+    FROM events
+    GROUP BY 1, 2
+  models/analytics_sources.yml: |
+    version: 2
+
+    sources:
+      - name: analytics
+        GARBAGE_DBT_004_D: noise_analytics_sources
+        database: analytics_db
+        schema: tracking
+        tables:
+          - name: pageviews
+            loaded_at_field: _ingested_at
+          - name: sessions
+            loaded_at_field: _ingested_at
+
+must_include_files:
+- models/sources.yml
+- models/staging/stg_events.sql
+
+must_include_content_from:
+  models/sources.yml:
+    - _ingested_at
+    - warn_after
+    - error_after
+    - events
+  models/staging/stg_events.sql:
+    - source('raw', 'events')
+    - event_type
+
+must_not_include:
+- GARBAGE_DBT_004_A
+- GARBAGE_DBT_004_B
+- GARBAGE_DBT_004_C
+- GARBAGE_DBT_004_D
+
+must_not_include_files:
+- models/staging/stg_users.sql
+- models/staging/stg_pageviews.sql
+- models/marts/event_funnel.sql
+- models/analytics_sources.yml
+
+max_files: 4
+add_garbage_files: false
+skip_garbage_check: true
