@@ -31,6 +31,7 @@
 #     directly. HARDEST TRAP: same word "lifecycle" in the resource name.
 #     But this is an observability tool that watches pod events, not a
 #     dependency of the lifecycle hooks being configured.
+max_enrichment: 8.1
 initial:
   scripts/graceful-shutdown.sh: |
     #!/bin/bash

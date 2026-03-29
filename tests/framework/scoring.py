@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import difflib
+import math
 from dataclasses import dataclass, field
 
-NOISE_PENALTY_WEIGHT = 0.25
+NOISE_PENALTY_WEIGHT = 0.50
 GARBAGE_PENALTY_WEIGHT = 0.50
+ENRICHMENT_ALPHA = 0.15
 
 
 @dataclass
@@ -51,12 +53,18 @@ class ScoreBreakdown:
         return self.context_tokens / self.diff_tokens
 
     @property
+    def efficiency_factor(self) -> float:
+        if self.enrichment <= 1.0:
+            return 1.0
+        return 1.0 / (1.0 + ENRICHMENT_ALPHA * math.log(self.enrichment))
+
+    @property
     def score(self) -> float:
         if not self.diff_covered:
             return 0.0
         noise_factor = max(0.0, 1.0 - NOISE_PENALTY_WEIGHT * self.noise_rate)
         garbage_factor = max(0.0, 1.0 - GARBAGE_PENALTY_WEIGHT * self.garbage_rate)
-        return round(100.0 * self.recall * noise_factor * garbage_factor, 1)
+        return round(100.0 * self.recall * noise_factor * garbage_factor * self.efficiency_factor, 1)
 
 
 def _match_path_loose(candidate: str, target: str) -> bool:

@@ -12,6 +12,7 @@
 #   - services/email_sender.py: email sending with SMTP, mentions "user" in
 #     recipient context but has no import from dependencies or database
 
+max_enrichment: 5.2
 initial:
   database.py: |
     from typing import Generator

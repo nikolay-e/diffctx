@@ -3,6 +3,7 @@
 # Reviewer questions: Does process_with_generator yield correctly? Is batch_size config respected?
 # Trap 1: paginator.py — pagination with similar chunk/page patterns but no dep on batching
 # Trap 2: stream_reader.py — streaming data reader with yield, shares "iterator" vocabulary but independent
+max_enrichment: 8.6
 initial:
   batching.py: |
     from typing import List, TypeVar, Iterator, Optional, Callable, Any

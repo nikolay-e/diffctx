@@ -28,6 +28,7 @@
 #     the task references an image that lives in ECR. But ECR repo
 #     definition doesn't help review the task definition.
 
+max_enrichment: 11.8
 initial:
   ecs.tf: |
     resource "aws_ecs_cluster" "main" {

@@ -3,6 +3,7 @@
 # Reviewer questions: Is CacheStatistics exposed correctly? What happens on cache miss?
 # Trap 1: session_store.py — stores sessions with dict-like API, shares "store" vocabulary but independent
 # Trap 2: feature_flags.py — boolean flag store, shares "get/set" patterns but no dep on cache
+max_enrichment: 9.1
 initial:
   cache.py: |
     from typing import Generic, TypeVar, Optional, Callable

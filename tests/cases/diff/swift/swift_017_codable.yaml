@@ -56,6 +56,7 @@
 #     The diff uses `try await` and `try decoder.decode` which can throw,
 #     but the error types don't help review the decoding/mapping logic.
 
+max_enrichment: 4.4
 initial:
   Networking/UserAPIClient.swift: |
     import Foundation

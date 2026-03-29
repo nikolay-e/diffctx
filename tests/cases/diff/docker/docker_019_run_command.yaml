@@ -21,6 +21,7 @@
 #   - tests/conftest.py: imports from src.app but is test infrastructure.
 #   - k8s/deployment.yaml: references same image and port but is different layer.
 
+max_enrichment: 4.1
 initial:
   requirements.txt: |
     flask==2.3.0

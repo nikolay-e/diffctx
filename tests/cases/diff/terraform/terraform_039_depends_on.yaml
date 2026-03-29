@@ -7,6 +7,7 @@
 #   - batch/worker.tf: another ECS service with its own depends_on (same pattern, different service)
 #   - scripts/deploy.sh: mentions ECS service deployment but is operational tooling
 
+max_enrichment: 23.2
 initial:
   main.tf: |
     resource "aws_ecs_service" "app" {

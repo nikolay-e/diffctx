@@ -16,6 +16,7 @@
 #   - R/regression.R: statistical modeling — same R/ dir, similar
 #     analysis domain but not sourced by transform.R
 
+max_enrichment: 12.2
 initial:
   R/timeseries.R: |
     compute_moving_average <- function(x, window_size = 7) {

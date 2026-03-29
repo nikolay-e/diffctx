@@ -37,6 +37,7 @@
 #     same pattern. STRUCTURAL TRAP: same Errors/ directory, same enum: Error
 #     pattern. Different domain (disk I/O vs network).
 
+max_enrichment: 7.8
 initial:
   Sources/Errors/APIError.swift: |
     enum APIError: Error {

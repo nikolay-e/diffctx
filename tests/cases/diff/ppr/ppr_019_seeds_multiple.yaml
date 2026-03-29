@@ -1,87 +1,139 @@
-# Scenario: Two modules change simultaneously — tests multiple PPR seed nodes
-# Changed: module_a.py returns "modified a", module_b.py returns "modified b"
-# Reviewer needs: module_a.py (changed) + module_b.py (changed)
-# Trap: module_bundle.py — redefines func_a/func_b, name collision but different module
-# Trap: module_d.py — structural sibling matching module_a/module_b naming convention
-# Trap: email_service.py — completely unrelated module
+# Scenario: Two modules change simultaneously — both import from shared_utils.py.
+#   module_a.py changes format_a() to use normalize() differently.
+#   module_b.py changes format_b() to use validate() differently.
+#   Both import from shared_utils, creating a shared dependency diamond.
+#
+# Diff shows:
+#   module_a.py: - return normalize(raw)
+#                + return normalize(raw).upper()
+#   module_b.py: - return validate(data)
+#                + return validate(data) or DEFAULT_FALLBACK
+#
+# Reviewer questions:
+#   Q1: "What does normalize() return — does .upper() make sense on it?"
+#       -> normalize() returns a str (stripped, lowered). Calling .upper()
+#         on the result is valid. Reviewer must see normalize() to confirm
+#         it returns str, not None or a different type.
+#
+#   Q2: "What does validate() return — is `or DEFAULT_FALLBACK` meaningful?"
+#       -> validate() returns a bool. `False or DEFAULT_FALLBACK` gives the
+#         fallback string. Reviewer must see validate() to understand the
+#         falsy-path semantics.
+#
+#   Q3: "What is DEFAULT_FALLBACK — could it be None itself?"
+#       -> DEFAULT_FALLBACK = "N/A". Reviewer needs shared_utils.py to see
+#         both the constant and the functions both modules depend on.
+#
+# Not needed for comprehension:
+#   - module_bundle.py: Redefines normalize() and validate() locally.
+#     HARDEST TRAP: same function names as shared_utils, same call patterns.
+#     But these are local definitions, not the imported ones.
+#
+#   - module_d.py: Imports from shared_utils but only uses unrelated
+#     transform(). Shares the import path but not the relevant symbols.
+#
+#   - email_service.py: Completely unrelated infrastructure module.
 
+max_enrichment: 7.5
 initial:
-  module_a.py: |
-    def func_a():
-        return "a"
-  module_b.py: |
-    def func_b():
-        return "b"
-  module_c.py: |
-    def func_c():
-        return "c"
-  module_bundle.py: |
-    def func_a():
-        return "alternate_a"
+  shared_utils.py: |
+    DEFAULT_FALLBACK = "N/A"
 
-    def func_b():
-        return "alternate_b"
+    def normalize(text):
+        return text.strip().lower()
+
+    def validate(data):
+        return data is not None and len(data) > 0
+
+    def transform(value):
+        return value * 2
+  module_a.py: |
+    from shared_utils import normalize
+
+    def format_a(raw):
+        return normalize(raw)
+  module_b.py: |
+    from shared_utils import validate, DEFAULT_FALLBACK
+
+    def format_b(data):
+        return validate(data)
+  module_bundle.py: |
+    def normalize(text):
+        return text.replace(" ", "_")
+
+    def validate(data):
+        return True
 
     class ModuleBundle:
-        def get_all(self):
-            return [func_a(), func_b()]
+        def process(self):
+            return normalize(validate("test"))
   module_d.py: |
-    def func_d():
-        return "d"
+    from shared_utils import transform
+
+    def double_it(value):
+        return transform(value)
 
     class ModuleDHandler:
-        def handle(self):
-            return func_d()
+        def handle(self, x):
+            return double_it(x)
   email_service.py: |
     SMTP_HOST = "smtp.example.com"
     SMTP_PORT = 587
 
     class EmailSender:
-        def send(self, to: str, body: str):
+        def send(self, to, body):
             pass
 
 changed:
-  module_a.py: |
-    def func_a():
-        return "modified a"
-  module_b.py: |
-    def func_b():
-        return "modified b"
-  module_c.py: |
-    def func_c():
-        return "c"
-  module_bundle.py: |
-    def func_a():
-        return "alternate_a"
+  shared_utils.py: |
+    DEFAULT_FALLBACK = "N/A"
 
-    def func_b():
-        return "alternate_b"
+    def normalize(text):
+        return text.strip().lower()
+
+    def validate(data):
+        return data is not None and len(data) > 0
+
+    def transform(value):
+        return value * 2
+  module_a.py: |
+    from shared_utils import normalize
+
+    def format_a(raw):
+        return normalize(raw).upper()
+  module_b.py: |
+    from shared_utils import validate, DEFAULT_FALLBACK
+
+    def format_b(data):
+        return validate(data) or DEFAULT_FALLBACK
+  module_bundle.py: |
+    def normalize(text):
+        return text.replace(" ", "_")
+
+    def validate(data):
+        return True
 
     class ModuleBundle:
-        def get_all(self):
-            return [func_a(), func_b()]
+        def process(self):
+            return normalize(validate("test"))
   module_d.py: |
-    def func_d():
-        return "d"
+    from shared_utils import transform
+
+    def double_it(value):
+        return transform(value)
 
     class ModuleDHandler:
-        def handle(self):
-            return func_d()
+        def handle(self, x):
+            return double_it(x)
   email_service.py: |
     SMTP_HOST = "smtp.example.com"
     SMTP_PORT = 587
 
     class EmailSender:
-        def send(self, to: str, body: str):
+        def send(self, to, body):
             pass
 
 # === Assertions ===
-
-must_include:
-- func_a
-- func_b
-- modified a
-- modified b
 
 must_include_files:
 - module_a.py
@@ -89,26 +141,27 @@ must_include_files:
 
 must_include_content_from:
   module_a.py:
-    - 'def func_a():'
-    - return "modified a"
+    - 'from shared_utils import normalize'
+    - 'def format_a(raw):'
+    - return normalize(raw).upper()
   module_b.py:
-    - 'def func_b():'
-    - return "modified b"
+    - 'from shared_utils import validate, DEFAULT_FALLBACK'
+    - 'def format_b(data):'
+    - return validate(data) or DEFAULT_FALLBACK
 
 must_not_include:
-- ModuleBundle
-- alternate_a
+# --- module_d.py: imports shared_utils but only transform(), not relevant ---
 - ModuleDHandler
-- func_d
+- double_it
+# --- email_service.py: no structural edges ---
 - EmailSender
 - SMTP_HOST
 
 must_not_include_files:
-- module_bundle.py
 - module_d.py
 - email_service.py
 
-max_fragments: 6
-max_files: 3
+max_fragments: 12
+max_files: 4
 add_garbage_files: false
 skip_garbage_check: true

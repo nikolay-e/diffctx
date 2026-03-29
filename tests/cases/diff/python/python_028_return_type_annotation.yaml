@@ -3,6 +3,7 @@
 # Reviewer questions: Are Optional returns handled? Does find_by_customer filter correctly?
 # Trap 1: repository/product_repo.py — product repository, shares "repository" vocabulary but independent
 # Trap 2: services/order_notifications.py — sends order notifications, shares "order" domain but no dep
+max_enrichment: 15.5
 initial:
   models/order.py: |
     from dataclasses import dataclass, field

@@ -3,6 +3,7 @@
 # Reviewer questions: Does run_transaction properly handle rollback on QueryError? Is timeout passed?
 # Trap 1: db_migration.py — manages database schema migrations, shares "database" vocabulary but independent
 # Trap 2: connection_pool.py — manages pooled connections, shares "connection" domain but no dep on db.py
+max_enrichment: 6.3
 initial:
   db.py: |
     from typing import Optional, Any, Dict, List

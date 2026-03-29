@@ -18,6 +18,7 @@
 #   - src/logger/index.ts: application logging. Different cross-cutting
 #     concern with no import relationship.
 
+max_enrichment: 3.7
 initial:
   src/hooks/useApi.ts: |
     import { useState, useEffect } from 'react';

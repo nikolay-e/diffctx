@@ -18,6 +18,7 @@
 #   - notification-service.ts: sends notifications via external HTTP API.
 #     Different communication mechanism entirely, no EventEmitter usage.
 
+max_enrichment: 5.8
 initial:
   emitter.ts: |
     import { EventEmitter } from 'events';

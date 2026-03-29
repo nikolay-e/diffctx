@@ -15,6 +15,7 @@
 #   - src/utils/cache.ts: response caching layer. Caches by URL key,
 #     doesn't interact with fetchData's promise chain or return shape.
 
+max_enrichment: 5.4
 initial:
   src/api.ts: |
     export interface ApiResponse<T> {

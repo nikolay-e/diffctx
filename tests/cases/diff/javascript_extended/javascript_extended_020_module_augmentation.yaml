@@ -18,6 +18,7 @@
 #     type, no import of User. Lexical overlap ("role") but no dependency.
 #   - src/utils/id-generator.ts: ID generation utilities. Structurally unrelated.
 
+max_enrichment: 5.8
 initial:
   src/models/user.ts: |
     export interface User {

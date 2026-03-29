@@ -16,6 +16,7 @@
 #   - R/formatting.R: output formatting — same R/ dir, handles report
 #     presentation but not sourced by quarterly.Rmd
 
+max_enrichment: 8.6
 initial:
   R/analysis.R: |
     compute_quarterly_metrics <- function(data, year) {

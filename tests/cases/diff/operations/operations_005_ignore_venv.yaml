@@ -3,6 +3,7 @@
 # Trap rationale: health_checker.py and config_loader.py share app/config
 # vocabulary but have no import edge to app.py. .venv must be ignored.
 
+max_enrichment: 11.6
 initial:
   app.py: |
     from typing import Any

@@ -7,6 +7,7 @@
 #   - bastion.tf: another aws_instance in the same directory (same resource type, unrelated host)
 #   - monitoring/logging.tf: CloudWatch log group (shares infra directory, unrelated concern)
 
+max_enrichment: 7.8
 initial:
   cloud_init.tf: |
     data "cloudinit_config" "web" {

@@ -17,6 +17,7 @@
 #   - src/socket/admin-handler.ts: admin-only socket events (kick, ban).
 #     Different event namespace, different concern.
 
+max_enrichment: 6.7
 initial:
   src/socket/chat-handler.ts: |
     import { Server } from 'socket.io';

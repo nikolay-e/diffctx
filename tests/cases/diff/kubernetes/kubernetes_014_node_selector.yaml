@@ -31,6 +31,7 @@
 #     request would fail. But the plugin's existence is an infrastructure
 #     prerequisite — its DaemonSet config doesn't help review whether
 #     the nodeSelector labels match actual node labels.
+max_enrichment: 13.2
 initial:
   k8s/ml/training-job.yaml: |
     apiVersion: apps/v1

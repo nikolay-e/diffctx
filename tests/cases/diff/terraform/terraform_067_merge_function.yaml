@@ -7,6 +7,7 @@
 #   - cache/instances.tf: another instance also using merge() for tags (same function, different resource)
 #   - ecr/repository.tf: ECR repository (unrelated to tagging strategy)
 
+max_enrichment: 6.1
 initial:
   main.tf: |
     variable "extra_tags" {

@@ -31,6 +31,7 @@
 #   - UserService.scala: Calls UserRepository methods. Consumer of the
 #     changed code. But service logic doesn't help review query correctness.
 
+max_enrichment: 5.6
 initial:
   Tables.scala: |
     import slick.jdbc.PostgresProfile.api._

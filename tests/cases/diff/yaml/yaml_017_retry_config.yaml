@@ -18,6 +18,7 @@
 #     threshold, half-open), different resilience pattern.
 #   - src/timeout.py: request timeout handling (SIGALRM), not retry logic.
 
+max_enrichment: 11.0
 initial:
   config/resilience.yaml: |
     retry:

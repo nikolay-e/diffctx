@@ -17,6 +17,7 @@
 #   - user-cache.ts: caches user responses by id. Related to users but manages its
 #     own Map storage, doesn't call fetchUser.
 
+max_enrichment: 4.7
 initial:
   utils.ts: |
     export function fetchUser(id: string) {

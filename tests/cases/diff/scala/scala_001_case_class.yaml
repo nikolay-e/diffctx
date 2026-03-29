@@ -28,6 +28,7 @@
 #     Consumer of the changed code. Calls createUser, updateEmail — exact same
 #     methods from the diff. But consuming code doesn't define User's API.
 
+max_enrichment: 8.1
 initial:
   src/models/User.scala: |
     package models

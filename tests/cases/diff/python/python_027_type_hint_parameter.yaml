@@ -3,6 +3,7 @@
 # Reviewer questions: Is User type used correctly in method signatures? Are Optional cases handled?
 # Trap 1: services/audit_service.py — audit logging service, shares "user/service" vocabulary but independent
 # Trap 2: services/permission_service.py — permission checking, shares "user" domain but no dep on models
+max_enrichment: 15.1
 initial:
   models/user.py: |
     from dataclasses import dataclass

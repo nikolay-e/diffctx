@@ -26,6 +26,7 @@
 #   - lib/sanitizers.rb: cleans data before validation. Related pipeline step
 #     but independent module — no require edge to Validators.
 
+max_enrichment: 7.2
 initial:
   validators.rb: |
     module Validators

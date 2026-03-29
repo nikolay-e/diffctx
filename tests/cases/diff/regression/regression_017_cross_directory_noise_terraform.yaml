@@ -16,6 +16,7 @@
 #   - src/lambda_handler.py: Lambda function code — references same IAM role
 #     but is application code, not infrastructure definition.
 
+max_enrichment: 5.4
 initial:
   infra/main.tf: |
     provider "aws" {

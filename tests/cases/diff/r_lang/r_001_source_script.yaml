@@ -16,6 +16,7 @@
 #   - analysis/clustering.R: another analysis script — same directory,
 #     also uses normalize_vector but independent analysis
 
+max_enrichment: 9.8
 initial:
   helpers/utils.R: |
     safe_divide <- function(a, b) {

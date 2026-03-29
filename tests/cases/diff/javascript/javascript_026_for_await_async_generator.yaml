@@ -24,6 +24,7 @@
 #     Uses similar async/await patterns but operates on arrays, not generators.
 #     Not imported by consumer.ts. Trap: async function with iteration.
 
+max_enrichment: 4.5
 initial:
   generator.ts: |
     export async function* asyncGenerator() {

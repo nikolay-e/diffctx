@@ -4,6 +4,7 @@
 # Trap files:
 #   - lib/serializer.rb: Attribute serialization via method_missing — "dynamic methods" pattern overlap but no DSL import
 #   - lib/schema_builder.rb: Schema definition DSL — "define_method/class_eval" vocabulary overlap but independent module
+max_enrichment: 9.1
 initial:
   lib/dsl.rb: |
     module DSL

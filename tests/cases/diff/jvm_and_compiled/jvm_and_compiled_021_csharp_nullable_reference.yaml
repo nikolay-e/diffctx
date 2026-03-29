@@ -36,6 +36,7 @@
 #   - UserMapper.cs: Maps User to UserDto, references User.Id and User.Name.
 #     Same property accesses as the diff. But mapping logic is independent.
 
+max_enrichment: 5.8
 initial:
   Models/User.cs: |
     namespace App.Models

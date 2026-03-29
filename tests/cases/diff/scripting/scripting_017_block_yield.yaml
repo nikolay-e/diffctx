@@ -25,6 +25,7 @@
 #   - error_handler.rb: rescues StandardError like RetryHelper does. Same
 #     exception type but different pattern — no module inclusion.
 
+max_enrichment: 6.9
 initial:
   lib/retry_helper.rb: |
     module RetryHelper

@@ -32,6 +32,7 @@
 #     canary won't match version: v2 selector), but the reviewer can reason
 #     about this from the deployment labels alone. The canary deployment
 #     details don't add comprehension beyond what the version label tells.
+max_enrichment: 32.8
 initial:
   k8s/apps/deployment.yaml: |
     apiVersion: apps/v1

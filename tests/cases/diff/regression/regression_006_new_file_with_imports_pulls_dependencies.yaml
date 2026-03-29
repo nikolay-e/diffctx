@@ -19,6 +19,7 @@
 #   - src/cache/redis_client.py: caching layer — same src/ tree, generator
 #     might use caching eventually but doesn't import it now.
 
+max_enrichment: 4.8
 initial:
   src/data/loader.py: |
     from pathlib import Path

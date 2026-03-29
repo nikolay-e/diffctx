@@ -7,6 +7,7 @@
 #   - scheduler/task.tf: another ECS task definition using jsonencode (same pattern, different service)
 #   - storage/backups.tf: S3 bucket (unrelated to ECS)
 
+max_enrichment: 6.9
 initial:
   ecs.tf: |
     resource "aws_ecs_task_definition" "worker" {

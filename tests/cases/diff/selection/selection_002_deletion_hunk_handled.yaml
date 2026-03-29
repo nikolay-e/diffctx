@@ -20,6 +20,7 @@
 #   - export_csv.py: exports event logs to CSV. Uses its own query logic,
 #     no import edge to analytics.py.
 
+max_enrichment: 4.4
 initial:
   analytics.py: |
     EVENT_BUFFER = []

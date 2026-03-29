@@ -2,6 +2,7 @@
 # Context must include utils.zig with the function definition. Noise: other
 # modules that also @import("utils.zig") or @import("std") but are unrelated.
 
+max_enrichment: 14.6
 initial:
   src/utils.zig: |
     const std = @import("std");

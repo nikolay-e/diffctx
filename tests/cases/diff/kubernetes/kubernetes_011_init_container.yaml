@@ -3,6 +3,7 @@
 # Reviewer questions: Does pg_isready image match the production postgres version? Should migration failures block startup?
 # Trap 1: k8s/database/postgres-statefulset.yaml — PostgreSQL StatefulSet, shares DB vocabulary but no dep on init containers
 # Trap 2: k8s/jobs/seed-data.yaml — data seeding job, shares migration/DB vocabulary but no dep
+max_enrichment: 8.6
 initial:
   scripts/wait-for-db.sh: |
     #!/bin/bash

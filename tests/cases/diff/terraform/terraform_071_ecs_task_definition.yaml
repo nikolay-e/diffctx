@@ -6,6 +6,7 @@
 #   - worker/task.tf: another ECS task definition (same resource type, different service)
 #   - iam/task_role.tf: task execution role (mentions ECS but not affected by task spec changes)
 
+max_enrichment: 14.3
 initial:
   ecs.tf: |
     resource "aws_ecs_task_definition" "app" {

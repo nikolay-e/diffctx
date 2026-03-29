@@ -31,6 +31,7 @@
 #   - pipeline.py: ML deployment code — shares the word "deploy" but
 #     has nothing to do with the build system
 
+max_enrichment: 14.1
 initial:
   Makefile: ".PHONY: build test clean install dev\n\nPYTHON := python3\nVENV :=\
     \ venv\nPIP := $(VENV)/bin/pip\nPYTEST := $(VENV)/bin/pytest\n\nbuild:\n\tpython\

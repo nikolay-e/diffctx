@@ -4,6 +4,7 @@
 # Trap rationale: endpointslice.yaml and service-mesh-entry.yaml share
 # endpoint/networking vocabulary but use different K8s APIs with no link.
 
+max_enrichment: 10.2
 initial:
   k8s/base/deployment.yaml: |
     apiVersion: apps/v1

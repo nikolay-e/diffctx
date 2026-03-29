@@ -88,7 +88,7 @@ class YamlTestRunner:
         diff_covered, uncovered = check_diff_coverage(all_content, diff_lines)
 
         expected_details = self._check_expected(case, fragment_paths, all_content, content_by_file)
-        noise_details = self._check_noise(case, fragment_paths, all_content, context)
+        noise_details = self._check_noise(case, fragment_paths, all_content, context, content_by_file)
         garbage_hits, garbage_total = self._check_garbage(case, all_content)
 
         return ScoreBreakdown(
@@ -136,6 +136,7 @@ class YamlTestRunner:
         fragment_paths: list[str],
         all_content: str,
         context: dict,
+        content_by_file: dict[str, str] | None = None,
     ) -> list[tuple[str, bool]]:
         details: list[tuple[str, bool]] = []
         for pattern in case.must_not_include:
@@ -151,6 +152,24 @@ class YamlTestRunner:
             unique_files = len(set(fragment_paths))
             if unique_files > case.max_files:
                 details.append((f"excess_files: {unique_files}/{case.max_files}", True))
+        cbf = content_by_file or {}
+        for file_path, snippets in case.must_not_include_content_from.items():
+            file_content = self._find_file_content(cbf, file_path)
+            for snippet in snippets:
+                normalized = snippet.rstrip("\n")
+                leaked = file_content is not None and normalized in file_content
+                details.append((f"noise_from {file_path}: {normalized[:60]}", leaked))
+        if case.max_fragments_per_file is not None:
+            from collections import Counter
+
+            per_file: Counter[str] = Counter()
+            for frag in context.get("fragments", []):
+                p = frag.get("path", "")
+                if p:
+                    per_file[p] += 1
+            for p, count in per_file.items():
+                if count > case.max_fragments_per_file:
+                    details.append((f"excess_frags_per_file: {p} {count}/{case.max_fragments_per_file}", True))
         return details
 
     def _check_garbage(self, case: YamlTestCase, all_content: str) -> tuple[int, int]:

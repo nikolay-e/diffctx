@@ -3,6 +3,7 @@
 # Reviewer questions: Is requiredDuringScheduling too strict — will pods fail if no cache is co-located? Is zone topology correct?
 # Trap 1: k8s/apps/cache/service.yaml — cache service definition, shares "cache" label but no dep on web affinity
 # Trap 2: k8s/infra/node-labels.yaml — node labeling job, shares topology vocabulary but no dep
+max_enrichment: 10.4
 initial:
   k8s/apps/web/deployment.yaml: |
     apiVersion: apps/v1

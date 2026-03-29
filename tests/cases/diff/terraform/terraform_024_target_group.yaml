@@ -11,6 +11,7 @@
 # Traps: admin_target.tf has same target group type but for admin panel
 # on port 9090. app.py has the /health endpoint but is application code.
 
+max_enrichment: 5.3
 initial:
   lb.tf: |
     resource "aws_lb" "main" {

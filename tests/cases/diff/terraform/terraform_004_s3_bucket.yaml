@@ -18,6 +18,7 @@
 #   - infrastructure/kms_keys.tf: KMS key definitions — reviewer doesn't need
 #     to verify key config to understand the S3 lifecycle/versioning changes
 
+max_enrichment: 8.3
 initial:
   modules/s3/main.tf: |
     resource "aws_s3_bucket" "this" {

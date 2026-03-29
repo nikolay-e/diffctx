@@ -15,6 +15,7 @@
 #   - response-logger.ts: logs API responses for debugging. Middleware concern,
 #     not part of response creation.
 
+max_enrichment: 5.0
 initial:
   service.ts: |
     export interface ApiResponse<T> {

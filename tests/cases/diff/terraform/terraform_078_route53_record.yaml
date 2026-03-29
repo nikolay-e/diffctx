@@ -6,6 +6,7 @@
 #   - mail/dns.tf: MX and SPF records in the same zone (same zone_id, different record type)
 #   - src/health.py: health check code (mentions domain but is application code)
 
+max_enrichment: 12.2
 initial:
   dns.tf: |
     resource "aws_route53_record" "www" {

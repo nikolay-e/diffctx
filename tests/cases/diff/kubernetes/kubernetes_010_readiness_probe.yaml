@@ -30,6 +30,7 @@
 #     structural edge: the gateway's env var points to this backend.
 #     But the backend's deployment config doesn't help review whether
 #     the gateway's readiness probe thresholds are appropriate.
+max_enrichment: 16.2
 initial:
   k8s/apps/gateway/deployment.yaml: |
     apiVersion: apps/v1

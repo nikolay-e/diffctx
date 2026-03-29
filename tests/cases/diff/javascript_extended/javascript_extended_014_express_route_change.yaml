@@ -18,6 +18,7 @@
 #   - src/validators/user-validator.ts: request body validation. Validation
 #     layer, not imported by routes.ts. New POST route has no validation.
 
+max_enrichment: 5.4
 initial:
   src/routes/routes.ts: |
     import { Router } from 'express';

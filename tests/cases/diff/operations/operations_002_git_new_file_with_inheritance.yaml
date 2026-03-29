@@ -3,6 +3,7 @@
 # Trap rationale: event_bus.py and permission_manager.py use similar OOP
 # patterns (classes, registries) but are not imported by the features package.
 
+max_enrichment: 5.0
 initial:
   features/__init__.py: ''
   features/base.py: |

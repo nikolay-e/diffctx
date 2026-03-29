@@ -26,6 +26,7 @@
 #   - event_handler.rb: has a process method and uses include (not prepend).
 #     Same method name and related mechanism but different pattern.
 
+max_enrichment: 15.3
 initial:
   request_interceptor.rb: |
     module RequestInterceptor

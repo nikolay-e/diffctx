@@ -4,6 +4,7 @@
 # Trap files:
 #   - app/models/category.rb: Category tree with children/parent — "product category" domain overlap but no Scopes usage
 #   - lib/query_builder.rb: SQL-like query builder — "scope/filter" vocabulary overlap but independent query chain
+max_enrichment: 6.7
 initial:
   lib/scopes.rb: |
     module Scopes

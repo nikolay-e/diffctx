@@ -4,6 +4,7 @@
 # Trap files:
 #   - app/controllers/sessions_controller.rb: Authentication controller — "controller actions" pattern but no User model dependency
 #   - app/services/email_service.rb: Email sending service — "user notification" domain overlap but independent
+max_enrichment: 4.0
 initial:
   app/models/user.rb: |
     class User

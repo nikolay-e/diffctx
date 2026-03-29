@@ -34,6 +34,7 @@
 #     methods" pattern as Describable. Record struct implements it.
 #     But completely different domain (byte serialization), no trait
 #     dependency on Named/Describable/Displayable.
+max_enrichment: 5.4
 initial:
   src/lib.rs: |
     pub mod traits;

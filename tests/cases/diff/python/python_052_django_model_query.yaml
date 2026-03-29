@@ -11,6 +11,7 @@
 #   - tasks/notification_worker.py: sends notifications to users, mentions "user"
 #     but does not import from models
 
+max_enrichment: 5.6
 initial:
   models.py: |
     from django.db import models

@@ -27,6 +27,7 @@
 #   - lib/receipt_template.rb: generates receipt HTML. Same "receipt" domain
 #     but independent of format_receipt private method.
 
+max_enrichment: 16.5
 initial:
   payment_processor.rb: |
     class PaymentProcessor

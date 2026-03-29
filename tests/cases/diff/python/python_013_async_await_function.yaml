@@ -3,6 +3,7 @@
 # Reviewer questions: Is FetchError properly caught? Does handle_batch scale with many user_ids?
 # Trap 1: grpc_client.py — async gRPC client, shares "async request" vocabulary but no dep on fetcher
 # Trap 2: event_dispatcher.py — async event dispatch, shares "async handler" domain but independent
+max_enrichment: 9.2
 initial:
   fetcher.py: |
     import asyncio

@@ -25,6 +25,7 @@
 #   - transit_gateway/main.tf: Transit gateway attachment to VPCs.
 #     References VPC IDs. But transit gateway is inter-VPC routing.
 
+max_enrichment: 5.0
 initial:
   network.tf: |
     # Network resources placeholder

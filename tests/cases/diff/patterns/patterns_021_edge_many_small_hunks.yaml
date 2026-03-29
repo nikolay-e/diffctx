@@ -4,6 +4,7 @@
 # Trap: helpers.py — also has func1/func2 naming pattern with similar function shapes
 # Trap: operations.py — has return-value-producing functions with similar structure
 
+max_enrichment: 5.0
 initial:
   utils.py: |
     def func1():
@@ -62,6 +63,10 @@ changed:
 
 must_include_files:
 - utils.py
+
+must_include_content:
+- "return 1"
+- "return 2"
 
 must_not_include:
 - helper_one

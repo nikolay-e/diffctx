@@ -3,6 +3,7 @@
 # Reviewer questions: Do all abstract methods get implemented? Is super() called where needed?
 # Trap 1: websocket_handler.py — WebSocket handler with handle() method but no dep on base
 # Trap 2: graphql_resolver.py — GraphQL resolver with resolve() method, shares "handler" vocabulary but independent
+max_enrichment: 6.8
 initial:
   base.py: |
     from abc import ABC, abstractmethod

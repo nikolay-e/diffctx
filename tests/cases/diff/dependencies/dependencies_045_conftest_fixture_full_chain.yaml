@@ -1,0 +1,112 @@
+max_enrichment: 9.1
+initial:
+  src/calculator.py: |
+    def add(a, b):
+        return a + b
+
+    def multiply(a, b):
+        return a * b
+  tests/conftest.py: |
+    import pytest
+
+    @pytest.fixture
+    def calculator_instance():
+        from src.calculator import add, multiply
+        return {"add": add, "multiply": multiply}
+  tests/test_calculator.py: |
+    def test_add(calculator_instance):
+        assert calculator_instance["add"](2, 3) == 5
+
+    def test_multiply(calculator_instance):
+        assert calculator_instance["multiply"](4, 5) == 20
+
+  # --- Tricky: same conftest pattern, same fixture-providing structure ---
+  tests/integration/conftest.py: |
+    import pytest
+    GARBAGE_DEP_045_INTEG_CONFTEST_A = "integration_conftest"
+    GARBAGE_DEP_045_INTEG_SETUP_B = True
+
+    @pytest.fixture
+    def calculator_instance():
+        GARBAGE_DEP_045_INTEG_FIXTURE_C = "integration_calc"
+        from src.calculator import add
+        return {"add": add}
+
+  # --- Tricky: same test pattern, uses calculator_instance fixture ---
+  tests/integration/test_advanced_calc.py: |
+    GARBAGE_DEP_045_ADVTEST_D = "advanced_calc_tests"
+    GARBAGE_DEP_045_ADVTEST_INIT_E = True
+
+    def test_add_negative(calculator_instance):
+        GARBAGE_DEP_045_ADVTEST_NEG_F = "negative_test"
+        assert calculator_instance["add"](-1, -2) == -3
+
+changed:
+  src/calculator.py: |
+    def add(a, b):
+        return a + b
+
+    def multiply(a, b):
+        return a * b
+  tests/conftest.py: |
+    import pytest
+
+    @pytest.fixture
+    def calculator_instance():
+        from src.calculator import add, multiply
+        return {"add": add, "multiply": multiply, "subtract": lambda a, b: a - b}
+  tests/test_calculator.py: |
+    def test_add(calculator_instance):
+        assert calculator_instance["add"](2, 3) == 5
+
+    def test_multiply(calculator_instance):
+        assert calculator_instance["multiply"](4, 5) == 20
+  tests/integration/conftest.py: |
+    import pytest
+    GARBAGE_DEP_045_INTEG_CONFTEST_A = "integration_conftest"
+    GARBAGE_DEP_045_INTEG_SETUP_B = True
+
+    @pytest.fixture
+    def calculator_instance():
+        GARBAGE_DEP_045_INTEG_FIXTURE_C = "integration_calc"
+        from src.calculator import add
+        return {"add": add}
+  tests/integration/test_advanced_calc.py: |
+    GARBAGE_DEP_045_ADVTEST_D = "advanced_calc_tests"
+    GARBAGE_DEP_045_ADVTEST_INIT_E = True
+
+    def test_add_negative(calculator_instance):
+        GARBAGE_DEP_045_ADVTEST_NEG_F = "negative_test"
+        assert calculator_instance["add"](-1, -2) == -3
+
+# === Assertions ===
+
+must_include_files:
+- tests/conftest.py
+
+must_include_content:
+- calculator_instance
+
+must_include_content_from:
+  tests/conftest.py:
+    - 'def calculator_instance():'
+    - subtract
+
+must_not_include:
+# Tricky: same calculator_instance fixture name, same conftest pattern
+- GARBAGE_DEP_045_INTEG_CONFTEST_A
+- GARBAGE_DEP_045_INTEG_SETUP_B
+- GARBAGE_DEP_045_INTEG_FIXTURE_C
+# Tricky: uses calculator_instance fixture, same assertion pattern
+- GARBAGE_DEP_045_ADVTEST_D
+- GARBAGE_DEP_045_ADVTEST_INIT_E
+- GARBAGE_DEP_045_ADVTEST_NEG_F
+
+must_not_include_files:
+- tests/integration/conftest.py
+- tests/integration/test_advanced_calc.py
+
+max_fragments: 8
+max_files: 4
+add_garbage_files: false
+skip_garbage_check: true

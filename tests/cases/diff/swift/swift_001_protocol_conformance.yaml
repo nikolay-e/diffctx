@@ -43,6 +43,7 @@
 #     the changed code with overlapping method calls. But test expectations don't
 #     show whether User actually conforms to Codable.
 
+max_enrichment: 9.2
 initial:
   Sources/Models/User.swift: |
     struct User: Codable, Equatable {

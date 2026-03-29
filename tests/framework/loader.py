@@ -7,6 +7,90 @@ import yaml
 
 from tests.framework.types import YamlTestCase
 
+_VALID_TOP_LEVEL_KEYS = frozenset(
+    {
+        "name",
+        "initial",
+        "initial_files",
+        "changed",
+        "changed_files",
+        "assertions",
+        "options",
+        "must_include",
+        "must_include_files",
+        "must_include_content",
+        "must_not_include",
+        "must_include_content_from",
+        "must_not_include_files",
+        "must_not_include_content_from",
+        "max_fragments",
+        "max_files",
+        "max_fragments_per_file",
+        "max_enrichment",
+        "min_recall",
+        "max_noise_rate",
+        "max_context_tokens",
+        "commit_message",
+        "min_budget",
+        "add_garbage_files",
+        "skip_garbage_check",
+        "xfail",
+        "min_score",
+        "strict",
+        "tests",
+    }
+)
+
+_VALID_ASSERTION_KEYS = frozenset(
+    {
+        "must_include",
+        "must_include_files",
+        "must_include_content",
+        "must_not_include",
+        "must_include_content_from",
+        "must_not_include_files",
+        "must_not_include_content_from",
+    }
+)
+
+_VALID_OPTION_KEYS = frozenset(
+    {
+        "max_fragments",
+        "max_files",
+        "max_fragments_per_file",
+        "max_enrichment",
+        "min_recall",
+        "max_noise_rate",
+        "max_context_tokens",
+        "commit_message",
+        "min_budget",
+        "add_garbage",
+        "skip_garbage_check",
+        "min_score",
+    }
+)
+
+
+def _validate_keys(data: dict, source_file: Path | None) -> None:
+    unknown = set(data.keys()) - _VALID_TOP_LEVEL_KEYS
+    if unknown:
+        location = str(source_file) if source_file else "unknown"
+        raise ValueError(f"Unknown keys in test case ({location}): {sorted(unknown)}")
+
+    assertions = data.get("assertions", {})
+    if isinstance(assertions, dict):
+        unknown_a = set(assertions.keys()) - _VALID_ASSERTION_KEYS
+        if unknown_a:
+            location = str(source_file) if source_file else "unknown"
+            raise ValueError(f"Unknown assertion keys ({location}): {sorted(unknown_a)}")
+
+    options = data.get("options", {})
+    if isinstance(options, dict):
+        unknown_o = set(options.keys()) - _VALID_OPTION_KEYS
+        if unknown_o:
+            location = str(source_file) if source_file else "unknown"
+            raise ValueError(f"Unknown option keys ({location}): {sorted(unknown_o)}")
+
 
 def _normalize_snippet(snippet: Any) -> str:
     if isinstance(snippet, str):
@@ -42,6 +126,7 @@ def _normalize_content_from(value: Any) -> dict[str, list[str]]:
 
 
 def _parse_yaml_test(data: dict, source_file: Path | None = None) -> YamlTestCase:
+    _validate_keys(data, source_file)
     name = data.get("name", source_file.stem if source_file else "unnamed")
     initial_files = data.get("initial", data.get("initial_files", {}))
     changed_files = data.get("changed", data.get("changed_files", {}))
@@ -60,6 +145,9 @@ def _parse_yaml_test(data: dict, source_file: Path | None = None) -> YamlTestCas
 
     must_not_include_files = assertions.get("must_not_include_files", data.get("must_not_include_files", []))
 
+    raw_not_content_from = assertions.get("must_not_include_content_from", data.get("must_not_include_content_from", {}))
+    must_not_include_content_from = _normalize_content_from(raw_not_content_from)
+
     options = data.get("options", {})
 
     return YamlTestCase(
@@ -72,6 +160,7 @@ def _parse_yaml_test(data: dict, source_file: Path | None = None) -> YamlTestCas
         must_not_include=must_not_include,
         must_include_content_from=must_include_content_from,
         must_not_include_files=must_not_include_files,
+        must_not_include_content_from=must_not_include_content_from,
         max_fragments=options.get("max_fragments", data.get("max_fragments")),
         max_files=options.get("max_files", data.get("max_files")),
         max_fragments_per_file=options.get("max_fragments_per_file", data.get("max_fragments_per_file")),

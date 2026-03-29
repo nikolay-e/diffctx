@@ -1,137 +1,223 @@
+# Scenario: Change in a cyclic dependency graph — mod0 -> mod1 -> mod2 -> mod0.
+#   mod0.py changes encode() to also call validate() from mod1 before encoding.
+#   The three modules form a tight cycle where each uses the next module's
+#   return value: mod0.encode() calls mod1.transform(), mod1.transform()
+#   calls mod2.checksum(), mod2.checksum() calls mod0.encode().
+#
+# Diff shows:
+#   mod0.py: - return transform(data.upper())
+#            + validated = validate(data)
+#            + return transform(validated.upper())
+#
+# Reviewer questions:
+#   Q1: "What does validate() return — is calling .upper() on it safe?"
+#       -> validate() in mod1 returns a str (stripped input or raises).
+#         Reviewer must see mod1.py to confirm the return type.
+#
+#   Q2: "Does this change affect the cycle? Could encode() -> transform()
+#        -> checksum() -> encode() now behave differently?"
+#       -> The cycle still works because validate() is a pure check that
+#         returns the same type. But the reviewer needs to see mod1 and
+#         mod2 to verify the cycle path is not broken.
+#
+#   Q3: "What does transform() do with the .upper() result?"
+#       -> transform() passes it to checksum() which hashes it. The
+#         reviewer needs mod1 and mod2 to trace the data flow.
+#
+# Not needed for comprehension:
+#   - mod3-mod9: Extended chain hanging off the cycle. Each calls the
+#     previous but none are on the cycle path (mod0->mod1->mod2->mod0).
+#     Including them would add noise without helping understand the change.
+#
+#   - garbage_func0_clone.py: HARDEST TRAP — redefines encode() and
+#     transform() locally, same names as the cycle functions.
+#
+#   - garbage_modifier.py: Uses "validated" string like the diff.
+#
+#   - garbage_chain.py: Calls transform() and checksum() — same function
+#     names but from its own local definitions.
+
+max_enrichment: 22.5
 initial:
   mod0.py: |
-    def func0():
-        func1()
-  mod1.py: |
-    def func1():
-        func2()
-  mod2.py: |
-    def func2():
-        func0()
-  mod3.py: |
-    def func3():
-        func1()
-  mod4.py: |
-    def func4():
-        func2()
-  mod5.py: |
-    def func5():
-        func3()
-  mod6.py: |
-    def func6():
-        func4()
-  mod7.py: |
-    def func7():
-        func5()
-  mod8.py: |
-    def func8():
-        func6()
-  mod9.py: |
-    def func9():
-        func7()
+    from mod1 import transform
 
-  # --- Tricky garbage: same func0 name, calls func1 like mod0 ---
+    def encode(data):
+        return transform(data.upper())
+  mod1.py: |
+    from mod2 import checksum
+
+    def validate(text):
+        return text.strip()
+
+    def transform(data):
+        return checksum(data)
+  mod2.py: |
+    from mod0 import encode
+
+    def checksum(value):
+        return encode(value[::-1])
+  mod3.py: |
+    from mod1 import transform
+
+    def step3(x):
+        return transform(x)
+  mod4.py: |
+    from mod2 import checksum
+
+    def step4(x):
+        return checksum(x)
+  mod5.py: |
+    from mod3 import step3
+
+    def step5(x):
+        return step3(x)
+  mod6.py: |
+    from mod4 import step4
+
+    def step6(x):
+        return step4(x)
+  mod7.py: |
+    from mod5 import step5
+
+    def step7(x):
+        return step5(x)
+  mod8.py: |
+    from mod6 import step6
+
+    def step8(x):
+        return step6(x)
+  mod9.py: |
+    from mod7 import step7
+
+    def step9(x):
+        return step7(x)
+
+  # --- Tricky garbage: redefines encode() and transform() locally ---
   garbage_func0_clone.py: |
     GARBAGE_PPR027_CLONE_A = "clone"
     GARBAGE_PPR027_CLONE_B = True
 
-    def func0():
-        func1()
-        return "unrelated_clone"
+    def encode(data):
+        return data.lower()
 
-    def func1():
+    def transform(data):
         GARBAGE_PPR027_INNER_C = 42
-        return None
+        return data
 
-  # --- Tricky garbage: uses "modified" string like the diff ---
+  # --- Tricky garbage: uses "validated" string like the diff ---
   garbage_modifier.py: |
     GARBAGE_PPR027_MODIFIER_D = "modifier"
     GARBAGE_PPR027_MODIFIER_E = False
 
     def modify_value():
-        return "modified"
+        validated = "already_checked"
+        return validated
 
     class Modifier:
         GARBAGE_PPR027_MODCLASS_F = 99
 
-        def apply_modified(self):
-            return "modified"
+        def apply_validated(self):
+            return "validated"
 
-  # --- Tricky garbage: chain of funcN calls, structural sibling ---
+  # --- Tricky garbage: calls transform() and checksum() locally ---
   garbage_chain.py: |
     GARBAGE_PPR027_CHAIN_G = "chain"
     GARBAGE_PPR027_CHAIN_H = 0
 
-    def chain_start():
-        func3()
+    def transform(x):
+        return x
 
-    def chain_middle():
-        func5()
+    def checksum(x):
+        return hash(x)
 
 changed:
   mod0.py: |
-    def func0():
-        func1()
-        return "modified"
+    from mod1 import transform, validate
+
+    def encode(data):
+        validated = validate(data)
+        return transform(validated.upper())
   mod1.py: |
-    def func1():
-        func2()
+    from mod2 import checksum
+
+    def validate(text):
+        return text.strip()
+
+    def transform(data):
+        return checksum(data)
   mod2.py: |
-    def func2():
-        func0()
+    from mod0 import encode
+
+    def checksum(value):
+        return encode(value[::-1])
   mod3.py: |
-    def func3():
-        func1()
+    from mod1 import transform
+
+    def step3(x):
+        return transform(x)
   mod4.py: |
-    def func4():
-        func2()
+    from mod2 import checksum
+
+    def step4(x):
+        return checksum(x)
   mod5.py: |
-    def func5():
-        func3()
+    from mod3 import step3
+
+    def step5(x):
+        return step3(x)
   mod6.py: |
-    def func6():
-        func4()
+    from mod4 import step4
+
+    def step6(x):
+        return step4(x)
   mod7.py: |
-    def func7():
-        func5()
+    from mod5 import step5
+
+    def step7(x):
+        return step5(x)
   mod8.py: |
-    def func8():
-        func6()
+    from mod6 import step6
+
+    def step8(x):
+        return step6(x)
   mod9.py: |
-    def func9():
-        func7()
+    from mod7 import step7
+
+    def step9(x):
+        return step7(x)
   garbage_func0_clone.py: |
     GARBAGE_PPR027_CLONE_A = "clone"
     GARBAGE_PPR027_CLONE_B = True
 
-    def func0():
-        func1()
-        return "unrelated_clone"
+    def encode(data):
+        return data.lower()
 
-    def func1():
+    def transform(data):
         GARBAGE_PPR027_INNER_C = 42
-        return None
+        return data
   garbage_modifier.py: |
     GARBAGE_PPR027_MODIFIER_D = "modifier"
     GARBAGE_PPR027_MODIFIER_E = False
 
     def modify_value():
-        return "modified"
+        validated = "already_checked"
+        return validated
 
     class Modifier:
         GARBAGE_PPR027_MODCLASS_F = 99
 
-        def apply_modified(self):
-            return "modified"
+        def apply_validated(self):
+            return "validated"
   garbage_chain.py: |
     GARBAGE_PPR027_CHAIN_G = "chain"
     GARBAGE_PPR027_CHAIN_H = 0
 
-    def chain_start():
-        func3()
+    def transform(x):
+        return x
 
-    def chain_middle():
-        func5()
+    def checksum(x):
+        return hash(x)
 
 # === Assertions ===
 
@@ -140,19 +226,26 @@ must_include_files:
 
 must_include_content_from:
   mod0.py:
-    - 'def func0():'
-    - return "modified"
+    - 'from mod1 import transform, validate'
+    - 'def encode(data):'
+    - validated = validate(data)
+    - return transform(validated.upper())
+  mod1.py:
+    - 'def validate(text):'
+    - return text.strip()
+    - 'def transform(data):'
+    - return checksum(data)
 
 must_not_include:
-# Tricky: same func0 name and calls func1
+# Tricky: redefines encode() and transform() locally
 - GARBAGE_PPR027_CLONE_A
 - GARBAGE_PPR027_CLONE_B
 - GARBAGE_PPR027_INNER_C
-# Tricky: uses "modified" string like the diff
+# Tricky: uses "validated" string like the diff
 - GARBAGE_PPR027_MODIFIER_D
 - GARBAGE_PPR027_MODIFIER_E
 - GARBAGE_PPR027_MODCLASS_F
-# Tricky: chain of funcN calls, structural sibling
+# Tricky: local transform() and checksum() definitions
 - GARBAGE_PPR027_CHAIN_G
 - GARBAGE_PPR027_CHAIN_H
 

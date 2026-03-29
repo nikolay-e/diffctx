@@ -28,6 +28,7 @@
 #   - metrics_collector.py: records rate-limiter metrics. References
 #     rate_limiter by name in metric labels but doesn't import it.
 
+max_enrichment: 10.4
 initial:
   rate_limiter.py: |
     from token_bucket import TokenBucket

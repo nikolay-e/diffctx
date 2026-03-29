@@ -14,6 +14,7 @@
 #   - src/main/resources/application.yml: app config with scheduling properties.
 #     Contains scheduling.enabled flag but ScheduledTasks doesn't read it.
 
+max_enrichment: 6.7
 initial:
   src/main/java/com/example/ScheduledTasks.java: |
     package com.example;

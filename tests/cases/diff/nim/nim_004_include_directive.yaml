@@ -26,6 +26,7 @@
 #     HARDEST TRAP: also defines templates, same directory, same pattern.
 #     But its templates are unrelated to withLogging.
 
+max_enrichment: 10.2
 initial:
   src/helpers.nim: |
     template tryExcept*(body: untyped, handler: untyped): untyped =

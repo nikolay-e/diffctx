@@ -14,6 +14,7 @@
 #   - src/utils.py: utility functions — same project but unrelated to templates.
 #   - src/models.py: data models — same project but unrelated to project governance.
 
+max_enrichment: 3.0
 initial:
   src/app.py: |
     from flask import Flask, jsonify, request

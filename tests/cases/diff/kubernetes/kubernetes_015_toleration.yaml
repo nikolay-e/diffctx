@@ -30,6 +30,7 @@
 #     minAvailable: 2. Shares same label selector and "critical" naming.
 #     But PDB controls disruption budgets during node drains, not toleration
 #     behavior. Different scheduling concern entirely.
+max_enrichment: 8.1
 initial:
   k8s/apps/critical/deployment.yaml: |
     apiVersion: apps/v1

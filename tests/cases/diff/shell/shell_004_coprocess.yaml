@@ -28,6 +28,7 @@
 #   - lib/fd_utils.sh: file descriptor management utilities. Manages fds
 #     similarly but doesn't use coproc — raw exec redirections.
 
+max_enrichment: 12.1
 initial:
   lib/worker.sh: |
     #!/bin/bash

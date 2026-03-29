@@ -26,6 +26,7 @@
 #   - src/deque.rs: Deque<T> wrapping VecDeque<T>. Same collections
 #     domain (std::collections::VecDeque). But main.rs doesn't import
 #     Deque or VecDeque. No dependency edge.
+max_enrichment: 3.0
 initial:
   src/main.rs: |
     fn main() {

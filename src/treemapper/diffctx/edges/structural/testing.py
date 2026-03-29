@@ -131,26 +131,9 @@ class TestEdgeBuilder(EdgeBuilder):
 
     def build(self, fragments: list[Fragment], repo_root: Path | None = None) -> EdgeDict:
         edges: EdgeDict = {}
-
-        by_base: dict[str, list[Fragment]] = defaultdict(list)
-        test_frags: list[Fragment] = []
-
-        for f in fragments:
-            if _is_test_file(f.path):
-                test_frags.append(f)
-            else:
-                by_base[f.path.stem.lower()].append(f)
-
-        module_cache: dict[Path, str] = {}
-        for src_list in by_base.values():
-            for sf in src_list:
-                if sf.path not in module_cache:
-                    module_cache[sf.path] = path_to_module(sf.path, repo_root=repo_root)
-
-        import_cache: dict[Path, frozenset[str]] = {}
-        for tf in test_frags:
-            if tf.path not in import_cache:
-                import_cache[tf.path] = _extract_imports(tf.content)
+        test_frags, by_base = self._partition_fragments(fragments)
+        module_cache = self._build_module_cache(by_base, repo_root)
+        import_cache = self._build_import_cache(test_frags)
 
         for test_frag in test_frags:
             target_name = _extract_target_name_from_test(test_frag.path.stem)
@@ -162,6 +145,34 @@ class TestEdgeBuilder(EdgeBuilder):
                 self._add_test_source_edge(edges, test_frag, src_frag, test_imports, module_cache)
 
         return edges
+
+    @staticmethod
+    def _partition_fragments(fragments: list[Fragment]) -> tuple[list[Fragment], dict[str, list[Fragment]]]:
+        by_base: dict[str, list[Fragment]] = defaultdict(list)
+        test_frags: list[Fragment] = []
+        for f in fragments:
+            if _is_test_file(f.path):
+                test_frags.append(f)
+            else:
+                by_base[f.path.stem.lower()].append(f)
+        return test_frags, by_base
+
+    @staticmethod
+    def _build_module_cache(by_base: dict[str, list[Fragment]], repo_root: Path | None) -> dict[Path, str]:
+        module_cache: dict[Path, str] = {}
+        for src_list in by_base.values():
+            for sf in src_list:
+                if sf.path not in module_cache:
+                    module_cache[sf.path] = path_to_module(sf.path, repo_root=repo_root)
+        return module_cache
+
+    @staticmethod
+    def _build_import_cache(test_frags: list[Fragment]) -> dict[Path, frozenset[str]]:
+        import_cache: dict[Path, frozenset[str]] = {}
+        for tf in test_frags:
+            if tf.path not in import_cache:
+                import_cache[tf.path] = _extract_imports(tf.content)
+        return import_cache
 
     def _add_test_source_edge(
         self,

@@ -26,6 +26,7 @@
 #     HARDEST TRAP: also opens Utils and calls parse_date, but it's
 #     a consumer, not the definition.
 
+max_enrichment: 7.4
 initial:
   lib/utils.ml: |
     type date = {

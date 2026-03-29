@@ -30,6 +30,7 @@
 #     fetches avatar data. Same watch(() => props.userId, ...) pattern.
 #     HARD TRAP: identical reactive pattern but different data concern.
 
+max_enrichment: 7.2
 initial:
   api.ts: |
     export async function fetchUserData(userId: string) {

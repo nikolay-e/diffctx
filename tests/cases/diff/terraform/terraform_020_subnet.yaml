@@ -10,6 +10,7 @@
 #
 # Traps: db_network.tf has same aws_subnet type but for the database tier.
 
+max_enrichment: 5.9
 initial:
   network.tf: |
     resource "aws_vpc" "main" {

@@ -16,6 +16,7 @@
 #   - socket-auth.ts: socket authentication middleware. Security concern,
 #     not related to chat message handling.
 
+max_enrichment: 5.0
 initial:
   events.ts: |
     export interface ChatMessage {

@@ -13,6 +13,7 @@
 #   - src/types/branded.ts: also uses conditional types but for branding patterns.
 #   - src/utils/typecheck.ts: runtime type checking functions, not compile-time types.
 
+max_enrichment: 4.7
 initial:
   src/primitives.ts: |
     export type Primitive = string | number | boolean | null | undefined;

@@ -3,6 +3,7 @@
 # Reviewer questions: Does validate_specific() cover all app-specific fields? Are errors propagated?
 # Trap 1: env_loader.py — loads environment variables for config, shares "config" vocabulary but independent
 # Trap 2: config_watcher.py — watches config file changes, shares "config" domain but no dep on base.py
+max_enrichment: 7.2
 initial:
   base.py: |
     from typing import Dict, Any, Optional, List

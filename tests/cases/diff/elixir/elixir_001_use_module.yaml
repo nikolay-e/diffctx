@@ -29,6 +29,7 @@
 #     Mentions "order" in name but is a data schema, not involved in
 #     process supervision or GenServer state.
 
+max_enrichment: 6.8
 initial:
   lib/myapp/workers/order_processor.ex: |
     defmodule MyApp.Workers.OrderProcessor do

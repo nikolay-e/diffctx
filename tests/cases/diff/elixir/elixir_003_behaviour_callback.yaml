@@ -26,6 +26,7 @@
 #   - lib/myapp/jobs/job_config.ex: Configuration for job parameters.
 #     Mentions retry counts but not the behaviour contract.
 
+max_enrichment: 10.4
 initial:
   lib/myapp/jobs/worker.ex: |
     defmodule MyApp.Jobs.Worker do

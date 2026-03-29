@@ -30,6 +30,7 @@
 #     derives initials from a name. Same Vue 3 composition pattern.
 #     HARD TRAP: identical reactive structure, different derivation.
 
+max_enrichment: 7.2
 initial:
   utils.ts: |
     export function formatName(first: string, last: string): string {

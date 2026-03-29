@@ -3,6 +3,7 @@
 # Reviewer questions: Does root_validator import get used? Is use_enum_values correct for UserRole?
 # Trap 1: auth/token_service.py — manages auth tokens for users, shares "user" vocabulary but independent
 # Trap 2: middleware/rate_limiter.py — rate limits API requests, shares "API" domain but no dep on schemas
+max_enrichment: 6.1
 initial:
   schemas.py: |
     from pydantic import BaseModel, EmailStr, Field, validator

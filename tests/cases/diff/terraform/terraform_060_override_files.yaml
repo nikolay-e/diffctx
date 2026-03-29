@@ -7,6 +7,7 @@
 #   - database/dev_override.tf: RDS override for dev (same override pattern, different resource)
 #   - sqs/queue.tf: SQS queue (unrelated to instance overrides)
 
+max_enrichment: 4.7
 initial:
   main.tf: |
     resource "aws_instance" "web" {

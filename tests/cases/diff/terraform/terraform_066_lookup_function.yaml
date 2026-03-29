@@ -7,6 +7,7 @@
 #   - monitoring/instances.tf: another aws_instance using lookup (same pattern, different role)
 #   - certificates/acm.tf: ACM certificate (unrelated to instance sizing)
 
+max_enrichment: 7.4
 initial:
   main.tf: |
     variable "environment" {

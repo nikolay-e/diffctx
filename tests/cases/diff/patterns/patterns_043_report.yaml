@@ -17,6 +17,7 @@
 #   - tests/test_invoice_generator.py: snapshot tests for invoices with similar
 #     HTML assertion patterns but different generator.
 
+max_enrichment: 6.5
 initial:
   src/report_generator.py: |
     from datetime import datetime

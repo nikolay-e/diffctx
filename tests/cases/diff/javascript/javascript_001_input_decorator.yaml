@@ -14,6 +14,7 @@
 #   - user.service.ts: HTTP service fetching users. Different layer (data vs view),
 #     not imported by the component.
 
+max_enrichment: 3.0
 initial:
   user.model.ts: |
     export interface User {

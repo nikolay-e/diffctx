@@ -1,3 +1,4 @@
+max_enrichment: 166.4
 initial:
   src/deep_nested.py: |
     from functools import wraps
@@ -538,6 +539,8 @@ changed:
     CHAIN_MARKERS = ["GARBAGE_FRAG_011_014", "GARBAGE_FRAG_011_015"]
 must_include_files:
 - src/deep_nested.py
+must_include_content:
+- "return 100"
 must_not_include:
 - GARBAGE_FRAG_011_001
 - GARBAGE_FRAG_011_006

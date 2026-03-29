@@ -28,6 +28,7 @@
 #     KEYWORD OVERLAP: has methods named getData/postData similar to fetchData.
 #     But not related to decorators at all.
 
+max_enrichment: 5.6
 initial:
   decorators.ts: |
     export function Logger(target: any, key: string, descriptor: PropertyDescriptor) {

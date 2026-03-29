@@ -4,6 +4,7 @@
 # Trap rationale: file_archiver.py and directory_scanner.py share filesystem
 # vocabulary but are not imported by main.py. *.tmp and *.log must be excluded.
 
+max_enrichment: 8.4
 initial:
   .treemapperignore: |
     *.tmp

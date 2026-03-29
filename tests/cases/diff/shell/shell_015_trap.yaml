@@ -19,6 +19,7 @@
 #   - lib/signal_utils.sh: generic signal handling utilities.
 #     Related trap concern but not sourced by worker.sh.
 
+max_enrichment: 10.9
 initial:
   worker.sh: |
     #!/bin/bash

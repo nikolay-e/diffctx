@@ -26,6 +26,7 @@
 #     DIRECT EDGE: imports UserService, calls getUsers(). But mock setup
 #     doesn't help review the component's usage.
 
+max_enrichment: 5.9
 initial:
   user.service.ts: |
     import { Injectable } from '@angular/core';

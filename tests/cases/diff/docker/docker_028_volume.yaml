@@ -7,6 +7,7 @@
 #   2. Does the app write to these paths (save_data, load_data)?
 #   3. Are paths hardcoded as Path objects matching the VOLUME declarations?
 
+max_enrichment: 3.8
 initial:
   src/app.py: |
     import os

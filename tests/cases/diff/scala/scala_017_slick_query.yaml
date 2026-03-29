@@ -26,6 +26,7 @@
 #     Same "users" table name, same column definitions. But SQL DDL doesn't
 #     help review Slick query correctness.
 
+max_enrichment: 5.8
 initial:
   Tables.scala: |
     import slick.jdbc.PostgresProfile.api._

@@ -4,6 +4,7 @@
 # Trap files:
 #   - src/validator.rs: Input validation with custom errors — "error handling" pattern overlap but no shared error types
 #   - src/decoder.rs: Binary format decoder with errors — "Result-returning parse" vocabulary but independent
+max_enrichment: 4.2
 initial:
   src/lib.rs: |
     pub mod parser;

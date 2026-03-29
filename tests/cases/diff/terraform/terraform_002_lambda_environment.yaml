@@ -30,6 +30,7 @@
 #   - tests/test_processor.py: Integration test for the Lambda function.
 #     References environment variables. But test code, not Terraform.
 
+max_enrichment: 14.0
 initial:
   modules/lambda/main.tf: |
     resource "aws_lambda_function" "processor" {

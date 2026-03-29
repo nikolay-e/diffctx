@@ -3,6 +3,7 @@
 # Reviewer questions: Should encoding errors bubble up or be caught? Is User.self the right decode target?
 # Trap 1: LoggerService.swift — another service class in the project, shares "service" naming but no dep
 # Trap 2: DateFormatHelper.swift — uses JSONEncoder/Foundation patterns, overlapping API but unrelated
+max_enrichment: 9.1
 initial:
   User.swift: |
     struct User: Codable, Equatable {

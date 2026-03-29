@@ -3,6 +3,7 @@
 # Reviewer questions: Does the HPA already manage scaling — will static replicas conflict? Are resource limits adequate for 5 pods?
 # Trap 1: k8s/infra/cluster-autoscaler.yaml — cluster autoscaler config, shares scaling vocabulary but no dep
 # Trap 2: k8s/apps/web-frontend/network-policy.yaml — network policy for same app, shares labels but no dep on replicas
+max_enrichment: 168.8
 initial:
   k8s/apps/web-frontend/deployment.yaml: |
     apiVersion: apps/v1

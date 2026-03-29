@@ -185,9 +185,14 @@ def _is_generated_file(path: Path, content: str) -> bool:
         if part.lower() in _GENERATED_PATH_SEGMENTS:
             return True
 
-    header_lower = "\n".join(content.splitlines()[:5]).lower()
+    header_lower = "\n".join(content.splitlines()[:10]).lower()
     for marker in _GENERATED_CONTENT_MARKERS:
-        if marker in header_lower:
+        if marker not in header_lower:
+            continue
+        if marker == "@generated":
+            if re.search(r"@generated(?![a-z])", header_lower):
+                return True
+        else:
             return True
 
     return False

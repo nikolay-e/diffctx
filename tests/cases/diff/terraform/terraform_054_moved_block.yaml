@@ -26,6 +26,7 @@
 #     References aws_instance.web. HARD TRAP: uses the old resource name.
 #     But monitoring is downstream observation, not a breaking reference.
 
+max_enrichment: 7.8
 initial:
   main.tf: |
     resource "aws_instance" "web" {

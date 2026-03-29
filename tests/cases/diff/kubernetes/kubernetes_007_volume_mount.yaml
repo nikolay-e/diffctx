@@ -30,6 +30,7 @@
 #     Shares "volume" domain and storage vocabulary (accessModes,
 #     storageClassName). But a PVC for elasticsearch has no relation
 #     to ConfigMap/Secret volume mounts in a different deployment.
+max_enrichment: 8.3
 initial:
   config/server.yaml: |
     server:

@@ -26,6 +26,7 @@
 #   - SessionManager, AuditLogger, PasswordHasher: unrelated services.
 #     No structural edges to the exception hierarchy.
 
+max_enrichment: 3.7
 initial:
   src/main/java/com/apigateway/service/UserAccountService.java: |
     package com.apigateway.service;

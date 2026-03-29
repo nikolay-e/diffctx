@@ -1,3 +1,4 @@
+max_enrichment: 10.2
 initial:
   config.yaml: |
     database:
@@ -64,6 +65,8 @@ changed:
         - GARBAGE_FRAG_garbitem2_070
 must_include_files:
 - config.yaml
+must_include_content:
+- "port: 5433"
 must_not_include:
 - GARBAGE_FRAG_garbitem1_070
 - GARBAGE_FRAG_garbitem2_070

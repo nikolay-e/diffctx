@@ -1,10 +1,13 @@
-# Scenario: seed_func changes return; seed.py and far.py both define COMMON_VALUE — tests seed priority
-# Changed: seed.py — seed_func() returns COMMON_VALUE + 100
-# Reviewer needs: seed.py (changed, the seed node must score higher than far.py)
+# Scenario: seed.py changes seed_func(). far.py defines the same COMMON_VALUE
+# constant but has no import relationship — it should be excluded.
+# Changed: seed.py — seed_func() now returns COMMON_VALUE + 100
+# Reviewer needs: seed.py (the changed file with the modified function)
+# Trap: far.py — defines same COMMON_VALUE constant but no dependency on seed.py
 # Trap: global_registry.py — similar constant + function pattern (GLOBAL_SETTING + getter)
 # Trap: config_provider.py — similar constant + function pattern (CONFIG_VALUE + getter)
 # Trap: network_client.py — completely unrelated
 
+max_enrichment: 9.1
 initial:
   seed.py: |
     COMMON_VALUE = 1

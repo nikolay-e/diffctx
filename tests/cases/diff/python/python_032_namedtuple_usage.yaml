@@ -3,6 +3,7 @@
 # Reviewer questions: Are NamedTuple fields accessed correctly? Does color blending work?
 # Trap 1: animation.py — animates shapes with similar Point/Size types but independent definitions
 # Trap 2: layout_engine.py — positions elements, shares "geometry/position" vocabulary but no dep
+max_enrichment: 6.8
 initial:
   geometry.py: |
     from typing import NamedTuple

@@ -23,9 +23,10 @@ _TYPE_DEF_RE = re.compile(
     re.MULTILINE,
 )
 _TYPE_IN_SECTION_RE = re.compile(
-    r"^\s{2,}([A-Z]\w*)\s*(?:\*\s*)?(?:\[[^\]]*\]\s*)?=\s*(?:object|ref\s+object|enum|tuple|concept|distinct|ref|ptr)",
+    r"^\s{2,}([A-Z]\w*)\s*(?:\*\s*)?(?:\[[^\]]*\]\s*)?=\s*(\w+)",
     re.MULTILINE,
 )
+_NIM_TYPE_ASSIGN_KEYWORDS = frozenset({"object", "enum", "tuple", "concept", "distinct", "ref", "ptr"})
 _OBJECT_OF_RE = re.compile(r"of\s+([A-Z]\w*)", re.MULTILINE)
 
 _TYPE_REF_RE = re.compile(r"(?<![a-z_])([A-Z]\w{1,100})\b")
@@ -181,7 +182,7 @@ def _extract_definitions(content: str) -> tuple[set[str], set[str]]:
 
     types: set[str] = set()
     types.update(m.group(1) for m in _TYPE_DEF_RE.finditer(content))
-    types.update(m.group(1) for m in _TYPE_IN_SECTION_RE.finditer(content))
+    types.update(m.group(1) for m in _TYPE_IN_SECTION_RE.finditer(content) if m.group(2) in _NIM_TYPE_ASSIGN_KEYWORDS)
 
     return funcs, types
 
@@ -308,17 +309,21 @@ class NimEdgeBuilder(EdgeBuilder):
     ) -> None:
         type_refs, func_calls = _extract_references(nf.content)
         self_funcs, self_types = _extract_definitions(nf.content)
-        self_type_lower = {t.lower() for t in self_types}
-        self_fn_lower = {fn.lower() for fn in self_funcs}
+        self._link_refs_to_defs(nf, type_refs, {t.lower() for t in self_types}, type_defs, edges, self.type_weight)
+        self._link_refs_to_defs(nf, func_calls, {fn.lower() for fn in self_funcs}, fn_defs, edges, self.fn_weight)
 
-        for type_ref in type_refs:
-            if type_ref.lower() not in self_type_lower:
-                for fid in type_defs.get(type_ref.lower(), []):
+    def _link_refs_to_defs(
+        self,
+        nf: Fragment,
+        refs: set[str],
+        self_names: set[str],
+        defs: dict[str, list[FragmentId]],
+        edges: EdgeDict,
+        weight: float,
+    ) -> None:
+        for ref in refs:
+            key = ref.lower()
+            if key not in self_names:
+                for fid in defs.get(key, []):
                     if fid != nf.id:
-                        self.add_edge(edges, nf.id, fid, self.type_weight)
-
-        for func_call in func_calls:
-            if func_call.lower() not in self_fn_lower:
-                for fid in fn_defs.get(func_call.lower(), []):
-                    if fid != nf.id:
-                        self.add_edge(edges, nf.id, fid, self.fn_weight)
+                        self.add_edge(edges, nf.id, fid, weight)

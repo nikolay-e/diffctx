@@ -16,6 +16,7 @@
 #   - template-engine.ts: renders notification body from templates.
 #     Unrelated step, not invoked in sendNotification.
 
+max_enrichment: 5.4
 initial:
   notifier.ts: |
     export interface Notification {

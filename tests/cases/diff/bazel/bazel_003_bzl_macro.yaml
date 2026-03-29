@@ -13,6 +13,7 @@
 #   - tools/BUILD: uses a different macro, not py_service_library
 #   - services/worker/BUILD: uses plain py_binary, not the macro
 
+max_enrichment: 10.2
 initial:
   macros/service.bzl: |
     def py_service_library(name, srcs, deps = [], port = 8080, visibility = None):

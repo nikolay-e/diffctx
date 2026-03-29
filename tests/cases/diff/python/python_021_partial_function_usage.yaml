@@ -3,6 +3,7 @@
 # Reviewer questions: Are partial args applied correctly? Does format_currency handle negatives?
 # Trap 1: chart_renderer.py — renders charts for reports, shares "report" vocabulary but independent
 # Trap 2: pdf_exporter.py — exports to PDF, shares "report/format" domain but no dep on formatters
+max_enrichment: 4.5
 initial:
   formatters.py: |
     import functools

@@ -42,6 +42,7 @@
 #   - search_index.py: PersonSearchIndex that indexes person records.
 #     Has "person_id", "name" fields. Same domain but independent module.
 
+max_enrichment: 6.5
 initial:
   models/person.py: |
     from typing import Optional, List

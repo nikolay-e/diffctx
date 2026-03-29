@@ -7,6 +7,7 @@
 #   2. Does the app actually serve /metrics on port 9090 or same port?
 #   3. What does the HEALTHCHECK target — does /health exist?
 
+max_enrichment: 5.0
 initial:
   src/app.py: |
     from flask import Flask, jsonify

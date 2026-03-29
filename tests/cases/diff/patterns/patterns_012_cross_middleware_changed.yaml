@@ -59,6 +59,7 @@
 #     request["session_id"] — similar pattern to request["authenticated_at"].
 #     But session management is independent of auth timestamping.
 
+max_enrichment: 7.4
 initial:
   middleware/auth.py: |
     class AuthMiddleware:

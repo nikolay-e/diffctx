@@ -17,6 +17,7 @@
 #     not application scheduler jobs.
 #   - src/task_queue.py: async task queue (deque-based), not cron scheduling.
 
+max_enrichment: 5.0
 initial:
   config/scheduler.yaml: |
     scheduler:

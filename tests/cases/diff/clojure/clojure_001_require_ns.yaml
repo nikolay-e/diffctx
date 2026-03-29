@@ -2,6 +2,7 @@
 # a new function calling the db namespace. Context must include the db namespace
 # source. Noise: other namespaces.
 
+max_enrichment: 15.4
 initial:
   src/myapp/db.clj: |
     (ns myapp.db

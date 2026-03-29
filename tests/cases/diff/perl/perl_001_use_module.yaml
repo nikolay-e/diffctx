@@ -16,6 +16,7 @@
 #   - lib/MyApp/Cache.pm: caching layer — same namespace, plausible
 #     performance concern but UserService doesn't use it
 
+max_enrichment: 8.4
 initial:
   lib/MyApp/Database.pm: |
     package MyApp::Database;

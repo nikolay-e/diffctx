@@ -3,6 +3,7 @@
 # The JS semantic parser must extract the import source from this pattern
 # so that forward dependency edges are built correctly.
 
+max_enrichment: 6.8
 initial:
   src/components/UserProfile.tsx: |
     import React, { useState, useEffect } from 'react';

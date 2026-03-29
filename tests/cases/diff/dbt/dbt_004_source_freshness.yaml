@@ -13,6 +13,7 @@
 #   - models/staging/stg_pageviews.sql: uses source('analytics', 'pageviews'), different source
 #   - models/marts/event_funnel.sql: uses ref(), not source() directly
 
+max_enrichment: 14.0
 initial:
   models/sources.yml: |
     version: 2

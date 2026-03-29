@@ -27,6 +27,7 @@
 #   - middleware/request_pipeline.py: RequestMiddleware with handler chain.
 #     No relationship to User/UserService circular dependency pattern.
 
+max_enrichment: 11.0
 initial:
   models.py: |
     from __future__ import annotations

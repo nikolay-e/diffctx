@@ -7,6 +7,7 @@
 #   - sessions/table.tf: another DynamoDB table for sessions (same resource type, different table)
 #   - email/service.py: email service (unrelated to DynamoDB schema changes)
 
+max_enrichment: 12.9
 initial:
   dynamodb.tf: |
     resource "aws_dynamodb_table" "users" {

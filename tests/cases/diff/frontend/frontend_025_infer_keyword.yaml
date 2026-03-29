@@ -16,6 +16,7 @@
 #   - src/utils/promise.ts: runtime promise utilities (delay, timeout, retry).
 #     Lexical overlap with "Promise" but no type-level dependency.
 
+max_enrichment: 4.2
 initial:
   src/functions.ts: |
     export function createUser(name: string, age: number): { id: string; name: string; age: number } {

@@ -7,6 +7,7 @@
 #   - storage/s3.tf: also has prevent_destroy but on S3 bucket (same meta, different resource)
 #   - iam/roles.tf: IAM role (unrelated to database protection)
 
+max_enrichment: 16.6
 initial:
   database.tf: |
     resource "aws_db_instance" "main" {

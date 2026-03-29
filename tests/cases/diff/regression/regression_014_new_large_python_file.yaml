@@ -18,6 +18,7 @@
 #   - scripts/migrate.py: database migrations — infrastructure concern,
 #     not a runtime dependency of user_service.py.
 
+max_enrichment: 4.8
 initial:
   src/repository.py: |
     from typing import List, Optional

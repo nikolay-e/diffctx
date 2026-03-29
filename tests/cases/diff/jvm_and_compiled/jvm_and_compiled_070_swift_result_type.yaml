@@ -3,6 +3,7 @@
 # Reviewer questions: Is .invalidResponse the right error for nil data? Should process() return something?
 # Trap 1: NetworkMonitor.swift — monitors reachability, shares "network" domain but no dep on DataLoader
 # Trap 2: RetryPolicy.swift — defines retry strategies for failures, shares error-handling vocabulary but unrelated
+max_enrichment: 6.8
 initial:
   APIError.swift: |
     enum APIError: Error {

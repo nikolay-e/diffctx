@@ -40,6 +40,7 @@
 #     Uses the same { postId, body } fields the accessor accesses. Lexical
 #     overlap with "postId" but no import of Schema or accessor types.
 
+max_enrichment: 7.6
 initial:
   src/schema.ts: |
     export interface Schema {

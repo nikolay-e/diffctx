@@ -4,6 +4,7 @@
 # Trap rationale: servicemesh-sidecar.yaml and grpc-health-probe.yaml share
 # multi-port/gRPC vocabulary but are unrelated mesh and tooling configs.
 
+max_enrichment: 10.7
 initial:
   k8s/base/deployment.yaml: |
     apiVersion: apps/v1

@@ -2,6 +2,7 @@
 # Previously broken (TODO 2026-03-07): Dockerfile change showed csrf.py instead.
 # Now fixed — this test guards against regression.
 
+max_enrichment: 13.9
 initial:
   Dockerfile: |
     FROM node:25-alpine AS builder

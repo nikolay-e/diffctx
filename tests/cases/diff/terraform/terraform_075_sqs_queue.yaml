@@ -6,6 +6,7 @@
 #   - dlq/dead_letter.tf: dead letter queue for the same main queue (related but not changed)
 #   - cache/redis.tf: Redis cache (unrelated to message queuing)
 
+max_enrichment: 16.4
 initial:
   sqs.tf: |
     resource "aws_sqs_queue" "tasks" {

@@ -18,6 +18,7 @@
 #     or the test — the service uses implicit types from JSON response.
 #   - auth.ts: authentication functions. Different concern, no import edge.
 
+max_enrichment: 5.0
 initial:
   api.ts: |
     export async function fetchUser(id: string) {

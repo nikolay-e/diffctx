@@ -17,6 +17,7 @@
 #   - R/export_helpers.R: data export — same R/ dir, plausible for
 #     dashboard data flow but not used by server.R
 
+max_enrichment: 12.1
 initial:
   R/data_processing.R: |
     aggregate_by_period <- function(data, date_col, value_col, period = "monthly") {

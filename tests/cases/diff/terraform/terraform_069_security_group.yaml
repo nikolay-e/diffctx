@@ -6,6 +6,7 @@
 #   - database/security.tf: database security group (same resource type, different tier)
 #   - outputs.tf: exports values (unrelated to security group rules)
 
+max_enrichment: 30.8
 initial:
   security.tf: |
     resource "aws_security_group" "web" {

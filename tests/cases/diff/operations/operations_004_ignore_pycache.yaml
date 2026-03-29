@@ -3,6 +3,7 @@
 # Trap rationale: converter.py and formatter.py share math/number vocabulary
 # but are not imported by calculator.py. __pycache__ must be ignored.
 
+max_enrichment: 8.1
 initial:
   calculator.py: |
     from typing import Union

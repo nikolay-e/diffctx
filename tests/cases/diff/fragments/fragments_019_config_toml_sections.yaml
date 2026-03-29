@@ -1,3 +1,4 @@
+max_enrichment: 12.2
 initial:
   config.toml: |
     [database]
@@ -64,6 +65,8 @@ changed:
     items = ["GARBAGE_FRAG_garbitem1_071", "GARBAGE_FRAG_garbitem2_071"]
 must_include_files:
 - config.toml
+must_include_content:
+- "port = 5433"
 must_not_include:
 - garbage_config_071.toml
 add_garbage_files: false

@@ -24,6 +24,7 @@
 #   - auth-middleware.ts: HTTP middleware checking tokens. Same layer
 #     (infrastructure) but not imported or used by UserService.
 
+max_enrichment: 5.0
 initial:
   src/types/user.ts: |
     export interface UserDTO {

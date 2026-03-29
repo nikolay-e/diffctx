@@ -33,6 +33,7 @@
 #     namespace and port vocabulary. But pgbouncer connects via service DNS
 #     which still works with headless services. Its config doesn't help
 #     review whether clusterIP: None is correctly configured.
+max_enrichment: 23.9
 initial:
   k8s/database/statefulset.yaml: |
     apiVersion: apps/v1

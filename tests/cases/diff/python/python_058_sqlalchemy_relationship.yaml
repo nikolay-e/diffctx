@@ -12,6 +12,7 @@
 #   - services/inventory_manager.py: stock level tracking with SKU and quantity,
 #     mentions "item" but is independent of order models
 
+max_enrichment: 7.1
 initial:
   models/order.py: |
     from sqlalchemy import Column, Integer, ForeignKey, String, DateTime, Enum

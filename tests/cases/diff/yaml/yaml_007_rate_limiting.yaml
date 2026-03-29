@@ -13,6 +13,7 @@
 #   - config/throttle.yaml: another limits config but for per-endpoint throttling.
 #   - src/ip_blocker.py: rate-related but blocks IPs, doesn't enforce rate limits.
 
+max_enrichment: 15.5
 initial:
   config/limits.yaml: |
     rate_limit:

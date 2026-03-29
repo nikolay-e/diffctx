@@ -11,6 +11,7 @@
 #   - services/search_index.py: full-text search with document indexing,
 #     mentions "model" in search context but has no ORM connection
 
+max_enrichment: 4.7
 initial:
   models.py: |
     from sqlalchemy import Column, Integer, String, ForeignKey, Boolean, DateTime

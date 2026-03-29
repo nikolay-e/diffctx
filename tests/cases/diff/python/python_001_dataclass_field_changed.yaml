@@ -4,6 +4,7 @@
 # Trap: warehouse.py — has priority-related logic and inventory management, same domain
 # Trap: notifications.py — different service that also references "order" vocabulary
 
+max_enrichment: 35.2
 initial:
   models.py: |
     from dataclasses import dataclass, field

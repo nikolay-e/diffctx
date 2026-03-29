@@ -16,6 +16,7 @@
 #   - src/utils/either.ts: tagged union (Left|Right) with tag: discriminant.
 #     Overlapping concept but different tag field name and no dependency.
 
+max_enrichment: 4.2
 initial:
   src/results.ts: |
     export interface Success<T> {

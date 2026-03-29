@@ -3,6 +3,7 @@
 # Reviewer questions: Are all protocol methods implemented? Does structural subtyping work?
 # Trap 1: validators.py — validates model data, shares "model" vocabulary but no dep on protocols
 # Trap 2: mappers.py — maps between models, shares "model" domain but independent of protocols
+max_enrichment: 5.4
 initial:
   protocols.py: |
     from typing import Protocol, TypeVar, Optional, List, runtime_checkable

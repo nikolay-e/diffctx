@@ -3,6 +3,7 @@
 # Reviewer questions: Is calculate_tax correct for invoice amounts? Are tax rates appropriate?
 # Trap 1: services/reporting.py — generates financial reports, shares billing vocabulary but independent
 # Trap 2: services/notifications.py — sends invoice notifications, shares "invoice" domain but no dep
+max_enrichment: 11.9
 initial:
   utils/tax.py: |
     from typing import Optional, Dict, List, Tuple

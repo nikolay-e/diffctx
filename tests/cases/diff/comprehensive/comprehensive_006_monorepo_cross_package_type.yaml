@@ -20,6 +20,7 @@
 #   - user-analytics.ts: tracks page views per userId string. Uses the
 #     same "user" concept but never imports or constructs a User object.
 
+max_enrichment: 5.8
 initial:
   packages/types/src/user.ts: |
     export interface User {

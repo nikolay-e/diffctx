@@ -1,3 +1,4 @@
+max_enrichment: 24.6
 initial:
   .github/workflows/ci.yml: |
     name: CI
@@ -113,6 +114,8 @@ changed:
     }
 must_include_files:
 - .github/workflows/ci.yml
+must_include_content:
+- "needs: [build, test]"
 must_not_include:
 - GARBAGE_CICD_DOCS_009_INTERVAL_MARKER_E
 - GARBAGE_CICD_DOCS_009_NAMESPACE_MARKER_B

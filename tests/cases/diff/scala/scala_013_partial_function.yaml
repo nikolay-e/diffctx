@@ -15,6 +15,7 @@
 #   - OrderProcessor.scala: processes OrderPlaced events downstream. Same domain
 #     but no PartialFunction composition, processes single events.
 
+max_enrichment: 6.1
 initial:
   Event.scala: |
     sealed trait Event

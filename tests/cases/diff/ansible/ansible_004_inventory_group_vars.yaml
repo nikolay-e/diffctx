@@ -2,6 +2,7 @@
 # production group_vars and a playbook starts using it. Both the
 # playbook and the group_vars file must appear in context.
 
+max_enrichment: 7.2
 initial:
   inventory/production: |
     [webservers]

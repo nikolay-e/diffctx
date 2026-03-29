@@ -37,6 +37,7 @@
 #     SAME fetchProduct(id:) -> Product? pattern. STRUCTURAL TRAP: identical
 #     method signature pattern, same Optional return. Different entity.
 
+max_enrichment: 8.6
 initial:
   Sources/Models/UserRepository.swift: |
     struct User {

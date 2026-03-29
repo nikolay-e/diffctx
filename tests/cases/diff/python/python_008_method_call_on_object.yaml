@@ -3,6 +3,7 @@
 # Reviewer questions: Is user.active check sufficient? What if user.status is DELETED?
 # Trap 1: handlers/session.py — manages user sessions, shares "user" vocabulary but no dep on models/user
 # Trap 2: handlers/notification.py — sends user notifications, shares "user" domain but independent
+max_enrichment: 13.9
 initial:
   models/user.py: |
     from typing import Optional, List, Dict, Any

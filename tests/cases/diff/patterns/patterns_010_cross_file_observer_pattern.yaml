@@ -18,6 +18,7 @@
 #   - utils/stock_data_fetcher.py: fetches stock prices from an external API.
 #     Shares "stock" domain but has no dependency on the observer hierarchy.
 
+max_enrichment: 4.7
 initial:
   observer/subject.py: |
     from abc import ABC, abstractmethod

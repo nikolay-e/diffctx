@@ -1,3 +1,13 @@
+# Scenario: primary.py changes primary_func(). secondary.py defines the same
+# SHARED variable but has no import relationship — should be excluded.
+# Changed: primary.py — primary_func() now returns SHARED + "_modified"
+# Reviewer needs: primary.py (the only changed file)
+# Trap: secondary.py — same SHARED variable but no dependency on primary.py
+# Trap: garbage_shared_config.py — same SHARED identifier and similar function pattern
+# Trap: garbage_primary_mirror.py — defines its own primary_func with same name
+# Trap: garbage_tertiary.py — structural sibling with SHARED variable
+
+max_enrichment: 25.8
 initial:
   primary.py: |
     SHARED = "shared"

@@ -30,6 +30,7 @@
 #     "Config" vocabulary overlap — schema validation is conceptually
 #     related to config structure. But independent module with no
 #     dependency on Config struct or feature flags.
+max_enrichment: 9.8
 initial:
   src/lib.rs: |
     pub mod config;

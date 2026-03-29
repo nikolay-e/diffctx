@@ -30,6 +30,7 @@
 #     pattern, same crate module structure. But ObjectPool manages a
 #     Vec<T> pool with size limits — different semantics, no Container
 #     dependency.
+max_enrichment: 4.0
 initial:
   src/lib.rs: |
     pub mod container;

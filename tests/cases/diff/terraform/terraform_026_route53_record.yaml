@@ -10,6 +10,7 @@
 # Traps: mail_records.tf shares the same route53_record type but is for MX.
 # acm.tf has route53 records too but for certificate validation.
 
+max_enrichment: 7.7
 initial:
   dns.tf: |
     resource "aws_route53_zone" "main" {

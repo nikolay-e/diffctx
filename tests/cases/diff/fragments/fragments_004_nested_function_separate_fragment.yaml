@@ -1,3 +1,4 @@
+max_enrichment: 88.6
 initial:
   src/nested.py: |+
     import sys
@@ -434,6 +435,8 @@ changed:
     CALLBACK_MARKERS = ["GARBAGE_FRAG_010_009", "GARBAGE_FRAG_010_010"]
 must_include_files:
 - src/nested.py
+must_include_content:
+- "return z + 1"
 must_not_include:
 - GARBAGE_FRAG_010_001
 - GARBAGE_FRAG_010_004

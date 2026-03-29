@@ -36,6 +36,7 @@
 #     monetary transactions. Has processOrder() method name that overlaps with
 #     PaymentService->process(). But independent controller.
 
+max_enrichment: 14.3
 initial:
   src/Services/PaymentService.php: |
     <?php

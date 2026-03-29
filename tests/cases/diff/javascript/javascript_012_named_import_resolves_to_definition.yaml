@@ -24,6 +24,7 @@
 #     fetchUser with mock responses. But test mocking doesn't help review
 #     the actual function implementation.
 
+max_enrichment: 13.4
 initial:
   utils.ts: |
     export function fetchUser(id: string): Promise<User> {

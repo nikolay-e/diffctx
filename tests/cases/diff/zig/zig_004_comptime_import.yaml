@@ -3,6 +3,7 @@
 # include the helper module. Noise: modules that also use @import("meta.zig")
 # comptime features but are unrelated to the change.
 
+max_enrichment: 29.0
 initial:
   src/meta.zig: |
     const std = @import("std");

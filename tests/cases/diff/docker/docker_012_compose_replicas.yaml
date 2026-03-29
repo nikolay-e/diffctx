@@ -1,3 +1,4 @@
+max_enrichment: 16.2
 initial:
   src/worker.py: |
     import os
@@ -180,5 +181,8 @@ changed:
     }
 must_include_files:
 - docker-compose.yml
+must_include_content:
+- "replicas: 3"
+- "memory: 256M"
 add_garbage_files: false
 skip_garbage_check: true

@@ -17,6 +17,7 @@
 #   - auth/password_hasher.py: hashes passwords — authenticate() does plain
 #     comparison, doesn't use a hasher.
 
+max_enrichment: 11.1
 initial:
   auth/login.py: |
     def authenticate(username, password):

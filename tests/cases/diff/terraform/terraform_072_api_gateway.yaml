@@ -6,6 +6,7 @@
 #   - admin/api.tf: another API Gateway for admin (same resource types, different API)
 #   - src/handlers/users.py: handler code (unchanged, but sibling file name matches path_part)
 
+max_enrichment: 21.3
 initial:
   api.tf: |
     resource "aws_api_gateway_rest_api" "main" {

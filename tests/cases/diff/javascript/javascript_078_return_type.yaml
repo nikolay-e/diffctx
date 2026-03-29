@@ -32,6 +32,7 @@
 #     { id, name, price, category }. Same factory pattern, same directory.
 #     HARD TRAP: identical createXxx factory pattern with similar return shape.
 
+max_enrichment: 11.1
 initial:
   factory.ts: |
     export function createUser(name: string, age: number) {

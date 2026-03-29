@@ -18,6 +18,7 @@
 #   - src/aggregator.rs: collects statistics (min, max, sum) from i32 slices.
 #     Shares "i32 values" vocabulary with Data but has no import/use relationship.
 
+max_enrichment: 5.8
 initial:
   src/lib.rs: |
     pub mod data;

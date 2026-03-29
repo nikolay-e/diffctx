@@ -14,6 +14,7 @@
 #   - src/config/constants.ts: exports string constants and a `typeof` derived type.
 #     Similar "string types" flavor but no dependency from template_types.ts.
 
+max_enrichment: 4.0
 initial:
   src/events.ts: |
     export type EventCategory = 'user' | 'system' | 'api';

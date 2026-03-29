@@ -7,6 +7,7 @@
 #   - worker/lambda.tf: another Lambda function in the same project (same resource type, different function)
 #   - monitoring/alarms.tf: CloudWatch alarm referencing Lambda metrics (mentions Lambda but not relevant)
 
+max_enrichment: 13.9
 initial:
   main.tf: |
     resource "aws_lambda_function" "api" {

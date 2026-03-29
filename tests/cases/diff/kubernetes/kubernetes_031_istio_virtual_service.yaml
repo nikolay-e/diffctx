@@ -40,6 +40,7 @@
 #     service (inventory). Shares routing vocabulary (strip_path, protocols).
 #     But Kong and Istio are different mesh implementations.
 
+max_enrichment: 4.1
 initial:
   k8s/base/deployment-v1.yaml: |
     apiVersion: apps/v1

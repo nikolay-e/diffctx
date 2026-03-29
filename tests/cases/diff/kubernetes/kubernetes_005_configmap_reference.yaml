@@ -29,6 +29,7 @@
 #     same namespace, same resource type, even has proxy_pass to backend-api
 #     (related service). But nginx server config doesn't help review
 #     whether the app-config key names match the deployment's env vars.
+max_enrichment: 10.7
 initial:
   k8s/base/configmap.yaml: |
     apiVersion: v1

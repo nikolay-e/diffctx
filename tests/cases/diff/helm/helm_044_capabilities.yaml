@@ -36,6 +36,7 @@
 #     Same structure as values.yaml ingress section. Reviewer needs the
 #     DEFAULT values, not per-environment overrides.
 
+max_enrichment: 15.8
 initial:
   templates/ingress.yaml: |
     apiVersion: networking.k8s.io/v1

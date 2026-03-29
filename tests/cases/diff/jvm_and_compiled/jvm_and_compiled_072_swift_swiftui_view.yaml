@@ -3,6 +3,7 @@
 # Reviewer questions: Should user be @Binding or just a let? Is .gray foreground accessible enough?
 # Trap 1: AvatarView.swift — another SwiftUI view rendering user avatars, shares "user" vocabulary but no dep
 # Trap 2: ColorPalette.swift — defines app color constants, shares .foregroundColor styling patterns but unrelated
+max_enrichment: 9.9
 initial:
   User.swift: |
     struct User: Identifiable {

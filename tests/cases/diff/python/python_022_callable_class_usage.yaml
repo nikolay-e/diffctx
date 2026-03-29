@@ -3,6 +3,7 @@
 # Reviewer questions: Is __call__ protocol used correctly? Are processors stateful?
 # Trap 1: task_queue.py — queues callable tasks, shares "callable/process" vocabulary but independent
 # Trap 2: middleware_chain.py — chains middleware callables, shares "handler" domain but no dep
+max_enrichment: 6.5
 initial:
   processor.py: |
     from typing import Callable, Generic, TypeVar, Any, Optional

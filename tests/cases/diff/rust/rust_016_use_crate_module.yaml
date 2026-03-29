@@ -4,6 +4,7 @@
 # Trap files:
 #   - src/slug.rs: URL slug generator — "string manipulation" domain but no import of utils
 #   - src/csv_writer.rs: CSV formatting — "format strings" vocabulary overlap but independent
+max_enrichment: 5.0
 initial:
   src/utils.rs: |
     pub fn format_string(s: &str) -> String {

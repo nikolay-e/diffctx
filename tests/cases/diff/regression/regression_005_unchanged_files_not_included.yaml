@@ -17,6 +17,7 @@
 #   - docs/runbook.md: operations runbook with incident response procedures,
 #     mentions "deployment" and "scaling" but is documentation only
 
+max_enrichment: 9.5
 initial:
   argocd/apps/app-a/values.yaml: |
     replicaCount: 2

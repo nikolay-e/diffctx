@@ -25,6 +25,7 @@
 #   - ProductValidator.kt: Validates Product fields (price > 0, name non-empty).
 #     Uses Product but validates business rules, not field mapping.
 
+max_enrichment: 9.2
 initial:
   src/main/kotlin/com/example/catalog/model/Product.kt: |
     package com.example.catalog.model

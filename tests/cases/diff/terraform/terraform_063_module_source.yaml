@@ -6,6 +6,7 @@
 #   - modules/database/main.tf: another module in the same project (same directory pattern, different concern)
 #   - outputs.tf: exports module outputs but doesn't affect module source
 
+max_enrichment: 11.4
 initial:
   modules/vpc/main.tf: |
     resource "aws_vpc" "main" {

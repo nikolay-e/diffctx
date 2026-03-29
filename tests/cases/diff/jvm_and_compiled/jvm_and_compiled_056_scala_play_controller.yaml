@@ -15,6 +15,7 @@
 #   - JsonFormats.scala: shared JSON formatters for the app.
 #     JSON-adjacent but UserController defines its own implicit format.
 
+max_enrichment: 5.6
 initial:
   routes: |
     GET     /users/:id        controllers.UserController.getUser(id: Long)

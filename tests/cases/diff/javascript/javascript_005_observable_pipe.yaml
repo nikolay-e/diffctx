@@ -15,6 +15,7 @@
 #   - item.service.ts: Angular HTTP service for fetching items.
 #     The component uses inline data, not this service.
 
+max_enrichment: 3.8
 initial:
   transformers.ts: |
     export function filterActive<T extends { active: boolean }>(items: T[]): T[] {

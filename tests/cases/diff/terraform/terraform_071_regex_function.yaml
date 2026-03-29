@@ -54,6 +54,7 @@
 #   - codebuild/project.tf: CI/CD build project. No relationship to
 #     S3 whatsoever.
 
+max_enrichment: 9.8
 initial:
   main.tf: |
     variable "bucket_name" {

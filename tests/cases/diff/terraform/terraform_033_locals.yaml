@@ -7,6 +7,7 @@
 #   - monitoring/tags.tf: similar locals block but for monitoring resources (same pattern)
 #   - networking/vpc.tf: uses tags but for a different resource type (VPC, not instance)
 
+max_enrichment: 5.2
 initial:
   main.tf: |
     resource "aws_instance" "web" {

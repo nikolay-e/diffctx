@@ -32,6 +32,7 @@
 #     Same Pick<User, ...> pattern. HARD TRAP: identical type utility usage
 #     but picks 'id' | 'name' | 'email' | 'password' — different set.
 
+max_enrichment: 5.3
 initial:
   user.ts: |
     export interface User {

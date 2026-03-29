@@ -11,6 +11,7 @@
 #   - services/webhook_dispatcher.py: HTTP webhook delivery with retry logic,
 #     mentions "dispatch" and "payload" but has no Celery dependency
 
+max_enrichment: 6.1
 initial:
   tasks.py: |
     from celery import shared_task

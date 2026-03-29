@@ -7,6 +7,7 @@
 #   - networking/ami_lookup.tf: same data source type but for a network appliance (self-owned)
 #   - packer/web.pkr.hcl: AMI-related but for building, not looking up (different tool)
 
+max_enrichment: 7.2
 initial:
   main.tf: |
     resource "aws_instance" "web" {

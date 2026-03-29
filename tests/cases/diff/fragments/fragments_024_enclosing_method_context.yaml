@@ -1,3 +1,4 @@
+max_enrichment: 24.8
 initial:
   small.py: |+
     from typing import Any
@@ -70,6 +71,8 @@ changed:
     GARBAGE_CONST = "GARBAGE_FRAG_garbconst091"
 must_include_files:
 - small.py
+must_include_content:
+- "return 1"
 must_not_include:
 - GARBAGE_CONST
 - garbage_small_091.py

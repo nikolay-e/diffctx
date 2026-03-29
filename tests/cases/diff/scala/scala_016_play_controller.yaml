@@ -15,6 +15,7 @@
 #   - UserForm.scala: Play form definition for user input validation.
 #     Shares "User" domain but no controller dependency.
 
+max_enrichment: 5.8
 initial:
   routes: |
     GET     /users/:id        controllers.UserController.getUser(id: Long)

@@ -25,6 +25,7 @@
 #     SNS but routes to Slack via Lambda. HARD TRAP: same SNS domain.
 #     But Slack integration is a different delivery channel.
 
+max_enrichment: 13.6
 initial:
   monitoring.tf: |
     # SNS resources

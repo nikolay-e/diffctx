@@ -1,3 +1,37 @@
+# Scenario: entry.py changes main() which calls process1() from a 4-layer
+#   deep import chain: entry -> layer1 -> layer2 -> layer3 -> layer4.
+#   Only entry.py is changed (appends "_modified" to the return value).
+#
+# This tests whether PPR traverses a deep import chain within bounded
+# iterations, surfacing at least the first-hop dependency (layer1.py)
+# that the reviewer needs to understand the change.
+#
+# Diff shows:
+#   entry.py:
+#     - return process1()
+#     + return process1() + "_modified"
+#
+# Reviewer question:
+#   Q1: "main() calls process1() — what does it return? Does the change
+#       break the pipeline?"
+#       -> Needs layer1.py: it defines process1() which returns process2().
+#         The reviewer must see what process1() returns to understand whether
+#         appending "_modified" to its result makes sense. If process1()
+#         returns a non-string, the + operator would fail at runtime.
+#
+# Not needed for comprehension:
+#   - garbage_entry_consumer.py: Imports process1 from layer1 just like
+#     entry.py does. Structural edge to the same dependency. But
+#     consume_entry() and EntryWrapper are unrelated to the change.
+#
+#   - garbage_main_mirror.py: Defines ANOTHER main() — same name,
+#     different module. Lexical trap. Completely unrelated.
+#
+#   - garbage_layer_util.py: Contains "layer" in the name and "_modified"
+#     in a return value. Double lexical trap on both module name pattern
+#     and diff content.
+
+max_enrichment: 9.8
 initial:
   entry.py: |
     from layer1 import process1
@@ -122,23 +156,33 @@ changed:
 
 must_include_files:
 - entry.py
+  # Q1: Reviewer needs to see what process1() returns to evaluate
+  # whether appending "_modified" is safe (type-compatible).
+- layer1.py
 
 must_include_content_from:
   entry.py:
     - 'def main():'
     - return process1() + "_modified"
     - from layer1 import process1
+  layer1.py:
+    - 'def process1():'
 
 must_not_include:
-# Tricky: imports process1 like entry.py
+# --- garbage_entry_consumer.py: imports process1 like entry.py ---
+# Structural edge to the same dependency, but consume_entry() and
+# EntryWrapper are unrelated to the main() change.
 - GARBAGE_PPR033_CONSUMER_A
 - GARBAGE_PPR033_CONSUMER_B
 - GARBAGE_PPR033_WRAPPER_C
-# Tricky: same main() name
+# --- garbage_main_mirror.py: defines another main() ---
+# Lexical trap: same function name, different module, no relation.
 - GARBAGE_PPR033_MAIN_D
 - GARBAGE_PPR033_MAIN_E
 - GARBAGE_PPR033_HELPER_F
-# Tricky: layer* naming, uses "_modified"
+# --- garbage_layer_util.py: "layer" name + "_modified" string ---
+# Double lexical trap: module name matches layer* pattern AND
+# return value matches diff content.
 - GARBAGE_PPR033_LAYER_G
 - GARBAGE_PPR033_LAYER_H
 

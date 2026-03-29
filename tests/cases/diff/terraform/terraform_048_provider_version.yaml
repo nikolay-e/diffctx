@@ -7,6 +7,7 @@
 #   - modules/gcp/versions.tf: GCP provider version (same block pattern, different cloud)
 #   - locals.tf: locals block with common tags (no provider dependency)
 
+max_enrichment: 6.9
 initial:
   versions.tf: |
     terraform {

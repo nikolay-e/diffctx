@@ -17,6 +17,7 @@
 #   - app/services/notification_service.rb: sends notifications to users — same
 #     "user" domain but no dependency from controller.
 
+max_enrichment: 6.3
 initial:
   app/models/user.rb: |
     class User

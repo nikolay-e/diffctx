@@ -11,6 +11,7 @@
 #   - extensions/mail_service.py: another extension with similar constructor,
 #     no dependency on database.py
 
+max_enrichment: 5.8
 initial:
   database.py: |
     from flask_sqlalchemy import SQLAlchemy

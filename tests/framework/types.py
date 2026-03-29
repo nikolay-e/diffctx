@@ -23,6 +23,7 @@ class YamlTestCase:
     must_not_include: list[str] = field(default_factory=list)
     must_include_content_from: dict[str, list[str]] = field(default_factory=dict)
     must_not_include_files: list[str] = field(default_factory=list)
+    must_not_include_content_from: dict[str, list[str]] = field(default_factory=dict)
     max_fragments: int | None = None
     max_files: int | None = None
     max_fragments_per_file: int | None = None

@@ -1,3 +1,4 @@
+max_enrichment: 108.0
 initial:
   src/enclosing.py: |+
     from typing import Optional, Dict, List, Any, Callable
@@ -502,6 +503,8 @@ changed:
     STATE_MARKERS = ["GARBAGE_FRAG_090_013", "GARBAGE_FRAG_090_014", "GARBAGE_FRAG_090_015"]
 must_include_files:
 - src/enclosing.py
+must_include_content:
+- "y = 3"
 must_not_include:
 - GARBAGE_FRAG_090_001
 - GARBAGE_FRAG_090_006

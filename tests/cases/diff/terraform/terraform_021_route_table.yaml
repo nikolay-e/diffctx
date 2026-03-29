@@ -10,6 +10,7 @@
 #
 # Traps: public_routes.tf is same resource type but routes via IGW.
 
+max_enrichment: 7.1
 initial:
   network.tf: |
     resource "aws_vpc" "main" {

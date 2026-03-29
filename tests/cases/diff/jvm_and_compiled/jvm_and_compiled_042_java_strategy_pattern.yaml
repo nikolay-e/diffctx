@@ -16,6 +16,7 @@
 #   - src/main/java/com/example/TransactionLog.java: logs payment transactions.
 #     Shares payment domain terms but not imported by any changed file.
 
+max_enrichment: 3.8
 initial:
   src/main/java/com/example/PaymentProcessor.java: |
     package com.example;

@@ -30,6 +30,7 @@
 #   - vitest.config.ts: Test framework configuration. Same test domain.
 #     But config doesn't help review test correctness.
 
+max_enrichment: 5.3
 initial:
   src/callback.ts: |
     export type Callback = (value: number) => void;

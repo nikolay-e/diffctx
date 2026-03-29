@@ -27,6 +27,7 @@
 #   - monitoring/cdn_alarms.tf: CloudWatch alarms for CloudFront metrics.
 #     Same CloudFront domain. But monitoring is observation.
 
+max_enrichment: 5.6
 initial:
   cdn.tf: |
     # CDN resources

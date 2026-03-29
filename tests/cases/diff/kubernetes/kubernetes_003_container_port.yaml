@@ -29,6 +29,7 @@
 #     same namespace (default). Shares Deployment kind and similar structure.
 #     But different app entirely — its Celery worker config has no relation
 #     to the FastAPI app's port configuration.
+max_enrichment: 98.4
 initial:
   src/main.py: |
     from fastapi import FastAPI

@@ -28,6 +28,7 @@
 #     Shares port vocabulary (containerPort 80, 443) and cluster namespace.
 #     But ingress controller config doesn't help review whether the
 #     backend's DATABASE_* env vars match the application's expectations.
+max_enrichment: 10.2
 initial:
   src/config.py: |
     import os

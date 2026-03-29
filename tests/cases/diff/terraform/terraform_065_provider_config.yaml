@@ -25,6 +25,7 @@
 #   - outputs.tf: Exports resource ARNs. References the same resources as
 #     main.tf but doesn't affect region placement.
 
+max_enrichment: 11.6
 initial:
   provider.tf: |
     provider "aws" {

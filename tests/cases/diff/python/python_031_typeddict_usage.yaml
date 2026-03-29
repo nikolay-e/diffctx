@@ -36,6 +36,7 @@
 #     config dicts. "Config" domain overlap — both deal with configuration
 #     dictionaries. But config_merger works on plain dicts, doesn't import
 #     AppConfig or DatabaseConfig, and doesn't affect how loader.py loads.
+max_enrichment: 5.3
 initial:
   types.py: |
     from typing import TypedDict, Optional

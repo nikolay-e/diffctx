@@ -6,6 +6,7 @@
 #   - s3_encryption/kms.tf: another KMS key specifically for S3 (same resource type, different purpose)
 #   - src/encrypt.py: encryption code using boto3 (application code, not infrastructure)
 
+max_enrichment: 14.6
 initial:
   kms.tf: |
     resource "aws_kms_key" "main" {

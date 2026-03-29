@@ -41,6 +41,7 @@
 #     CORS is configured entirely via annotations — the ConfigMap is for
 #     application-level CORS, a separate concern.
 
+max_enrichment: 7.6
 initial:
   k8s/base/deployment.yaml: |
     apiVersion: apps/v1

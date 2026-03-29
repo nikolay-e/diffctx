@@ -5,6 +5,7 @@
 # Real-world: lingua-quiz commit 14f3470 — api/admin.ts missed as
 # dependency of useAdminPage.ts which uses this exact pattern.
 
+max_enrichment: 5.6
 initial:
   src/pages/admin/useAdminPage.ts: |
     import adminApi, { type VocabularyItemCreate, type VocabularyItemUpdate } from '../../api/admin';

@@ -15,6 +15,7 @@
 #   - "How does the email notification template work?" (no connection to this change)
 #   - "What's in the test utilities?" (no connection to process_order)
 
+max_enrichment: 7.6
 initial:
   src/orders/processor.py: |
     from .models import Order, OrderItem

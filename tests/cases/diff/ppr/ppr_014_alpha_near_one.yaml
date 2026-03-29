@@ -1,162 +1,314 @@
-# Scenario: func0 in a 10-function chain gets return value — tests alpha near 1.0 behavior
-# Changed: test.py — func0() returns 1, deep chain func0->func1->...->func9
-# Reviewer needs: test.py (changed, entire chain is in one file)
-# Trap: alt_processor.py — defines func0() with different implementation, name collision
-# Trap: deep_pipeline.py — similar deep chain structure (step0->step1->step2)
-# Trap: app_settings.py — completely unrelated configuration file
+# Scenario: deep_chain_base_change
+#   A 10-function chain across separate files where the BASE function
+#   (position 0) changes its return value. Each function imports and
+#   calls the previous one, using its return value in a computation:
+#     fetch_config -> parse_config -> validate_schema -> extract_defaults ->
+#     merge_overrides -> resolve_paths -> expand_templates ->
+#     apply_constraints -> compile_output -> write_manifest
+#
+# Diff shows:
+#   layer0_fetch.py:
+#     - return {"version": 1, "entries": []}
+#     + return {"version": 2, "entries": [], "strict": True}
+#     Config format version bumped, new "strict" key added.
+#     Every downstream function receives a dict with a new key.
+#
+# Reviewer questions:
+#   Q1: "Who first consumes fetch_config's return value?"
+#       -> layer1_parse.py imports fetch_config, accesses config["version"]
+#         and config["entries"]. Reviewer must check whether parse_config
+#         handles version=2 correctly and whether the new "strict" key
+#         causes KeyError or unexpected behavior.
+#
+#   Q2: "Does any downstream function access config keys by name?"
+#       -> layer2_validate.py checks 'if "version" in schema' — might be
+#         affected by the version bump. But the IMMEDIATE caller
+#         (layer1_parse) is most critical for review.
+#
+# Not needed for comprehension:
+#   - alt_config_loader.py: Defines its own fetch_config() returning a
+#     completely different structure. Name collision trap.
+#
+#   - garbage_schema_check.py: Has validate_schema-like naming with
+#     GARBAGE markers. Different module.
+#
+#   - layer8_compile.py / layer9_write.py: Far downstream. Their logic
+#     doesn't help review the config format change at the base.
 
+max_enrichment: 22.0
 initial:
-  test.py: |
-    def func0():
-        pass
+  layer0_fetch.py: |
+    def fetch_config():
+        return {"version": 1, "entries": []}
 
-    def func1():
-        func0()
+  layer1_parse.py: |
+    from layer0_fetch import fetch_config
 
-    def func2():
-        func1()
+    def parse_config():
+        config = fetch_config()
+        version = config["version"]
+        entries = config["entries"]
+        return {"version": version, "items": entries}
 
-    def func3():
-        func2()
+  layer2_validate.py: |
+    from layer1_parse import parse_config
 
-    def func4():
-        func3()
+    def validate_schema():
+        schema = parse_config()
+        if "version" not in schema:
+            raise ValueError("missing version")
+        return schema
 
-    def func5():
-        func4()
+  layer3_defaults.py: |
+    from layer2_validate import validate_schema
 
-    def func6():
-        func5()
+    def extract_defaults():
+        validated = validate_schema()
+        validated.setdefault("timeout", 30)
+        return validated
 
-    def func7():
-        func6()
+  layer4_merge.py: |
+    from layer3_defaults import extract_defaults
 
-    def func8():
-        func7()
+    def merge_overrides(overrides=None):
+        defaults = extract_defaults()
+        if overrides:
+            defaults.update(overrides)
+        return defaults
 
-    def func9():
-        func8()
+  layer5_resolve.py: |
+    from layer4_merge import merge_overrides
 
-  alt_processor.py: |
-    def func0():
-        return "alternate_implementation"
+    def resolve_paths():
+        merged = merge_overrides()
+        merged["base_path"] = "/opt/app"
+        return merged
 
-    def process():
-        return func0()
+  layer6_expand.py: |
+    from layer5_resolve import resolve_paths
 
-    class AltProcessor:
-        def run(self):
-            return func0()
-  deep_pipeline.py: |
-    def step0():
-        return 0
+    def expand_templates():
+        resolved = resolve_paths()
+        resolved["expanded"] = True
+        return resolved
 
-    def step1():
-        return step0() + 1
+  layer7_constrain.py: |
+    from layer6_expand import expand_templates
 
-    def step2():
-        return step1() + 1
+    def apply_constraints():
+        expanded = expand_templates()
+        if expanded.get("timeout", 0) > 120:
+            expanded["timeout"] = 120
+        return expanded
 
-    class DeepPipelineRunner:
-        def execute(self):
-            return step2()
-  app_settings.py: |
-    CONFIG_PATH = "/etc/config"
-    RUN_MODE = "production"
+  layer8_compile.py: |
+    from layer7_constrain import apply_constraints
+    GARBAGE_PPR014_COMPILE_A = "compile_stage"
+    GARBAGE_PPR014_COMPILE_B = 0
 
-    class AppConfig:
+    def compile_output():
+        constrained = apply_constraints()
+        GARBAGE_PPR014_COMPILE_C = True
+        return {"compiled": True, "config": constrained}
+
+  layer9_write.py: |
+    from layer8_compile import compile_output
+    GARBAGE_PPR014_WRITE_D = "write_stage"
+    GARBAGE_PPR014_WRITE_E = "/tmp/out"
+
+    def write_manifest():
+        compiled = compile_output()
+        GARBAGE_PPR014_WRITE_F = "done"
+        return f"manifest: {compiled}"
+
+  alt_config_loader.py: |
+    GARBAGE_PPR014_ALT_G = "alt_loader"
+    GARBAGE_PPR014_ALT_H = True
+
+    def fetch_config():
+        GARBAGE_PPR014_ALT_I = "/etc/alt.conf"
+        return {"type": "alt", "path": GARBAGE_PPR014_ALT_I}
+
+    class AltConfigManager:
+        GARBAGE_PPR014_ALT_J = "manager"
+
         def load(self):
-            pass
+            return fetch_config()
+
+  garbage_schema_check.py: |
+    GARBAGE_PPR014_SCHEMA_K = "schema_check"
+    GARBAGE_PPR014_SCHEMA_L = False
+
+    def validate_schema(data):
+        GARBAGE_PPR014_SCHEMA_M = ["version", "type"]
+        return all(k in data for k in GARBAGE_PPR014_SCHEMA_M)
+
+    class SchemaValidator:
+        GARBAGE_PPR014_SCHEMA_N = 1
+
+        def check(self, data):
+            return validate_schema(data)
 
 changed:
-  test.py: |
-    def func0():
-        return 1
+  layer0_fetch.py: |
+    def fetch_config():
+        return {"version": 2, "entries": [], "strict": True}
 
-    def func1():
-        func0()
+  layer1_parse.py: |
+    from layer0_fetch import fetch_config
 
-    def func2():
-        func1()
+    def parse_config():
+        config = fetch_config()
+        version = config["version"]
+        entries = config["entries"]
+        return {"version": version, "items": entries}
 
-    def func3():
-        func2()
+  layer2_validate.py: |
+    from layer1_parse import parse_config
 
-    def func4():
-        func3()
+    def validate_schema():
+        schema = parse_config()
+        if "version" not in schema:
+            raise ValueError("missing version")
+        return schema
 
-    def func5():
-        func4()
+  layer3_defaults.py: |
+    from layer2_validate import validate_schema
 
-    def func6():
-        func5()
+    def extract_defaults():
+        validated = validate_schema()
+        validated.setdefault("timeout", 30)
+        return validated
 
-    def func7():
-        func6()
+  layer4_merge.py: |
+    from layer3_defaults import extract_defaults
 
-    def func8():
-        func7()
+    def merge_overrides(overrides=None):
+        defaults = extract_defaults()
+        if overrides:
+            defaults.update(overrides)
+        return defaults
 
-    def func9():
-        func8()
+  layer5_resolve.py: |
+    from layer4_merge import merge_overrides
 
-  alt_processor.py: |
-    def func0():
-        return "alternate_implementation"
+    def resolve_paths():
+        merged = merge_overrides()
+        merged["base_path"] = "/opt/app"
+        return merged
 
-    def process():
-        return func0()
+  layer6_expand.py: |
+    from layer5_resolve import resolve_paths
 
-    class AltProcessor:
-        def run(self):
-            return func0()
-  deep_pipeline.py: |
-    def step0():
-        return 0
+    def expand_templates():
+        resolved = resolve_paths()
+        resolved["expanded"] = True
+        return resolved
 
-    def step1():
-        return step0() + 1
+  layer7_constrain.py: |
+    from layer6_expand import expand_templates
 
-    def step2():
-        return step1() + 1
+    def apply_constraints():
+        expanded = expand_templates()
+        if expanded.get("timeout", 0) > 120:
+            expanded["timeout"] = 120
+        return expanded
 
-    class DeepPipelineRunner:
-        def execute(self):
-            return step2()
-  app_settings.py: |
-    CONFIG_PATH = "/etc/config"
-    RUN_MODE = "production"
+  layer8_compile.py: |
+    from layer7_constrain import apply_constraints
+    GARBAGE_PPR014_COMPILE_A = "compile_stage"
+    GARBAGE_PPR014_COMPILE_B = 0
 
-    class AppConfig:
+    def compile_output():
+        constrained = apply_constraints()
+        GARBAGE_PPR014_COMPILE_C = True
+        return {"compiled": True, "config": constrained}
+
+  layer9_write.py: |
+    from layer8_compile import compile_output
+    GARBAGE_PPR014_WRITE_D = "write_stage"
+    GARBAGE_PPR014_WRITE_E = "/tmp/out"
+
+    def write_manifest():
+        compiled = compile_output()
+        GARBAGE_PPR014_WRITE_F = "done"
+        return f"manifest: {compiled}"
+
+  alt_config_loader.py: |
+    GARBAGE_PPR014_ALT_G = "alt_loader"
+    GARBAGE_PPR014_ALT_H = True
+
+    def fetch_config():
+        GARBAGE_PPR014_ALT_I = "/etc/alt.conf"
+        return {"type": "alt", "path": GARBAGE_PPR014_ALT_I}
+
+    class AltConfigManager:
+        GARBAGE_PPR014_ALT_J = "manager"
+
         def load(self):
-            pass
+            return fetch_config()
+
+  garbage_schema_check.py: |
+    GARBAGE_PPR014_SCHEMA_K = "schema_check"
+    GARBAGE_PPR014_SCHEMA_L = False
+
+    def validate_schema(data):
+        GARBAGE_PPR014_SCHEMA_M = ["version", "type"]
+        return all(k in data for k in GARBAGE_PPR014_SCHEMA_M)
+
+    class SchemaValidator:
+        GARBAGE_PPR014_SCHEMA_N = 1
+
+        def check(self, data):
+            return validate_schema(data)
 
 # === Assertions ===
 
-must_include:
-- func0
-
 must_include_files:
-- test.py
+  - layer0_fetch.py
+  # Q1: immediate caller of fetch_config — reviewer checks how
+  # config["version"] and config["entries"] are accessed, and
+  # whether the new "strict" key causes issues.
+  - layer1_parse.py
 
 must_include_content_from:
-  test.py:
-    - 'def func0():'
-    - return 1
+  layer0_fetch.py:
+    - "def fetch_config():"
+    - '"version": 2'
+    - '"strict": True'
+  layer1_parse.py:
+    - "from layer0_fetch import fetch_config"
+    - 'config = fetch_config()'
+    - 'version = config["version"]'
 
 must_not_include:
-- AltProcessor
-- alternate_implementation
-- DeepPipelineRunner
-- CONFIG_PATH
-- RUN_MODE
+  # --- alt_config_loader.py: name collision, own fetch_config() ---
+  - GARBAGE_PPR014_ALT_G
+  - GARBAGE_PPR014_ALT_H
+  - GARBAGE_PPR014_ALT_I
+  - GARBAGE_PPR014_ALT_J
+  - AltConfigManager
+  # --- garbage_schema_check.py: name collision, own validate_schema() ---
+  - GARBAGE_PPR014_SCHEMA_K
+  - GARBAGE_PPR014_SCHEMA_L
+  - GARBAGE_PPR014_SCHEMA_M
+  - GARBAGE_PPR014_SCHEMA_N
+  - SchemaValidator
+  # --- layer8/layer9: far downstream, no direct relevance ---
+  - GARBAGE_PPR014_COMPILE_A
+  - GARBAGE_PPR014_COMPILE_B
+  - GARBAGE_PPR014_COMPILE_C
+  - GARBAGE_PPR014_WRITE_D
+  - GARBAGE_PPR014_WRITE_E
+  - GARBAGE_PPR014_WRITE_F
 
 must_not_include_files:
-- alt_processor.py
-- deep_pipeline.py
-- app_settings.py
+  - alt_config_loader.py
+  - garbage_schema_check.py
+  - layer8_compile.py
+  - layer9_write.py
 
 max_fragments: 6
-max_files: 2
+max_files: 4
 add_garbage_files: false
 skip_garbage_check: true

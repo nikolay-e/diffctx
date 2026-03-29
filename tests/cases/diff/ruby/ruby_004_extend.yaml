@@ -17,6 +17,7 @@
 #   - lib/query_builder.rb: SQL query construction — similar to where() semantics
 #     but ClassMethods.where uses Ruby's select, not SQL.
 
+max_enrichment: 8.3
 initial:
   lib/class_methods.rb: |
     module ClassMethods

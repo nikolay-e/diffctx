@@ -22,6 +22,7 @@
 #   - MetricsCollector.scala: ZIO-based metrics service that also uses ZLayer.
 #     Same ZIO patterns but completely independent service — no import edge.
 
+max_enrichment: 4.5
 initial:
   Client.scala: |
     import zio._

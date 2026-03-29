@@ -53,6 +53,7 @@
 #     But testing connection lifecycle doesn't help review data-seeding or
 #     transaction-wrapping fixture logic.
 
+max_enrichment: 10.7
 initial:
   src/database.py: |
     import logging

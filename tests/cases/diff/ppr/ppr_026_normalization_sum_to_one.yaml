@@ -1,10 +1,13 @@
-# Scenario: mod0 and mod2 change return values (100, 200); mod1/mod3/mod4 unchanged — normalization test
-# Changed: mod0.py returns 100, mod2.py returns 200 (both changed)
-# Reviewer needs: mod0.py (changed) + mod2.py (changed)
+# Scenario: Two modules (mod0.py and mod2.py) both change return values.
+# Both should appear in context. Files with similar function names
+# (func_registry, numeric_processor) should be excluded.
+# Changed: mod0.py — func0() now returns 100; mod2.py — func2() now returns 200
+# Reviewer needs: mod0.py + mod2.py (both changed)
 # Trap: func_registry.py — defines func0/func2 with same names, name collision
 # Trap: numeric_processor.py — returns 100/200 like the changed values, value overlap
 # Trap: mod_validator.py — structural sibling matching modN naming convention
 
+max_enrichment: 5.3
 initial:
   mod0.py: |
     def func0():

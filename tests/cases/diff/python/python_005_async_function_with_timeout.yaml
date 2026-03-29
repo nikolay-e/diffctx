@@ -3,6 +3,7 @@
 # Reviewer questions: How do callers handle timeouts? Does FetchStatus.TIMEOUT get used?
 # Trap 1: rate_limiter.py — async rate limiting, shares "async" vocabulary but no import from async_utils
 # Trap 2: health_check.py — async health checks with timeouts, similar domain but independent
+max_enrichment: 6.2
 initial:
   async_utils.py: |
     import asyncio

@@ -26,6 +26,7 @@
 #   - security/iam.tf: IAM instance profile attached to the web instance. Same
 #     instance, but IAM permissions are orthogonal to AMI selection.
 
+max_enrichment: 14.1
 initial:
   data.tf: |
     data "aws_ami" "amazon_linux" {

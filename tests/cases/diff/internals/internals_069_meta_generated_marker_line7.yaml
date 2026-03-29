@@ -1,0 +1,170 @@
+# Scenario: Meta-style @generated marker appears on line 7+ (after 6-line copyright header).
+#
+# The @generated SignedSource marker is standard in Meta (React Native, etc.) codebases.
+# The copyright header takes lines 1-6, and @generated appears on line 7.
+# The generated file detection must scan enough lines to catch this pattern.
+#
+# Expected: The generated file (feature_flags.kt) should be detected as generated
+# and receive at most 5 fragments with 30-line truncation.
+# The actual changed file (config.py) must appear in output.
+
+max_enrichment: 15.0
+initial:
+  config.py: |
+    FEATURE_FLAGS = {
+        "dark_mode": True,
+        "beta_access": False,
+    }
+
+    def get_flag(name: str) -> bool:
+        return FEATURE_FLAGS.get(name, False)
+  generated/feature_flags.kt: |
+    /*
+     * Copyright (c) Meta Platforms, Inc. and affiliates.
+     *
+     * This source code is licensed under the MIT license found in the
+     * LICENSE file in the root directory of this source tree.
+     *
+     * @generated SignedSource<<abcdef1234567890>>
+     */
+
+    package com.facebook.react.internal.featureflags
+
+    object ReactNativeFeatureFlagsDefaults {
+        fun enableMicrotasks(): Boolean = false
+        fun enableSpannableBuildingUnification(): Boolean = false
+        fun inspectorEnableCxxInspectorPackagerConnection(): Boolean = false
+        fun inspectorEnableModernCDPRegistry(): Boolean = false
+        fun useModernRuntimeScheduler(): Boolean = false
+        fun animatedShouldDebounceQueueFlush(): Boolean = false
+        fun animatedShouldUseSingleOp(): Boolean = false
+        fun enableAccessToHostTreeInFabric(): Boolean = false
+        fun enableAlignItemsBaselineOnFabricIOS(): Boolean = false
+        fun enableBridgelessArchitecture(): Boolean = false
+        fun enableCleanTextInputYogaNode(): Boolean = false
+        fun enableDeletionOfUnmountedViews(): Boolean = false
+        fun enableFabricLogs(): Boolean = false
+        fun enableFabricRendererExclusively(): Boolean = false
+        fun enableGranularShadowTreeStateReconciliation(): Boolean = false
+        fun enableLayoutAnimationsOnAndroid(): Boolean = false
+        fun enableLayoutAnimationsOnIOS(): Boolean = false
+        fun enableLongTaskAPI(): Boolean = false
+        fun enableNewBackgroundAndBorderDrawables(): Boolean = false
+        fun enablePreciseSchedulingForPremountItemsOnFabric(): Boolean = false
+        fun enablePropsUpdateReconciliationAndroid(): Boolean = false
+        fun enableReportEventPaintTime(): Boolean = false
+        fun enableSynchronousStateUpdates(): Boolean = false
+        fun enableUIConsistency(): Boolean = false
+        fun enableViewRecycling(): Boolean = false
+        fun excludeYogaFromRawProps(): Boolean = false
+        fun fixMountingCoordinatorReportedPendingTransactionsOnAndroid(): Boolean = false
+        fun forceBatchingMountItemsOnAndroid(): Boolean = false
+        fun fuseboxEnabledDebug(): Boolean = false
+        fun fuseboxEnabledRelease(): Boolean = false
+        fun initEagerTurboModulesOnNativeModulesQueueAndroid(): Boolean = false
+        fun lazyAnimationCallbacks(): Boolean = false
+        fun loadVectorDrawablesOnImages(): Boolean = false
+        fun traceTurboModulePromiseRejectionsOnAndroid(): Boolean = false
+        fun useAlwaysAvailableJSErrorHandling(): Boolean = false
+        fun useFabricInterop(): Boolean = false
+        fun useImmediateExecutorInAndroidBridgeless(): Boolean = false
+        fun useNativeViewConfigsInBridgelessMode(): Boolean = false
+        fun useOptimisedViewPreallocationOnAndroid(): Boolean = false
+        fun useOptimizedEventBatchingOnAndroid(): Boolean = false
+        fun useRuntimeShadowNodeReferenceUpdate(): Boolean = false
+        fun useTurboModuleInterop(): Boolean = false
+        fun useTurboModules(): Boolean = false
+    }
+  garbage_int069_unrelated.py: |
+    GARBAGE_INT069_MARKER_A = "noise_a"
+    def process_garbage():
+        return "GARBAGE_INT069_MARKER_B"
+    class GarbageHandler:
+        GARBAGE_INT069_MARKER_C = "noise_c"
+  garbage_int069_extra.py: |
+    GARBAGE_INT069_EXTRA_MARKER_A = "extra_a"
+    def extra_func():
+        return "GARBAGE_INT069_EXTRA_MARKER_B"
+changed:
+  config.py: |
+    FEATURE_FLAGS = {
+        "dark_mode": True,
+        "beta_access": False,
+        "long_task_api": True,
+    }
+
+    def get_flag(name: str) -> bool:
+        return FEATURE_FLAGS.get(name, False)
+  generated/feature_flags.kt: |
+    /*
+     * Copyright (c) Meta Platforms, Inc. and affiliates.
+     *
+     * This source code is licensed under the MIT license found in the
+     * LICENSE file in the root directory of this source tree.
+     *
+     * @generated SignedSource<<abcdef1234567891>>
+     */
+
+    package com.facebook.react.internal.featureflags
+
+    object ReactNativeFeatureFlagsDefaults {
+        fun enableMicrotasks(): Boolean = false
+        fun enableSpannableBuildingUnification(): Boolean = false
+        fun inspectorEnableCxxInspectorPackagerConnection(): Boolean = false
+        fun inspectorEnableModernCDPRegistry(): Boolean = false
+        fun useModernRuntimeScheduler(): Boolean = false
+        fun animatedShouldDebounceQueueFlush(): Boolean = false
+        fun animatedShouldUseSingleOp(): Boolean = false
+        fun enableAccessToHostTreeInFabric(): Boolean = false
+        fun enableAlignItemsBaselineOnFabricIOS(): Boolean = false
+        fun enableBridgelessArchitecture(): Boolean = false
+        fun enableCleanTextInputYogaNode(): Boolean = false
+        fun enableDeletionOfUnmountedViews(): Boolean = false
+        fun enableFabricLogs(): Boolean = false
+        fun enableFabricRendererExclusively(): Boolean = false
+        fun enableGranularShadowTreeStateReconciliation(): Boolean = false
+        fun enableLayoutAnimationsOnAndroid(): Boolean = false
+        fun enableLayoutAnimationsOnIOS(): Boolean = false
+        fun enableLongTaskAPI(): Boolean = true
+        fun enableNewBackgroundAndBorderDrawables(): Boolean = false
+        fun enablePreciseSchedulingForPremountItemsOnFabric(): Boolean = false
+        fun enablePropsUpdateReconciliationAndroid(): Boolean = false
+        fun enableReportEventPaintTime(): Boolean = false
+        fun enableSynchronousStateUpdates(): Boolean = false
+        fun enableUIConsistency(): Boolean = false
+        fun enableViewRecycling(): Boolean = false
+        fun excludeYogaFromRawProps(): Boolean = false
+        fun fixMountingCoordinatorReportedPendingTransactionsOnAndroid(): Boolean = false
+        fun forceBatchingMountItemsOnAndroid(): Boolean = false
+        fun fuseboxEnabledDebug(): Boolean = false
+        fun fuseboxEnabledRelease(): Boolean = false
+        fun initEagerTurboModulesOnNativeModulesQueueAndroid(): Boolean = false
+        fun lazyAnimationCallbacks(): Boolean = false
+        fun loadVectorDrawablesOnImages(): Boolean = false
+        fun traceTurboModulePromiseRejectionsOnAndroid(): Boolean = false
+        fun useAlwaysAvailableJSErrorHandling(): Boolean = false
+        fun useFabricInterop(): Boolean = false
+        fun useImmediateExecutorInAndroidBridgeless(): Boolean = false
+        fun useNativeViewConfigsInBridgelessMode(): Boolean = false
+        fun useOptimisedViewPreallocationOnAndroid(): Boolean = false
+        fun useOptimizedEventBatchingOnAndroid(): Boolean = false
+        fun useRuntimeShadowNodeReferenceUpdate(): Boolean = false
+        fun useTurboModuleInterop(): Boolean = false
+        fun useTurboModules(): Boolean = false
+    }
+must_include_files:
+  - config.py
+must_include_content_from:
+  config.py:
+    - long_task_api
+must_not_include:
+  - GARBAGE_INT069_MARKER_A
+  - GARBAGE_INT069_MARKER_B
+  - GARBAGE_INT069_MARKER_C
+  - GARBAGE_INT069_EXTRA_MARKER_A
+  - GARBAGE_INT069_EXTRA_MARKER_B
+must_not_include_files:
+  - garbage_int069_unrelated.py
+  - garbage_int069_extra.py
+max_fragments: 8
+max_files: 3

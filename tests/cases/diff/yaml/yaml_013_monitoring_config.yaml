@@ -18,6 +18,7 @@
 #   - src/health_check.py: liveness/readiness probes, not Prometheus
 #     metrics endpoint.
 
+max_enrichment: 10.1
 initial:
   config/monitoring.yaml: |
     metrics:

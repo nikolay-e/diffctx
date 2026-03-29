@@ -24,6 +24,7 @@
 #     References the web ASG. HARD TRAP: same ASG reference. But
 #     monitoring is observation.
 
+max_enrichment: 11.1
 initial:
   compute.tf: |
     resource "aws_launch_template" "web" {

@@ -1,3 +1,4 @@
+max_enrichment: 26.2
 initial:
   partial_broken.py: |
     import sys
@@ -62,6 +63,8 @@ changed:
     GARBAGE_PARTIAL_CONST = "GARBAGE_FRAG_partialconst031"
 must_include_files:
 - partial_broken.py
+must_include_content:
+- "return 100"
 must_not_include:
 - GARBAGE_PARTIAL_CONST
 - garbage_partial_031.py

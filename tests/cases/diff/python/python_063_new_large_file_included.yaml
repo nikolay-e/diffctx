@@ -12,6 +12,7 @@
 #   - caching/cache_manager.py: key-value cache with TTL, uses "get/set"
 #     vocabulary but has no dependency on analytics modules
 
+max_enrichment: 4.2
 initial:
   src/analytics/service.py: |
     from src.analytics.stats import calculate_mean, calculate_median

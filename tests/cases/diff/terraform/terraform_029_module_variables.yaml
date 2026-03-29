@@ -26,6 +26,7 @@
 #   - modules/app/outputs.tf: Module outputs. Same module directory but
 #     outputs are the other direction (data flowing out, not in).
 
+max_enrichment: 13.4
 initial:
   modules/app/main.tf: |
     resource "aws_lambda_function" "app" {

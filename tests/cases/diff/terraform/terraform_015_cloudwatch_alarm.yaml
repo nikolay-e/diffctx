@@ -11,6 +11,7 @@
 # Traps: monitoring_memory.tf has same alarm type but for memory metric.
 # logging.tf is CloudWatch but for log groups, not alarms.
 
+max_enrichment: 5.2
 initial:
   monitoring.tf: |
     # Monitoring resources

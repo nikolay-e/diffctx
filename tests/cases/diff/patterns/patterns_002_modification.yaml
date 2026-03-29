@@ -15,6 +15,7 @@
 #   - utils/session_store.py: in-memory session token storage.
 #     Related to authentication but has no dependency on conftest or UserService.
 
+max_enrichment: 8.8
 initial:
   src/user_service.py: |
     from typing import Optional

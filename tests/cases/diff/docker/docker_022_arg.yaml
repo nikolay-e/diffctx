@@ -8,6 +8,7 @@
 #   2. Does src/main.rs use env!("CARGO_PKG_VERSION") — compatible with ARG VERSION?
 #   3. What deps does Cargo.toml pull — do they need musl-dev/openssl-dev?
 
+max_enrichment: 4.0
 initial:
   src/main.rs: |
     use std::env;

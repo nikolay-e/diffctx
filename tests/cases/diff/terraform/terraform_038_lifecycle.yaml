@@ -7,6 +7,7 @@
 #   - database/rds.tf: RDS also has lifecycle rules but completely different resource
 #   - storage/s3.tf: S3 bucket in same project, no lifecycle overlap
 
+max_enrichment: 13.7
 initial:
   main.tf: |
     resource "aws_launch_template" "web" {

@@ -42,6 +42,7 @@
 #
 #   - Makefile: Deployment script referencing k8s/base/. No TLS dependency.
 
+max_enrichment: 9.4
 initial:
   k8s/base/deployment.yaml: |
     apiVersion: apps/v1

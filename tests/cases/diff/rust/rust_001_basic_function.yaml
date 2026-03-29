@@ -32,6 +32,7 @@
 #     Same domain conceptually (user-facing text). But the catalog is a
 #     standalone key-value store with no import from or dependency on
 #     greeting.rs. Including it doesn't help verify the farewell functions.
+max_enrichment: 5.6
 initial:
   src/lib.rs: |
     pub mod greeting;

@@ -15,6 +15,7 @@
 #   - proxy-utils.ts: revocable proxy utilities. Different Proxy API usage,
 #     not imported by proxy.ts.
 
+max_enrichment: 6.5
 initial:
   handlers.ts: |
     export const loggingHandler: ProxyHandler<object> = {

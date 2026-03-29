@@ -1,108 +1,223 @@
-# Scenario: seed_func returns "modified seed" — tests that changed file gets high PPR score
-# Changed: seed_module.py — seed_func() changes return value
-# Reviewer needs: seed_module.py (changed, the seed node should score high)
-# Trap: random_init.py — seed-related naming (initialize_seed, SeedGenerator)
-# Trap: seed_validator.py — also has seed_* naming, validates seed values
-# Trap: cache_manager.py — completely unrelated module
+# Scenario: single_change_with_downstream_caller
+#   generate_token() in auth/token.py changes its return format.
+#   consumer.py imports and calls generate_token(), using the return
+#   value to build an auth header. The change is small (one function,
+#   one file), but the reviewer MUST see the consumer to understand
+#   impact.
+#
+# Diff shows:
+#   auth/token.py:
+#     - return token_value
+#     + return f"Bearer {token_value}"
+#     The function now returns a prefixed string instead of raw token.
+#     Any caller that already adds "Bearer " will double-prefix.
+#
+# Reviewer questions:
+#   Q1: "Who calls generate_token() and how do they use the return value?"
+#       -> consumer.py imports generate_token, builds headers dict:
+#         headers["Authorization"] = f"Bearer {generate_token()}"
+#         With the change, this becomes "Bearer Bearer abc123" — a BUG.
+#         Reviewer MUST see the consumer to catch this.
+#
+#   Q2: "Are there other callers that might be affected?"
+#       -> In this codebase only consumer.py imports it. The garbage
+#         files have similar naming but no real dependency.
+#
+# Not needed for comprehension:
+#   - auth/refresh.py: Same auth/ package, has refresh_token() function.
+#     Sibling module trap — same package, similar naming, but no
+#     dependency on generate_token().
+#
+#   - garbage_token_validator.py: Has token-related naming with GARBAGE
+#     markers. validate_token() sounds related but different module.
+#
+#   - garbage_auth_logger.py: Imports-like structure mentioning "auth"
+#     and "token" in strings, but no real import of generate_token.
 
+max_enrichment: 15.0
 initial:
-  seed_module.py: |
-    def seed_func():
-        return "seed"
-  other_module.py: |
-    def other_func():
-        return "other"
-  random_init.py: |
-    SEED_INITIAL = 12345
+  auth/token.py: |
+    import hashlib
+    import time
 
-    def initialize_seed():
-        return SEED_INITIAL
+    def generate_token():
+        raw = f"session-{time.time()}"
+        token_value = hashlib.sha256(raw.encode()).hexdigest()[:16]
+        return token_value
 
-    class SeedGenerator:
-        def generate(self):
-            return initialize_seed()
-  seed_validator.py: |
-    def seed_helper():
-        return "helper"
+  consumer.py: |
+    from auth.token import generate_token
 
-    class SeedProcessor:
-        def process(self):
-            return seed_helper()
+    def build_auth_headers():
+        token = generate_token()
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+        }
+        return headers
 
-        def validate_seed(self, value):
-            return value is not None
-  cache_manager.py: |
-    CACHE_SIZE = 1024
-    CACHE_TTL = 3600
+    def make_request(url):
+        headers = build_auth_headers()
+        return {"url": url, "headers": headers}
 
-    class CacheManager:
-        def get(self, key: str):
-            pass
+  auth/refresh.py: |
+    import time
+    GARBAGE_PPR018_REFRESH_A = "refresh_module"
+    GARBAGE_PPR018_REFRESH_B = 3600
+
+    def refresh_token(old_token):
+        GARBAGE_PPR018_REFRESH_C = time.time()
+        return f"refreshed-{old_token[:8]}"
+
+    class TokenRefresher:
+        GARBAGE_PPR018_REFRESH_D = 0
+
+        def refresh(self, token):
+            return refresh_token(token)
+
+  garbage_token_validator.py: |
+    GARBAGE_PPR018_VALID_E = "token_validator"
+    GARBAGE_PPR018_VALID_F = True
+
+    def validate_token(token):
+        GARBAGE_PPR018_VALID_G = 16
+        return len(token) >= GARBAGE_PPR018_VALID_G
+
+    class TokenValidator:
+        GARBAGE_PPR018_VALID_H = "strict"
+
+        def check(self, token):
+            return validate_token(token)
+
+  garbage_auth_logger.py: |
+    GARBAGE_PPR018_LOG_I = "auth_logger"
+    GARBAGE_PPR018_LOG_J = []
+
+    def log_auth_event(event_type, token_id):
+        GARBAGE_PPR018_LOG_K = f"auth:{event_type}:{token_id}"
+        GARBAGE_PPR018_LOG_J.append(GARBAGE_PPR018_LOG_K)
+
+    class AuthAuditLog:
+        GARBAGE_PPR018_LOG_L = "/var/log/auth"
+
+        def record(self, event):
+            log_auth_event("access", event)
 
 changed:
-  seed_module.py: |
-    def seed_func():
-        return "modified seed"
-  other_module.py: |
-    def other_func():
-        return "other"
-  random_init.py: |
-    SEED_INITIAL = 12345
+  auth/token.py: |
+    import hashlib
+    import time
 
-    def initialize_seed():
-        return SEED_INITIAL
+    def generate_token():
+        raw = f"session-{time.time()}"
+        token_value = hashlib.sha256(raw.encode()).hexdigest()[:16]
+        return f"Bearer {token_value}"
 
-    class SeedGenerator:
-        def generate(self):
-            return initialize_seed()
-  seed_validator.py: |
-    def seed_helper():
-        return "helper"
+  consumer.py: |
+    from auth.token import generate_token
 
-    class SeedProcessor:
-        def process(self):
-            return seed_helper()
+    def build_auth_headers():
+        token = generate_token()
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+        }
+        return headers
 
-        def validate_seed(self, value):
-            return value is not None
-  cache_manager.py: |
-    CACHE_SIZE = 1024
-    CACHE_TTL = 3600
+    def make_request(url):
+        headers = build_auth_headers()
+        return {"url": url, "headers": headers}
 
-    class CacheManager:
-        def get(self, key: str):
-            pass
+  auth/refresh.py: |
+    import time
+    GARBAGE_PPR018_REFRESH_A = "refresh_module"
+    GARBAGE_PPR018_REFRESH_B = 3600
+
+    def refresh_token(old_token):
+        GARBAGE_PPR018_REFRESH_C = time.time()
+        return f"refreshed-{old_token[:8]}"
+
+    class TokenRefresher:
+        GARBAGE_PPR018_REFRESH_D = 0
+
+        def refresh(self, token):
+            return refresh_token(token)
+
+  garbage_token_validator.py: |
+    GARBAGE_PPR018_VALID_E = "token_validator"
+    GARBAGE_PPR018_VALID_F = True
+
+    def validate_token(token):
+        GARBAGE_PPR018_VALID_G = 16
+        return len(token) >= GARBAGE_PPR018_VALID_G
+
+    class TokenValidator:
+        GARBAGE_PPR018_VALID_H = "strict"
+
+        def check(self, token):
+            return validate_token(token)
+
+  garbage_auth_logger.py: |
+    GARBAGE_PPR018_LOG_I = "auth_logger"
+    GARBAGE_PPR018_LOG_J = []
+
+    def log_auth_event(event_type, token_id):
+        GARBAGE_PPR018_LOG_K = f"auth:{event_type}:{token_id}"
+        GARBAGE_PPR018_LOG_J.append(GARBAGE_PPR018_LOG_K)
+
+    class AuthAuditLog:
+        GARBAGE_PPR018_LOG_L = "/var/log/auth"
+
+        def record(self, event):
+            log_auth_event("access", event)
 
 # === Assertions ===
 
-must_include:
-- seed_func
-- modified seed
-
 must_include_files:
-- seed_module.py
+  - auth/token.py
+  # Q1: consumer.py calls generate_token() and wraps it with "Bearer ".
+  # The change adds "Bearer " inside generate_token(), creating a
+  # double-prefix bug. Reviewer MUST see the consumer.
+  - consumer.py
 
 must_include_content_from:
-  seed_module.py:
-    - 'def seed_func():'
-    - return "modified seed"
+  auth/token.py:
+    - "def generate_token():"
+    - 'return f"Bearer {token_value}"'
+  consumer.py:
+    - "from auth.token import generate_token"
+    - "token = generate_token()"
+    - 'f"Bearer {token}"'
 
 must_not_include:
-- other_func
-- SeedGenerator
-- initialize_seed
-- SeedProcessor
-- seed_helper
-- CacheManager
-- CACHE_SIZE
+  # --- auth/refresh.py: sibling auth module, no dependency on generate_token ---
+  - GARBAGE_PPR018_REFRESH_A
+  - GARBAGE_PPR018_REFRESH_B
+  - GARBAGE_PPR018_REFRESH_C
+  - GARBAGE_PPR018_REFRESH_D
+  - TokenRefresher
+  - refresh_token
+  # --- garbage_token_validator.py: token-related naming trap ---
+  - GARBAGE_PPR018_VALID_E
+  - GARBAGE_PPR018_VALID_F
+  - GARBAGE_PPR018_VALID_G
+  - GARBAGE_PPR018_VALID_H
+  - TokenValidator
+  - validate_token
+  # --- garbage_auth_logger.py: auth-related naming trap ---
+  - GARBAGE_PPR018_LOG_I
+  - GARBAGE_PPR018_LOG_J
+  - GARBAGE_PPR018_LOG_K
+  - GARBAGE_PPR018_LOG_L
+  - AuthAuditLog
+  - log_auth_event
 
 must_not_include_files:
-- other_module.py
-- random_init.py
-- seed_validator.py
-- cache_manager.py
+  - auth/refresh.py
+  - garbage_token_validator.py
+  - garbage_auth_logger.py
 
-max_fragments: 4
-max_files: 2
+max_fragments: 5
+max_files: 3
 add_garbage_files: false
 skip_garbage_check: true

@@ -13,6 +13,7 @@
 #   - fulfillment/tracking_service.py: references "shipping" and "order" terms but
 #     is completely independent of the enum definitions
 
+max_enrichment: 5.3
 initial:
   enums.py: |
     from enum import Enum, auto, IntEnum, Flag

@@ -16,6 +16,7 @@
 #   - Migrations.scala: runs database migrations using IO. Shares "database + IO"
 #     vocabulary but separate execution, not composed with Program.
 
+max_enrichment: 8.1
 initial:
   Database.scala: |
     import cats.effect.IO

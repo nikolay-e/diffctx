@@ -39,6 +39,7 @@
 #     Has __call magic method. HARD TRAP: also uses magic methods, same
 #     namespace. But dispatches events, not property access.
 
+max_enrichment: 6.9
 initial:
   src/Core/DynamicObject.php: |
     <?php

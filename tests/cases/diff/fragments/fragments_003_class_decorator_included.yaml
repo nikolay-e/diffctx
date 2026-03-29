@@ -1,3 +1,4 @@
+max_enrichment: 27.3
 initial:
   decorated_class.py: |
     from dataclasses import dataclass
@@ -65,6 +66,8 @@ changed:
         CONSTANT = "GARBAGE_FRAG_anotherclass003"
 must_include_files:
 - decorated_class.py
+must_include_content:
+- "name: str"
 must_not_include:
 - models_garbage_003.py
 add_garbage_files: false

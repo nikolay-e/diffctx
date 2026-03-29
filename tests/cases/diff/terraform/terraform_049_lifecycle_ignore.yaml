@@ -27,6 +27,7 @@
 #     Direct edge: same AMI update concern. But CI deployment is
 #     the operational trigger, not the Terraform configuration.
 
+max_enrichment: 17.0
 initial:
   main.tf: |
     resource "aws_instance" "web" {

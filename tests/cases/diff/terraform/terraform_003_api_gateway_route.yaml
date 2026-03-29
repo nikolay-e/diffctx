@@ -14,6 +14,7 @@
 #   - infrastructure/admin_api.tf: separate admin API using the same module —
 #     different API, different authorizer, doesn't affect the main API changes
 
+max_enrichment: 6.8
 initial:
   modules/api_gateway/main.tf: |
     resource "aws_apigatewayv2_api" "main" {

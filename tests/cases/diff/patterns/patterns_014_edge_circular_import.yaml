@@ -17,6 +17,7 @@
 #   - utils/dependency_graph.py: builds a directed graph of module dependencies.
 #     Related to imports conceptually but no code dependency on either module.
 
+max_enrichment: 5.0
 initial:
   src/module_a.py: |
     from module_b import func_b

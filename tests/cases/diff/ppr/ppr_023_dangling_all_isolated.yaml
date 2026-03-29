@@ -1,99 +1,187 @@
-# Scenario: isolated1 changes return to 100; all nodes are isolated (no imports)
-# Changed: isolated1.py — isolated1() returns 100 (was 1)
-# Reviewer needs: isolated1.py (changed, only relevant change)
-# Trap: alt_isolated.py — defines isolated1() too, name collision but different module
-# Trap: isolated4.py — structural sibling matching isolated1/isolated2/isolated3 naming
-# Trap: template_engine.py — completely unrelated
+# Scenario: Single function changes in a codebase full of noise candidates.
+#   pricing.py changes calculate_price() to apply a discount multiplier.
+#   Six other files exist but none are imported by or import pricing.py.
+#   Tests that the algorithm excludes unrelated files even when there are
+#   many plausible-looking candidates competing for inclusion.
+#
+# Diff shows:
+#   pricing.py: - return base_rate * quantity
+#               + return base_rate * quantity * DISCOUNT_FACTOR
+#
+# Reviewer questions:
+#   Q1: "What is DISCOUNT_FACTOR — is it defined in this file?"
+#       -> Yes, DISCOUNT_FACTOR = 0.85 is a module-level constant in
+#         pricing.py itself. The reviewer sees the full file.
+#
+#   Q2: "Does the multiplication order matter for precision?"
+#       -> base_rate is float, quantity is int, DISCOUNT_FACTOR is float.
+#         Standard float multiplication. Reviewer confirms from the file.
+#
+# Not needed for comprehension:
+#   - alt_pricing.py: HARDEST TRAP — defines its own calculate_price() with
+#     a discount parameter. Same function name, similar logic, but entirely
+#     separate module. Also defines DISCOUNT_FACTOR with a different value.
+#
+#   - inventory.py: Uses "quantity" in its own context. Shares vocabulary
+#     with the diff ("quantity", "rate") but no import relationship.
+#
+#   - reporting.py: Another standalone module with numeric calculations.
+#     Structural sibling — similar shape (constants + functions + class).
+#
+#   - shipping.py: Defines calculate_shipping() — similar naming pattern
+#     to calculate_price(). Name-pattern trap.
+#
+#   - template_engine.py: Completely unrelated infrastructure module.
 
+max_enrichment: 7.5
 initial:
-  isolated1.py: |
-    def isolated1():
-        return 1
-  isolated2.py: |
-    def isolated2():
-        return 2
-  isolated3.py: |
-    def isolated3():
-        return 3
-  alt_isolated.py: |
-    def isolated1():
-        return "alternate_isolated"
+  pricing.py: |
+    DISCOUNT_FACTOR = 0.85
 
-    class IsolatedGroup:
-        def run_all(self):
-            return isolated1()
-  isolated4.py: |
-    def isolated4():
-        return 4
+    def calculate_price(base_rate, quantity):
+        return base_rate * quantity
 
-    class Isolated4Runner:
-        def execute(self):
-            return isolated4()
+    class PriceCalculator:
+        def __init__(self, rate):
+            self.rate = rate
+
+        def total(self, qty):
+            return calculate_price(self.rate, qty)
+  alt_pricing.py: |
+    DISCOUNT_FACTOR = 0.90
+
+    def calculate_price(amount, discount=0.1):
+        return amount * (1 - discount)
+
+    class AltPricingEngine:
+        def apply(self, amount):
+            return calculate_price(amount)
+  inventory.py: |
+    REORDER_QUANTITY = 50
+    RATE_LIMIT = 100
+
+    def check_stock(quantity):
+        return quantity > REORDER_QUANTITY
+
+    class InventoryManager:
+        def reorder(self, quantity):
+            return check_stock(quantity)
+  reporting.py: |
+    REPORT_VERSION = "2.1"
+    MAX_ROWS = 1000
+
+    def generate_summary(data):
+        return len(data)
+
+    class ReportBuilder:
+        def build(self, rows):
+            return generate_summary(rows)
+  shipping.py: |
+    SHIPPING_RATE = 5.99
+
+    def calculate_shipping(weight, zone):
+        return weight * SHIPPING_RATE
+
+    class ShippingCalculator:
+        def estimate(self, w, z):
+            return calculate_shipping(w, z)
   template_engine.py: |
     TEMPLATE_FORMAT = "jinja2"
     FILE_EXTENSION = ".html"
 
     class TemplateRenderer:
-        def render(self, template: str):
+        def render(self, template):
             pass
 
 changed:
-  isolated1.py: |
-    def isolated1():
-        return 100
-  isolated2.py: |
-    def isolated2():
-        return 2
-  isolated3.py: |
-    def isolated3():
-        return 3
-  alt_isolated.py: |
-    def isolated1():
-        return "alternate_isolated"
+  pricing.py: |
+    DISCOUNT_FACTOR = 0.85
 
-    class IsolatedGroup:
-        def run_all(self):
-            return isolated1()
-  isolated4.py: |
-    def isolated4():
-        return 4
+    def calculate_price(base_rate, quantity):
+        return base_rate * quantity * DISCOUNT_FACTOR
 
-    class Isolated4Runner:
-        def execute(self):
-            return isolated4()
+    class PriceCalculator:
+        def __init__(self, rate):
+            self.rate = rate
+
+        def total(self, qty):
+            return calculate_price(self.rate, qty)
+  alt_pricing.py: |
+    DISCOUNT_FACTOR = 0.90
+
+    def calculate_price(amount, discount=0.1):
+        return amount * (1 - discount)
+
+    class AltPricingEngine:
+        def apply(self, amount):
+            return calculate_price(amount)
+  inventory.py: |
+    REORDER_QUANTITY = 50
+    RATE_LIMIT = 100
+
+    def check_stock(quantity):
+        return quantity > REORDER_QUANTITY
+
+    class InventoryManager:
+        def reorder(self, quantity):
+            return check_stock(quantity)
+  reporting.py: |
+    REPORT_VERSION = "2.1"
+    MAX_ROWS = 1000
+
+    def generate_summary(data):
+        return len(data)
+
+    class ReportBuilder:
+        def build(self, rows):
+            return generate_summary(rows)
+  shipping.py: |
+    SHIPPING_RATE = 5.99
+
+    def calculate_shipping(weight, zone):
+        return weight * SHIPPING_RATE
+
+    class ShippingCalculator:
+        def estimate(self, w, z):
+            return calculate_shipping(w, z)
   template_engine.py: |
     TEMPLATE_FORMAT = "jinja2"
     FILE_EXTENSION = ".html"
 
     class TemplateRenderer:
-        def render(self, template: str):
+        def render(self, template):
             pass
 
 # === Assertions ===
 
-must_include:
-- isolated1
-- return 100
-
 must_include_files:
-- isolated1.py
+- pricing.py
 
 must_include_content_from:
-  isolated1.py:
-    - 'def isolated1():'
-    - return 100
+  pricing.py:
+    - 'def calculate_price(base_rate, quantity):'
+    - return base_rate * quantity * DISCOUNT_FACTOR
 
 must_not_include:
-- IsolatedGroup
-- alternate_isolated
-- Isolated4Runner
-- isolated4
+# --- inventory.py: shares "quantity" vocabulary but no import ---
+- InventoryManager
+- REORDER_QUANTITY
+- RATE_LIMIT
+# --- reporting.py: structural sibling, similar shape ---
+- ReportBuilder
+- REPORT_VERSION
+- MAX_ROWS
+# --- shipping.py: name-pattern trap (calculate_shipping ~ calculate_price) ---
+- ShippingCalculator
+- SHIPPING_RATE
+# --- template_engine.py: completely unrelated ---
 - TemplateRenderer
 - TEMPLATE_FORMAT
 
 must_not_include_files:
-- alt_isolated.py
-- isolated4.py
+- inventory.py
+- reporting.py
+- shipping.py
 - template_engine.py
 
 max_fragments: 4

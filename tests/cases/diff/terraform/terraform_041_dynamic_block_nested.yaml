@@ -7,6 +7,7 @@
 #   - internal/internal_lb.tf: another ALB listener with dynamic blocks but for internal LB
 #   - scripts/lb_health.sh: references ALB health checks but is operational tooling
 
+max_enrichment: 9.2
 initial:
   lb.tf: |
     resource "aws_lb_listener" "https" {

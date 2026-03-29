@@ -17,6 +17,7 @@
 #   - utils/data_seeder.py: populates test fixtures with sample data.
 #     Creates model instances but doesn't extend AuditableMixin.
 
+max_enrichment: 6.7
 initial:
   mixins/auditable.py: |
     from datetime import datetime

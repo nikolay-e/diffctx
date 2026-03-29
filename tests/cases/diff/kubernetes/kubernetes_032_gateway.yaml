@@ -41,6 +41,7 @@
 #     and metrics in istio-system. Shares Istio vocabulary but configures
 #     observability, not routing or TLS.
 
+max_enrichment: 7.7
 initial:
   k8s/base/deployment.yaml: |
     apiVersion: apps/v1

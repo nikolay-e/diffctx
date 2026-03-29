@@ -3,6 +3,7 @@
 # Reviewer questions: Is nodePort 30080 available across all nodes? Does externalTrafficPolicy: Local break load balancing?
 # Trap 1: k8s/infra/metallb-config.yaml — MetalLB IP pool config, shares external access vocabulary but no dep
 # Trap 2: k8s/apps/web/ingress.yaml — Ingress for same app, shares traffic routing vocabulary but no dep on NodePort
+max_enrichment: 12.6
 initial:
   k8s/apps/web/deployment.yaml: |
     apiVersion: apps/v1

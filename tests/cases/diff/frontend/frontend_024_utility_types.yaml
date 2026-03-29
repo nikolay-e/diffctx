@@ -16,6 +16,7 @@
 #   - src/mappers/user.ts: transforms user data at runtime with functions.
 #     Lexical overlap ("user", "email") but no type-level dependency.
 
+max_enrichment: 4.8
 initial:
   src/models.ts: |
     export interface User {

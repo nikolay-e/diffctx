@@ -1,3 +1,4 @@
+max_enrichment: 12.5
 initial:
   .gitlab-ci.yml: |
     release:
@@ -76,6 +77,9 @@ changed:
     }
 must_include_files:
 - .gitlab-ci.yml
+must_include_content:
+- "- tags"
+- "- branches"
 must_not_include:
 - GARBAGE_CICD_DOCS_027_BRANCH_MARKER_E
 - GARBAGE_CICD_DOCS_027_EXCLUDE_MARKER_B

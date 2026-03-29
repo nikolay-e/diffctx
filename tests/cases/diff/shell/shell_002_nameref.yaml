@@ -19,6 +19,7 @@
 #   - cleanup_handler.py: atexit-based cleanup. Uses lists but no
 #     reference manipulation and no import relationship.
 
+max_enrichment: 5.4
 initial:
   indirect.py: |
     from ref_utils import ref_push

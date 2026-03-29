@@ -16,6 +16,7 @@
 #   - utils/currency_converter.py: converts amounts between currencies using exchange rates.
 #     Financial domain but no dependency on transfer logic or InsufficientFundsError.
 
+max_enrichment: 9.8
 initial:
   exceptions.py: |
     class InsufficientFundsError(Exception):

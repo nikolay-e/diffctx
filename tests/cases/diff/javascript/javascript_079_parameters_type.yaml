@@ -30,6 +30,7 @@
 #   - api.types.ts: Separate type definitions for API options (RequestOptions,
 #     ResponseType). Same API domain types but not used by wrapper.ts or api.ts.
 
+max_enrichment: 8.4
 initial:
   api.ts: |
     export function fetchData(url: string, options: { method: string; headers: Record<string, string> }) {

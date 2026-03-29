@@ -20,6 +20,7 @@
 #   - src/timer.rs: tracks elapsed time with Cell<Instant>. Uses Cell but for
 #     timing, not counting — no dependency on Counter.
 
+max_enrichment: 4.1
 initial:
   src/lib.rs: |
     pub mod counter;

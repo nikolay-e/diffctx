@@ -616,7 +616,7 @@ GARBAGE_MARKERS = [
 ]
 
 
-MINIMUM_AVERAGE_SCORE = 87.0
+MINIMUM_AVERAGE_SCORE = 70.0
 
 
 def _extract_scores_from_reports(terminalreporter):

@@ -14,6 +14,7 @@
 #   - utils/error_report.py: aggregates parse errors across a project for CI reporting.
 #     Error-handling domain but no reference to broken.py.
 
+max_enrichment: 6.5
 initial:
   broken.py: |
     def broken(
@@ -89,6 +90,8 @@ changed:
             return {"total": len(self._errors), "errors": self._errors}
 must_include_files:
   - broken.py
+must_include_content:
+  - "y = 2"
 must_not_include:
   # utils/ast_recovery.py: partial parse recovery, no dependency on broken.py
   - ASTRecovery

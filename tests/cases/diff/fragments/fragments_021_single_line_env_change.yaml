@@ -1,3 +1,4 @@
+max_enrichment: 8.0
 initial:
   app.py: |
     import os
@@ -70,6 +71,8 @@ changed:
     ANOTHER_GARBAGE=GARBAGE_FRAG_anothergarbenv080
 must_include_files:
 - .env
+must_include_content:
+- "DEBUG=true"
 must_not_include:
 - GARBAGE_ONLY_KEY=GARBAGE_FRAG_garbonlykey080
 - GARBAGE_VAR

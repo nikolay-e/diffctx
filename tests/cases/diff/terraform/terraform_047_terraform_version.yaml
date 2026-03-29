@@ -6,6 +6,7 @@
 #   - modules/gcp/versions.tf: GCP provider version constraints (same block pattern, different cloud)
 #   - outputs.tf: unrelated outputs file (no provider dependency)
 
+max_enrichment: 6.1
 initial:
   main.tf: |
     resource "aws_instance" "web" {

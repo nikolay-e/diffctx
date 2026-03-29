@@ -52,6 +52,7 @@
 #     formatters. Same logging domain — sets up the logger that log_calls
 #     writes to. But logger configuration doesn't affect decorator behavior.
 
+max_enrichment: 7.7
 initial:
   decorators/logging.py: |
     import functools

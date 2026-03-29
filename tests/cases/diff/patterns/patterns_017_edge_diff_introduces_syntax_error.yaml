@@ -14,6 +14,7 @@
 #   - utils/code_linter.py: runs pylint-style checks on source files.
 #     Code quality domain but no reference to test.py.
 
+max_enrichment: 6.1
 initial:
   test.py: |
     def valid():
@@ -94,6 +95,8 @@ changed:
             return violations
 must_include_files:
   - test.py
+must_include_content:
+  - "def broken("
 must_not_include:
   # utils/syntax_checker.py: ast.parse()-based checker, no dependency on test.py
   - SyntaxChecker

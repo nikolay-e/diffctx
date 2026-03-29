@@ -3,6 +3,7 @@
 # Reviewer questions: Is ConfigValidationError raised properly? Does merge() preserve source?
 # Trap 1: yaml_parser.py — parses YAML config files, shares "config/parse" vocabulary but independent
 # Trap 2: config_watcher.py — watches for config changes, shares "config" domain but no dep
+max_enrichment: 8.3
 initial:
   models/config.py: |
     import json

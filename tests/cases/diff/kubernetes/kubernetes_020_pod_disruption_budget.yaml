@@ -31,6 +31,7 @@
 #     below minAvailable). HARDEST TRAP: HPA minReplicas affects PDB math.
 #     But the reviewer needs the deployment replicas to verify PDB math,
 #     not the HPA — the PDB constrains node drains, not autoscaler decisions.
+max_enrichment: 16.0
 initial:
   k8s/apps/deployment.yaml: |
     apiVersion: apps/v1

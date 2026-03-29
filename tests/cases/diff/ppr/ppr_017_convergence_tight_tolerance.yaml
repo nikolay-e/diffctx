@@ -1,3 +1,12 @@
+# Scenario: shared.py changes SHARED_VALUE from 100 to 200.
+# Reviewer question: Which files consume get_shared() and may be affected?
+# Changed: shared.py — SHARED_VALUE updated from 100 to 200
+# Reviewer needs: shared.py (the change) + user_a.py, user_b.py (consumers of get_shared)
+# Trap: garbage_alt_shared.py — also defines SHARED_VALUE and get_shared but no import relationship
+# Trap: garbage_global_state.py — similar constant + getter pattern (GLOBAL_VALUE + get_global)
+# Trap: garbage_metrics.py — completely unrelated module
+
+max_enrichment: 22.8
 initial:
   shared.py: |
     SHARED_VALUE = 100
@@ -120,6 +129,7 @@ must_include:
 
 must_include_files:
 - shared.py
+- user_a.py
 
 must_include_content_from:
   shared.py:

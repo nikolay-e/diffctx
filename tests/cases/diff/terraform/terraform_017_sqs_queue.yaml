@@ -27,6 +27,7 @@
 #     References aws_sqs_queue.tasks. HARD TRAP: same queue reference.
 #     But monitoring is observation, not configuration.
 
+max_enrichment: 6.7
 initial:
   messaging.tf: |
     # Messaging resources

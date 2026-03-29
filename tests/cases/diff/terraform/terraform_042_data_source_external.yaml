@@ -26,6 +26,7 @@
 #     "ami" and AWS CLI commands. HARDEST TRAP: same AMI domain, same
 #     AWS CLI usage. But builds AMIs, doesn't look them up.
 
+max_enrichment: 16.7
 initial:
   scripts/get_ami.sh: |
     #!/bin/bash

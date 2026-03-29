@@ -24,6 +24,7 @@
 #     Same Data fields (_.score, _.value), same case class dependency.
 #   - DataSpec.scala: tests for Data case class methods.
 
+max_enrichment: 8.4
 initial:
   Data.scala: |
     case class Data(id: Int, value: String, score: Double) {

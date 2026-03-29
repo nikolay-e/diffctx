@@ -31,6 +31,7 @@
 #   - either.ts: Alternative Result-like type (Left/Right) with similar union.
 #     Same pattern but different types (Left<E>/Right<T> vs Success/Failure).
 
+max_enrichment: 6.3
 initial:
   result.ts: |
     export type Success<T> = { success: true; data: T };

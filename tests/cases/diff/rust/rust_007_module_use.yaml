@@ -4,6 +4,7 @@
 # Trap files:
 #   - src/encoder.rs: Base64/hex encoding — "transform data" vocabulary but no import relationship
 #   - src/sanitizer.rs: HTML/SQL sanitization — "process strings" domain overlap but independent
+max_enrichment: 7.7
 initial:
   src/lib.rs: |
     pub mod utils;

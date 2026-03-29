@@ -4,6 +4,7 @@
 # Trap rationale: docker-compose.yaml and terraform.tfvars share config/infra
 # vocabulary but are separate config files with no structural dependency.
 
+max_enrichment: 5.3
 initial:
   config/application.yaml: |
     database:

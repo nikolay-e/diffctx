@@ -12,6 +12,7 @@
 # Traps: iam_readonly.tf has same s3:GetObject actions but for audit bucket.
 # cognito.tf is IAM-adjacent but different service.
 
+max_enrichment: 5.3
 initial:
   modules/iam_role/main.tf: |
     resource "aws_iam_role" "this" {

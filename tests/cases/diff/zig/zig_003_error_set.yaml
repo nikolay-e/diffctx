@@ -2,6 +2,7 @@
 # errors. A new error variant is added. Context must include the consumer
 # module handling the error. Noise: other modules.
 
+max_enrichment: 16.6
 initial:
   src/errors.zig: |
     pub const FileError = error{

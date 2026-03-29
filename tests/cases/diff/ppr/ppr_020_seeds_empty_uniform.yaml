@@ -1,10 +1,12 @@
-# Scenario: Brand new file added with no dependencies — tests PPR with new node
-# Changed: new_file.py is added (new func), existing files unchanged
-# Reviewer needs: new_file.py (the new addition is the only change)
+# Scenario: A brand new file is added with no existing dependencies.
+# Reviewer should see only the new file, not unrelated modules.
+# Changed: new_file.py is added (defines new_func), no other files changed
+# Reviewer needs: new_file.py (the only change — isolated addition)
 # Trap: item_factory.py — has "new" in naming, create_new_item function
 # Trap: existing_helper.py — structural sibling matching existing_a/existing_b naming
 # Trap: message_queue.py — completely unrelated module
 
+max_enrichment: 3.0
 initial:
   existing_a.py: |
     def existing_a():

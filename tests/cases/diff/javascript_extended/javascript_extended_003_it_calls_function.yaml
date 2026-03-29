@@ -12,6 +12,7 @@
 #   - src/unrelated/queue.ts: task queue. Different infrastructure,
 #     no relation to string validation.
 
+max_enrichment: 4.4
 initial:
   src/validator.ts: |
     const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;

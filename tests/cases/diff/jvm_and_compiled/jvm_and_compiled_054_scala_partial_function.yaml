@@ -30,6 +30,7 @@
 #   - EventSerializer.scala: Serializes events to JSON. Same Event types.
 #     Independent of handler composition logic.
 
+max_enrichment: 6.3
 initial:
   Event.scala: |
     sealed trait Event

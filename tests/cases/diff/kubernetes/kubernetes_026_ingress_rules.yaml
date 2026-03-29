@@ -3,6 +3,7 @@
 # Reviewer questions: Does api-gateway service exist on port 80? Is 50m proxy-body-size appropriate for API payloads?
 # Trap 1: k8s/base/tls-secret.yaml — TLS certificate secret, shares ingress domain but no dep on routing rules
 # Trap 2: k8s/monitoring/ingress-metrics.yaml — ingress controller metrics exporter, shares "ingress" vocabulary but no dep
+max_enrichment: 9.1
 initial:
   k8s/base/deployment.yaml: |
     apiVersion: apps/v1

@@ -27,6 +27,7 @@
 #   - SortSpec.scala: tests for UserSorter that verify sort order.
 #     Uses UserOrdering.given imports, same sorted calls.
 
+max_enrichment: 8.4
 initial:
   Ordering.scala: |
     case class User(name: String, age: Int) {

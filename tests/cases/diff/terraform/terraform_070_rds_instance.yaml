@@ -7,6 +7,7 @@
 #   - replicas/read_replica.tf: RDS read replica (same resource type, different role)
 #   - monitoring/alarms.tf: CloudWatch alarms for RDS (mentions RDS metrics but doesn't affect config)
 
+max_enrichment: 12.5
 initial:
   rds.tf: |
     resource "aws_db_instance" "main" {

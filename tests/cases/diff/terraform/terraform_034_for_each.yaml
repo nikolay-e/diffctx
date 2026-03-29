@@ -25,6 +25,7 @@
 #   - tests/validate_subnets.sh: Script that validates CIDR ranges.
 #     Same CIDR values, but operational tooling.
 
+max_enrichment: 3.7
 initial:
   main.tf: |
     resource "aws_subnet" "main" {

@@ -1,3 +1,4 @@
+max_enrichment: 12.2
 initial:
   src/logger.py: |
     import logging
@@ -154,5 +155,8 @@ changed:
   monitoring/promtail.yml: ''
 must_include_files:
 - docker-compose.yml
+must_include_content:
+- 'max-size: "10m"'
+- 'max-file: "3"'
 add_garbage_files: false
 skip_garbage_check: true

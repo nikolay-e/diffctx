@@ -60,6 +60,7 @@
 #   - config/plugins.yaml: Plugin configuration listing enabled plugins
 #     including "formatter" and "exporter". Lexical match on names.
 
+max_enrichment: 10.6
 initial:
   plugins/formatter.py: |
     from plugin_base import Plugin

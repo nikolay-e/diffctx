@@ -15,6 +15,7 @@
 #   - utils/request_sanitizer.py: strips dangerous HTML from request params.
 #     Touches request handling but has no dependency on api.py or its decorators.
 
+max_enrichment: 12.2
 initial:
   decorators/auth.py: |
     import functools

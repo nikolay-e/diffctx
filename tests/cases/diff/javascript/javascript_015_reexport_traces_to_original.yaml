@@ -24,6 +24,7 @@
 #     DIRECT EDGE: tests the exact function. But test assertions don't
 #     help trace the re-export chain.
 
+max_enrichment: 12.1
 initial:
   core.ts: |
     export function coreFunction(): void {

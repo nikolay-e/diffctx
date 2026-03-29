@@ -277,10 +277,9 @@ class TestMarkdownCLI:
         assert result.returncode == 0
         assert f"# {temp_project.name}/" in result.stdout
 
-    def test_md_format_to_file(self, temp_project):
+    def test_md_format_to_file(self, run_mapper, temp_project):
         output_file = temp_project / "output.md"
-        result = run_treemapper_subprocess([str(temp_project), "-o", str(output_file), "--format", "md"])
-        assert result.returncode == 0
+        assert run_mapper([str(temp_project), "-o", str(output_file), "--format", "md"])
         assert output_file.exists()
 
         content = output_file.read_text(encoding="utf-8")

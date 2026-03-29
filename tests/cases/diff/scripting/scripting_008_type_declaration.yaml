@@ -26,6 +26,7 @@
 #   - src/Middleware/ResponseMiddleware.php: wraps ApiResponse objects with headers.
 #     References ApiResponse but is middleware — different concern.
 
+max_enrichment: 15.2
 initial:
   src/Services/DataTransformer.php: |
     <?php

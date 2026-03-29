@@ -25,6 +25,7 @@
 #   - notification-channels.ts: email/SMS notification routing.
 #     Different communication mechanism, no EventEmitter involvement.
 
+max_enrichment: 6.2
 initial:
   src/events/emitter.ts: |
     import { EventEmitter } from 'events';

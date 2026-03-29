@@ -12,6 +12,7 @@
 # Traps: secondary_nat.tf has same resource types but for a different AZ.
 # transit_gateway.tf is networking but a completely different service.
 
+max_enrichment: 7.7
 initial:
   nat.tf: |
     # NAT gateway resources placeholder

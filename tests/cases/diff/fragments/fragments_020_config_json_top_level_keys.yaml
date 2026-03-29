@@ -1,3 +1,4 @@
+max_enrichment: 21.3
 initial:
   config.json: |
     {
@@ -76,6 +77,8 @@ changed:
     }
 must_include_files:
 - config.json
+must_include_content:
+- "5433"
 must_not_include:
 - garbage_config_072.json
 add_garbage_files: false

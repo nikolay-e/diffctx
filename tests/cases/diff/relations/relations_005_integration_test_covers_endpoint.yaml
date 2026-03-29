@@ -17,6 +17,7 @@
 #   - utils/pagination_helper.py: pagination utility — api/users.py implements
 #     its own slicing logic inline, doesn't use this helper.
 
+max_enrichment: 5.0
 initial:
   api/users.py: |
     def list_users():

@@ -18,6 +18,7 @@
 #   - lib/checksum.sh: provides sha256sum wrapper used by process_file.
 #     Indirect dependency, but reviewer needs process_file, not its internals.
 
+max_enrichment: 9.8
 initial:
   batch.sh: |
     #!/bin/bash

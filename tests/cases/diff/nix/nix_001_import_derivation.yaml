@@ -12,6 +12,7 @@
 #   - packages/utils.nix: sibling package, unrelated derivation
 #   - packages/cli.nix: another sibling package, not imported by changed code
 
+max_enrichment: 15.8
 initial:
   default.nix: |
     { pkgs ? import <nixpkgs> {} }:

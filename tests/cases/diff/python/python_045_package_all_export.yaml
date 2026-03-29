@@ -23,6 +23,7 @@
 #   - generators/report_builder.py: ReportBuilder with add_section/generate.
 #     Different package. No dependency on mylib or its exports.
 
+max_enrichment: 14.3
 initial:
   mylib/validators.py: |
     def validate_email(email: str) -> bool:

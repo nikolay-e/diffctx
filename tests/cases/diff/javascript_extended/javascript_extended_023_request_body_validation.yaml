@@ -15,6 +15,7 @@
 #   - src/utils/response-builder.ts: standardized API response formatting. The
 #     controller uses res.json() directly, doesn't import this utility.
 
+max_enrichment: 5.2
 initial:
   src/controllers/user-controller.ts: |
     import { Request, Response } from 'express';

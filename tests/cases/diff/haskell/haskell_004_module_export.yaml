@@ -2,6 +2,7 @@
 # consumer module starts using it. Context must include both the exporter
 # and the consumer. Noise: modules not importing from the changed module.
 
+max_enrichment: 9.1
 initial:
   src/MathUtils.hs: |
     module MathUtils

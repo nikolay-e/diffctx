@@ -7,6 +7,7 @@
 #   - envs/staging/cloud.tf: staging TFC config with different org (same cloud block pattern)
 #   - networking/eip.tf: EIP resource in same project (no backend relationship)
 
+max_enrichment: 8.6
 initial:
   main.tf: |
     terraform {

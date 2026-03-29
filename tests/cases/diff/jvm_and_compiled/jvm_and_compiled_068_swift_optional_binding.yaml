@@ -3,6 +3,7 @@
 # Reviewer questions: What happens if repository is empty? Should showUser return an Optional<String> instead?
 # Trap 1: ErrorFormatter.swift — handles error display strings, shares "user not found" vocabulary but no dep
 # Trap 2: CacheManager.swift — caches data by String keys, similar Optional return patterns but unrelated
+max_enrichment: 7.8
 initial:
   UserRepository.swift: |
     struct User {

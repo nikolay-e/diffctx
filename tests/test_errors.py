@@ -6,14 +6,13 @@ from pathlib import Path
 
 import pytest
 
-from .conftest import IS_WSL
+from .conftest import IS_WSL, run_treemapper_subprocess
 from .utils import find_node_by_path, load_yaml
 
 # --- Tests for invalid input ---
 
 
 def test_invalid_directory_path(run_mapper, capsys):
-    """Test: non-existent directory specified."""
     dir_name = "non_existent_directory"
     assert not run_mapper([dir_name])
     captured = capsys.readouterr()
@@ -24,7 +23,6 @@ def test_invalid_directory_path(run_mapper, capsys):
 
 
 def test_input_path_is_file(run_mapper, temp_project, capsys):
-    """Test: file specified instead of directory."""
     file_path = temp_project / "some_file.txt"
     file_path.touch()
     assert not run_mapper([str(file_path)])
@@ -40,7 +38,6 @@ def test_input_path_is_file(run_mapper, temp_project, capsys):
     reason="os.chmod limited on Windows/WSL",
 )
 def test_unreadable_file(temp_project, run_mapper, set_perms, caplog):
-    """Test: file without read permissions."""
     unreadable_file = temp_project / "unreadable.txt"
     unreadable_file.write_text("secret")
     set_perms(unreadable_file, 0o000)
@@ -65,7 +62,6 @@ def test_unreadable_file(temp_project, run_mapper, set_perms, caplog):
     reason="os.chmod limited on Windows/WSL",
 )
 def test_unwritable_output_dir(temp_project, run_mapper, set_perms, caplog):
-    """Test: attempt to write to directory without write permissions."""
     unwritable_dir = temp_project / "locked_dir"
     unwritable_dir.mkdir()
     read_execute_perms = stat.S_IRUSR | stat.S_IXUSR | stat.S_IRGRP | stat.S_IXGRP | stat.S_IROTH | stat.S_IXOTH
@@ -82,7 +78,6 @@ def test_unwritable_output_dir(temp_project, run_mapper, set_perms, caplog):
 
 
 def test_output_path_is_directory(temp_project, run_mapper, capsys):
-    """Test: output path (-o) points to existing directory."""
     output_should_be_file = temp_project / "i_am_a_directory"
     output_should_be_file.mkdir()
 
@@ -100,8 +95,6 @@ def test_output_path_is_directory(temp_project, run_mapper, capsys):
 
 
 def test_negative_max_depth(temp_project):
-    from .conftest import run_treemapper_subprocess
-
     result = run_treemapper_subprocess([".", "--max-depth", "-1"], cwd=temp_project)
     assert result.returncode != 0
     assert "Error:" in result.stderr
@@ -109,8 +102,6 @@ def test_negative_max_depth(temp_project):
 
 
 def test_negative_max_file_bytes(temp_project):
-    from .conftest import run_treemapper_subprocess
-
     result = run_treemapper_subprocess([".", "--max-file-bytes", "-1"], cwd=temp_project)
     assert result.returncode != 0
     assert "Error:" in result.stderr
@@ -220,8 +211,6 @@ def test_logger_no_handlers():
     reason="os.chmod limited on Windows/WSL",
 )
 def test_unreadable_directory(temp_project, set_perms):
-    from .conftest import run_treemapper_subprocess
-
     unreadable_dir = temp_project / "locked"
     unreadable_dir.mkdir()
     (unreadable_dir / "secret.txt").write_text("hidden", encoding="utf-8")
@@ -253,17 +242,13 @@ def test_file_with_null_bytes_detected_as_binary(temp_project, run_mapper, caplo
     assert "<binary file" in file_node.get("content", "")
 
 
-def test_file_with_null_bytes_after_sample_size(temp_project):
-    from .conftest import run_treemapper_subprocess
-
+def test_file_with_null_bytes_after_sample_size(run_mapper, temp_project):
     file_with_late_null = temp_project / "late_null.txt"
     content = b"x" * 8200 + b"\x00" + b"y" * 100
     file_with_late_null.write_bytes(content)
 
     output_path = temp_project / "output.yaml"
-    result = run_treemapper_subprocess([".", "-o", str(output_path), "--log-level", "warning"], cwd=temp_project)
-
-    assert result.returncode == 0
+    assert run_mapper([".", "-o", str(output_path)])
 
     tree = load_yaml(output_path)
     file_node = find_node_by_path(tree, ["late_null.txt"])

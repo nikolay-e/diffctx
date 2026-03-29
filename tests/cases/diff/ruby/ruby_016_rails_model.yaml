@@ -4,6 +4,7 @@
 # Trap files:
 #   - app/models/invoice.rb: Invoice generation — "order/total" vocabulary overlap but no User dependency
 #   - app/models/shipping.rb: Shipping calculator — "order fulfillment" domain but independent model
+max_enrichment: 8.6
 initial:
   app/models/order.rb: |
     class Order

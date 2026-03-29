@@ -4,6 +4,7 @@
 # Trap rationale: role_manager.py and session_tracker.py share user/auth
 # vocabulary but are not imported by user_service.py.
 
+max_enrichment: 16.4
 initial:
   src/user_service.py: |
     import logging

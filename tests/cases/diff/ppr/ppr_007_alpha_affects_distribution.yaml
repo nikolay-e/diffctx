@@ -1,135 +1,235 @@
-# Scenario: func0 in a 5-function chain gets return value — tests alpha effect on score distribution
-# Changed: test.py — func0() returns 1, chain func0->func1->...->func4
-# Reviewer needs: test.py (changed, entire chain is in one file)
-# Trap: alt_chain.py — defines func0() with different implementation, name collision
-# Trap: result_consumer.py — consumes function outputs with similar naming pattern
-# Trap: parallel_chain.py — sibling chain structure (sibling_func0->sibling_func1->sibling_func2)
+# Scenario: return_value_propagation_in_chain
+#   A 5-function chain across separate files where each function USES the
+#   return value of the one it calls. base.py's compute_base() changes its
+#   return value from 10 to 25. The chain propagates real data:
+#     base.compute_base -> step1.add_margin -> step2.apply_tax ->
+#     step3.round_total -> step4.format_receipt
+#
+# Diff shows:
+#   base.py:
+#     - return 10
+#     + return 25
+#     The base price changes. Every downstream function receives a
+#     different input, producing different outputs.
+#
+# Reviewer questions:
+#   Q1: "What does add_margin do with base's return value?"
+#       -> step1.py imports compute_base, calls it, adds 5 to the result.
+#         Old: 10 + 5 = 15.  New: 25 + 5 = 30.
+#         Reviewer must see this call site to understand propagation.
+#
+#   Q2: "Does apply_tax break with the new value?"
+#       -> step2.py imports add_margin from step1, multiplies by 1.2.
+#         Pure arithmetic — won't break, but the dollar amount changes
+#         significantly (18.0 -> 36.0). Reviewer may or may not need
+#         this depending on budget, but step1 is essential.
+#
+# Not needed for comprehension:
+#   - alt_base.py: Defines its own compute_base() returning 99. Name
+#     collision trap. Not imported by the chain.
+#
+#   - price_logger.py: Has compute_base-like naming and price-related
+#     functions, but NO real import from base.py. Name similarity trap.
+#
+#   - garbage_parallel_calc.py: Similar arithmetic chain with GARBAGE
+#     markers. Uses add_margin-like naming but different module.
 
+max_enrichment: 25.0
 initial:
-  test.py: |
-    def func0():
-        pass
+  base.py: |
+    def compute_base():
+        return 10
 
-    def func1():
-        func0()
+  step1.py: |
+    from base import compute_base
 
-    def func2():
-        func1()
+    def add_margin():
+        price = compute_base()
+        return price + 5
 
-    def func3():
-        func2()
+  step2.py: |
+    from step1 import add_margin
 
-    def func4():
-        func3()
-  alt_chain.py: |
-    def func0():
-        return "totally_different_func0"
+    def apply_tax():
+        subtotal = add_margin()
+        return subtotal * 1.2
 
-    def func0_extended():
-        return func0() + "_extended"
+  step3.py: |
+    from step2 import apply_tax
 
-    class AltChainRunner:
-        def execute(self):
-            return func0_extended()
-  result_consumer.py: |
-    def consume_func_output(result):
-        return result + "_consumed"
+    def round_total():
+        total = apply_tax()
+        return round(total, 2)
 
-    class FuncResultProcessor:
-        def process(self, data):
-            return len(data)
+  step4.py: |
+    from step3 import round_total
 
-        def summarize(self, results):
-            return {"count": len(results), "processed": True}
-  parallel_chain.py: |
-    def sibling_func0():
-        return "sibling_base"
+    def format_receipt():
+        amount = round_total()
+        return f"Total: ${amount}"
 
-    def sibling_func1():
-        return sibling_func0()
+  alt_base.py: |
+    GARBAGE_PPR007_ALT_A = "alt_base"
+    GARBAGE_PPR007_ALT_B = 99
 
-    def sibling_func2():
-        return sibling_func1()
+    def compute_base():
+        return GARBAGE_PPR007_ALT_B
 
-    class ParallelChainRunner:
-        def run(self):
-            return sibling_func2()
+    def compute_base_discounted():
+        GARBAGE_PPR007_ALT_C = 0.9
+        return compute_base() * GARBAGE_PPR007_ALT_C
+
+  price_logger.py: |
+    GARBAGE_PPR007_LOG_D = "logger"
+    GARBAGE_PPR007_LOG_E = True
+
+    def log_base_price(base_price):
+        GARBAGE_PPR007_LOG_F = f"Logged: {base_price}"
+        return GARBAGE_PPR007_LOG_F
+
+    class PriceAuditTrail:
+        GARBAGE_PPR007_LOG_G = []
+
+        def record(self, price):
+            self.GARBAGE_PPR007_LOG_G.append(price)
+
+  garbage_parallel_calc.py: |
+    GARBAGE_PPR007_CALC_H = "parallel_calc"
+    GARBAGE_PPR007_CALC_I = 50
+
+    def parallel_base():
+        return GARBAGE_PPR007_CALC_I
+
+    def parallel_margin():
+        GARBAGE_PPR007_CALC_J = 8
+        return parallel_base() + GARBAGE_PPR007_CALC_J
+
+    class ParallelPricing:
+        GARBAGE_PPR007_CALC_K = 1.15
+
+        def compute(self):
+            return parallel_margin() * self.GARBAGE_PPR007_CALC_K
 
 changed:
-  test.py: |
-    def func0():
-        return 1
+  base.py: |
+    def compute_base():
+        return 25
 
-    def func1():
-        func0()
+  step1.py: |
+    from base import compute_base
 
-    def func2():
-        func1()
+    def add_margin():
+        price = compute_base()
+        return price + 5
 
-    def func3():
-        func2()
+  step2.py: |
+    from step1 import add_margin
 
-    def func4():
-        func3()
-  alt_chain.py: |
-    def func0():
-        return "totally_different_func0"
+    def apply_tax():
+        subtotal = add_margin()
+        return subtotal * 1.2
 
-    def func0_extended():
-        return func0() + "_extended"
+  step3.py: |
+    from step2 import apply_tax
 
-    class AltChainRunner:
-        def execute(self):
-            return func0_extended()
-  result_consumer.py: |
-    def consume_func_output(result):
-        return result + "_consumed"
+    def round_total():
+        total = apply_tax()
+        return round(total, 2)
 
-    class FuncResultProcessor:
-        def process(self, data):
-            return len(data)
+  step4.py: |
+    from step3 import round_total
 
-        def summarize(self, results):
-            return {"count": len(results), "processed": True}
-  parallel_chain.py: |
-    def sibling_func0():
-        return "sibling_base"
+    def format_receipt():
+        amount = round_total()
+        return f"Total: ${amount}"
 
-    def sibling_func1():
-        return sibling_func0()
+  alt_base.py: |
+    GARBAGE_PPR007_ALT_A = "alt_base"
+    GARBAGE_PPR007_ALT_B = 99
 
-    def sibling_func2():
-        return sibling_func1()
+    def compute_base():
+        return GARBAGE_PPR007_ALT_B
 
-    class ParallelChainRunner:
-        def run(self):
-            return sibling_func2()
+    def compute_base_discounted():
+        GARBAGE_PPR007_ALT_C = 0.9
+        return compute_base() * GARBAGE_PPR007_ALT_C
+
+  price_logger.py: |
+    GARBAGE_PPR007_LOG_D = "logger"
+    GARBAGE_PPR007_LOG_E = True
+
+    def log_base_price(base_price):
+        GARBAGE_PPR007_LOG_F = f"Logged: {base_price}"
+        return GARBAGE_PPR007_LOG_F
+
+    class PriceAuditTrail:
+        GARBAGE_PPR007_LOG_G = []
+
+        def record(self, price):
+            self.GARBAGE_PPR007_LOG_G.append(price)
+
+  garbage_parallel_calc.py: |
+    GARBAGE_PPR007_CALC_H = "parallel_calc"
+    GARBAGE_PPR007_CALC_I = 50
+
+    def parallel_base():
+        return GARBAGE_PPR007_CALC_I
+
+    def parallel_margin():
+        GARBAGE_PPR007_CALC_J = 8
+        return parallel_base() + GARBAGE_PPR007_CALC_J
+
+    class ParallelPricing:
+        GARBAGE_PPR007_CALC_K = 1.15
+
+        def compute(self):
+            return parallel_margin() * self.GARBAGE_PPR007_CALC_K
 
 # === Assertions ===
 
 must_include_files:
-- test.py
+  - base.py
+  # Q1: step1 is the immediate downstream caller — reviewer must see
+  # how compute_base()'s return value flows into add_margin().
+  - step1.py
 
 must_include_content_from:
-  test.py:
-    - 'def func0():'
-    - return 1
+  base.py:
+    - "def compute_base():"
+    - "return 25"
+  step1.py:
+    - "from base import compute_base"
+    - "price = compute_base()"
+    - "return price + 5"
 
 must_not_include:
-- AltChainRunner
-- totally_different_func0
-- func0_extended
-- FuncResultProcessor
-- consume_func_output
-- ParallelChainRunner
-- sibling_func0
+  # --- alt_base.py: name collision trap, own compute_base() ---
+  - GARBAGE_PPR007_ALT_A
+  - GARBAGE_PPR007_ALT_B
+  - GARBAGE_PPR007_ALT_C
+  - compute_base_discounted
+  # --- price_logger.py: price-related naming but no real import ---
+  - GARBAGE_PPR007_LOG_D
+  - GARBAGE_PPR007_LOG_E
+  - GARBAGE_PPR007_LOG_F
+  - GARBAGE_PPR007_LOG_G
+  - PriceAuditTrail
+  - log_base_price
+  # --- garbage_parallel_calc.py: similar arithmetic chain structure ---
+  - GARBAGE_PPR007_CALC_H
+  - GARBAGE_PPR007_CALC_I
+  - GARBAGE_PPR007_CALC_J
+  - GARBAGE_PPR007_CALC_K
+  - ParallelPricing
+  - parallel_base
+  - parallel_margin
 
 must_not_include_files:
-- alt_chain.py
-- result_consumer.py
-- parallel_chain.py
+  - alt_base.py
+  - price_logger.py
+  - garbage_parallel_calc.py
 
-max_fragments: 4
-max_files: 2
+max_fragments: 5
+max_files: 3
 add_garbage_files: false
 skip_garbage_check: true

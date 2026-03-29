@@ -37,6 +37,7 @@
 #     STRUCTURAL TRAP: calls ./scripts/backup.sh directly. But
 #     scheduling wrapper, not config definition.
 
+max_enrichment: 7.1
 initial:
   scripts/backup.sh: |
     #!/bin/bash

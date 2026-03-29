@@ -31,6 +31,7 @@
 #     Calls GetUserAsync(), checks result. But mock setup doesn't help review
 #     the actual deserialization logic.
 
+max_enrichment: 6.2
 initial:
   Models/User.cs: |
     namespace MyApp.Models

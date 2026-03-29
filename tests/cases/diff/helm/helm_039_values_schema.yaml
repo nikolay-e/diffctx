@@ -33,6 +33,7 @@
 #   - tests/test-connection.yaml: Helm test pod that validates the release.
 #     Tests release health, not values schema compliance.
 
+max_enrichment: 5.2
 initial:
   values.schema.json: |
     {}

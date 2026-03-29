@@ -33,6 +33,7 @@
 #     Same fields as the route handlers return. But no import from routes.py
 #     or app.py. Independent serialization utility.
 
+max_enrichment: 5.9
 initial:
   routes.py: |
     from flask import Blueprint, jsonify, request, abort

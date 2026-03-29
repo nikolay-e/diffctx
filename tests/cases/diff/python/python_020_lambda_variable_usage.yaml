@@ -3,6 +3,7 @@
 # Reviewer questions: Is compose() used correctly? Does pipeline order matter for normalization?
 # Trap 1: text_cleaner.py — cleans text with regex, shares "transform/text" vocabulary but independent
 # Trap 2: string_utils.py — string utility functions, shares "string processing" domain but no dep
+max_enrichment: 6.2
 initial:
   transforms.py: |
     from typing import Callable, TypeVar, Any

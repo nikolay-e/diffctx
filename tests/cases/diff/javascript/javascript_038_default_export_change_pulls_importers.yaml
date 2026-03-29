@@ -18,6 +18,7 @@
 #   - retry-client.ts: wraps fetch with retry logic. Different HTTP abstraction entirely,
 #     doesn't use apiClient.
 
+max_enrichment: 4.7
 initial:
   api.ts: |
     export default function apiClient() {

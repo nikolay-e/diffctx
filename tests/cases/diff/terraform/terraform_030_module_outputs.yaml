@@ -24,6 +24,7 @@
 #     var.username, var.password, var.database referenced in the connection
 #     string. Direct edge: defines variables used in the new output.
 
+max_enrichment: 9.6
 initial:
   modules/rds/main.tf: |
     resource "aws_db_instance" "main" {

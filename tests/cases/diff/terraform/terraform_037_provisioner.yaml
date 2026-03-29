@@ -7,6 +7,7 @@
 #   - bastion/setup.tf: also has a remote-exec provisioner but for bastion host
 #   - networking/nacl.tf: network ACL shares VPC reference but unrelated to provisioning
 
+max_enrichment: 7.6
 initial:
   main.tf: |
     resource "aws_instance" "web" {

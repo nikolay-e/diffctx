@@ -28,6 +28,7 @@
 #     "IP list" concept. But Ansible is configuration management, not
 #     the Terraform provisioner being reviewed.
 
+max_enrichment: 6.5
 initial:
   main.tf: |
     resource "aws_instance" "web" {

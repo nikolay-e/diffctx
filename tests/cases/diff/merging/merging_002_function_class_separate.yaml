@@ -3,6 +3,7 @@
 # Trap rationale: message_queue.py and audit_logger.py share event/logging
 # vocabulary but are not imported by event_handler.py.
 
+max_enrichment: 11.3
 initial:
   src/event_handler.py: |
     import logging

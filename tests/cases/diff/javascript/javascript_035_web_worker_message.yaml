@@ -15,6 +15,7 @@
 #   - thread-pool.ts: manages a pool of workers for batch processing. Higher-level
 #     abstraction over Worker, not instantiated by main.ts.
 
+max_enrichment: 5.9
 initial:
   worker.ts: |
     self.onmessage = function(e: MessageEvent) {

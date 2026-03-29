@@ -4,6 +4,7 @@
 # Trap files:
 #   - lib/event_bus.rb: Pub/sub event system — "callbacks/hooks" vocabulary overlap but no Callbacks module import
 #   - lib/validator.rb: Validation pipeline — "before_save" domain overlap but independent validation chain
+max_enrichment: 7.1
 initial:
   lib/callbacks.rb: |
     module Callbacks

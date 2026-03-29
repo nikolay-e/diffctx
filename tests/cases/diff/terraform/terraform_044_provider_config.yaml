@@ -30,6 +30,7 @@
 #   - outputs.tf: Exports resource ARNs. Same resources as main.tf but
 #     doesn't affect tagging behavior.
 
+max_enrichment: 5.6
 initial:
   main.tf: |
     resource "aws_instance" "web" {

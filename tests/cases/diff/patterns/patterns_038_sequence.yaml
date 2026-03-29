@@ -17,6 +17,7 @@
 #   - tests/test_token_bucket.py: tests for token bucket rate limiter,
 #     similar mock patterns but different algorithm.
 
+max_enrichment: 5.3
 initial:
   src/rate_limiter.py: |
     import time

@@ -26,6 +26,7 @@
 #     image, resources). HARDEST TRAP: nearly identical YAML keys. But this
 #     is a static values file, not Terraform yamlencode output.
 
+max_enrichment: 7.2
 initial:
   k8s.tf: |
     resource "local_file" "k8s_config" {

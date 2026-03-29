@@ -3,6 +3,7 @@
 # Reviewer questions: Is MRO correct? Does to_dict() include timestamp fields?
 # Trap 1: event_tracker.py — tracks events with timestamps, shares "timestamp" vocabulary but independent
 # Trap 2: json_encoder.py — encodes objects to JSON, shares "serialize/to_dict" domain but no dep
+max_enrichment: 6.7
 initial:
   mixins.py: |
     import logging

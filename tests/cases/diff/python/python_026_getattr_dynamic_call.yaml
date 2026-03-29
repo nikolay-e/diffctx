@@ -3,6 +3,7 @@
 # Reviewer questions: Is getattr fallback safe? What if action_name doesn't exist?
 # Trap 1: command_parser.py — parses command strings, shares "dispatch/command" vocabulary but independent
 # Trap 2: plugin_loader.py — loads plugins dynamically, shares "dynamic call" domain but no dep
+max_enrichment: 7.2
 initial:
   actions.py: |
     from typing import Dict, Any, Optional, List

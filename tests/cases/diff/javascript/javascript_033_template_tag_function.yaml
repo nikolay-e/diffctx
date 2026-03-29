@@ -31,6 +31,7 @@
 #     Direct structural edge — imports buildQuery and asserts the result.
 #     But test expectations don't help review the template tag mechanism.
 
+max_enrichment: 6.1
 initial:
   tags.ts: |
     export function sql(strings: TemplateStringsArray, ...values: any[]) {

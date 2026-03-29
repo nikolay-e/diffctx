@@ -1,3 +1,4 @@
+max_enrichment: 15.4
 initial:
   .gitlab-ci.yml: |
     stages:
@@ -106,6 +107,9 @@ changed:
     }
 must_include_files:
 - .gitlab-ci.yml
+must_include_content:
+- "needs: [build]"
+- "needs: [build, test]"
 must_not_include:
 - GARBAGE_CICD_DOCS_030_EXECUTOR_MARKER_D
 - GARBAGE_CICD_DOCS_030_PARALLEL_MARKER_F

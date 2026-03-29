@@ -30,6 +30,7 @@
 #   - Middleware/RequestLoggingMiddleware.cs: Also registered in Startup via
 #     app.UseMiddleware. Same configuration location but different concern.
 
+max_enrichment: 11.6
 initial:
   Interfaces/IUserService.cs: |
     using MyApp.Models;

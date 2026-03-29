@@ -21,6 +21,7 @@
 #     domain (formatting) but does not import from shared/utils.
 #   - packages/shared/package.json: package metadata, no comprehension value.
 
+max_enrichment: 8.1
 initial:
   packages/shared/src/utils.ts: |
     export function formatDate(date: Date): string {

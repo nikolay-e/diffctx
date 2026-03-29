@@ -11,6 +11,7 @@
 # Traps: nlb.tf is a different load balancer type. cdn.tf references the ALB
 # but for CloudFront origin, not load balancing.
 
+max_enrichment: 5.0
 initial:
   lb.tf: |
     # Load balancer resources placeholder

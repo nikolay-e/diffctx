@@ -8,6 +8,7 @@
 #   2. Does main.py handle SIGTERM for graceful shutdown matching STOPSIGNAL?
 #   3. Does docker-entrypoint.sh exist (it's referenced but not in initial files)?
 
+max_enrichment: 4.7
 initial:
   src/main.py: |
     import sys

@@ -14,6 +14,7 @@
 # monitoring_sg.tf is raw aws_security_group, not using the module.
 # waf.tf is web security but a completely different AWS service.
 
+max_enrichment: 6.9
 initial:
   modules/security_group/main.tf: |
     resource "aws_security_group" "this" {

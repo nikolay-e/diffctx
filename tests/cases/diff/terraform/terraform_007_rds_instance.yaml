@@ -14,6 +14,7 @@
 # unchanged file the reviewer critically needs. The test value comes from
 # verifying the algorithm excludes the traps and includes the changed files.
 
+max_enrichment: 4.1
 initial:
   database.tf: |
     resource "aws_db_instance" "placeholder" {

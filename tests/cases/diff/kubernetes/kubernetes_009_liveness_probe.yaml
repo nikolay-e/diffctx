@@ -28,6 +28,7 @@
 #     which triggers PodCrashLooping alerts. The alerting rules are
 #     downstream consequences of probe config. But they don't help
 #     review WHETHER the probe path/thresholds are correct.
+max_enrichment: 12.6
 initial:
   src/health.py: |
     from fastapi import FastAPI, Response

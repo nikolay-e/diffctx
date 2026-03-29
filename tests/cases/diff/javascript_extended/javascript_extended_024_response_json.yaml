@@ -19,6 +19,7 @@
 #   - src/middleware/error-handler.ts: global error handling middleware. Catches
 #     unhandled errors, but the handler's happy path doesn't interact with it.
 
+max_enrichment: 7.1
 initial:
   src/handlers/data-handler.ts: |
     import { Request, Response } from 'express';

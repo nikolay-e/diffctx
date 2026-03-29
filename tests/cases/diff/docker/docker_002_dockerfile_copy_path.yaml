@@ -23,6 +23,7 @@
 #   - terraform/main.tf: defines ECS task with same image — different
 #     infrastructure layer entirely.
 
+max_enrichment: 3.8
 initial:
   src/index.js: |
     const express = require('express');

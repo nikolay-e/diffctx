@@ -20,10 +20,9 @@ from .utils import load_yaml
         ("txt", ".txt"),
     ],
 )
-def test_format_output_to_file(temp_project, fmt, ext):
+def test_format_output_to_file(run_mapper, temp_project, fmt, ext):
     output_file = temp_project / f"output{ext}"
-    result = run_treemapper_subprocess([str(temp_project), "-o", str(output_file), "--format", fmt])
-    assert result.returncode == 0
+    assert run_mapper([str(temp_project), "-o", str(output_file), "--format", fmt])
     assert output_file.exists()
 
     content = output_file.read_text(encoding="utf-8")
@@ -70,28 +69,26 @@ def test_python_api_serializers(temp_project):
     assert f"{temp_project.name}/" in text_str
 
 
-def test_format_with_file_content(temp_project):
+def test_format_with_file_content(run_mapper, temp_project):
     test_file = temp_project / "test.txt"
     test_content = "Hello, format test!"
     test_file.write_text(test_content, encoding="utf-8")
 
     for fmt in ["yaml", "json", "txt"]:
         output_file = temp_project / f"output.{fmt}"
-        result = run_treemapper_subprocess([str(temp_project), "-o", str(output_file), "--format", fmt])
-        assert result.returncode == 0
+        assert run_mapper([str(temp_project), "-o", str(output_file), "--format", fmt])
 
         content = output_file.read_text(encoding="utf-8")
         assert test_content in content
 
 
-def test_multiline_content_preservation(temp_project):
+def test_multiline_content_preservation(run_mapper, temp_project):
     test_file = temp_project / "multiline.txt"
     test_content = "Line 1\nLine 2\nLine 3\n"
     test_file.write_text(test_content, encoding="utf-8")
 
     output_file = temp_project / "output.yaml"
-    result = run_treemapper_subprocess([str(temp_project), "-o", str(output_file), "--format", "yaml"])
-    assert result.returncode == 0
+    assert run_mapper([str(temp_project), "-o", str(output_file), "--format", "yaml"])
 
     tree = load_yaml(output_file)
     for child in tree.get("children", []):
@@ -109,10 +106,9 @@ def test_format_option_invalid(temp_project):
     assert "invalid choice" in result.stderr.lower()
 
 
-def test_default_format_is_yaml(temp_project):
+def test_default_format_is_yaml(run_mapper, temp_project):
     output_file = temp_project / "output.yaml"
-    result = run_treemapper_subprocess([str(temp_project), "-o", str(output_file)])
-    assert result.returncode == 0
+    assert run_mapper([str(temp_project), "-o", str(output_file)])
     tree = load_yaml(output_file)
     assert tree["name"] == temp_project.name
 

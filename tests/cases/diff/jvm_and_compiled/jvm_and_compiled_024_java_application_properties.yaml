@@ -35,6 +35,7 @@
 #   - HealthCheckController.java: REST endpoint that returns app status.
 #     Same Spring Boot application. No reference to cache properties.
 
+max_enrichment: 15.4
 initial:
   src/main/resources/application.properties: |
     server.port=8080

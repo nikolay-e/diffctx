@@ -3,6 +3,7 @@
 # Reviewer questions: Do existing functions still work? How do Container/Result relate to ProcessingResult?
 # Trap 1: serializer.py — serializes data with Generic-like patterns but no import from types.py
 # Trap 2: type_registry.py — registers types by name, shares "type" vocabulary but independent
+max_enrichment: 6.5
 initial:
   types.py: |
     from typing import List, Optional, Callable, Any, Dict, Union

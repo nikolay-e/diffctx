@@ -25,6 +25,7 @@
 #   - .env.example: template file listing same env vars — adds nothing
 #     beyond what the Dockerfile already shows.
 
+max_enrichment: 4.1
 initial:
   src/config.ts: |
     export const config = {

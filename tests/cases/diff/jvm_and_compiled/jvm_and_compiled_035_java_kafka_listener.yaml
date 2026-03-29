@@ -33,6 +33,7 @@
 #   - MessageSerializer.java: Kafka serializer/deserializer config.
 #     Same Kafka infrastructure. Independent of listener logic.
 
+max_enrichment: 6.9
 initial:
   src/main/java/com/example/KafkaConsumer.java: |
     package com.example;

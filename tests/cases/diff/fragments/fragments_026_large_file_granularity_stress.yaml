@@ -1,0 +1,292 @@
+max_enrichment: 112.2
+initial:
+  large_module.py: |
+    from typing import Optional, Dict, List, Any
+    from dataclasses import dataclass
+    import logging
+    import time
+
+    logger = logging.getLogger(__name__)
+
+
+    class DatabaseManager:
+        def __init__(self, connection_string: str):
+            self._connection_string = connection_string
+            self._pool = None
+            self._active_connections = 0
+
+        def connect(self) -> bool:
+            if self._pool is not None:
+                return False
+            self._pool = {"host": self._connection_string, "max_size": 10}
+            self._active_connections = 1
+            logger.info("Connected to database: %s", self._connection_string)
+            return True
+
+        def disconnect(self) -> None:
+            if self._pool is None:
+                return
+            self._active_connections = 0
+            self._pool = None
+            logger.info("Disconnected from database")
+
+        def query(self, sql: str, params: Optional[Dict] = None) -> List[Dict]:
+            if self._pool is None:
+                raise RuntimeError("Not connected")
+            start = time.monotonic()
+            results = [{"row": 1, "sql": sql, "params": params}]
+            elapsed = time.monotonic() - start
+            logger.debug("Query took %.3fs", elapsed)
+            return results
+
+
+    class CacheService:
+        def __init__(self, ttl_seconds: int = 300):
+            self._store: Dict[str, Any] = {}
+            self._ttl = ttl_seconds
+            self._hit_count = 0
+            self._miss_count = 0
+
+        def get(self, key: str) -> Optional[Any]:
+            if key in self._store:
+                self._hit_count += 1
+                return self._store[key]
+            self._miss_count += 1
+            return None
+
+        def set(self, key: str, value: Any) -> None:
+            self._store[key] = value
+
+        def invalidate(self, key: str) -> bool:
+            if key in self._store:
+                del self._store[key]
+                return True
+            return False
+
+
+    def process_request(request_data: Dict[str, Any]) -> Dict[str, Any]:
+        validated = {k: v for k, v in request_data.items() if v is not None}
+        result = {
+            "status": "ok",
+            "processed_keys": list(validated.keys()),
+            "count": len(validated),
+        }
+        return result
+
+
+    class ReportGenerator:
+        def __init__(self, title: str, author: str):
+            self._title = title
+            self._author = author
+            self._sections: List[Dict[str, str]] = []
+            self._generated = False
+
+        def generate(self, data: List[Dict]) -> str:
+            self._sections = []
+            for item in data:
+                section = {
+                    "heading": item.get("name", "Untitled"),
+                    "body": item.get("content", ""),
+                }
+                self._sections.append(section)
+            self._generated = True
+            return f"Report: {self._title} by {self._author}"
+
+        def export(self, format_type: str = "pdf") -> bytes:
+            if not self._generated:
+                raise RuntimeError("Must generate before export")
+            header = f"{self._title}|{self._author}|{format_type}"
+            return header.encode("utf-8")
+
+
+    class NotificationService:
+        def __init__(self, backend: str = "email"):
+            self._backend = backend
+            self._queue: List[Dict[str, str]] = []
+            self._sent_count = 0
+
+        def send(self, recipient: str, message: str) -> bool:
+            if not recipient or not message:
+                return False
+            self._sent_count += 1
+            logger.info("Sent to %s via %s", recipient, self._backend)
+            return True
+
+        def queue(self, recipient: str, message: str, priority: int = 0) -> int:
+            entry = {
+                "recipient": recipient,
+                "message": message,
+                "priority": str(priority),
+            }
+            self._queue.append(entry)
+            return len(self._queue)
+  garbage_scheduler.py: |
+    GARBAGE_FRAG_026_SCHEDULER_MARKER_A = "scheduler"
+    GARBAGE_FRAG_026_CRON_MARKER_B = True
+
+    class TaskScheduler:
+        GARBAGE_FRAG_026_TASK_MARKER_C = "task"
+
+        def schedule(self, interval: int) -> None:
+            GARBAGE_FRAG_026_INTERVAL_MARKER_D = interval
+            pass
+
+        def cancel(self) -> bool:
+            GARBAGE_FRAG_026_CANCEL_MARKER_E = "cancelled"
+            return True
+changed:
+  large_module.py: |
+    from typing import Optional, Dict, List, Any
+    from dataclasses import dataclass
+    import logging
+    import time
+
+    logger = logging.getLogger(__name__)
+
+
+    class DatabaseManager:
+        def __init__(self, connection_string: str):
+            self._connection_string = connection_string
+            self._pool = None
+            self._active_connections = 0
+
+        def connect(self) -> bool:
+            if self._pool is not None:
+                return False
+            self._pool = {"host": self._connection_string, "max_size": 10}
+            self._active_connections = 1
+            logger.info("Connected to database: %s", self._connection_string)
+            return True
+
+        def disconnect(self) -> None:
+            if self._pool is None:
+                return
+            self._active_connections = 0
+            self._pool = None
+            logger.info("Disconnected from database")
+
+        def query(self, sql: str, params: Optional[Dict] = None) -> List[Dict]:
+            if self._pool is None:
+                raise RuntimeError("Not connected")
+            start = time.monotonic()
+            results = [{"row": 1, "sql": sql, "params": params}]
+            elapsed = time.monotonic() - start
+            logger.debug("Query took %.3fs", elapsed)
+            return results
+
+
+    class CacheService:
+        def __init__(self, ttl_seconds: int = 300):
+            self._store: Dict[str, Any] = {}
+            self._ttl = ttl_seconds
+            self._hit_count = 0
+            self._miss_count = 0
+
+        def get(self, key: str) -> Optional[Any]:
+            if key in self._store:
+                self._hit_count += 1
+                return self._store[key]
+            self._miss_count += 1
+            return None
+
+        def set(self, key: str, value: Any) -> None:
+            self._store[key] = value
+
+        def invalidate(self, key: str) -> bool:
+            if key in self._store:
+                del self._store[key]
+                return True
+            return False
+
+
+    def process_request(request_data: Dict[str, Any]) -> Dict[str, Any]:
+        validated = {k: v for k, v in request_data.items() if v is not None}
+        result = {
+            "status": "success",
+            "processed_keys": list(validated.keys()),
+            "count": len(validated),
+            "timestamp": time.monotonic(),
+        }
+        return result
+
+
+    class ReportGenerator:
+        def __init__(self, title: str, author: str):
+            self._title = title
+            self._author = author
+            self._sections: List[Dict[str, str]] = []
+            self._generated = False
+
+        def generate(self, data: List[Dict]) -> str:
+            self._sections = []
+            for item in data:
+                section = {
+                    "heading": item.get("name", "Untitled"),
+                    "body": item.get("content", ""),
+                }
+                self._sections.append(section)
+            self._generated = True
+            return f"Report: {self._title} by {self._author}"
+
+        def export(self, format_type: str = "pdf") -> bytes:
+            if not self._generated:
+                raise RuntimeError("Must generate before export")
+            header = f"{self._title}|{self._author}|{format_type}"
+            return header.encode("utf-8")
+
+
+    class NotificationService:
+        def __init__(self, backend: str = "email"):
+            self._backend = backend
+            self._queue: List[Dict[str, str]] = []
+            self._sent_count = 0
+
+        def send(self, recipient: str, message: str) -> bool:
+            if not recipient or not message:
+                return False
+            self._sent_count += 1
+            logger.info("Sent to %s via %s", recipient, self._backend)
+            return True
+
+        def queue(self, recipient: str, message: str, priority: int = 0) -> int:
+            entry = {
+                "recipient": recipient,
+                "message": message,
+                "priority": str(priority),
+            }
+            self._queue.append(entry)
+            return len(self._queue)
+  garbage_scheduler.py: |
+    GARBAGE_FRAG_026_SCHEDULER_MARKER_A = "scheduler"
+    GARBAGE_FRAG_026_CRON_MARKER_B = True
+
+    class TaskScheduler:
+        GARBAGE_FRAG_026_TASK_MARKER_C = "task"
+
+        def schedule(self, interval: int) -> None:
+            GARBAGE_FRAG_026_INTERVAL_MARKER_D = interval
+            pass
+
+        def cancel(self) -> bool:
+            GARBAGE_FRAG_026_CANCEL_MARKER_E = "cancelled"
+            return True
+must_include_files:
+  - large_module.py
+must_include_content_from:
+  large_module.py:
+    - "def process_request"
+must_not_include_content_from:
+  large_module.py:
+    - "class ReportGenerator"
+    - "class NotificationService"
+must_not_include:
+  - GARBAGE_FRAG_026_SCHEDULER_MARKER_A
+  - GARBAGE_FRAG_026_CRON_MARKER_B
+  - GARBAGE_FRAG_026_TASK_MARKER_C
+  - GARBAGE_FRAG_026_INTERVAL_MARKER_D
+  - GARBAGE_FRAG_026_CANCEL_MARKER_E
+  - garbage_scheduler.py
+add_garbage_files: false
+skip_garbage_check: true
+max_fragments: 4
+max_files: 2

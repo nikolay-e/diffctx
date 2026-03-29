@@ -29,6 +29,7 @@
 #     review the Builder correctness.
 #   - CacheWarmerService, FeatureFlagService, RateLimiterService: unrelated.
 
+max_enrichment: 3.8
 initial:
   src/main/java/com/orderapi/dto/OrderRequest.java: |
     package com.orderapi.dto;

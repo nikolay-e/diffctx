@@ -3,6 +3,7 @@
 # Reviewer questions: Are validation errors collected? Is sanitize_input applied to output?
 # Trap 1: input_sanitizer.py — sanitizes HTML input, shares "sanitize/validate" vocabulary but independent
 # Trap 2: password_policy.py — validates password strength, shares "validator" domain but no dep
+max_enrichment: 5.4
 initial:
   validators.py: |
     import re

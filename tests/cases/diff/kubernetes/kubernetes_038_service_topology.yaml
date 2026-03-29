@@ -4,6 +4,7 @@
 # Trap rationale: pod-topology-spread.yaml and node-affinity.yaml share
 # topology vocabulary but define scheduling constraints, not service routing.
 
+max_enrichment: 17.0
 initial:
   k8s/base/deployment.yaml: |
     apiVersion: apps/v1

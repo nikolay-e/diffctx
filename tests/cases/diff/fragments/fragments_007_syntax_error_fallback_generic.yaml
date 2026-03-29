@@ -1,3 +1,4 @@
+max_enrichment: 8.1
 initial:
   broken.py: |+
     import os
@@ -46,6 +47,8 @@ changed:
     GARBAGE_MODULE_CONST = "GARBAGE_FRAG_moduleconst030"
 must_include_files:
 - broken.py
+must_include_content:
+- "x = [1, 2, 3"
 must_not_include:
 - GARBAGE_MODULE_CONST
 - garbage_broken_030.py

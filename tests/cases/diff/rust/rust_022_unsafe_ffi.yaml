@@ -4,6 +4,7 @@
 # Trap files:
 #   - src/bindings.rs: Auto-generated C bindings — "FFI/extern" vocabulary but different external library
 #   - src/wasm_bridge.rs: WASM interop layer — "unsafe boundary" pattern overlap but no shared types
+max_enrichment: 7.8
 initial:
   src/lib.rs: |
     pub mod ffi;

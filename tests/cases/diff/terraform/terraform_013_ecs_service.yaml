@@ -11,6 +11,7 @@
 # Traps: ecs_workers.tf has same aws_ecs_service type but for background workers.
 # scripts/deploy.sh is operational, not Terraform.
 
+max_enrichment: 6.9
 initial:
   ecs.tf: |
     resource "aws_ecs_cluster" "main" {

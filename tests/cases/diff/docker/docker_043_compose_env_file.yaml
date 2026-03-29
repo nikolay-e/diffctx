@@ -1,3 +1,4 @@
+max_enrichment: 7.1
 initial:
   src/api.py: |
     from flask import Flask, jsonify
@@ -118,5 +119,8 @@ changed:
   ansible/env-setup.yml: ''
 must_include_files:
 - docker-compose.yml
+must_include_content:
+- "env_file:"
+- ".env.local"
 add_garbage_files: false
 skip_garbage_check: true

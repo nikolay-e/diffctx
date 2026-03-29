@@ -24,6 +24,7 @@
 #     Same VPC reference, same networking domain. But subnets don't affect
 #     whether the output reference is valid.
 
+max_enrichment: 21.1
 initial:
   outputs.tf: |
     output "vpc_id" {

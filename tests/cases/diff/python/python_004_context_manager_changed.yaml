@@ -3,6 +3,7 @@
 # Reviewer questions: How does timing affect callers? Does savepoint need timing too?
 # Trap 1: audit_log.py — logs database events but does NOT import from db.py
 # Trap 2: connection_monitor.py — monitors connection pool health, shares "pool"/"connection" vocabulary but independent
+max_enrichment: 12.2
 initial:
   db.py: |
     from contextlib import contextmanager

@@ -30,6 +30,7 @@
 #     Uses Status enum for transition tracking. Same Status type, same
 #     task domain. But history logging doesn't help review the enum change.
 
+max_enrichment: 16.9
 initial:
   enums.ts: |
     export enum Status {

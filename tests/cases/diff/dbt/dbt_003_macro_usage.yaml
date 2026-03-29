@@ -13,6 +13,7 @@
 #   - models/staging/stg_orders.sql: doesn't use the macro
 #   - models/marts/user_retention.sql: uses a different macro
 
+max_enrichment: 17.4
 initial:
   macros/currency.sql: |
     {% macro cents_to_dollars(column_name) %}

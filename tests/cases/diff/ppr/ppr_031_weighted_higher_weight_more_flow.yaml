@@ -1,3 +1,36 @@
+# Scenario: source_func() calls high_func() 5 times and low_func() once.
+#   Only source.py is changed (adds a return value).
+#
+# This tests whether PPR propagates more weight along frequently-called
+# edges: high_func() is called 5x, low_func() only 1x, so high_weight.py
+# should receive far more relevance flow.
+#
+# Diff shows:
+#   source.py:
+#     + return "modified"   (added at end of source_func)
+#
+# Reviewer question:
+#   Q1: "source_func() calls high_func() 5 times — what does it return?"
+#       -> Needs high_weight.py: it defines high_func() returning "high".
+#         The reviewer must see this frequently-called dependency to understand
+#         the dominant behavior of source_func(). Five calls vs one call means
+#         high_func() defines ~83% of what source_func() does.
+#
+# Not needed for comprehension:
+#   - low_weight.py: Called only once. Contributes little to source_func()'s
+#     behavior. Reviewer can infer from the name + single call that it's minor.
+#
+#   - garbage_weight_consumer.py: Imports the SAME high_func and low_func.
+#     Structural edge to both weight modules. But its weight_consumer() and
+#     WeightAnalyzer have nothing to do with source_func()'s change.
+#
+#   - garbage_source_mirror.py: Defines ANOTHER source_func() — same name,
+#     different module. Lexical trap. Completely unrelated.
+#
+#   - garbage_modified_output.py: Contains "modified" string matching the
+#     new return value. Lexical trap on diff content.
+
+max_enrichment: 19.5
 initial:
   source.py: |
     from high_weight import high_func
@@ -115,23 +148,32 @@ changed:
 
 must_include_files:
 - source.py
+  # Q1: Reviewer needs to see the frequently-called dependency.
+  # high_func() is called 5x — it dominates source_func()'s behavior.
+- high_weight.py
 
 must_include_content_from:
   source.py:
     - 'def source_func():'
     - return "modified"
     - high_func()
+  high_weight.py:
+    - 'def high_func():'
 
 must_not_include:
-# Tricky: imports same high_func and low_func
+# --- garbage_weight_consumer.py: imports same high_func and low_func ---
+# Structural edge to both weight modules, but weight_consumer() and
+# WeightAnalyzer are unrelated to the source_func() change.
 - GARBAGE_PPR031_CONSUMER_A
 - GARBAGE_PPR031_CONSUMER_B
 - GARBAGE_PPR031_ANALYZER_C
-# Tricky: same source_func name
+# --- garbage_source_mirror.py: defines another source_func() ---
+# Lexical trap: same function name, different module, no relation.
 - GARBAGE_PPR031_MIRROR_D
 - GARBAGE_PPR031_MIRROR_E
 - GARBAGE_PPR031_HELPER_F
-# Tricky: uses "modified" string
+# --- garbage_modified_output.py: contains "modified" string ---
+# Lexical trap: matches the new return value in the diff.
 - GARBAGE_PPR031_OUTPUT_G
 - GARBAGE_PPR031_OUTPUT_H
 

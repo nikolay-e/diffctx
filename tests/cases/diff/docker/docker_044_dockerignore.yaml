@@ -8,6 +8,7 @@
 #   2. Does "COPY src/ ./src/" still work — is src/ excluded? (no, but tests/ is)
 #   3. Are .env files excluded — does the app need them at build time?
 
+max_enrichment: 4.0
 initial:
   src/app.py: |
     from flask import Flask, jsonify

@@ -17,6 +17,7 @@
 #   - infrastructure/scheduled_lambda.tf: another sibling lambda — different function,
 #     different config, unrelated to the api-handler changes
 
+max_enrichment: 16.5
 initial:
   modules/lambda/main.tf: |
     resource "aws_lambda_function" "api" {

@@ -30,6 +30,7 @@
 #     with ingress/egress rules. Shares "secure-api" label and "security"
 #     vocabulary. But NetworkPolicy controls network traffic, not container
 #     capabilities or filesystem permissions. Different security dimension.
+max_enrichment: 7.6
 initial:
   k8s/apps/secure-api/deployment.yaml: |
     apiVersion: apps/v1

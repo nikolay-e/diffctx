@@ -16,6 +16,7 @@
 #   - src/snapshot.rs: creates snapshots of application state by deep-copying.
 #     Same "duplication" domain but operates on its own State struct.
 
+max_enrichment: 9.5
 initial:
   src/lib.rs: |
     pub mod entity;

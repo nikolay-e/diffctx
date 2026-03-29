@@ -27,6 +27,7 @@
 #   - OrderSpec.scala: sibling test spec using same AnyFlatSpec + Matchers.
 #     Same test framework pattern, different domain.
 
+max_enrichment: 5.9
 initial:
   User.scala: |
     case class User(name: String, email: String) {

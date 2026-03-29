@@ -24,6 +24,7 @@
 #   - WebSocketHandler.java, CacheManager.java: unrelated infrastructure.
 #     No structural edges to Kafka or order processing.
 
+max_enrichment: 4.2
 initial:
   src/main/java/com/eventbus/consumer/OrderEventConsumer.java: |
     package com.eventbus.consumer;

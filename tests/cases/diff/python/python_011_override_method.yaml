@@ -3,6 +3,7 @@
 # Reviewer questions: Does super().process(validated) double-count? Is ValidationError handled?
 # Trap 1: pipeline.py — data pipeline with process/transform methods but no dep on base_processor
 # Trap 2: filter_chain.py — filter chain with validate pattern but independent implementation
+max_enrichment: 5.2
 initial:
   base_processor.py: |
     from typing import List, Optional, Any, Dict, Callable

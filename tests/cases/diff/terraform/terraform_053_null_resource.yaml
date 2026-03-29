@@ -7,6 +7,7 @@
 #   - healthcheck.tf: another null_resource but for health checking (same resource type, different purpose)
 #   - networking/subnet.tf: subnet definition (no relation to deployment)
 
+max_enrichment: 6.3
 initial:
   scripts/deploy.sh: |
     #!/bin/bash

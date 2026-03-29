@@ -29,6 +29,7 @@
 #     limits (requests.cpu: "20", requests.memory: "40Gi"). Shares resource
 #     vocabulary. But quota is an aggregate constraint — it doesn't help
 #     review whether individual pod resources are appropriate.
+max_enrichment: 9.4
 initial:
   k8s/apps/worker/deployment.yaml: |
     apiVersion: apps/v1

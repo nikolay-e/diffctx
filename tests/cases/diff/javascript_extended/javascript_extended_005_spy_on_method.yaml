@@ -13,6 +13,7 @@
 #   - src/unrelated/scheduler.ts: job scheduling. Infrastructure concern,
 #     no relationship to logging or data processing.
 
+max_enrichment: 5.0
 initial:
   src/logger.ts: |
     export interface LogEntry {

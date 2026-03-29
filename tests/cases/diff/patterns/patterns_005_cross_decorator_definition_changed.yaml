@@ -16,6 +16,7 @@
 #   - utils/ttl_config.py: stores default TTL values for different cache tiers.
 #     Uses "ttl" and "cache" terms but no dependency on decorators.py.
 
+max_enrichment: 10.4
 initial:
   decorators.py: |
     import functools

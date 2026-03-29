@@ -3,6 +3,7 @@
 # Reviewer questions: Are new fields used consistently? Does priority ordering work correctly?
 # Trap 1: notification_service.py — sends notifications about tasks, shares "task" vocabulary but independent
 # Trap 2: analytics_tracker.py — tracks task analytics, shares "task/service" domain but no dep on models
+max_enrichment: 6.1
 initial:
   models.py: |
     from dataclasses import dataclass, field

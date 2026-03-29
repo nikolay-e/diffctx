@@ -3,6 +3,7 @@
 # Reviewer questions: Does merge preserve discounts? Is tax consistent across merged carts?
 # Trap 1: payment_gateway.py — processes payments, shares "checkout/order" vocabulary but independent
 # Trap 2: shipping_calculator.py — calculates shipping, shares "cart" domain but no dep
+max_enrichment: 6.8
 initial:
   cart.py: |
     from dataclasses import dataclass, field

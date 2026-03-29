@@ -23,6 +23,7 @@
 # Not needed for comprehension:
 #   - MessageArchiver, DeliveryScheduler, BounceHandler: unrelated infrastructure.
 
+max_enrichment: 3.7
 initial:
   src/main/java/com/messaging/core/MessageChannel.java: |
     package com.messaging.core;

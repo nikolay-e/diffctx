@@ -16,6 +16,7 @@
 #   - AgePolicy.scala: enforces age restrictions. Shares "age" domain with
 #     User.age validation but has no User type dependency.
 
+max_enrichment: 3.7
 initial:
   User.scala: |
     case class User(name: String, age: Int, email: Option[String])

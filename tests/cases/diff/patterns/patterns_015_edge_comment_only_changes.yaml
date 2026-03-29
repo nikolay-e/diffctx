@@ -15,6 +15,7 @@
 #   - utils/todo_tracker.py: scans for TODO comments and reports them.
 #     Uses "TODO" vocabulary but doesn't import or reference test.py.
 
+max_enrichment: 3.7
 initial:
   test.py: |
     def process():
@@ -74,6 +75,8 @@ changed:
             return {"total": 0, "by_keyword": {}}
 must_include_files:
   - test.py
+must_include_content:
+  - "# TODO: refactor this later"
 must_not_include:
   # utils/comment_stripper.py: regex-based comment removal, no dependency on test.py
   - CommentStripper

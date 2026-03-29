@@ -1,3 +1,4 @@
+max_enrichment: 7.7
 initial:
   utils.py: |+
     from typing import Optional, List
@@ -70,6 +71,8 @@ changed:
     GARBAGE_CONST_081 = "GARBAGE_FRAG_garbconst081"
 must_include_files:
 - utils.py
+must_include_content:
+- "return 100"
 must_not_include:
 - GARBAGE_CONST_081
 - garbage_module_081.py

@@ -32,6 +32,7 @@
 #     Imports Config type. Lexical overlap with "debug" and "logLevel" fields.
 #     But env parsing is a separate concern from type shape correctness.
 
+max_enrichment: 17.9
 initial:
   src/types.ts: |
     export type Config = {

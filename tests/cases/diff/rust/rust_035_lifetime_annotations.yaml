@@ -19,6 +19,7 @@
 #   - src/source_map.rs: maps byte offsets to line/column. Shares "Span/position"
 #     vocabulary but operates independently on &str without Parser dependency.
 
+max_enrichment: 4.0
 initial:
   src/lib.rs: |
     pub mod parser;

@@ -7,6 +7,7 @@
 #   - ecs/service.tf: ECS service with its own depends_on (same pattern, different service)
 #   - variables.tf: variable definitions (no dependency chain)
 
+max_enrichment: 14.9
 initial:
   main.tf: |
     resource "aws_lambda_function" "api" {

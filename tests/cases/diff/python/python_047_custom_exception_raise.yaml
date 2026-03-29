@@ -9,6 +9,7 @@
 #   - audit/audit_logger.py: logging/event vocabulary, no dependency on exceptions or service
 #   - cache/lru_cache.py: caching with get/put, completely different domain
 
+max_enrichment: 5.0
 initial:
   exceptions.py: |
     class ValidationError(Exception):

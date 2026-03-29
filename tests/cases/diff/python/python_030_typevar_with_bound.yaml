@@ -3,6 +3,7 @@
 # Reviewer questions: Is the TypeVar bound correct? Are return types properly constrained?
 # Trap 1: event_store.py — stores events with similar generic patterns but no dep on base
 # Trap 2: cache_store.py — caches entities, shares "store/repository" vocabulary but independent
+max_enrichment: 7.7
 initial:
   base.py: |
     from abc import ABC, abstractmethod

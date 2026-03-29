@@ -7,6 +7,7 @@
 #   - ecs/iam.tf: another IAM policy document but for ECS tasks (same data source, different service)
 #   - variables.tf: variable definitions (unrelated to IAM)
 
+max_enrichment: 33.5
 initial:
   iam.tf: |
     data "aws_iam_policy_document" "lambda_assume" {

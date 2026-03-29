@@ -16,6 +16,7 @@
 #   - user-validator.ts: request body validation for user endpoints. Validation logic
 #     not imported by routes.ts in this change.
 
+max_enrichment: 5.4
 initial:
   routes.ts: |
     import { Router } from 'express';

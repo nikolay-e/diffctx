@@ -16,6 +16,7 @@
 #   - password-hasher.ts: hashes passwords before storage. Related to the password
 #     field in CreateUserBody but not imported by the controller.
 
+max_enrichment: 3.8
 initial:
   schemas.ts: |
     export interface CreateUserBody {

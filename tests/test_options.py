@@ -5,9 +5,7 @@ from .conftest import run_treemapper_subprocess
 from .utils import load_yaml
 
 
-def test_max_depth_option(temp_project):
-    """Test --max-depth option limits traversal depth."""
-    # Create nested directory structure
+def test_max_depth_option(run_mapper, temp_project):
     (temp_project / "level1").mkdir()
     (temp_project / "level1" / "level2").mkdir()
     (temp_project / "level1" / "level2" / "level3").mkdir()
@@ -15,13 +13,10 @@ def test_max_depth_option(temp_project):
 
     output_file = temp_project / "output.yaml"
 
-    result = run_treemapper_subprocess([str(temp_project), "-o", str(output_file), "--max-depth", "2"])
-
-    assert result.returncode == 0
+    assert run_mapper([str(temp_project), "-o", str(output_file), "--max-depth", "2"])
 
     tree = load_yaml(output_file)
 
-    # Should have level1
     level1 = None
     for child in tree.get("children", []):
         if child["name"] == "level1":
@@ -31,7 +26,6 @@ def test_max_depth_option(temp_project):
     assert level1 is not None
     assert "children" in level1
 
-    # Should have level2
     level2 = None
     for child in level1.get("children", []):
         if child["name"] == "level2":
@@ -40,12 +34,10 @@ def test_max_depth_option(temp_project):
 
     assert level2 is not None
 
-    # Should NOT have level3 due to max-depth=2
     if "children" in level2:
         level3_names = [c["name"] for c in level2["children"]]
         assert "level3" not in level3_names
 
-    # Verify Python API max_depth works the same
     api_tree = map_directory(temp_project, max_depth=2)
     api_level1 = next((c for c in api_tree.get("children", []) if c["name"] == "level1"), None)
     assert api_level1 is not None
@@ -55,17 +47,13 @@ def test_max_depth_option(temp_project):
         assert "level3" not in [c["name"] for c in api_level2["children"]]
 
 
-def test_no_content_option(temp_project):
-    """Test --no-content option excludes file contents."""
-    # Create a file with content
+def test_no_content_option(run_mapper, temp_project):
     test_file = temp_project / "test.txt"
     test_file.write_text("This should not appear", encoding="utf-8")
 
     output_file = temp_project / "output.yaml"
 
-    result = run_treemapper_subprocess([str(temp_project), "-o", str(output_file), "--no-content"])
-
-    assert result.returncode == 0
+    assert run_mapper([str(temp_project), "-o", str(output_file), "--no-content"])
 
     tree = load_yaml(output_file)
 
@@ -73,34 +61,27 @@ def test_no_content_option(temp_project):
     assert test_node is not None
     assert "content" not in test_node
 
-    # Verify Python API no_content works the same
     api_tree = map_directory(temp_project, no_content=True)
     api_test = next((c for c in api_tree.get("children", []) if c.get("name") == "test.txt"), None)
     assert api_test is not None
     assert "content" not in api_test
 
 
-def test_max_file_bytes_option(temp_project):
-    """Test --max-file-bytes option limits file reading."""
-    # Create a large file
+def test_max_file_bytes_option(run_mapper, temp_project):
     large_file = temp_project / "large.txt"
-    large_content = "x" * 1000  # 1000 bytes
+    large_content = "x" * 1000
     large_file.write_text(large_content, encoding="utf-8")
 
-    # Create a small file
     small_file = temp_project / "small.txt"
     small_content = "small"
     small_file.write_text(small_content, encoding="utf-8")
 
     output_file = temp_project / "output.yaml"
 
-    result = run_treemapper_subprocess([str(temp_project), "-o", str(output_file), "--max-file-bytes", "100"])
-
-    assert result.returncode == 0
+    assert run_mapper([str(temp_project), "-o", str(output_file), "--max-file-bytes", "100"])
 
     tree = load_yaml(output_file)
 
-    # Check large file has placeholder
     large_found = False
     small_found = False
 
@@ -117,7 +98,6 @@ def test_max_file_bytes_option(temp_project):
 
     assert large_found and small_found
 
-    # Verify Python API max_file_bytes works the same
     api_tree = map_directory(temp_project, max_file_bytes=100)
     api_large = next((c for c in api_tree.get("children", []) if c.get("name") == "large.txt"), None)
     api_small = next((c for c in api_tree.get("children", []) if c.get("name") == "small.txt"), None)
@@ -127,36 +107,27 @@ def test_max_file_bytes_option(temp_project):
     assert small_content in api_small.get("content", "")
 
 
-def test_max_depth_zero(temp_project):
-    """Test --max-depth 0 only shows root directory."""
-    # Create some files
+def test_max_depth_zero(run_mapper, temp_project):
     (temp_project / "file1.txt").write_text("content1")
     (temp_project / "dir1").mkdir()
 
     output_file = temp_project / "output.yaml"
 
-    result = run_treemapper_subprocess([str(temp_project), "-o", str(output_file), "--max-depth", "0"])
-
-    assert result.returncode == 0
+    assert run_mapper([str(temp_project), "-o", str(output_file), "--max-depth", "0"])
 
     tree = load_yaml(output_file)
 
-    # Should have no children due to max-depth=0
     children = tree.get("children", [])
     assert len(children) == 0
 
 
-def test_no_content_with_binary_files(temp_project):
-    """Test --no-content with binary files."""
-    # Create a binary file
+def test_no_content_with_binary_files(run_mapper, temp_project):
     binary_file = temp_project / "binary.bin"
     binary_file.write_bytes(b"\x00\x01\x02\x03")
 
     output_file = temp_project / "output.yaml"
 
-    result = run_treemapper_subprocess([str(temp_project), "-o", str(output_file), "--no-content"])
-
-    assert result.returncode == 0
+    assert run_mapper([str(temp_project), "-o", str(output_file), "--no-content"])
 
     tree = load_yaml(output_file)
 
@@ -165,9 +136,7 @@ def test_no_content_with_binary_files(temp_project):
     assert "content" not in binary_node
 
 
-def test_combined_options(temp_project):
-    """Test combining multiple options."""
-    # Create nested structure
+def test_combined_options(run_mapper, temp_project):
     (temp_project / "level1").mkdir()
     (temp_project / "level1" / "file1.txt").write_text("x" * 500)
     (temp_project / "level1" / "level2").mkdir()
@@ -175,7 +144,7 @@ def test_combined_options(temp_project):
 
     output_file = temp_project / "output.yaml"
 
-    result = run_treemapper_subprocess(
+    assert run_mapper(
         [
             str(temp_project),
             "-o",
@@ -189,10 +158,8 @@ def test_combined_options(temp_project):
         ]
     )
 
-    assert result.returncode == 0
     assert output_file.exists()
 
-    # Should be valid JSON
     import json
 
     with open(output_file, encoding="utf-8") as f:
@@ -202,8 +169,6 @@ def test_combined_options(temp_project):
 
 
 def test_log_level_with_max_file_bytes(temp_project):
-    """Test verbose output when skipping large files."""
-    # Create a large file
     large_file = temp_project / "large.txt"
     large_file.write_text("x" * 1000, encoding="utf-8")
 
@@ -223,7 +188,6 @@ def test_log_level_with_max_file_bytes(temp_project):
 
     assert result.returncode == 0
 
-    # Should log info about skipping large file
     assert "large" in result.stderr.lower() or "large" in result.stdout.lower()
 
 
@@ -234,16 +198,14 @@ def test_max_file_bytes_zero_is_error(temp_project):
     assert "--no-file-size-limit" in result.stderr
 
 
-def test_no_file_size_limit_includes_all(temp_project):
+def test_no_file_size_limit_includes_all(run_mapper, temp_project):
     large_file = temp_project / "large.txt"
     large_content = "x" * 10000
     large_file.write_text(large_content, encoding="utf-8")
 
     output_file = temp_project / "output.yaml"
 
-    result = run_treemapper_subprocess([str(temp_project), "-o", str(output_file), "--no-file-size-limit"])
-
-    assert result.returncode == 0
+    assert run_mapper([str(temp_project), "-o", str(output_file), "--no-file-size-limit"])
 
     tree = load_yaml(output_file)
 
@@ -256,14 +218,12 @@ def test_no_file_size_limit_includes_all(temp_project):
 
 
 def test_default_max_file_bytes_limit(temp_project):
-    """Test default 10 MB limit is applied."""
     from treemapper.cli import DEFAULT_MAX_FILE_BYTES
 
     assert DEFAULT_MAX_FILE_BYTES == 10 * 1024 * 1024
 
 
-def test_known_binary_extension_detected(temp_project):
-    """Test files with known binary extensions are detected without reading."""
+def test_known_binary_extension_detected(run_mapper, temp_project):
     pdf_file = temp_project / "document.pdf"
     pdf_file.write_text("not really a pdf but has extension")
 
@@ -272,9 +232,7 @@ def test_known_binary_extension_detected(temp_project):
 
     output_file = temp_project / "output.yaml"
 
-    result = run_treemapper_subprocess([str(temp_project), "-o", str(output_file)])
-
-    assert result.returncode == 0
+    assert run_mapper([str(temp_project), "-o", str(output_file)])
 
     tree = load_yaml(output_file)
 
@@ -287,12 +245,10 @@ def test_known_binary_extension_detected(temp_project):
     assert "<binary file:" in xlsx_node.get("content", "")
 
 
-def test_output_file_without_argument_uses_default_name(temp_project):
-    """Test --save creates tree.{format}."""
+def test_output_file_without_argument_uses_default_name(run_mapper, temp_project):
     (temp_project / "test.txt").write_text("content", encoding="utf-8")
 
-    result = run_treemapper_subprocess([str(temp_project), "--save"], cwd=temp_project)
-    assert result.returncode == 0
+    assert run_mapper([".", "--save"])
 
     default_output = temp_project / "tree.yaml"
     assert default_output.exists()
@@ -301,8 +257,7 @@ def test_output_file_without_argument_uses_default_name(temp_project):
     assert tree["name"] == temp_project.name
 
 
-def test_output_file_without_argument_respects_format(temp_project):
-    """Test -o without filename uses correct extension for format."""
+def test_output_file_without_argument_respects_format(run_mapper, temp_project):
     (temp_project / "test.txt").write_text("content", encoding="utf-8")
 
     import json
@@ -312,8 +267,7 @@ def test_output_file_without_argument_respects_format(temp_project):
         if expected_file.exists():
             expected_file.unlink()
 
-        result = run_treemapper_subprocess([str(temp_project), "--save", "-f", fmt], cwd=temp_project)
-        assert result.returncode == 0, f"Failed for format {fmt}: {result.stderr}"
+        assert run_mapper([".", "--save", "-f", fmt]), f"Failed for format {fmt}"
         assert expected_file.exists(), f"Expected {expected_file} for format {fmt}"
 
         content = expected_file.read_text(encoding="utf-8")
@@ -328,14 +282,12 @@ def test_output_file_without_argument_respects_format(temp_project):
 
 
 def test_max_safe_file_size_constant():
-    """Test MAX_SAFE_FILE_SIZE is defined as 100 MB."""
     from treemapper.tree import MAX_SAFE_FILE_SIZE
 
     assert MAX_SAFE_FILE_SIZE == 100 * 1024 * 1024
 
 
 def test_max_depth_zero_warning(temp_project):
-    """Test warning is shown when --max-depth 0 is used."""
     (temp_project / "test.txt").write_text("content", encoding="utf-8")
 
     result = run_treemapper_subprocess([str(temp_project), "--max-depth", "0"])
@@ -344,7 +296,7 @@ def test_max_depth_zero_warning(temp_project):
     assert "max-depth 0" in result.stderr.lower() or "empty tree" in result.stderr.lower()
 
 
-def test_max_file_bytes_boundary_exact_limit(temp_project):
+def test_max_file_bytes_boundary_exact_limit(run_mapper, temp_project):
     exact_file = temp_project / "exact.txt"
     exact_file.write_text("x" * 100, encoding="utf-8")
 
@@ -353,9 +305,7 @@ def test_max_file_bytes_boundary_exact_limit(temp_project):
 
     output_file = temp_project / "output.yaml"
 
-    result = run_treemapper_subprocess([str(temp_project), "-o", str(output_file), "--max-file-bytes", "100"])
-
-    assert result.returncode == 0
+    assert run_mapper([str(temp_project), "-o", str(output_file), "--max-file-bytes", "100"])
 
     tree = load_yaml(output_file)
 
@@ -368,7 +318,7 @@ def test_max_file_bytes_boundary_exact_limit(temp_project):
     assert "<file too large:" in over_node.get("content", "")
 
 
-def test_max_file_bytes_one_byte_limit(temp_project):
+def test_max_file_bytes_one_byte_limit(run_mapper, temp_project):
     one_byte = temp_project / "one.txt"
     one_byte.write_text("a", encoding="utf-8")
 
@@ -377,9 +327,7 @@ def test_max_file_bytes_one_byte_limit(temp_project):
 
     output_file = temp_project / "output.yaml"
 
-    result = run_treemapper_subprocess([str(temp_project), "-o", str(output_file), "--max-file-bytes", "1"])
-
-    assert result.returncode == 0
+    assert run_mapper([str(temp_project), "-o", str(output_file), "--max-file-bytes", "1"])
 
     tree = load_yaml(output_file)
 
@@ -392,7 +340,7 @@ def test_max_file_bytes_one_byte_limit(temp_project):
     assert "<file too large:" in two_node.get("content", "")
 
 
-def test_no_content_with_max_file_bytes_combined(temp_project):
+def test_no_content_with_max_file_bytes_combined(run_mapper, temp_project):
     small_file = temp_project / "small.txt"
     small_file.write_text("small content", encoding="utf-8")
 
@@ -401,7 +349,7 @@ def test_no_content_with_max_file_bytes_combined(temp_project):
 
     output_file = temp_project / "output.yaml"
 
-    result = run_treemapper_subprocess(
+    assert run_mapper(
         [
             str(temp_project),
             "-o",
@@ -411,8 +359,6 @@ def test_no_content_with_max_file_bytes_combined(temp_project):
             "100",
         ]
     )
-
-    assert result.returncode == 0
 
     tree = load_yaml(output_file)
 
@@ -425,7 +371,7 @@ def test_no_content_with_max_file_bytes_combined(temp_project):
     assert "content" not in large_node
 
 
-def test_max_depth_large_value_acts_as_unlimited(temp_project):
+def test_max_depth_large_value_acts_as_unlimited(run_mapper, temp_project):
     current = temp_project
     for i in range(5):
         current = current / f"d{i}"
@@ -434,9 +380,7 @@ def test_max_depth_large_value_acts_as_unlimited(temp_project):
 
     output_file = temp_project / "output.yaml"
 
-    result = run_treemapper_subprocess([str(temp_project), "-o", str(output_file), "--max-depth", "999"])
-
-    assert result.returncode == 0
+    assert run_mapper([str(temp_project), "-o", str(output_file), "--max-depth", "999"])
 
     tree = load_yaml(output_file)
 

@@ -31,6 +31,7 @@
 #     port, protocol) with its own update function. Same pattern, similar fields.
 #     HARD TRAP: overlapping field names (host, port) and same Partial pattern.
 
+max_enrichment: 5.3
 initial:
   config.ts: |
     export interface FullConfig {

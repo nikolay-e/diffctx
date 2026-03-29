@@ -1,3 +1,4 @@
+max_enrichment: 74.4
 initial:
   src/decorated.py: |+
     import logging
@@ -438,6 +439,9 @@ changed:
     EVENT_TYPES = ["GARBAGE_FRAG_001_011", "GARBAGE_FRAG_001_012", "GARBAGE_FRAG_001_013"]
 must_include_files:
 - src/decorated.py
+must_include_content:
+- "return 42"
+- "@decorator"
 must_not_include:
 - GARBAGE_FRAG_001_001
 - GARBAGE_FRAG_001_002

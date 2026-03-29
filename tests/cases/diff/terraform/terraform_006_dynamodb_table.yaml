@@ -13,6 +13,7 @@
 # but are not affected by this diff. redshift.tf and elasticache.tf are
 # different database services in the same infrastructure directory.
 
+max_enrichment: 8.9
 initial:
   modules/dynamodb/main.tf: |
     resource "aws_dynamodb_table" "this" {

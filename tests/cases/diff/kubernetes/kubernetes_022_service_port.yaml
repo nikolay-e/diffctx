@@ -31,6 +31,7 @@
 #     namespace with identical structure (ports, selector pattern). Shares
 #     Service kind and port vocabulary. But different app entirely — its
 #     targetPort: 3000 is correct for frontend, not relevant to backend fix.
+max_enrichment: 15.6
 initial:
   k8s/apps/backend/deployment.yaml: |
     apiVersion: apps/v1

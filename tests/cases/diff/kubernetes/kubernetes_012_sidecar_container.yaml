@@ -31,6 +31,7 @@
 #   - k8s/monitoring/loki-stack.yaml: Loki StatefulSet for log storage.
 #     Shares log collection domain. But Loki is the storage backend, not
 #     a dependency of the sidecar configuration being reviewed.
+max_enrichment: 5.8
 initial:
   config/fluent-bit.conf: |
     [SERVICE]

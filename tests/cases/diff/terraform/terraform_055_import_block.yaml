@@ -24,6 +24,7 @@
 #   - backup/s3.tf: S3 bucket for backups. Same resource type, same
 #     directory pattern. But different bucket, different purpose.
 
+max_enrichment: 16.0
 initial:
   main.tf: |
     # Managed S3 resources

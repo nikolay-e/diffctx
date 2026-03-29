@@ -12,6 +12,7 @@
 #   - models/staging/stg_payments.sql: unrelated staging model
 #   - models/marts/revenue_report.sql: sibling mart model, different query
 
+max_enrichment: 14.9
 initial:
   models/marts/order_summary.sql: |
     WITH orders AS (

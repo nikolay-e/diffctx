@@ -5,6 +5,7 @@
 # Trap: RoleValidator — has rules() and validated() like StoreUserRequest, but no dependency
 # Trap: OrderModel — has create() and toArray() like User model, no import edge
 
+max_enrichment: 9.5
 initial:
   app/Http/Requests/StoreUserRequest.php: |
     <?php

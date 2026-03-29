@@ -17,6 +17,7 @@
 #   - src/product_repository.py: similar repository with create/get and
 #     could raise ValidationError, but independent of user_repository changes.
 
+max_enrichment: 5.3
 initial:
   src/exceptions.py: |
     class ValidationError(Exception):

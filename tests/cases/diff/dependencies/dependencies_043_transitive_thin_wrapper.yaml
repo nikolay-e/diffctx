@@ -1,0 +1,166 @@
+max_enrichment: 6.5
+initial:
+  app.py: |
+    from wrapper import process_data
+
+    def main():
+        result = process_data()
+        print(result)
+  wrapper.py: |
+    from core import transform
+
+    def process_data():
+        return transform()
+  core.py: |
+    def transform(data=None, mode="default"):
+        if data is None:
+            data = []
+        if mode == "default":
+            return [x * 2 for x in data]
+        elif mode == "reverse":
+            return list(reversed(data))
+        return data
+
+  # --- Tricky: also imports process_data from wrapper (same-import consumer) ---
+  cli/runner.py: |
+    from wrapper import process_data
+    GARBAGE_DEP_043_CLI_RUNNER_A = "cli_runner"
+    GARBAGE_DEP_043_CLI_ENTRY_B = True
+
+    def run_cli(args: list) -> None:
+        GARBAGE_DEP_043_CLI_EXEC_C = "executing"
+        result = process_data()
+        print(f"CLI result: {result}")
+
+  # --- Tricky: has own transform() function (name collision) ---
+  utils/transform.py: |
+    GARBAGE_DEP_043_UTIL_XFORM_D = "util_transform"
+    GARBAGE_DEP_043_UTIL_VER_E = "2.0"
+
+    def transform(items, key=None):
+        GARBAGE_DEP_043_UTIL_APPLY_F = "applying"
+        if key:
+            return sorted(items, key=key)
+        return items
+
+  # --- Plain garbage ---
+  garbage/geology_GARBAGE_DEP_043_GEO_G.py: |
+    GARBAGE_DEP_043_GEO_G = "stratigraphy"
+
+    def classify_rock(mineral_content: dict) -> str:
+        return "igneous" if "quartz" in mineral_content else "sedimentary"
+
+    class Fossil_GARBAGE_DEP_043_GEO_G:
+        def __init__(self, era: str, species: str):
+            self.era = era
+            self.species = species
+  garbage/knitting_GARBAGE_DEP_043_KNIT_H.py: |
+    GARBAGE_DEP_043_KNIT_H = "pattern_design"
+
+    def calculate_yarn(length_cm: float, gauge: int) -> float:
+        return length_cm * gauge / 100.0
+
+    class Pattern_GARBAGE_DEP_043_KNIT_H:
+        def __init__(self, name: str, difficulty: int):
+            self.name = name
+            self.difficulty = difficulty
+changed:
+  app.py: |
+    from wrapper import process_data
+
+    def main():
+        raw = [1, 2, 3, 4, 5]
+        result = process_data(data=raw, mode="reverse")
+        formatted = ", ".join(str(x) for x in result)
+        print(f"Processed: {formatted}")
+  wrapper.py: |
+    from core import transform
+
+    def process_data(data=None, mode="default"):
+        return transform(data=data, mode=mode)
+  core.py: |
+    def transform(data=None, mode="default"):
+        if data is None:
+            data = []
+        if mode == "default":
+            return [x * 2 for x in data]
+        elif mode == "reverse":
+            return list(reversed(data))
+        return data
+  cli/runner.py: |
+    from wrapper import process_data
+    GARBAGE_DEP_043_CLI_RUNNER_A = "cli_runner"
+    GARBAGE_DEP_043_CLI_ENTRY_B = True
+
+    def run_cli(args: list) -> None:
+        GARBAGE_DEP_043_CLI_EXEC_C = "executing"
+        result = process_data()
+        print(f"CLI result: {result}")
+  utils/transform.py: |
+    GARBAGE_DEP_043_UTIL_XFORM_D = "util_transform"
+    GARBAGE_DEP_043_UTIL_VER_E = "2.0"
+
+    def transform(items, key=None):
+        GARBAGE_DEP_043_UTIL_APPLY_F = "applying"
+        if key:
+            return sorted(items, key=key)
+        return items
+  garbage/geology_GARBAGE_DEP_043_GEO_G.py: |
+    GARBAGE_DEP_043_GEO_G = "stratigraphy"
+
+    def classify_rock(mineral_content: dict) -> str:
+        return "igneous" if "quartz" in mineral_content else "sedimentary"
+
+    class Fossil_GARBAGE_DEP_043_GEO_G:
+        def __init__(self, era: str, species: str):
+            self.era = era
+            self.species = species
+  garbage/knitting_GARBAGE_DEP_043_KNIT_H.py: |
+    GARBAGE_DEP_043_KNIT_H = "pattern_design"
+
+    def calculate_yarn(length_cm: float, gauge: int) -> float:
+        return length_cm * gauge / 100.0
+
+    class Pattern_GARBAGE_DEP_043_KNIT_H:
+        def __init__(self, name: str, difficulty: int):
+            self.name = name
+            self.difficulty = difficulty
+
+# === Assertions ===
+
+must_include_files:
+- app.py
+- wrapper.py
+
+must_include_content:
+- "def transform"
+
+must_include_content_from:
+  app.py:
+    - process_data
+  wrapper.py:
+    - from core import transform
+
+must_not_include:
+# Plain garbage
+- GARBAGE_DEP_043_GEO_G
+- GARBAGE_DEP_043_KNIT_H
+# Tricky: also imports process_data from wrapper with same call pattern
+- GARBAGE_DEP_043_CLI_RUNNER_A
+- GARBAGE_DEP_043_CLI_ENTRY_B
+- GARBAGE_DEP_043_CLI_EXEC_C
+# Tricky: own transform() function (name collision with core.transform)
+- GARBAGE_DEP_043_UTIL_XFORM_D
+- GARBAGE_DEP_043_UTIL_VER_E
+- GARBAGE_DEP_043_UTIL_APPLY_F
+
+must_not_include_files:
+- cli/runner.py
+- utils/transform.py
+- garbage/geology_GARBAGE_DEP_043_GEO_G.py
+- garbage/knitting_GARBAGE_DEP_043_KNIT_H.py
+
+max_fragments: 6
+max_files: 4
+add_garbage_files: false
+skip_garbage_check: true
