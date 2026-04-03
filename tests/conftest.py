@@ -65,7 +65,7 @@ def _use_pygit2_git(monkeypatch):
             "get_changed_files",
             "show_file_at_revision",
             "get_deleted_files",
-            "get_renamed_old_paths",
+            "get_renamed_paths",
             "get_untracked_files",
             "is_git_repo",
         ):

@@ -121,8 +121,8 @@ class TestBudgetEnforcement:
         estimated_overhead = fragment_count * overhead_per_fragment
         total_estimated = content_tokens + estimated_overhead
 
-        assert total_estimated <= budget * 2, (
-            f"Budget significantly exceeded: estimated {total_estimated} tokens "
+        assert total_estimated <= budget, (
+            f"Budget exceeded: estimated {total_estimated} tokens "
             f"(content={content_tokens}, overhead~{estimated_overhead}) "
             f"vs budget={budget}"
         )

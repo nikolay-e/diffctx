@@ -15,19 +15,21 @@ logger = logging.getLogger(__name__)
 
 _YAML_PROBLEMATIC_RE = re.compile(r"[\r\x00\x85\u2028\u2029]")
 
-_YAML_STRING_ESCAPE_PATTERN = re.compile(r'[\\"\n\r\x00\x85\u2028\u2029]')
+_YAML_STRING_ESCAPE_PATTERN = re.compile(r'[\\"\n\r\x00\x08\x0c\x85\u2028\u2029]')
 _YAML_STRING_ESCAPE_MAP = {
     "\\": "\\\\",
     '"': '\\"',
     "\n": "\\n",
     "\r": "\\r",
     "\x00": "\\0",
+    "\x08": "\\b",
+    "\x0c": "\\f",
     "\x85": "\\x85",
     "\u2028": "\\u2028",
     "\u2029": "\\u2029",
 }
 
-_YAML_CONTENT_ESCAPE_PATTERN = re.compile(r'[\\"\n\t\r\x00\x85\u2028\u2029]')
+_YAML_CONTENT_ESCAPE_PATTERN = re.compile(r'[\\"\n\t\r\x00\x08\x0c\x85\u2028\u2029]')
 _YAML_CONTENT_ESCAPE_MAP = {
     "\\": "\\\\",
     '"': '\\"',
@@ -35,6 +37,8 @@ _YAML_CONTENT_ESCAPE_MAP = {
     "\t": "\\t",
     "\r": "\\r",
     "\x00": "\\0",
+    "\x08": "\\b",
+    "\x0c": "\\f",
     "\x85": "\\x85",
     "\u2028": "\\u2028",
     "\u2029": "\\u2029",
@@ -340,13 +344,14 @@ def _write_to_stdout_with_wrapper(writer: Callable[[TextIO], None]) -> bool:
     try:
         if buf:
             original_encoding = sys.stdout.encoding or sys.getdefaultencoding()
+            original_errors = getattr(sys.stdout, "errors", "strict")
             utf8_stdout = io.TextIOWrapper(buf, encoding="utf-8", newline="")
             try:
                 writer(utf8_stdout)
                 utf8_stdout.flush()
             finally:
                 utf8_stdout.detach()
-                sys.stdout = io.TextIOWrapper(buf, encoding=original_encoding)
+                sys.stdout = io.TextIOWrapper(buf, encoding=original_encoding, errors=original_errors)
         else:
             writer(sys.stdout)
             sys.stdout.flush()

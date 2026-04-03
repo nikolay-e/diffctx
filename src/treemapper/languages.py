@@ -123,8 +123,6 @@ EXTENSION_TO_LANGUAGE: dict[str, str] = {
     ".php7": "php",
     ".phps": "php",
     ".adoc": "asciidoc",
-    ".gitignore": "gitignore",
-    ".dockerignore": "gitignore",
     ".editorconfig": "editorconfig",
     ".tex": "latex",
     ".latex": "latex",

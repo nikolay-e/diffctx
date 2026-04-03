@@ -70,7 +70,7 @@ are unambiguously detectable.
 | Output      | YAML              | LLM-readable, literal blocks |
 | Tokens      | tiktoken o200k    | GPT-4o standard, exact BPE   |
 | Ignores     | pathspec          | gitignore-compatible         |
-| Parsing     | tree-sitter       | 10 languages, AST-level      |
+| Parsing     | tree-sitter       | 12 languages, AST-level      |
 | Ranking     | PPR               | Relevance with natural decay |
 | Selection   | Lazy greedy       | Near-optimal, linear time    |
 | Git         | subprocess UTF-8  | Platform-safe, non-ASCII     |

@@ -75,6 +75,24 @@ class TestCountTokens:
         result = count_tokens("line1\nline2\tline3\r\nline4")
         assert result.count > 0
 
+    def test_large_text_exact(self):
+        large_text = "word " * 500_000
+        result = count_tokens(large_text)
+        assert result.count > 0
+        assert result.is_exact is True
+
+    def test_exact_count_matches_direct_encode(self):
+        from treemapper.tokens import _get_encoder
+
+        encoder = _get_encoder("o200k_base")
+        if encoder is None:
+            return
+
+        text = "word " * 5_000
+        exact_count = len(encoder.encode(text))
+        result = count_tokens(text)
+        assert result.count == exact_count
+
 
 class TestPrintTokenSummary:
     def test_prints_to_stderr(self):
@@ -139,67 +157,3 @@ class TestEncoderCaching:
         r1 = count_tokens("test", encoding="o200k_base")
         r2 = count_tokens("test", encoding="cl100k_base")
         assert r1.encoding != r2.encoding or r1.encoding == "approximation"
-
-
-class TestChunkedCounting:
-    def test_chunked_counting_for_large_text(self):
-        from treemapper.tokens import CHUNK_THRESHOLD
-
-        large_text = "word " * (CHUNK_THRESHOLD // 5 + 1000)
-        result = count_tokens(large_text)
-        assert result.count > 0
-        # Chunked counting is not exact due to BPE context sensitivity
-        # is_exact=False with real encoding, or approximation fallback
-        assert result.is_exact is False
-
-    def test_chunked_count_close_to_exact(self, monkeypatch):
-        import treemapper.tokens as tokens_module
-        from treemapper.tokens import _get_encoder
-
-        encoder = _get_encoder("o200k_base")
-        if encoder is None:
-            return
-
-        text = "word " * 5_000
-        exact_count = len(encoder.encode(text))
-
-        monkeypatch.setattr(tokens_module, "CHUNK_THRESHOLD", 1_000)
-        chunked_result = count_tokens(text)
-
-        assert abs(chunked_result.count - exact_count) / exact_count < 0.05
-
-    def test_small_text_not_chunked(self):
-        small_text = "hello world"
-        result = count_tokens(small_text)
-        assert result.count > 0
-
-
-class TestSampledCounting:
-    def test_sampling_threshold_is_reasonable(self):
-        from treemapper.tokens import SAMPLE_CHAR_THRESHOLD
-
-        assert SAMPLE_CHAR_THRESHOLD >= 1_000_000
-
-    def test_very_large_text_uses_sampling(self, monkeypatch):
-        import treemapper.tokens as tokens_module
-        from treemapper.tokens import _count_tokens_sampled, _get_encoder
-
-        encoder = _get_encoder("o200k_base")
-        if encoder is None:
-            return
-
-        monkeypatch.setattr(tokens_module, "SAMPLE_CHAR_THRESHOLD", 10_000)
-        large_text = "x" * 15_000
-        result = _count_tokens_sampled(large_text, len(large_text), encoder, "o200k_base")
-        assert result.is_exact is False
-        assert result.count > 0
-
-    def test_sampled_result_is_approximate(self, monkeypatch):
-        import treemapper.tokens as tokens_module
-
-        monkeypatch.setattr(tokens_module, "SAMPLE_CHAR_THRESHOLD", 10_000)
-        monkeypatch.setattr(tokens_module, "CHUNK_THRESHOLD", 1_000)
-        text = "word " * 5_000
-        result = count_tokens(text)
-        if result.encoding != "approximation":
-            assert result.is_exact is False

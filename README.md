@@ -1,26 +1,107 @@
 # TreeMapper
 
 [![CI](https://github.com/nikolay-e/treemapper/actions/workflows/ci.yml/badge.svg)](https://github.com/nikolay-e/treemapper/actions/workflows/ci.yml)
-[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=nikolay-e_TreeMapper&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=nikolay-e_TreeMapper)
-[![codecov](https://codecov.io/gh/nikolay-e/treemapper/branch/main/graph/badge.svg)](https://codecov.io/gh/nikolay-e/treemapper)
 [![PyPI](https://img.shields.io/pypi/v/treemapper)](https://pypi.org/project/treemapper/)
-[![Python versions](https://img.shields.io/pypi/pyversions/treemapper)](https://pypi.org/project/treemapper/)
 [![Downloads](https://img.shields.io/pypi/dm/treemapper)](https://pypi.org/project/treemapper/)
 [![License](https://img.shields.io/pypi/l/treemapper)](https://pypi.org/project/treemapper/)
 
-**Export your codebase for AI/LLM context in one command.**
+**Smart diff context for LLM code review.** Selects the minimal set of code
+fragments needed to understand a git change — instead of dumping entire files.
+
+Also exports full codebase structure + contents in YAML/JSON/MD/txt.
+Works with any LLM. 100% local, free, no GitHub dependency.
 
 ```bash
-pipx install treemapper          # install
-treemapper . -o context.yaml    # paste into ChatGPT/Claude
+pipx install treemapper
+
+treemapper . --diff HEAD~1       # smart context for last commit → paste into Claude/ChatGPT
+treemapper . -f md -c           # full export → clipboard in Markdown
 ```
 
 ![demo](docs/demo.gif)
 
-## Why TreeMapper?
+## Why not just use `tree` or repomix?
 
-Unlike `tree` or `find`, TreeMapper exports **structure + file
-contents** in a format optimized for fast comprehension:
+| | `tree` | repomix | Claude Code Review | **TreeMapper** |
+|---|:---:|:---:|:---:|:---:|
+| **Primary use case** | directory listing | full repo export | automated PR review | **diff context for code review** |
+| Smart diff context | ✗ | ✗ | ✓ | ✓ |
+| Works with any LLM | ✓ | ✓ | Claude only | ✓ |
+| Free / local / offline | ✓ | ✓ | $15–25/review | ✓ |
+| GitHub required | ✗ | ✗ | ✓ | ✗ |
+| Multiple output formats | ✗ | limited | — | YAML/JSON/MD/txt |
+| Python API | ✗ | ✗ | ✗ | ✓ |
+
+## Installation
+
+```bash
+pipx install treemapper                    # recommended: isolated, no venv needed
+pip install treemapper                     # or with pip
+pip install 'treemapper[tree-sitter]'      # + AST parsing for smarter diff context
+```
+
+**Standalone binary** (no Python required): download from the
+[releases page](https://github.com/nikolay-e/treemapper/releases/latest).
+
+> Diff context mode works out of the box. Adding `[tree-sitter]` enables AST-level
+> parsing for more accurate context selection across 12 languages.
+
+## Diff Context Mode
+
+**Paper:** [Context-Selection for Git Diff (Zenodo, 2026)](https://doi.org/10.5281/zenodo.18824580)
+
+Automatically finds the minimal set of code fragments needed to understand
+a change — imports, callers, type definitions, config dependencies — without
+dumping entire files. Understands 50+ file types.
+
+```yaml
+name: myproject
+type: diff_context
+fragment_count: 5
+fragments:
+  - path: src/main.py
+    lines: "10-25"
+    kind: function
+    symbol: process_data
+    content: |
+      def process_data(items):
+          ...
+```
+
+### How it works
+
+Uses Personalized PageRank on a code graph (imports, co-changes, type refs)
+to propagate relevance from changed lines outward. Stops when signal decays
+below threshold τ, or at an explicit `--budget` token limit.
+
+| Flag       | Default | Description                              |
+|------------|---------|------------------------------------------|
+| `--budget` | none    | Token limit (convergence-based by default) |
+| `--full`   | false   | Include all changed code, skip selection |
+| `--alpha`  | 0.60    | PPR damping factor                       |
+| `--tau`    | 0.08    | Convergence threshold                    |
+
+## Usage
+
+<!-- BEGIN USAGE -->
+```bash
+# full codebase export:
+treemapper .                                # YAML to stdout + token count
+treemapper . -f md -c                       # Markdown → clipboard
+treemapper . -f json -o tree.json           # JSON → file
+treemapper . --no-content                   # structure only, no file contents
+treemapper . --max-depth 3                  # limit depth
+treemapper . -i custom.ignore               # custom ignore patterns
+
+# diff context mode (requires git repo):
+treemapper . --diff HEAD~1                  # context for last commit
+treemapper . --diff main..feature           # context for feature branch
+treemapper . --diff HEAD~1 --budget 30000   # limit to ~30k tokens
+treemapper . --diff HEAD~1 -c               # diff context to clipboard
+```
+<!-- END USAGE -->
+
+Full codebase export output format:
 
 ```yaml
 name: myproject
@@ -40,106 +121,6 @@ children:
           def add(a, b):
               return a + b
 ```
-
-| Feature                  | `tree` | repomix | **TreeMapper** |
-|--------------------------|:------:|:-------:|:--------------:|
-| File contents            | ✗      | ✓       | ✓              |
-| Token counting           | ✗      | ✓       | ✓              |
-| Smart diff context       | ✗      | ✗       | ✓              |
-| Multiple output formats  | ✗      | limited | YAML/JSON/MD/txt |
-| Python API               | ✗      | ✗       | ✓              |
-| 100% local / offline     | ✓      | ✓       | ✓              |
-
-## Installation
-
-```bash
-pipx install treemapper                    # recommended: isolated, no venv needed
-pip install treemapper                     # or with pip
-pip install 'treemapper[tree-sitter]'      # + AST parsing for smarter diff context
-```
-
-**Standalone binary** (no Python required): download from the
-[releases page](https://github.com/nikolay-e/treemapper/releases/latest).
-
-> Diff context mode works out of the box. Adding `[tree-sitter]` enables AST-level
-> parsing for more accurate context selection across 10 languages.
-
-## Usage
-
-<!-- BEGIN USAGE -->
-```bash
-treemapper                                  # current dir, YAML to stdout
-treemapper .                                # YAML to stdout + token count
-treemapper . -o tree.yaml                   # save to file
-treemapper . --save                         # save to tree.yaml (default name)
-treemapper . -o -                           # explicit stdout
-treemapper . -f json                        # JSON format
-treemapper . -f txt                         # plain text with indentation
-treemapper . -f md                          # Markdown with fenced code blocks
-treemapper . --no-content                   # structure only, no file contents
-treemapper . --max-depth 3                  # limit depth (0=root only)
-treemapper . --max-file-bytes 10000         # skip files > 10KB (default: 10 MB)
-treemapper . --no-file-size-limit           # include all files regardless of size
-treemapper . -i custom.ignore               # custom ignore patterns
-treemapper . -w whitelist                   # include-only filter
-treemapper . --no-default-ignores           # disable built-in ignore patterns
-treemapper . --log-level info               # log level (default: error)
-treemapper . -c                             # copy to clipboard
-treemapper . -c -o tree.yaml                # clipboard + save to file
-treemapper -v                               # show version
-
-# diff context mode (requires git repo):
-treemapper . --diff HEAD~1                  # context for last commit
-treemapper . --diff main..feature           # context for feature branch
-treemapper . --diff HEAD~1 --budget 30000   # limit diff context to ~30k tokens
-treemapper . --diff HEAD~1 --full           # all changed code, no smart selection
-treemapper . --diff HEAD~1 -c               # diff context to clipboard
-```
-<!-- END USAGE -->
-
-## Diff Context Mode
-
-**Paper:** [Context-Selection for Git Diff (Zenodo, 2026)](https://doi.org/10.5281/zenodo.18824580)
-
-Smart context selection for git diffs — automatically finds the
-minimal set of code fragments needed to understand a change:
-
-```bash
-treemapper . --diff HEAD~1..HEAD      # recent changes
-treemapper . --diff main..feature     # feature branch
-treemapper . --diff HEAD~1 --budget 30000  # limit tokens
-treemapper . --diff HEAD~1 --full     # all changed code
-```
-
-Uses graph-based relevance propagation (Personalized PageRank)
-to select the most important context. Output size is controlled
-by algorithm convergence (τ-stopping) by default, or an explicit
-`--budget` token limit. Understands imports, type references,
-config dependencies, and co-change patterns across 15+
-programming languages.
-
-Output format:
-
-```yaml
-name: myproject
-type: diff_context
-fragment_count: 5
-fragments:
-  - path: src/main.py
-    lines: "10-25"
-    kind: function
-    symbol: process_data
-    content: |
-      def process_data(items):
-          ...
-```
-
-| Flag       | Default       | Description                                    |
-|------------|---------------|------------------------------------------------|
-| `--budget` | none          | Token limit (convergence-based by default)     |
-| `--alpha`  | 0.60          | PPR damping factor                             |
-| `--tau`    | 0.08          | Stopping threshold                             |
-| `--full`   | false         | Include all changed code                       |
 
 ## Token Counting
 
@@ -162,7 +143,7 @@ Uses tiktoken with `o200k_base` encoding (GPT-4o tokenizer).
 Copy output directly to clipboard with `-c` or `--copy`:
 
 ```bash
-treemapper . -c                       # copy (no stdout)
+treemapper . -c                       # copy (stdout suppressed, stderr: token count)
 treemapper . -c -o tree.yaml          # copy + save to file
 ```
 

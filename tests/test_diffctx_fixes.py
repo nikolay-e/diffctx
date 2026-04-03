@@ -186,6 +186,49 @@ class TestRenameDetection:
         old_paths = [p for p in paths if "old_pkg" in p]
         assert len(old_paths) == 0, f"Old directory paths must not appear: {old_paths}"
 
+    def test_pure_rename_new_path_excluded(self, tmp_path: Path) -> None:
+        g = Pygit2Repo(tmp_path / "pure_rename_new")
+
+        g.add_file(
+            "original.py",
+            "def process():\n    PURE_RENAME_NEW_MARKER = True\n    return 42\n",
+        )
+        g.add_file("other.py", "def other():\n    return 'v1'\n")
+        g.commit("init")
+
+        (g.path / "original.py").rename(g.path / "renamed.py")
+        g.add_file("other.py", "def other():\n    return 'v2'\n")
+        g.commit("pure rename + unrelated change")
+
+        context = build_diff_context(root_dir=g.path, diff_range="HEAD~1..HEAD", budget_tokens=5000)
+        paths = _extract_paths(context)
+        all_content = _extract_content(context)
+
+        assert any("other.py" in p for p in paths), "Modified file must be in context"
+        assert not any("renamed.py" in p for p in paths), "Pure-rename new path must not appear in context"
+        assert "PURE_RENAME_NEW_MARKER" not in all_content, "Pure-rename content must not appear"
+
+    def test_rename_with_content_changes_included(self, tmp_path: Path) -> None:
+        g = Pygit2Repo(tmp_path / "rename_modified")
+
+        g.add_file(
+            "original.py",
+            "def process():\n    RENAME_MODIFIED_MARKER = True\n    return 1\n",
+        )
+        g.commit("init")
+
+        g.add_file(
+            "renamed_modified.py",
+            "def process():\n    RENAME_MODIFIED_MARKER = True\n    return 2\n\ndef new_func():\n    pass\n",
+        )
+        g.remove_file("original.py")
+        g.commit("rename with content changes")
+
+        context = build_diff_context(root_dir=g.path, diff_range="HEAD~1..HEAD", budget_tokens=5000)
+        paths = _extract_paths(context)
+
+        assert any("renamed_modified.py" in p for p in paths), "Rename with changes must appear in context"
+
 
 class TestGeneratedApiFiles:
     def test_api_files_capped_as_generated(self, tmp_path: Path) -> None:

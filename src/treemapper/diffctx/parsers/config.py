@@ -135,8 +135,6 @@ class RuamelYamlStrategy:
             return []
 
         yaml = YAML()
-        yaml.preserve_quotes = True
-
         try:
             data = yaml.load(content)
         except Exception as e:

@@ -139,11 +139,25 @@ class YamlTestRunner:
         content_by_file: dict[str, str] | None = None,
     ) -> list[tuple[str, bool]]:
         details: list[tuple[str, bool]] = []
-        for pattern in case.must_not_include:
-            details.append((f"noise: {pattern[:80]}", pattern in all_content))
+        details.extend(self._check_noise_patterns(case, all_content))
+        details.extend(self._check_noise_files(case, fragment_paths))
+        details.extend(self._check_noise_limits(case, fragment_paths, context))
+        details.extend(self._check_noise_content(case, content_by_file or {}))
+        details.extend(self._check_noise_per_file_limits(case, context))
+        return details
+
+    def _check_noise_patterns(self, case: YamlTestCase, all_content: str) -> list[tuple[str, bool]]:
+        return [(f"noise: {pattern[:80]}", pattern in all_content) for pattern in case.must_not_include]
+
+    def _check_noise_files(self, case: YamlTestCase, fragment_paths: list[str]) -> list[tuple[str, bool]]:
+        details: list[tuple[str, bool]] = []
         for file_path in case.must_not_include_files:
             leaked = any(_match_path(p, file_path) for p in fragment_paths)
             details.append((f"noise_file: {file_path}", leaked))
+        return details
+
+    def _check_noise_limits(self, case: YamlTestCase, fragment_paths: list[str], context: dict) -> list[tuple[str, bool]]:
+        details: list[tuple[str, bool]] = []
         if case.max_fragments is not None:
             frag_count = len(context.get("fragments", []))
             if frag_count > case.max_fragments:
@@ -152,25 +166,33 @@ class YamlTestRunner:
             unique_files = len(set(fragment_paths))
             if unique_files > case.max_files:
                 details.append((f"excess_files: {unique_files}/{case.max_files}", True))
-        cbf = content_by_file or {}
+        return details
+
+    def _check_noise_content(self, case: YamlTestCase, cbf: dict[str, str]) -> list[tuple[str, bool]]:
+        details: list[tuple[str, bool]] = []
         for file_path, snippets in case.must_not_include_content_from.items():
             file_content = self._find_file_content(cbf, file_path)
             for snippet in snippets:
                 normalized = snippet.rstrip("\n")
                 leaked = file_content is not None and normalized in file_content
                 details.append((f"noise_from {file_path}: {normalized[:60]}", leaked))
-        if case.max_fragments_per_file is not None:
-            from collections import Counter
-
-            per_file: Counter[str] = Counter()
-            for frag in context.get("fragments", []):
-                p = frag.get("path", "")
-                if p:
-                    per_file[p] += 1
-            for p, count in per_file.items():
-                if count > case.max_fragments_per_file:
-                    details.append((f"excess_frags_per_file: {p} {count}/{case.max_fragments_per_file}", True))
         return details
+
+    def _check_noise_per_file_limits(self, case: YamlTestCase, context: dict) -> list[tuple[str, bool]]:
+        if case.max_fragments_per_file is None:
+            return []
+        from collections import Counter
+
+        per_file: Counter[str] = Counter()
+        for frag in context.get("fragments", []):
+            p = frag.get("path", "")
+            if p:
+                per_file[p] += 1
+        return [
+            (f"excess_frags_per_file: {p} {count}/{case.max_fragments_per_file}", True)
+            for p, count in per_file.items()
+            if count > case.max_fragments_per_file
+        ]
 
     def _check_garbage(self, case: YamlTestCase, all_content: str) -> tuple[int, int]:
         if not case.add_garbage_files or case.skip_garbage_check:

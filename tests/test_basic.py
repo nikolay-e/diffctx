@@ -260,10 +260,20 @@ def test_unicode_content_and_encoding_errors(temp_project, run_mapper, caplog):
 
     assert cp1251_node is not None, "'cp1251.txt' not found"
     cp1251_content = cp1251_node.get("content", "")
-    assert "unreadable" in cp1251_content, f"CP1251 file should be marked unreadable, got: {cp1251_content!r}"
-    assert any(
-        "cp1251.txt" in record.message for record in caplog.records if record.levelno >= logging.WARNING
-    ), "Expected WARNING about cp1251.txt not found in logs"
+    try:
+        from charset_normalizer import from_bytes  # noqa: F401
+
+        has_charset_normalizer = True
+    except ImportError:
+        has_charset_normalizer = False
+    if has_charset_normalizer:
+        assert (
+            cp1251_content and "unreadable" not in cp1251_content
+        ), f"charset-normalizer should decode CP1251, got: {cp1251_content!r}"
+    else:
+        assert (
+            "unreadable" in cp1251_content
+        ), f"CP1251 file should be marked unreadable without charset-normalizer, got: {cp1251_content!r}"
 
     assert binary_node is not None, "'binary.bin' not found"
     binary_content = binary_node.get("content", "")

@@ -31,13 +31,7 @@ def _get_nlp() -> Language | None:
                 try:
                     import spacy
 
-                    try:
-                        _nlp = spacy.load("en_core_web_sm", disable=["ner", "parser"])
-                    except OSError:
-                        from spacy.cli.download import download
-
-                        download("en_core_web_sm")
-                        _nlp = spacy.load("en_core_web_sm", disable=["ner", "parser"])
+                    _nlp = spacy.load("en_core_web_sm", disable=["ner", "parser"])
                     _nlp_available = True
                 except ImportError:
                     _nlp_available = False

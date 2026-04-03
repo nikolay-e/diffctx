@@ -7,32 +7,19 @@ import sys
 from pathlib import Path
 
 _USAGE_EXAMPLES: list[tuple[str, str]] = [
-    ("treemapper", "current dir, YAML to stdout"),
+    ("# full codebase export:", ""),
     ("treemapper .", "YAML to stdout + token count"),
-    ("treemapper . -o tree.yaml", "save to file"),
-    ("treemapper . --save", "save to tree.yaml (default name)"),
-    ("treemapper . -o -", "explicit stdout"),
-    ("treemapper . -f json", "JSON format"),
-    ("treemapper . -f txt", "plain text with indentation"),
-    ("treemapper . -f md", "Markdown with fenced code blocks"),
+    ("treemapper . -f md -c", "Markdown → clipboard"),
+    ("treemapper . -f json -o tree.json", "JSON → file"),
     ("treemapper . --no-content", "structure only, no file contents"),
-    ("treemapper . --max-depth 3", "limit depth (0=root only)"),
-    ("treemapper . --max-file-bytes 10000", "skip files > 10KB (default: 10 MB)"),
-    ("treemapper . --no-file-size-limit", "include all files regardless of size"),
+    ("treemapper . --max-depth 3", "limit depth"),
     ("treemapper . -i custom.ignore", "custom ignore patterns"),
-    ("treemapper . -w whitelist", "include-only filter"),
-    ("treemapper . --no-default-ignores", "disable built-in ignore patterns"),
-    ("treemapper . --log-level info", "log level (default: error)"),
-    ("treemapper . -c", "copy to clipboard"),
-    ("treemapper . -c -o tree.yaml", "clipboard + save to file"),
-    ("treemapper -v", "show version"),
     # diff context mode
     ("", ""),
     ("# diff context mode (requires git repo):", ""),
     ("treemapper . --diff HEAD~1", "context for last commit"),
     ("treemapper . --diff main..feature", "context for feature branch"),
-    ("treemapper . --diff HEAD~1 --budget 30000", "limit diff context to ~30k tokens"),
-    ("treemapper . --diff HEAD~1 --full", "all changed code, no smart selection"),
+    ("treemapper . --diff HEAD~1 --budget 30000", "limit to ~30k tokens"),
     ("treemapper . --diff HEAD~1 -c", "diff context to clipboard"),
 ]
 

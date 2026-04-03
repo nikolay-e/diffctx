@@ -7,11 +7,6 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-CHUNK_SIZE = 500_000
-CHUNK_THRESHOLD = 1_000_000
-SAMPLE_CHAR_THRESHOLD = 50_000_000  # 50M characters - use sampling above this
-SAMPLE_COUNT = 5
-
 
 @dataclass
 class TokenCountResult:
@@ -42,43 +37,7 @@ def count_tokens(text: str, encoding: str = "o200k_base") -> TokenCountResult:
         logger.debug("tiktoken unavailable, using char/4 approximation")
         return TokenCountResult(len(text) // 4, False, "approximation")
 
-    text_len = len(text)
-    if text_len <= CHUNK_THRESHOLD:
-        logger.debug("Token counting: exact mode (%d chars)", text_len)
-        return TokenCountResult(len(encoder.encode(text)), True, encoding)
-
-    if text_len > SAMPLE_CHAR_THRESHOLD:
-        logger.debug("Token counting: sampled mode (%d chars, %d samples)", text_len, SAMPLE_COUNT)
-        return _count_tokens_sampled(text, text_len, encoder, encoding)
-
-    logger.debug("Token counting: chunked mode (%d chars)", text_len)
-    total = 0
-    for i in range(0, text_len, CHUNK_SIZE):
-        chunk = text[i : i + CHUNK_SIZE]
-        total += len(encoder.encode(chunk))
-    return TokenCountResult(total, False, encoding)
-
-
-def _count_tokens_sampled(text: str, text_len: int, encoder: Any, encoding: str) -> TokenCountResult:
-    num_chunks = text_len // CHUNK_SIZE
-    step = max(1, num_chunks // SAMPLE_COUNT)
-    sampled_tokens = 0
-    sampled_chars = 0
-
-    for i in range(0, num_chunks, step):
-        start = i * CHUNK_SIZE
-        chunk = text[start : start + CHUNK_SIZE]
-        sampled_tokens += len(encoder.encode(chunk))
-        sampled_chars += len(chunk)
-        if sampled_chars >= SAMPLE_COUNT * CHUNK_SIZE:
-            break
-
-    if sampled_chars == 0:
-        return TokenCountResult(text_len // 4, False, "approximation")
-
-    tokens_per_char = sampled_tokens / sampled_chars
-    estimated_total = int(tokens_per_char * text_len)
-    return TokenCountResult(estimated_total, False, encoding)
+    return TokenCountResult(len(encoder.encode_ordinary(text)), True, encoding)
 
 
 def _format_size(byte_size: int) -> str:

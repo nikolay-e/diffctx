@@ -472,7 +472,12 @@ class TestContentPlaceholders:
         node = find_node_by_path(tree, ["non_utf8.txt"])
         assert node is not None
         content = node.get("content", "")
-        assert "<unreadable content" in content
+        try:
+            from charset_normalizer import from_bytes  # noqa: F401
+
+            assert content and "<unreadable content" not in content
+        except ImportError:
+            assert "<unreadable content" in content
 
     @pytest.mark.skipif(
         sys.platform == "win32",

@@ -53,12 +53,13 @@ classifiers = [
 dynamic = [ "version" ]  # Version is still managed in version.py
 dependencies = [
   "pathspec>=0.11,<2.0",
-  "tiktoken>=0.7,<1.0",
+  "tiktoken>=0.8,<1.0",
 ]
 optional-dependencies.dev = [
   "black>=23.0.0,<27.0",
   # Build and release
   "build>=0.10,<2.0",
+  "charset-normalizer>=3.0,<4.0",
   "coverage>=7.0,<8.0",
   "hypothesis>=6.0,<7.0",
   "import-linter>=2.0,<3.0",
@@ -87,6 +88,7 @@ optional-dependencies.embeddings = [
   "sentence-transformers>=3.0,<6.0",
 ]
 optional-dependencies.full = [
+  "charset-normalizer>=3.0,<4.0",
   "lxml>=5.0,<7.0",
   "mistune>=3.0,<4.0",
   "pysbd>=0.3,<1.0",

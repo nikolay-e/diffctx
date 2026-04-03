@@ -129,15 +129,18 @@ def get_deleted_files(repo_root: Path, diff_range: str) -> set[Path]:
     return result
 
 
-def get_renamed_old_paths(repo_root: Path, diff_range: str) -> set[Path]:
+def get_renamed_paths(repo_root: Path, diff_range: str, min_similarity: int = 95) -> tuple[set[Path], set[Path]]:
     repo = _get_repo(repo_root)
     diff = _get_diff(repo, diff_range)
-    result: set[Path] = set()
+    old_paths: set[Path] = set()
+    pure_new_paths: set[Path] = set()
     for patch in diff:
         delta = patch.delta
         if delta.status == pygit2.GIT_DELTA_RENAMED:
-            result.add((repo_root / delta.old_file.path).resolve())
-    return result
+            old_paths.add((repo_root / delta.old_file.path).resolve())
+            if delta.similarity >= min_similarity:
+                pure_new_paths.add((repo_root / delta.new_file.path).resolve())
+    return old_paths, pure_new_paths
 
 
 def get_untracked_files(repo_root: Path) -> list[Path]:
